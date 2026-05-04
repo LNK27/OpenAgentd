@@ -40,11 +40,13 @@ Update version in:
 - `app/version.txt` — overwrite with `<version>\n`
 - `pyproject.toml` — `version = "<version>"` under `[project]`
 - `web/package.json` — `"version": "<version>"`
+- `uv.lock` — run `uv sync` after updating `pyproject.toml`
 
 ```bash
+uv sync
 uv run ruff format app/ tests/
 uv run ruff format --check app/ tests/
-git add app/version.txt pyproject.toml web/package.json
+git add app/version.txt pyproject.toml uv.lock web/package.json
 git commit -m "chore: bump version to <version>"
 git push origin <branch>
 ```
