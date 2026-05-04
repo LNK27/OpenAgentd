@@ -80,6 +80,19 @@ Other install options (pip, pipx, from source) — see [`documents/docs/install.
 
 ---
 
+## Migrate from OpenClaw or Hermes Agent
+
+Import existing identity and context Markdown files into one OpenAgentd lead agent:
+
+```bash
+openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5
+openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5
+```
+
+Existing agent files are not overwritten unless `--force` is passed. See [`documents/docs/configuration.md`](documents/docs/configuration.md#agent-configuration) for supported source files.
+
+---
+
 ## Providers
 
 Switch models with a single line in your agent's `.md` config file. Every provider uses the `provider:model` format.
