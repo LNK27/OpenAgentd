@@ -45,6 +45,13 @@ Write concise, user-facing notes in this style:
 - Add `## Upgrade` only when users need action.
 - Mention tests briefly if relevant.
 - Include short examples only when they clarify behavior.
+- When referencing install commands for optional extras, always show both `uv` and `pip` variants:
+  ```
+  uv tool install "openagentd[voice-local]"
+  # or
+  pip install "openagentd[voice-local]"
+  ```
+  Add a note that `brew install openagentd` installs the base package only; extras must be installed separately via `uv` or `pip`.
 - End with `**Full changelog:** https://github.com/lthoangg/openagentd/compare/<prev>...<next>`.
 
 Skip version bump commits. Use commit subjects as source material, not as the final structure.

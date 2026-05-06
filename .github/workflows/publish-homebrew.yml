@@ -70,6 +70,17 @@ jobs:
               bin.install_symlink libexec/"bin/openagentd"
             end
 
+            def caveats
+              <<~EOS
+                This formula installs the base package only. Optional extras are not
+                supported by Homebrew. To enable voice input (local Whisper transcription):
+
+                  uv tool install "openagentd[voice-local]"
+                  # or
+                  pip install "openagentd[voice-local]"
+              EOS
+            end
+
             test do
               assert_match version.to_s, shell_output("#{bin}/openagentd --version")
             end
