@@ -1,8 +1,8 @@
 ---
 title: API Reference
-description: HTTP routes, SSE event protocol, file upload, workspace listing, media proxy, team chat endpoints.
+description: HTTP routes, SSE event protocol, file upload, workspace listing, media proxy, team chat, and planned speech endpoints.
 status: stable
-updated: 2026-04-21
+updated: 2026-05-05
 ---
 
 # API Reference
@@ -166,24 +166,45 @@ Paths are relative to `OPENAGENTD_WIKI_DIR`. See [`agent/memory.md`](../agent/me
 
 The web UI (`SchedulerPanel`, toggled with `Ctrl+S`) exposes all eight operations. Task detail view includes an **Edit** button that opens an inline edit form pre-populated with current values.
 
+## Speech endpoints
+
+Browser voice input is documented in [`web/voice-input.md`](../web/voice-input.md).
+It records audio in the frontend, transcribes on the backend, and inserts the
+transcript into the existing chat input without auto-sending.
+
+| Method | Path | Returns |
+|--------|------|---------|
+| `GET` | `/api/speech/config` | `{enabled, model, language, max_file_mb}` — current voice config from `speech.yaml` |
+| `PUT` | `/api/speech/config` | `{enabled, model, language, max_file_mb}` — persist voice config to `speech.yaml` |
+| `POST` | `/api/speech/transcribe` | `{text}` — transcript for one uploaded recording |
+
+`PUT /api/speech/config` accepts JSON with fields `enabled` (bool), `model`
+(`"provider:name"` string), `language` (string), and `max_file_mb` (int > 0).
+The config is written to `speech.yaml` and hot-reloaded immediately — no server
+restart needed. Editable from **Settings → Voice** in the web UI.
+
+`POST /api/speech/transcribe` accepts `multipart/form-data` with one `file`
+field. V1 supports local transcription via `voice.model: local:base`; the
+backend does not require the optional `voice-local` dependencies unless that
+provider is configured and invoked.
+
 ## Settings
 
-User-editable runtime settings persisted under
-`{OPENAGENTD_CONFIG_DIR}`. Currently exposes the sandbox deny-list — a
-list of glob patterns (e.g. `**/.env`, `**/secrets/**`) that are
-matched against the resolved absolute path of every filesystem-tool
-call. See [`configuration.md`](../configuration.md#sandbox-model-and-permissions)
-for the matching rules.
+User-editable runtime settings persisted under `{OPENAGENTD_CONFIG_DIR}` plus update checks for the running app. Sandbox patterns match resolved absolute paths for filesystem-tool calls; see [`configuration.md`](../configuration.md#sandbox-model-and-permissions).
 
 | Method | Path | Returns |
 |--------|------|---------|
 | `GET` | `/api/settings/sandbox` | `{denied_patterns: string[]}` — current list (seed defaults when file absent or key missing) |
 | `PUT` | `/api/settings/sandbox` | `{denied_patterns: string[]}` — replace the list; blank entries stripped |
+| `GET` | `/api/settings/update` | `{current_version, latest_version, update_available, can_install, install_blocked_reason}` — check PyPI for updates |
+| `POST` | `/api/settings/update/install` | `{status:"started"}` — start background update + restart when available |
 
 `PUT` writes `{OPENAGENTD_CONFIG_DIR}/sandbox.yaml` atomically. New
 patterns take effect on the next agent run (each `SandboxConfig`
 re-reads the file at construction). Workspace and memory roots remain
 exempt regardless of pattern matches.
+
+Update install can return `409` when automatic install is unavailable, with a user-facing `detail` message.
 
 ## Permission endpoints
 

@@ -54,4 +54,12 @@ export {
   useSandboxSettingsQuery,
   useUpdateSandboxSettingsMutation,
 } from './useSandboxSettingsQuery'
+export {
+  useUpdateStatusQuery,
+  useInstallUpdateMutation,
+} from './useUpdateQuery'
+export {
+  useSpeechConfigQuery,
+  useUpdateSpeechConfigMutation,
+} from './useSpeechConfigQuery'
 export { queryKeys } from './keys'

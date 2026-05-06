@@ -51,5 +51,9 @@ export const queryKeys = {
   },
   settings: {
     sandbox: () => ['settings', 'sandbox'] as const,
+    update: () => ['settings', 'update'] as const,
+  },
+  speech: {
+    config: () => ['speech', 'config'] as const,
   },
 }

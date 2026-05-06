@@ -135,7 +135,7 @@ export async function getTodos(sessionId: string): Promise<TodosResponse> {
 
 // ── /health ───────────────────────────────────────────────────────────────────
 
-export async function health(): Promise<{ status: string }> {
+export async function health(): Promise<{ status: string; version: string }> {
   const res = await fetch(`${API}/health/ready`)
   if (!res.ok) throw new Error(`health failed: ${res.status}`)
   return res.json()
@@ -613,5 +613,63 @@ export async function updateSandboxSettings(
     body: JSON.stringify(body),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/sandbox')
+  return res.json()
+}
+
+// ── /settings/update ─────────────────────────────────────────────────────────
+
+export type UpdateStatus = {
+  current_version: string
+  latest_version: string | null
+  update_available: boolean
+  can_install: boolean
+  install_blocked_reason: string | null
+}
+
+export async function getUpdateStatus(): Promise<UpdateStatus> {
+  const res = await fetch(`${API}/settings/update`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/update')
+  return res.json()
+}
+
+export async function installUpdate(): Promise<{ status: string }> {
+  const res = await fetch(`${API}/settings/update/install`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /settings/update/install')
+  return res.json()
+}
+
+// ── /speech ──────────────────────────────────────────────────────────────────
+
+export type SpeechConfig = {
+  enabled: boolean
+  model: string
+  language: string
+  max_file_mb: number
+}
+
+export async function getSpeechConfig(): Promise<SpeechConfig> {
+  const res = await fetch(`${API}/speech/config`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /speech/config')
+  return res.json()
+}
+
+export async function putSpeechConfig(body: SpeechConfig): Promise<SpeechConfig> {
+  const res = await fetch(`${API}/speech/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /speech/config')
+  return res.json()
+}
+
+export async function postTranscribe(audioBlob: Blob): Promise<{ text: string }> {
+  const formData = new FormData()
+  formData.append('file', audioBlob, 'recording.webm')
+  const res = await fetch(`${API}/speech/transcribe`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /speech/transcribe')
   return res.json()
 }
