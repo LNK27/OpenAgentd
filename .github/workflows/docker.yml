@@ -2,7 +2,7 @@
 #
 # Triggers:
 #   - Push to main (app/web/Dockerfile changes): builds and pushes :latest tag
-#   - Version tags (app-v*): builds and pushes :x.y.z tag
+#   - Release tags (v*): builds and pushes :x.y.z versioned tag
 #
 # Prerequisites:
 #   - No secrets needed — uses GITHUB_TOKEN automatically
@@ -12,7 +12,7 @@ name: Docker
 on:
   push:
     branches: [main]
-    tags: ["app-v*"]
+    tags: ["v*"]
     paths:
       - "app/**"
       - "web/**"
@@ -53,7 +53,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=match,pattern=app-v(.*),group=1
+            type=semver,pattern={{version}}
             type=sha,prefix=
 
       - name: Build and push
