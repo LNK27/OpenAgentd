@@ -10,7 +10,6 @@ import {
   Trash2,
   RefreshCw,
   PanelLeftClose,
-  PanelLeftOpen,
   Search,
   Brain,
   Settings,
@@ -23,6 +22,8 @@ import { WikiPanel } from './WikiPanel'
 import { SchedulerPanel } from './SchedulerPanel'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
+import { BrandHeader } from '@/components/ui/brand-header'
+import { SidebarItem } from '@/components/ui/sidebar-item'
 import {
   Dialog,
   DialogContent,
@@ -206,8 +207,8 @@ export function Sidebar({
       transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={
         isMobile
-          ? 'fixed inset-y-0 left-0 z-40 flex w-[272px] shrink-0 flex-col overflow-hidden bg-(--bg-card) shadow-xl'
-          : 'relative flex shrink-0 flex-col overflow-hidden bg-(--bg-card)'
+          ? 'fixed inset-y-0 left-0 z-40 flex w-[272px] shrink-0 flex-col overflow-hidden bg-(--bg-sidebar) shadow-xl'
+          : 'relative flex shrink-0 flex-col overflow-hidden bg-(--bg-sidebar)'
       }
       style={isMobile ? undefined : { minWidth: desktopWidth }}
     >
@@ -217,145 +218,76 @@ export function Sidebar({
         const showIconOnly = !isMobile && collapsed
         return (
           <>
-            {/* Brand header */}
-            <div className="flex h-14 items-center justify-between px-3">
-              <button
-                onClick={() => navigate({ to: '/' })}
-                className="flex items-center gap-2.5 overflow-hidden rounded-md p-1 -ml-1 transition-colors hover:bg-(--bg-key)"
-                title="Home"
-              >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--bg-key) ring-1 ring-(--color-border-strong)">
-                  <img src={OpenAgentdAppIcon} width={28} height={28} alt="OpenAgentd logo" className="rounded-md" />
-                </div>
-                <AnimatePresence>
-                  {!showIconOnly && (
-                    <motion.div
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -8 }}
-                      transition={{ duration: 0.15 }}
-                      className="flex items-center gap-1.5 overflow-hidden"
-                    >
-                      <span className="whitespace-nowrap text-sm font-semibold text-(--color-text)">
-                        OpenAgentd
-                      </span>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </button>
-
-              {/* On mobile: close button (×). On desktop: collapse toggle. */}
-              {isMobile ? (
+            {/* Brand header — full BrandHeader when expanded, mascot + expand toggle when collapsed */}
+            {showIconOnly ? (
+              <div className="flex flex-col items-center gap-1 px-2 pt-2">
                 <button
-                  onClick={onMobileClose}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                  aria-label="Close sidebar"
+                  onClick={() => navigate({ to: '/' })}
+                  className="flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key)"
+                  title="Home"
+                  aria-label="Home"
                 >
-                  <PanelLeftClose size={15} />
+                  <img src={OpenAgentdAppIcon} width={32} height={32} alt="" className="select-none" draggable={false} />
                 </button>
-              ) : (
                 <button
                   onClick={toggleCollapse}
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                  aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                  title={collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'}
+                  aria-label="Expand sidebar"
+                  title="Expand sidebar (Ctrl+B)"
                 >
-                  {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+                  <PanelLeftClose className="rotate-180" size={15} />
                 </button>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="px-3">
+                <BrandHeader
+                  expanded
+                  onBrandClick={() => navigate({ to: '/' })}
+                  onToggle={isMobile ? onMobileClose : toggleCollapse}
+                  hideToggle={false}
+                />
+              </div>
+            )}
 
             {/* Nav action buttons */}
-            <div className="px-2 pb-2 space-y-0.5">
-              <button
+            <nav aria-label="Primary" className={`space-y-0.5 pb-2 ${showIconOnly ? 'flex flex-col items-center px-1 pt-1' : 'px-2'}`}>
+              <SidebarItem
+                Icon={Plus}
+                label="New Chat"
+                kbd="^N"
+                collapsed={showIconOnly}
                 onClick={handleNewChat}
-                title="New Chat (Ctrl+N)"
-                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text) ${showIconOnly ? 'justify-center' : ''}`}
-              >
-                <Plus size={16} className="shrink-0" />
-                <AnimatePresence>
-                  {!showIconOnly && (
-                    <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="whitespace-nowrap flex-1 text-left">
-                      New Chat
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-                {!showIconOnly && (
-                  <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^N</kbd>
-                )}
-              </button>
-
+              />
               {onCommandPalette && (
-                <button
+                <SidebarItem
+                  Icon={Search}
+                  label="Commands"
+                  kbd="^P"
+                  collapsed={showIconOnly}
                   onClick={onCommandPalette}
-                  title="Commands (Ctrl+P)"
-                  className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
-                >
-                  <Search size={15} className="shrink-0" />
-                  <AnimatePresence>
-                    {!showIconOnly && (
-                      <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="whitespace-nowrap flex-1 text-left">
-                        Commands
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                  {!showIconOnly && (
-                    <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^P</kbd>
-                  )}
-                </button>
+                />
               )}
-
-              <button
+              <SidebarItem
+                Icon={Brain}
+                label="Memory wiki"
+                kbd="^M"
+                collapsed={showIconOnly}
                 onClick={() => setWikiOpen(true)}
-                title="Wiki (Ctrl+M)"
-                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
-              >
-                <Brain size={15} className="shrink-0" />
-                <AnimatePresence>
-                  {!showIconOnly && (
-                    <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="whitespace-nowrap flex-1 text-left">
-                      Wiki
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-                {!showIconOnly && (
-                  <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^M</kbd>
-                )}
-              </button>
-
-              <button
+              />
+              <SidebarItem
+                Icon={CalendarClock}
+                label="Scheduler"
+                kbd="^S"
+                collapsed={showIconOnly}
                 onClick={() => setSchedulerOpen(true)}
-                title="Scheduled Tasks (Ctrl+S)"
-                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
-              >
-                <CalendarClock size={15} className="shrink-0" />
-                <AnimatePresence>
-                  {!showIconOnly && (
-                    <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="whitespace-nowrap flex-1 text-left">
-                      Scheduled Tasks
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-                {!showIconOnly && (
-                  <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^S</kbd>
-                )}
-              </button>
-
-              <button
+              />
+              <SidebarItem
+                Icon={Settings}
+                label="Settings"
+                collapsed={showIconOnly}
                 onClick={() => { navigate({ to: '/settings' }); onMobileClose?.() }}
-                title="Settings"
-                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
-              >
-                <Settings size={15} className="shrink-0" />
-                <AnimatePresence>
-                  {!showIconOnly && (
-                    <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="whitespace-nowrap flex-1 text-left">
-                      Settings
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </button>
-            </div>
+              />
+            </nav>
 
             {/* Sessions section — expanded view (desktop expanded or mobile drawer) */}
             <AnimatePresence>
@@ -367,8 +299,10 @@ export function Sidebar({
                   transition={{ duration: 0.15 }}
                   className="flex min-h-0 flex-1 flex-col overflow-hidden"
                 >
-                  <div className="flex items-center justify-between px-3 pb-1 pt-1">
-                    <span className="text-xs font-medium uppercase tracking-wider text-(--color-text-subtle)">Recent</span>
+                  <div className="flex items-center justify-between px-3 pb-1 pt-2">
+                    <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-muted)">
+                      Recent
+                    </span>
                     <button
                       onClick={() => refetchSessions()}
                       className="rounded p-1 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-muted)"

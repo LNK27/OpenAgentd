@@ -17,12 +17,15 @@
  */
 
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 import { cn } from '@/lib/utils'
 
 export interface BrandHeaderProps {
   /** Whether the sidebar is currently expanded; flips the dock-toggle icon. */
   expanded?: boolean
   onToggle?: () => void
+  /** Optional click handler for the brand block (mascot + title). */
+  onBrandClick?: () => void
   className?: string
   /** Skip the dock toggle (mobile sheet, etc.). */
   hideToggle?: boolean
@@ -31,20 +34,16 @@ export interface BrandHeaderProps {
 export function BrandHeader({
   expanded = true,
   onToggle,
+  onBrandClick,
   hideToggle = false,
   className,
 }: BrandHeaderProps) {
   const ToggleIcon = expanded ? PanelLeftClose : PanelLeftOpen
 
-  return (
-    <div
-      className={cn(
-        'flex h-16 items-center gap-3 px-1 py-2',
-        className,
-      )}
-    >
+  const brandContent = (
+    <>
       <img
-        src="/brand/openagentd-app-icon.png"
+        src={OpenAgentdAppIcon}
         alt=""
         aria-hidden="true"
         className="h-11 w-11 shrink-0 select-none"
@@ -58,6 +57,25 @@ export function BrandHeader({
           on-machine ai
         </span>
       </div>
+    </>
+  )
+
+  return (
+    <div className={cn('flex h-16 items-center gap-3 px-1 py-2', className)}>
+      {onBrandClick ? (
+        <button
+          type="button"
+          onClick={onBrandClick}
+          title="Home"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 -ml-1 text-left transition-colors hover:bg-(--bg-key)"
+        >
+          {brandContent}
+        </button>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {brandContent}
+        </div>
+      )}
       {!hideToggle && onToggle && (
         <button
           type="button"
