@@ -331,7 +331,7 @@ function getPriorityBadgeClass(priority: TodoItem['priority']): string {
     return 'bg-red-500/10 text-red-500'
   }
   if (priority === 'low') {
-    return 'bg-(--color-accent-dim) text-(--color-text-subtle)'
+    return 'bg-(--bg-key) text-(--color-text-subtle)'
   }
   // medium
   return 'bg-amber-500/10 text-amber-500'
@@ -352,7 +352,7 @@ describe('Todos Popover - Priority Badge Styling', () => {
 
   it('applies accent styling for low priority', () => {
     const classes = getPriorityBadgeClass('low')
-    expect(classes).toContain('bg-(--color-accent-dim)')
+    expect(classes).toContain('bg-(--bg-key)')
     expect(classes).toContain('text-(--color-text-subtle)')
   })
 

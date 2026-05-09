@@ -347,22 +347,22 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   ) : null
 
   return (
-    <div className={floating ? '' : 'border-t border-(--color-border) bg-(--color-bg) px-4 py-3'}>
+    <div className={floating ? '' : 'border-t border-(--color-border) bg-(--bg-page) px-4 py-3'}>
       <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
         {/* File previews (above when docked at bottom) */}
         {!filesBelow && filePreviews}
 
         {/* Slash command menu — floating above the input */}
         {slashMenuOpen && filteredSlashCommands.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 overflow-hidden rounded-lg border border-(--color-border) bg-(--color-surface-2) shadow-lg">
+          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-key) shadow-lg">
             {filteredSlashCommands.map((cmd, idx) => (
               <button
                 key={cmd.id}
                 onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd) }}
                 className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
                   idx === clampedIndex
-                    ? 'bg-(--color-accent-subtle) text-(--color-text)'
-                    : 'text-(--color-text-muted) hover:bg-(--color-accent-dim)'
+                    ? 'bg-(--bg-key) text-(--color-text)'
+                    : 'text-(--color-text-muted) hover:bg-(--bg-key)'
                 }`}
               >
                 <span className="font-mono text-xs text-(--color-accent)">/{cmd.id}</span>
@@ -379,10 +379,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
         {/* Input container */}
         <div
-          className={`relative flex items-center gap-2 rounded-2xl border border-(--color-border) px-4 py-2.5 transition-all focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent-subtle) ${
+          className={`relative flex items-center gap-2 rounded-2xl border border-(--color-border) px-4 py-2.5 transition-all focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--bg-key) ${
             floating
-              ? 'bg-(--color-surface-2)/20 shadow-xl backdrop-blur-xl'
-              : 'bg-(--color-surface-2)'
+              ? 'bg-(--bg-key)/20 shadow-xl backdrop-blur-xl'
+              : 'bg-(--bg-key)'
           }`}
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
@@ -427,7 +427,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
             disabled={disabled}
             aria-label="Attach file"
             title="Attach file (paste or drag)"
-            className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text) disabled:opacity-25"
+            className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-25"
           >
             <Paperclip size={14} />
           </button>
@@ -444,7 +444,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
             <button
               onClick={onStop}
               aria-label="Stop generation"
-              className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full bg-(--color-error) text-(--color-bg) shadow-sm transition-all hover:opacity-80 hover:shadow-md"
+              className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full bg-(--color-error) text-(--bg-page) shadow-sm transition-all hover:opacity-80 hover:shadow-md"
             >
               <Square size={12} fill="currentColor" />
             </button>
@@ -454,7 +454,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
               disabled={!canSend}
               aria-label="Send message"
               title="Send (Enter) · New line (Shift+Enter) · Commands (/)"
-              className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full bg-(--color-accent) text-(--color-bg) shadow-sm transition-all hover:bg-(--color-accent-hover) hover:shadow-md disabled:cursor-not-allowed disabled:opacity-25"
+              className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full bg-(--color-accent) text-(--bg-page) shadow-sm transition-all hover:bg-(--color-accent) hover:shadow-md disabled:cursor-not-allowed disabled:opacity-25"
             >
               {disabled ? (
                 <Loader2 size={14} className="animate-spin" />

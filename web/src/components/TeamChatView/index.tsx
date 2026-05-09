@@ -345,7 +345,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
 
   return (
     // h-dvh: accounts for iOS Safari's dynamic toolbar (h-screen is too tall)
-    <div className="flex h-dvh bg-(--color-bg)">
+    <div className="flex h-dvh bg-(--bg-page)">
       {/* On mobile the Sidebar is position:fixed (overlay drawer), so it takes
           no space in this flex row — the main column is always full-width. */}
       <Sidebar
@@ -358,14 +358,14 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
 
       <div ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="flex items-center gap-1 border-b border-(--color-border) bg-(--color-bg) px-2 py-0 md:gap-0 md:px-4">
+        <header className="flex items-center gap-1 border-b border-(--color-border) bg-(--bg-page) px-2 py-0 md:gap-0 md:px-4">
 
           {/* Mobile: hamburger to open sidebar drawer */}
           {isMobile && (
             <button
               onClick={() => setMobileSidebarOpen(true)}
               aria-label="Open navigation"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             >
               <Menu size={16} aria-hidden="true" />
             </button>
@@ -383,8 +383,8 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
                   onClick={() => setActiveAgent(name)}
                   className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
                     isActive
-                      ? 'bg-(--color-accent-subtle) text-(--color-accent)'
-                      : 'text-(--color-text-muted) hover:bg-(--color-accent-dim) hover:text-(--color-text-2)'
+                      ? 'bg-(--bg-key) text-(--color-accent)'
+                      : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)'
                   }`}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${
@@ -459,10 +459,10 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
             {/* Unified-view split buttons — desktop only */}
             {!isMobile && effectiveViewMode === 'unified' && minimizedAgents.length > 0 && (
               <div className="flex items-center gap-0.5">
-                <button onClick={handleSplitDown} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--color-accent-dim) hover:text-(--color-text-2)" title="Split pane down (Ctrl+J)" aria-label="Split pane down">
+                <button onClick={handleSplitDown} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)" title="Split pane down (Ctrl+J)" aria-label="Split pane down">
                   <SplitSquareVertical size={12} aria-hidden="true" />
                 </button>
-                <button onClick={handleSplitRight} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--color-accent-dim) hover:text-(--color-text-2)" title="Split pane right (Ctrl+K)" aria-label="Split pane right">
+                <button onClick={handleSplitRight} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)" title="Split pane right (Ctrl+K)" aria-label="Split pane right">
                   <SplitSquareHorizontal size={12} aria-hidden="true" />
                 </button>
               </div>
@@ -470,10 +470,10 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
 
             {/* 3-way view toggle — desktop only. Mobile always uses agent view. */}
             {!isMobile && (
-              <div className="flex items-center rounded-lg border border-(--color-border) bg-(--color-bg) p-0.5">
+              <div className="flex items-center rounded-lg border border-(--color-border) bg-(--bg-page) p-0.5">
                 <button
                   onClick={() => setViewMode('agent')}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${viewMode === 'agent' ? 'bg-(--color-accent-subtle) text-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text-2)'}`}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${viewMode === 'agent' ? 'bg-(--bg-key) text-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text-2)'}`}
                   title="Agent view (Ctrl+V)"
                   aria-label="Agent view"
                   aria-pressed={viewMode === 'agent'}
@@ -482,7 +482,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
                 </button>
                 <button
                   onClick={() => setViewMode('split')}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${viewMode === 'split' ? 'bg-(--color-accent-subtle) text-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text-2)'}`}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${viewMode === 'split' ? 'bg-(--bg-key) text-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text-2)'}`}
                   title="Split view (Ctrl+V)"
                   aria-label="Split view"
                   aria-pressed={viewMode === 'split'}
@@ -491,7 +491,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
                 </button>
                 <button
                   onClick={() => setViewMode('unified')}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${viewMode === 'unified' ? 'bg-(--color-accent-subtle) text-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text-2)'}`}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${viewMode === 'unified' ? 'bg-(--bg-key) text-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text-2)'}`}
                   title="Unified view (Ctrl+V)"
                   aria-label="Unified view"
                   aria-pressed={viewMode === 'unified'}
@@ -504,7 +504,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
             <Popover open={showTodos} onOpenChange={setShowTodos}>
               <PopoverTrigger
                 disabled={!sessionIdState}
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--color-accent-dim) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-50"
                 title={sessionIdState ? 'Task list (Ctrl+T)' : 'No active session'}
                 aria-label="Task list"
               >
@@ -538,7 +538,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
                         <span className={`flex-1 text-xs leading-snug ${todo.status === 'completed' || todo.status === 'cancelled' ? 'text-(--color-text-subtle) line-through' : 'text-(--color-text)'}`}>
                           {todo.content}
                         </span>
-                        <span className={`shrink-0 self-start rounded px-1 py-0.5 text-[9px] font-medium uppercase ${todo.priority === 'high' ? 'bg-red-500/10 text-red-500' : todo.priority === 'low' ? 'bg-(--color-accent-dim) text-(--color-text-subtle)' : 'bg-amber-500/10 text-amber-500'}`}>
+                        <span className={`shrink-0 self-start rounded px-1 py-0.5 text-[9px] font-medium uppercase ${todo.priority === 'high' ? 'bg-red-500/10 text-red-500' : todo.priority === 'low' ? 'bg-(--bg-key) text-(--color-text-subtle)' : 'bg-amber-500/10 text-amber-500'}`}>
                           {todo.priority}
                         </span>
                       </li>
@@ -551,7 +551,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
             <button
               onClick={() => setShowFilesPanel((v) => !v)}
               disabled={!sessionIdState}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--color-accent-dim) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-50"
               title={sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session'}
               aria-label="Workspace files"
             >
@@ -561,7 +561,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
 
             <button
               onClick={() => setShowAgentSidebar((v) => !v)}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--color-accent-dim) hover:text-(--color-text-2)"
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
               title="Agent Capabilities (Ctrl+A)"
               aria-label="Agent capabilities"
             >

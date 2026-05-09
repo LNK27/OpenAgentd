@@ -80,7 +80,7 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
       <button
         type="button"
         onClick={() => hasDetails && setExpanded((v) => !v)}
-        className={`group -ml-1 flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--color-focus-ring) ${
+        className={`group -ml-1 flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
           hasDetails
             ? 'cursor-pointer hover:text-(--color-text-2)'
             : 'cursor-default'
@@ -144,7 +144,7 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
                     </span>
                     <button
                       onClick={handleCopyArgs}
-                      className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--color-focus-ring)"
+                      className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
                       aria-label="Copy arguments"
                       title="Copy"
                     >
@@ -155,7 +155,7 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
                       )}
                     </button>
                   </div>
-                  <div className="rounded-md border border-(--color-border) bg-(--color-surface-2) px-2.5 py-2">
+                  <div className="rounded-md border border-(--color-border) bg-(--bg-key) px-2.5 py-2">
                     {language === 'bash' ? (
                       <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-(--color-accent)">
                         <span className="select-none text-(--color-text-muted)">$ </span>
@@ -179,7 +179,7 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
                     </span>
                     <button
                       onClick={handleCopyResult}
-                      className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--color-focus-ring)"
+                      className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
                       aria-label="Copy result"
                       title="Copy result"
                     >
@@ -190,7 +190,7 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
                       )}
                     </button>
                   </div>
-                  <div className="rounded-md border border-(--color-border) bg-(--color-surface-2) px-2.5 py-2 text-xs leading-relaxed text-(--color-text-2)">
+                  <div className="rounded-md border border-(--color-border) bg-(--bg-key) px-2.5 py-2 text-xs leading-relaxed text-(--color-text-2)">
                     <ToolResult toolName={name} result={shownResult} />
                   </div>
                 </section>

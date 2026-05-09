@@ -29,7 +29,7 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
 
   if (imageError) {
     return (
-      <div className={`flex ${errorSizeClass} items-center justify-center rounded-lg border border-(--color-border) bg-(--color-surface) text-xs text-(--color-text-muted)`}>
+      <div className={`flex ${errorSizeClass} items-center justify-center rounded-lg border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)`}>
         Failed to load image
       </div>
     )
@@ -51,7 +51,7 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
               e.stopPropagation()
               onRemove()
             }}
-            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-(--color-surface-2) text-(--color-text-muted) ring-1 ring-(--color-border) shadow-sm transition-opacity opacity-100 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100"
+            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border) shadow-sm transition-opacity opacity-100 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100"
             aria-label="Remove image"
             title="Remove"
           >

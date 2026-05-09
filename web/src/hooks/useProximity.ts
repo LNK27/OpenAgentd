@@ -12,7 +12,7 @@
  *   // ...per row:
  *   const { ref, intensity } = useProximityIntensity(mouseY, 120)
  *   <div ref={ref} style={{
- *     backgroundColor: `color-mix(in srgb, var(--color-accent-subtle) ${intensity * 100}%, transparent)`,
+ *     backgroundColor: `color-mix(in srgb, var(--bg-key) ${intensity * 100}%, transparent)`,
  *   }} />
  *
  * Respects `prefers-reduced-motion` — returns 0 for all rows when set.

@@ -74,7 +74,7 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       dragMomentum={false}
       onDragEnd={handleDragEnd}
       whileDrag={{ cursor: 'grabbing' }}
-      className="pointer-events-auto flex cursor-grab items-start gap-3 rounded-xl bg-(--color-surface-2) p-3 shadow-xl ring-1 ring-(--color-border) select-none"
+      className="pointer-events-auto flex cursor-grab items-start gap-3 rounded-xl bg-(--bg-key) p-3 shadow-xl ring-1 ring-(--color-border) select-none"
       role="status"
       aria-live="polite"
     >
@@ -88,7 +88,7 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       <button
         onClick={() => dismiss(t.id)}
         aria-label="Dismiss"
-        className="shrink-0 rounded-md p-1 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+        className="shrink-0 rounded-md p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
       >
         <X size={12} />
       </button>

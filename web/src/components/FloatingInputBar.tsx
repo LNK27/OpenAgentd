@@ -175,7 +175,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     if (isMobile) {
       return (
         // border-t separates from chat content; pb-safe clears the home indicator
-        <div className="pointer-events-auto border-t border-(--color-border) bg-(--color-surface-2)/20 px-3 pb-safe pt-2 backdrop-blur-xl">
+        <div className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl">
           <PendingMessageQueue inputRef={ref as React.RefObject<InputBarHandle | null>} />
           <InputBar ref={ref} floating filesBelow={false} {...inputProps} />
         </div>
@@ -209,7 +209,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
               title="Drag to move · Double-click to reset"
               onPointerDown={(e) => dragControls.start(e)}
               onDoubleClick={handleReset}
-              className="absolute left-1/2 top-0 z-10 flex h-4 w-10 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border border-(--color-border) bg-(--color-surface-2) text-(--color-text-muted) shadow-sm transition-colors hover:text-(--color-text) active:cursor-grabbing"
+              className="absolute left-1/2 top-0 z-10 flex h-4 w-10 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border border-(--color-border) bg-(--bg-key) text-(--color-text-muted) shadow-sm transition-colors hover:text-(--color-text) active:cursor-grabbing"
             >
               <GripHorizontal size={12} aria-hidden="true" />
             </button>

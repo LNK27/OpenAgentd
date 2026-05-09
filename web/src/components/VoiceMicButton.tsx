@@ -157,7 +157,7 @@ export function VoiceMicButton({
       className={`flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full transition-colors disabled:opacity-25 ${
         voiceState === 'recording'
           ? 'bg-(--color-error)/15 text-(--color-error) hover:bg-(--color-error)/25'
-          : 'text-(--color-text-muted) hover:bg-(--color-accent-subtle) hover:text-(--color-text)'
+          : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)'
       }`}
     >
       {icon}

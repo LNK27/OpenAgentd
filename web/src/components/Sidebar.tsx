@@ -206,8 +206,8 @@ export function Sidebar({
       transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={
         isMobile
-          ? 'fixed inset-y-0 left-0 z-40 flex w-[272px] shrink-0 flex-col overflow-hidden bg-(--color-surface) shadow-xl'
-          : 'relative flex shrink-0 flex-col overflow-hidden bg-(--color-surface)'
+          ? 'fixed inset-y-0 left-0 z-40 flex w-[272px] shrink-0 flex-col overflow-hidden bg-(--bg-card) shadow-xl'
+          : 'relative flex shrink-0 flex-col overflow-hidden bg-(--bg-card)'
       }
       style={isMobile ? undefined : { minWidth: desktopWidth }}
     >
@@ -221,10 +221,10 @@ export function Sidebar({
             <div className="flex h-14 items-center justify-between px-3">
               <button
                 onClick={() => navigate({ to: '/' })}
-                className="flex items-center gap-2.5 overflow-hidden rounded-md p-1 -ml-1 transition-colors hover:bg-(--color-accent-subtle)"
+                className="flex items-center gap-2.5 overflow-hidden rounded-md p-1 -ml-1 transition-colors hover:bg-(--bg-key)"
                 title="Home"
               >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--color-accent-subtle) ring-1 ring-(--color-border-strong)">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--bg-key) ring-1 ring-(--color-border-strong)">
                   <img src={OpenAgentdAppIcon} width={28} height={28} alt="OpenAgentd logo" className="rounded-md" />
                 </div>
                 <AnimatePresence>
@@ -248,7 +248,7 @@ export function Sidebar({
               {isMobile ? (
                 <button
                   onClick={onMobileClose}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2)"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label="Close sidebar"
                 >
                   <PanelLeftClose size={15} />
@@ -256,7 +256,7 @@ export function Sidebar({
               ) : (
                 <button
                   onClick={toggleCollapse}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2)"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                   title={collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'}
                 >
@@ -270,7 +270,7 @@ export function Sidebar({
               <button
                 onClick={handleNewChat}
                 title="New Chat (Ctrl+N)"
-                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-2) hover:bg-(--color-accent-subtle) hover:text-(--color-text) ${showIconOnly ? 'justify-center' : ''}`}
+                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text) ${showIconOnly ? 'justify-center' : ''}`}
               >
                 <Plus size={16} className="shrink-0" />
                 <AnimatePresence>
@@ -281,7 +281,7 @@ export function Sidebar({
                   )}
                 </AnimatePresence>
                 {!showIconOnly && (
-                  <kbd className="shrink-0 rounded border border-(--color-border) bg-(--color-bg) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^N</kbd>
+                  <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^N</kbd>
                 )}
               </button>
 
@@ -289,7 +289,7 @@ export function Sidebar({
                 <button
                   onClick={onCommandPalette}
                   title="Commands (Ctrl+P)"
-                  className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--color-accent-subtle) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
+                  className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
                 >
                   <Search size={15} className="shrink-0" />
                   <AnimatePresence>
@@ -300,7 +300,7 @@ export function Sidebar({
                     )}
                   </AnimatePresence>
                   {!showIconOnly && (
-                    <kbd className="shrink-0 rounded border border-(--color-border) bg-(--color-bg) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^P</kbd>
+                    <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^P</kbd>
                   )}
                 </button>
               )}
@@ -308,7 +308,7 @@ export function Sidebar({
               <button
                 onClick={() => setWikiOpen(true)}
                 title="Wiki (Ctrl+M)"
-                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--color-accent-subtle) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
+                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
               >
                 <Brain size={15} className="shrink-0" />
                 <AnimatePresence>
@@ -319,14 +319,14 @@ export function Sidebar({
                   )}
                 </AnimatePresence>
                 {!showIconOnly && (
-                  <kbd className="shrink-0 rounded border border-(--color-border) bg-(--color-bg) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^M</kbd>
+                  <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^M</kbd>
                 )}
               </button>
 
               <button
                 onClick={() => setSchedulerOpen(true)}
                 title="Scheduled Tasks (Ctrl+S)"
-                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--color-accent-subtle) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
+                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
               >
                 <CalendarClock size={15} className="shrink-0" />
                 <AnimatePresence>
@@ -337,14 +337,14 @@ export function Sidebar({
                   )}
                 </AnimatePresence>
                 {!showIconOnly && (
-                  <kbd className="shrink-0 rounded border border-(--color-border) bg-(--color-bg) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^S</kbd>
+                  <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">^S</kbd>
                 )}
               </button>
 
               <button
                 onClick={() => { navigate({ to: '/settings' }); onMobileClose?.() }}
                 title="Settings"
-                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--color-accent-subtle) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
+                className={`interactive-weight flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-muted) ${showIconOnly ? 'justify-center' : ''}`}
               >
                 <Settings size={15} className="shrink-0" />
                 <AnimatePresence>
@@ -371,7 +371,7 @@ export function Sidebar({
                     <span className="text-xs font-medium uppercase tracking-wider text-(--color-text-subtle)">Recent</span>
                     <button
                       onClick={() => refetchSessions()}
-                      className="rounded p-1 text-(--color-text-subtle) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-muted)"
+                      className="rounded p-1 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-muted)"
                       aria-label="Refresh sessions"
                       title="Refresh sessions (Ctrl+R)"
                     >
@@ -383,7 +383,7 @@ export function Sidebar({
                     {sessions.isLoading && (
                       <div className="space-y-1 px-1 py-2">
                         {[...Array(6)].map((_, i) => (
-                          <div key={i} className="h-8 animate-pulse rounded-md bg-(--color-accent-dim)" />
+                          <div key={i} className="h-8 animate-pulse rounded-md bg-(--bg-key)" />
                         ))}
                       </div>
                     )}
@@ -414,7 +414,7 @@ export function Sidebar({
                         {isFetchingNextPage && (
                           <div className="space-y-1 px-1 pt-1">
                             {[...Array(3)].map((_, i) => (
-                              <div key={i} className="h-8 animate-pulse rounded-md bg-(--color-accent-dim)" />
+                              <div key={i} className="h-8 animate-pulse rounded-md bg-(--bg-key)" />
                             ))}
                           </div>
                         )}
@@ -437,8 +437,8 @@ export function Sidebar({
                       title={session.title || 'Untitled'}
                       className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
                         isActive
-                          ? 'bg-(--color-accent-dim) text-(--color-accent)'
-                          : 'text-(--color-text-subtle) hover:bg-(--color-accent-subtle) hover:text-(--color-text-2)'
+                          ? 'bg-(--bg-key) text-(--color-accent)'
+                          : 'text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-2)'
                       }`}
                     >
                       <div className="h-1.5 w-1.5 rounded-full bg-current" />
@@ -519,7 +519,7 @@ function SessionRow({ session, isActive, mouseY, onSelect, onDelete }: SessionRo
           aria-hidden
           className="pointer-events-none absolute inset-0 -z-10 rounded-md"
           style={{
-            backgroundColor: `color-mix(in srgb, var(--color-accent-dim) ${intensity * 100}%, transparent)`,
+            backgroundColor: `color-mix(in srgb, var(--bg-key) ${intensity * 100}%, transparent)`,
           }}
         />
       )}
@@ -527,8 +527,8 @@ function SessionRow({ session, isActive, mouseY, onSelect, onDelete }: SessionRo
         onClick={() => onSelect(session.id)}
         className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${
           isActive
-            ? 'bg-(--color-accent-dim) text-(--color-text)'
-            : 'hover:bg-(--color-accent-dim) text-(--color-text-2)'
+            ? 'bg-(--bg-key) text-(--color-text)'
+            : 'hover:bg-(--bg-key) text-(--color-text-2)'
         }`}
       >
         <div className="min-w-0 flex-1">
@@ -550,7 +550,7 @@ function SessionRow({ session, isActive, mouseY, onSelect, onDelete }: SessionRo
               </motion.p>
             </AnimatePresence>
             {isScheduled && (
-              <span className="shrink-0 rounded px-1 py-px text-[10px] leading-tight bg-(--color-accent-subtle) text-(--color-text-subtle)">
+              <span className="shrink-0 rounded px-1 py-px text-[10px] leading-tight bg-(--bg-key) text-(--color-text-subtle)">
                 sched
               </span>
             )}

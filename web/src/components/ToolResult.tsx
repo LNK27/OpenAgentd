@@ -8,7 +8,7 @@
  * Visual language matches the `ToolCall` aside: no opaque dark fills, no
  * boxed-in containers. Results flow under the same left-rule indentation
  * as the args. When a code-like block is needed (file contents, shell
- * output), we use a quiet `--color-surface-2` tint and a thin border
+ * output), we use a quiet `--bg-key` tint and a thin border
  * rather than an overlay. Theme-aware, no hard-coded rgba.
  */
 

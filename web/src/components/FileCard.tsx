@@ -49,8 +49,8 @@ export function FileCard({
       <button
         onClick={handleClick}
         disabled={!clickable}
-        className={`surface-raised flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs text-(--color-text) transition-all ${
-          clickable ? 'cursor-pointer hover:border-(--color-accent) hover:bg-(--color-surface-2)' : ''
+        className={`surface-raised flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text) transition-all ${
+          clickable ? 'cursor-pointer hover:border-(--color-accent) hover:bg-(--bg-key)' : ''
         }`}
         title={name}
       >
@@ -66,7 +66,7 @@ export function FileCard({
             e.stopPropagation()
             onRemove()
           }}
-          className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-(--color-surface-2) text-(--color-text-muted) ring-1 ring-(--color-border) shadow-sm transition-opacity opacity-100 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100"
+          className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border) shadow-sm transition-opacity opacity-100 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100"
           aria-label="Remove file"
           title="Remove"
         >

@@ -136,8 +136,8 @@ function FileRow({
       className={cn(
         'group flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors',
         selected
-          ? 'bg-(--color-accent-subtle) text-(--color-accent)'
-          : 'text-(--color-text-2) hover:bg-(--color-accent-subtle) hover:text-(--color-text)',
+          ? 'bg-(--bg-key) text-(--color-accent)'
+          : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
       )}
       title={file.path}
     >
@@ -187,7 +187,7 @@ function ImagePreview({ sessionId, file }: { sessionId: string; file: WorkspaceF
   const url = workspaceMediaUrl(sessionId, file.path)
   return (
     <>
-      <div className="flex h-full items-center justify-center bg-(--color-bg) p-4">
+      <div className="flex h-full items-center justify-center bg-(--bg-page) p-4">
         <img
           src={url}
           alt={file.name}
@@ -288,7 +288,7 @@ function BinaryPreview({ sessionId, file }: { sessionId: string; file: Workspace
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 rounded-md bg-(--color-accent-subtle) px-3 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--color-accent-dim)"
+          className="flex items-center gap-1.5 rounded-md bg-(--bg-key) px-3 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)"
         >
           <ExternalLink size={12} /> Open in new tab
         </a>
@@ -347,7 +347,7 @@ export function CopyContentsButton({
       disabled={busy || tooLarge}
       title={title}
       aria-label={title}
-      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-(--color-text-muted)"
+      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-(--color-text-muted)"
     >
       {copied ? (
         <Check size={12} className="text-(--color-success)" />
@@ -384,7 +384,7 @@ function PreviewArea({
           <a
             href={workspaceMediaUrl(sessionId, file.path)}
             download={file.name}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2)"
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
             title="Download"
           >
             <Download size={12} />
@@ -509,7 +509,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--color-surface) shadow-2xl"
+            className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-label="Workspace files"
@@ -521,7 +521,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
                 {isMobile && mobilePane === 'preview' && (
                   <button
                     onClick={handleBackToTree}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                     aria-label="Back to file list"
                   >
                     <ArrowLeft size={14} />
@@ -541,7 +541,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
                 <button
                   onClick={() => refetch()}
                   disabled={!sessionId || isFetching}
-                  className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text) disabled:opacity-50"
+                  className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50"
                   title="Refresh"
                   aria-label="Refresh"
                 >
@@ -549,7 +549,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
                 </button>
                 <button
                   onClick={onClose}
-                  className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+                  className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                   title="Close (Esc)"
                   aria-label="Close"
                 >

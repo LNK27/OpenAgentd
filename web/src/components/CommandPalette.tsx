@@ -134,7 +134,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
           exit={{ opacity: 0, scale: 0.97, y: -8 }}
           transition={{ type: 'spring', damping: 30, stiffness: 380 }}
           onClick={(e) => e.stopPropagation()}
-          className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-surface) shadow-2xl"
+          className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--bg-card) shadow-2xl"
           role="dialog"
           aria-modal="true"
           aria-label="Command palette"
@@ -197,11 +197,11 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
 
           {/* Footer hint */}
           <div className="flex items-center gap-2 border-t border-(--color-border) px-4 py-2">
-            <kbd className="rounded border border-(--color-border) bg-(--color-bg) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↑↓</kbd>
+            <kbd className="rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↑↓</kbd>
             <span className="text-xs text-(--color-text-muted)">navigate</span>
-            <kbd className="rounded border border-(--color-border) bg-(--color-bg) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↵</kbd>
+            <kbd className="rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↵</kbd>
             <span className="text-xs text-(--color-text-muted)">run</span>
-            <kbd className="rounded border border-(--color-border) bg-(--color-bg) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">Esc</kbd>
+            <kbd className="rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">Esc</kbd>
             <span className="text-xs text-(--color-text-muted)">close</span>
           </div>
         </motion.div>
@@ -241,7 +241,7 @@ function CommandRow({ cmd, idx, isActive, mouseY, onRun, onActivate }: CommandRo
           aria-hidden
           className="pointer-events-none absolute inset-0 -z-10"
           style={{
-            backgroundColor: `color-mix(in srgb, var(--color-accent-dim) ${intensity * 100}%, transparent)`,
+            backgroundColor: `color-mix(in srgb, var(--bg-key) ${intensity * 100}%, transparent)`,
           }}
         />
       )}
@@ -251,8 +251,8 @@ function CommandRow({ cmd, idx, isActive, mouseY, onRun, onActivate }: CommandRo
         onMouseEnter={() => onActivate(idx)}
         className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
           isActive
-            ? 'bg-(--color-accent-subtle) text-(--color-text)'
-            : 'text-(--color-text-2) hover:bg-(--color-accent-dim)'
+            ? 'bg-(--bg-key) text-(--color-text)'
+            : 'text-(--color-text-2) hover:bg-(--bg-key)'
         }`}
       >
         <div className="min-w-0 flex-1">
@@ -264,7 +264,7 @@ function CommandRow({ cmd, idx, isActive, mouseY, onRun, onActivate }: CommandRo
           )}
         </div>
         {cmd.shortcut && (
-          <kbd className="shrink-0 rounded border border-(--color-border) bg-(--color-bg) px-1.5 py-0.5 font-mono text-xs text-(--color-text-muted)">
+          <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1.5 py-0.5 font-mono text-xs text-(--color-text-muted)">
             {cmd.shortcut}
           </kbd>
         )}

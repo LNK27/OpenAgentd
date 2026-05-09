@@ -106,7 +106,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
            </div>
          )}
 
-         <div className="relative rounded-2xl rounded-br-sm bg-(--color-accent) px-3 py-2 text-xs leading-relaxed text-(--color-bg) overflow-hidden">
+         <div className="relative rounded-2xl rounded-br-sm bg-(--color-accent) px-3 py-2 text-xs leading-relaxed text-(--bg-page) overflow-hidden">
            {/* Expand / collapse button — top-right inside bubble (compact) */}
            {needsCollapse && (
              <button
@@ -123,7 +123,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
                ].join(' ')}
                style={{
                  background: 'rgba(0,0,0,0.15)',
-                 color: 'var(--color-bg)',
+                 color: 'var(--bg-page)',
                }}
              >
                {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
@@ -291,7 +291,7 @@ export function AgentPane({
   const borderClass  = isError
     ? 'border-(--color-error)'
     : isDropTarget
-    ? 'border-(--color-info) bg-(--color-info-subtle)'
+    ? 'border-(--color-info) bg-(--accent-blue-soft)'
     : isFocused
     ? 'border-(--color-accent)'
     : isLead
@@ -311,7 +311,7 @@ export function AgentPane({
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      className={`flex h-full flex-col overflow-hidden rounded-xl border bg-(--color-bg) transition-all duration-150 ${borderClass} ${isDragging ? 'opacity-50' : ''}`}
+      className={`flex h-full flex-col overflow-hidden rounded-xl border bg-(--bg-page) transition-all duration-150 ${borderClass} ${isDragging ? 'opacity-50' : ''}`}
       onClick={onFocus}
     >
       {/* Header */}
@@ -335,7 +335,7 @@ export function AgentPane({
              {name}
            </span>
            {isLead && (
-             <span className="shrink-0 rounded-sm bg-(--color-accent-subtle) px-1 py-0.5 text-xs text-(--color-accent)">
+             <span className="shrink-0 rounded-sm bg-(--bg-key) px-1 py-0.5 text-xs text-(--color-accent)">
                lead
              </span>
            )}
@@ -365,7 +365,7 @@ export function AgentPane({
          {onClose && (
            <button
              onClick={(e) => { e.stopPropagation(); onClose() }}
-             className="ml-1 rounded p-0.5 text-(--color-text-subtle) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2)"
+             className="ml-1 rounded p-0.5 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
              title="Minimize pane"
              aria-label={`Minimize ${name} pane`}
            >
@@ -449,7 +449,7 @@ export function AgentPane({
       {showScrollBtn && (
         <button
           onClick={() => scrollToBottom(true)}
-          className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--color-surface) p-1 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+          className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
           aria-label="Scroll to bottom"
         >
           <ChevronDown size={12} />

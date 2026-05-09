@@ -63,7 +63,7 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
            padding,
            textSize,
            'relative rounded-2xl rounded-bl-sm',
-           'border border-(--color-border) bg-(--color-surface-2)',
+           'border border-(--color-border) bg-(--bg-key)',
            'leading-relaxed text-(--color-text)',
            'overflow-hidden',
          ].join(' ')}
@@ -82,7 +82,7 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
                className={[
                  'flex items-center justify-center shrink-0',
                  'rounded-md border border-(--color-border)',
-                 'bg-(--color-bg) text-(--color-text-muted)',
+                 'bg-(--bg-page) text-(--color-text-muted)',
                  compact ? 'h-4 w-4' : 'h-5 w-5',
                  'transition-all duration-150',
                  'hover:border-(--color-syn-operator) hover:text-(--color-syn-operator)',
@@ -117,7 +117,7 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
              className="pointer-events-none absolute inset-x-0 bottom-0"
              style={{
                height: fadeHeight,
-               background: `linear-gradient(to bottom, transparent 0%, var(--color-surface-2) 90%)`,
+               background: `linear-gradient(to bottom, transparent 0%, var(--bg-key) 90%)`,
              }}
            />
          )}

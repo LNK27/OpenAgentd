@@ -40,7 +40,7 @@ export function TelemetryPage() {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-(--color-bg) text-(--color-text)">
+    <div className="flex h-dvh flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
       {selectedTraceId ? (
         <TraceDetailRoute
           traceId={selectedTraceId}
@@ -78,14 +78,14 @@ function SummaryRoute({
         isFetching={isFetching}
         right={
           <>
-            <div className="flex items-center gap-1 rounded-lg border border-(--color-border) bg-(--color-surface) p-0.5">
+            <div className="flex items-center gap-1 rounded-lg border border-(--color-border) bg-(--bg-card) p-0.5">
               {RANGES.map((r) => (
                 <button
                   key={r.value}
                   onClick={() => onChangeDays(r.value)}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     days === r.value
-                      ? 'bg-(--color-accent-subtle) text-(--color-accent)'
+                      ? 'bg-(--bg-key) text-(--color-accent)'
                       : 'text-(--color-text-muted) hover:text-(--color-text)'
                   }`}
                 >
@@ -95,7 +95,7 @@ function SummaryRoute({
             </div>
             <Link
               to="/"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2)"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
               aria-label="Back to home"
               title="Back to home"
             >
@@ -151,7 +151,7 @@ function TraceDetailRoute({
         left={
           <button
             onClick={onBack}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             aria-label="Back to list"
           >
             <ArrowLeft size={14} />
@@ -161,7 +161,7 @@ function TraceDetailRoute({
         right={
           <Link
             to="/"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2)"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
             aria-label="Back to home"
             title="Back to home"
           >
@@ -182,7 +182,7 @@ function TraceDetailRoute({
               onRetry={() => refetch()}
             />
           ) : !data ? (
-            <div className="rounded-xl border border-(--color-border) bg-(--color-surface-2) p-6 text-center">
+            <div className="rounded-xl border border-(--color-border) bg-(--bg-key) p-6 text-center">
               <p className="text-sm font-medium text-(--color-text)">
                 Trace not found
               </p>
@@ -201,7 +201,7 @@ function TraceDetailRoute({
         {selectedSpan && (
           isMobile ? (
             // Full-width overlay on mobile
-            <div className="absolute inset-0 z-10 overflow-y-auto bg-(--color-surface)">
+            <div className="absolute inset-0 z-10 overflow-y-auto bg-(--bg-card)">
               <SpanDetailPanel
                 span={selectedSpan}
                 onClose={() => setSelectedSpanId(null)}

@@ -30,7 +30,7 @@ export function PendingMessageQueue({ inputRef }: PendingMessageQueueProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="flex items-center gap-2 rounded-xl border border-(--color-border) bg-(--color-surface-2)/60 px-3 py-2 shadow-sm backdrop-blur-sm"
+            className="flex items-center gap-2 rounded-xl border border-(--color-border) bg-(--bg-key)/60 px-3 py-2 shadow-sm backdrop-blur-sm"
           >
             <Clock size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
 
@@ -39,7 +39,7 @@ export function PendingMessageQueue({ inputRef }: PendingMessageQueueProps) {
             </span>
 
             {msg.files && msg.files.length > 0 && (
-              <span className="shrink-0 rounded-full bg-(--color-accent-subtle) px-1.5 py-0.5 text-[10px] text-(--color-accent)">
+              <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-accent)">
                 +{msg.files.length}
               </span>
             )}
@@ -48,7 +48,7 @@ export function PendingMessageQueue({ inputRef }: PendingMessageQueueProps) {
               onClick={() => handleRemove(msg.id, msg.content)}
               aria-label="Cancel queued message and restore to input"
               title="Cancel — restore to input"
-              className="shrink-0 rounded-full p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+              className="shrink-0 rounded-full p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             >
               <X size={12} />
             </button>

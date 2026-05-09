@@ -97,14 +97,14 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '-100%', opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed inset-y-0 left-0 z-50 flex w-[min(960px,90vw)] flex-col overflow-hidden bg-(--color-surface) shadow-2xl"
+            className="fixed inset-y-0 left-0 z-50 flex w-[min(960px,90vw)] flex-col overflow-hidden bg-(--bg-card) shadow-2xl"
           >
             <header className="flex items-center justify-between border-b border-(--color-border) px-4 py-3">
               <div className="flex items-center gap-2">
                 {isMobile && mobilePane === 'editor' && (
                   <button
                     onClick={handleBack}
-                    className="rounded p-1 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+                    className="rounded p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                     aria-label="Back to file list"
                   >
                     <ArrowLeft size={16} />
@@ -119,7 +119,7 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
               </div>
               <button
                 onClick={onClose}
-                className="rounded p-1 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+                className="rounded p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                 aria-label="Close wiki panel"
               >
                 <X size={16} />
@@ -252,8 +252,8 @@ function WikiSection({
                   className={cn(
                     'group flex w-full items-start gap-1.5 rounded px-2 py-1.5 text-left text-xs transition-colors',
                     isActive
-                      ? 'bg-(--color-accent-subtle) text-(--color-accent)'
-                      : 'text-(--color-text-2) hover:bg-(--color-accent-subtle) hover:text-(--color-text)',
+                      ? 'bg-(--bg-key) text-(--color-accent)'
+                      : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
                   )}
                   title={file.description || name}
                 >
@@ -356,7 +356,7 @@ function WikiEditor({
               className={cn(
                 'flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors',
                 dirty
-                  ? 'text-(--color-success) hover:bg-(--color-success-subtle)'
+                  ? 'text-(--color-success) hover:bg-(--accent-green-soft)'
                   : 'cursor-not-allowed text-(--color-text-subtle)',
               )}
               title="Save (Ctrl+S)"
@@ -400,8 +400,8 @@ function WikiEditor({
         className={cn(
           'min-h-0 flex-1 resize-none p-4 font-mono text-sm text-(--color-text) focus:outline-none',
           isReadOnly
-            ? 'cursor-default bg-(--color-surface-2) text-(--color-text-muted)'
-            : 'bg-(--color-bg)',
+            ? 'cursor-default bg-(--bg-key) text-(--color-text-muted)'
+            : 'bg-(--bg-page)',
         )}
         placeholder={
           isReadOnly ? '' :

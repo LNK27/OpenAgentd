@@ -65,7 +65,7 @@ function TimeUnit({
       onChange={handleChange}
       onKeyDown={handleKey}
       aria-label={label}
-      className="h-9 w-12 rounded-md border border-(--color-border) bg-(--color-surface-2) text-center text-sm tabular-nums text-(--color-text) focus:outline-none focus:ring-1 focus:ring-(--color-accent)"
+      className="h-9 w-12 rounded-md border border-(--color-border) bg-(--bg-key) text-center text-sm tabular-nums text-(--color-text) focus:outline-none focus:ring-1 focus:ring-(--color-accent)"
     />
   )
 }
@@ -116,7 +116,7 @@ export function DateTimePicker({
           disabled={disabled}
           className={cn(
             buttonVariants({ variant: 'outline' }),
-            'h-9 w-full justify-start gap-2 rounded-lg border border-(--color-border) bg-(--color-surface-2) px-3 text-sm font-normal text-(--color-text) hover:bg-(--color-surface-3)',
+            'h-9 w-full justify-start gap-2 rounded-lg border border-(--color-border) bg-(--bg-key) px-3 text-sm font-normal text-(--color-text) hover:bg-(--bg-key)',
             !parsed && 'text-(--color-text-muted)',
           )}
         >

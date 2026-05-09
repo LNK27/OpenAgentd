@@ -138,7 +138,7 @@ export function Thinking({ content, isStreaming }: ThinkingProps) {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="group -ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-fast) ease-(--ease-out) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--color-focus-ring)"
+        className="group -ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-fast) ease-(--ease-out) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         aria-expanded={expanded}
         aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
       >

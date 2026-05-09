@@ -49,7 +49,7 @@ export function Welcome({ onReady }: WelcomeProps) {
         : 'ready'
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-(--color-bg)">
+    <div className="flex h-screen flex-col items-center justify-center bg-(--bg-page)">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -58,7 +58,7 @@ export function Welcome({ onReady }: WelcomeProps) {
       >
         {/* Logo with glow */}
         <div className="relative">
-          <div className="absolute inset-0 rounded-3xl bg-(--color-accent-subtle) blur-2xl" />
+          <div className="absolute inset-0 rounded-3xl bg-(--bg-key) blur-2xl" />
           <motion.div
             animate={
               step === 'ready'
@@ -66,7 +66,7 @@ export function Welcome({ onReady }: WelcomeProps) {
                 : { scale: 1 }
             }
             transition={{ duration: 0.5, ease: 'easeInOut' }}
-            className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-(--color-accent-subtle) ring-1 ring-(--color-border-strong)"
+            className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-(--bg-key) ring-1 ring-(--color-border-strong)"
           >
             <img src={OpenAgentdAppIcon} width={72} height={72} alt="OpenAgentd logo" className="rounded-2xl" />
           </motion.div>
@@ -85,7 +85,7 @@ export function Welcome({ onReady }: WelcomeProps) {
         {/* Progress */}
         <div className="flex w-56 flex-col items-center gap-3">
           {/* Progress bar */}
-          <div className="h-0.5 w-full overflow-hidden rounded-full bg-(--color-accent-subtle)">
+          <div className="h-0.5 w-full overflow-hidden rounded-full bg-(--bg-key)">
             <motion.div
               className={`h-full rounded-full ${
                 step === 'error'
@@ -107,7 +107,7 @@ export function Welcome({ onReady }: WelcomeProps) {
               error={step === 'error'}
               label="Backend"
             />
-            <div className="h-px w-4 bg-(--color-accent-subtle)" />
+            <div className="h-px w-4 bg-(--bg-key)" />
             <StepIcon
               icon={Users}
               done={teamStatus.isSuccess}
@@ -115,7 +115,7 @@ export function Welcome({ onReady }: WelcomeProps) {
               error={false}
               label="Team"
             />
-            <div className="h-px w-4 bg-(--color-accent-subtle)" />
+            <div className="h-px w-4 bg-(--bg-key)" />
             <StepIcon
               icon={CheckCircle2}
               done={step === 'ready'}
@@ -172,10 +172,10 @@ function StepIcon({
           error
             ? 'bg-(--color-error-subtle) text-(--color-error)'
             : done
-              ? 'bg-(--color-success-subtle) text-(--color-success)'
+              ? 'bg-(--accent-green-soft) text-(--color-success)'
               : active
-                ? 'bg-(--color-accent-subtle) text-(--color-accent)'
-                : 'bg-(--color-accent-dim) text-(--color-text-muted)'
+                ? 'bg-(--bg-key) text-(--color-accent)'
+                : 'bg-(--bg-key) text-(--color-text-muted)'
         }`}
       >
         {error ? (

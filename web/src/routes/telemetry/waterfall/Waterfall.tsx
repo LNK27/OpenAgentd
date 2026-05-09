@@ -45,9 +45,9 @@ export function Waterfall({
         </span>
         <span>Total {formatMs(bounds.duration_ms)}</span>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-(--color-border) bg-(--color-surface)">
+      <div className="overflow-x-auto rounded-lg border border-(--color-border) bg-(--bg-card)">
         <div className="min-w-[480px]">
-          <div className="flex border-b border-(--color-border) bg-(--color-surface-2) px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-(--color-text-muted)">
+          <div className="flex border-b border-(--color-border) bg-(--bg-key) px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-(--color-text-muted)">
             <div className="w-48 shrink-0 sm:w-64">Span</div>
             <div className="flex-1">Timeline</div>
             <div className="w-20 shrink-0 text-right">Duration</div>
@@ -88,8 +88,8 @@ function WaterfallRow({
     <button
       type="button"
       onClick={onSelect}
-      className={`flex w-full items-center px-3 py-2 text-left text-xs transition-colors hover:bg-(--color-accent-subtle)/30 ${
-        selected ? 'bg-(--color-accent-subtle)/60' : ''
+      className={`flex w-full items-center px-3 py-2 text-left text-xs transition-colors hover:bg-(--bg-key)/30 ${
+        selected ? 'bg-(--bg-key)/60' : ''
       }`}
     >
       <div
@@ -102,7 +102,7 @@ function WaterfallRow({
         />
         <span
           className={`truncate font-medium ${
-            isError ? 'text-(--color-danger)' : 'text-(--color-text)'
+            isError ? 'text-(--color-error)' : 'text-(--color-text)'
           }`}
           title={node.span.name}
         >

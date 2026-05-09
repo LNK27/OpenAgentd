@@ -119,7 +119,7 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,90vw)] flex-col overflow-hidden bg-(--color-surface) shadow-2xl"
+            className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,90vw)] flex-col overflow-hidden bg-(--bg-card) shadow-2xl"
           >
             {/* Header */}
             <header className="flex items-center justify-between border-b border-(--color-border) px-4 py-3">
@@ -128,7 +128,7 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
                 {isMobile && mobilePane !== 'list' && (
                   <button
                     onClick={handleBackToList}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                     aria-label="Back to task list"
                   >
                     <ArrowLeft size={14} />
@@ -280,8 +280,8 @@ function TaskListItem({
       onClick={onSelect}
       className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
         isSelected
-          ? 'border-(--color-accent) bg-(--color-accent-subtle)'
-          : 'border-(--color-border) bg-(--color-surface-2) hover:border-(--color-border-strong)'
+          ? 'border-(--color-accent) bg-(--bg-key)'
+          : 'border-(--color-border) bg-(--bg-key) hover:border-(--color-border-strong)'
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -291,7 +291,7 @@ function TaskListItem({
             {formatScheduleLabel(task)}
           </p>
           <div className="mt-1 flex items-center gap-2">
-            <span className="inline-block rounded-full bg-(--color-accent-subtle) px-2 py-0.5 text-xs text-(--color-accent)">
+            <span className="inline-block rounded-full bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-accent)">
               {task.agent}
             </span>
             <span className={`text-xs font-medium ${statusColor}`}>{task.status}</span>
@@ -750,20 +750,20 @@ function TaskDetailView({
             <div className="mt-2 space-y-2">
               <div>
                 <span className="text-sm text-(--color-text-muted)">Agent</span>
-                <p className="mt-1 rounded-lg bg-(--color-surface-2) px-3 py-2 text-sm text-(--color-text)">
+                <p className="mt-1 rounded-lg bg-(--bg-key) px-3 py-2 text-sm text-(--color-text)">
                   {task.agent}
                 </p>
               </div>
               <div>
                 <span className="text-sm text-(--color-text-muted)">Prompt</span>
-                <p className="mt-1 rounded-lg bg-(--color-surface-2) px-3 py-2 text-sm text-(--color-text) whitespace-pre-wrap">
+                <p className="mt-1 rounded-lg bg-(--bg-key) px-3 py-2 text-sm text-(--color-text) whitespace-pre-wrap">
                   {task.prompt}
                 </p>
               </div>
               {task.session_id && (
                 <div>
                   <span className="text-sm text-(--color-text-muted)">Session ID</span>
-                  <p className="mt-1 rounded-lg bg-(--color-surface-2) px-3 py-2 text-sm text-(--color-text) break-all font-mono">
+                  <p className="mt-1 rounded-lg bg-(--bg-key) px-3 py-2 text-sm text-(--color-text) break-all font-mono">
                     {task.session_id}
                   </p>
                 </div>

@@ -37,7 +37,7 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
         onClick={() => setPreference(NEXT[preference])}
         title={`Theme: ${current.label} (click to cycle)`}
         aria-label={`Theme: ${current.label}. Click to cycle.`}
-        className="interactive-weight flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+        className="interactive-weight flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
       >
         <Icon size={14} />
       </button>
@@ -48,7 +48,7 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
     <div
       role="radiogroup"
       aria-label="Theme preference"
-      className="flex items-center gap-0.5 rounded-lg border border-(--color-border) bg-(--color-bg) p-0.5"
+      className="flex items-center gap-0.5 rounded-lg border border-(--color-border) bg-(--bg-page) p-0.5"
     >
       {OPTIONS.map(({ value, label, Icon }) => {
         const active = preference === value
@@ -62,7 +62,7 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
             title={label}
             className={`interactive-weight flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
               active
-                ? 'bg-(--color-accent-subtle) text-(--color-text)'
+                ? 'bg-(--bg-key) text-(--color-text)'
                 : 'text-(--color-text-muted) hover:text-(--color-text)'
             }`}
           >

@@ -106,7 +106,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
            </div>
          )}
 
-         <div className="relative rounded-2xl rounded-br-sm bg-(--color-accent) px-4 py-2.5 text-sm leading-relaxed text-(--color-bg) overflow-hidden">
+         <div className="relative rounded-2xl rounded-br-sm bg-(--color-accent) px-4 py-2.5 text-sm leading-relaxed text-(--bg-page) overflow-hidden">
            {/* Expand / collapse button — top-right inside bubble */}
            {needsCollapse && (
              <button
@@ -123,7 +123,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
                ].join(' ')}
                style={{
                  background: 'rgba(0,0,0,0.15)',
-                 color: 'var(--color-bg)',
+                 color: 'var(--bg-page)',
                }}
              >
                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -359,7 +359,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     {showScrollBtn && (
       <button
         onClick={() => scrollToBottom(true)}
-        className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--color-surface) p-1.5 text-(--color-text-muted) shadow-sm transition-colors hover:text-(--color-text-2)"
+        className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--bg-card) p-1.5 text-(--color-text-muted) shadow-sm transition-colors hover:text-(--color-text-2)"
         aria-label="Scroll to bottom"
       >
         <ChevronDown size={14} />

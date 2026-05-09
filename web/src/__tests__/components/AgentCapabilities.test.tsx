@@ -333,7 +333,7 @@ describe("CapabilityBadges rendering (via AgentCard)", () => {
 
       // Verify the capability is enabled
       expect(caps.input.vision).toBe(true)
-      // In the component, enabled badges get: 'bg-(--color-accent-subtle) text-(--color-accent)'
+      // In the component, enabled badges get: 'bg-(--bg-key) text-(--color-accent)'
     })
 
     it("disabled badge has muted/opacity styling class", () => {
@@ -344,7 +344,7 @@ describe("CapabilityBadges rendering (via AgentCard)", () => {
 
       // Verify the capability is disabled
       expect(caps.input.vision).toBe(false)
-      // In the component, disabled badges get: 'bg-(--color-bg) text-(--color-text-muted) opacity-40'
+      // In the component, disabled badges get: 'bg-(--bg-page) text-(--color-text-muted) opacity-40'
     })
   })
 
