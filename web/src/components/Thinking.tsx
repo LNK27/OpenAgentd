@@ -1,12 +1,16 @@
 /**
- * Thinking — quiet, aside-style reasoning trace.
+ * Thinking — paper-card reasoning trace.
  *
- * Visual language:
- *   - No container/background/border chrome. A single left rule
- *     (`border-l` in `--color-border`) with left padding marks the block as
- *     a margin note, not a card.
- *   - Trigger is text-only: chevron + label + optional streaming dots.
- *     No brain/icon clichés.
+ * Visual language follows the pencil source (node ``ptE8V``,
+ * ``ThinkingCollapsed``):
+ *
+ *   - Outer card: 1px ``--color-border`` outline, ``rounded-md``, padded
+ *     ``px-3 py-2.5``. Sits on the ambient surface (no fill of its own).
+ *   - Header: chevron + label in Inter 13/500 ``--color-text-2`` plus a
+ *     mono 11px ``--color-text-muted`` sub-hint ("tap to read" /
+ *     "tap to collapse") that mirrors the pencil layout.
+ *   - Streaming: dots replace the sub-hint while content is still
+ *     arriving so the label stays the visual anchor.
  *
  * Label behaviour:
  *   - Default: "Reasoning".
@@ -133,29 +137,36 @@ export function Thinking({ content, isStreaming }: ThinkingProps) {
   }, [content, isStreaming])
 
   return (
-    <div className="my-2 border-l border-(--color-border) pl-3">
-      {/* Trigger — text-only, no card chrome */}
+    <div className="my-2 overflow-hidden rounded-md border border-(--color-border)">
+      {/* Trigger — paper card per pencil ptE8V */}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="group -ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-(--color-text-muted) transition-colors duration-(--motion-fast) ease-(--ease-out) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+        className="group flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-(--motion-fast) ease-(--ease-out) hover:bg-(--bg-key) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         aria-expanded={expanded}
         aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
       >
         <ChevronRight
-          size={12}
-          className={`shrink-0 transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
+          size={14}
+          className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
           aria-hidden
         />
-        <span className="flex items-center gap-1.5 font-medium">
-          <span>{label}</span>
-          {isStreaming && (
-            <ThinkingDots className="text-(--color-text-muted)" aria-label={`${label}…`} />
-          )}
+        <span className="flex-1 truncate text-[13px] font-medium text-(--color-text-2)">
+          {label}
         </span>
+        {isStreaming ? (
+          <ThinkingDots
+            className="shrink-0 text-(--color-text-muted)"
+            aria-label={`${label}…`}
+          />
+        ) : (
+          <span className="shrink-0 font-mono text-[11px] text-(--color-text-muted)">
+            {expanded ? 'tap to collapse' : 'tap to read'}
+          </span>
+        )}
       </button>
 
-      {/* Expanded body — indented muted italic, no extra container */}
+      {/* Expanded body — divider then warm paper wash, mono italic prose */}
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
@@ -166,9 +177,11 @@ export function Thinking({ content, isStreaming }: ThinkingProps) {
             transition={{ duration: DURATIONS_S.base, ease: EASINGS.out }}
             className="overflow-hidden"
           >
-            <p className="mt-1 whitespace-pre-wrap pb-1 pl-1 font-mono text-xs italic leading-relaxed text-(--color-text-muted)">
-              {body}
-            </p>
+            <div className="border-t border-(--color-border) bg-(--bg-key) px-3 py-2.5">
+              <p className="whitespace-pre-wrap font-mono text-xs italic leading-relaxed text-(--color-text-muted)">
+                {body}
+              </p>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
