@@ -192,8 +192,12 @@
     --color-syn-type:     #FCC780;
     --color-syn-operator: #C5B59A;
 
-    /* Depth & focus */
-    --focus-ring:   var(--color-accent);
+    /* Depth & focus
+     * Focus ring uses --accent-blue rather than --color-accent because the
+     * paper accent is near-black (light) / near-white (dark), so a ring
+     * derived from it reads as a hard rectangle. Blue gives the standard
+     * focus affordance while staying inside the brand palette. */
+    --focus-ring:   var(--accent-blue);
     --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
 
     /* Motion — durations */
@@ -337,8 +341,8 @@
     --color-syn-type:     #C26A1E;
     --color-syn-operator: #5F5143;
 
-    /* Focus + depth */
-    --focus-ring:   var(--color-accent);
+    /* Focus + depth (see dark-mode comment) */
+    --focus-ring:   var(--accent-blue);
     --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 

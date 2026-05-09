@@ -11,8 +11,8 @@
  *   - Expanded body: divider, then the args/result panels on the warm
  *     ``--bg-key`` surface so the actual content gets a calm reading wash.
  *
- * Identity is carried by a colored status dot (pending / running /
- * done) matching the capability colour vocabulary.
+ * Identity is carried by a colored status dot for the lifecycle:
+ * start / running / success / failed.
  *
  * The per-tool header/args customisation lives in ``./display.tsx``;
  * this module owns only the chrome (collapse, copy, status dot, motion).
@@ -34,19 +34,37 @@ interface ToolCallProps {
   result?: string // tool response content
 }
 
+function isFailedResult(result: string | undefined): boolean {
+  if (!result) return false
+  const firstLine = result.trimStart().split('\n', 1)[0]?.toLowerCase() ?? ''
+  return (
+    firstLine.startsWith('[failed') ||
+    firstLine.startsWith('[error') ||
+    firstLine.includes('exit code 1') ||
+    firstLine.includes('exit 1')
+  )
+}
+
 export function ToolCall({ name, args, done, result }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [expanded, setExpanded] = useState(false)
   const [copiedArgs, setCopiedArgs] = useState(false)
   const [copiedResult, setCopiedResult] = useState(false)
 
-  // Determine status: pending (no args yet) → running (args, not done) → done
+  // Determine status: start (name only) → running (args) → success/failed (result)
   const isPending = args === undefined || args === null
   const isRunning = !isPending && !done
-  const state: ToolCallState = done ? 'done' : isRunning ? 'running' : 'pending'
+  const state: ToolCallState = isPending
+    ? 'start'
+    : isRunning
+      ? 'running'
+      : isFailedResult(result)
+        ? 'failed'
+        : 'success'
 
   const { header, headerTitle, formattedArgs, language, suppressResult } =
     getToolDisplay(name, args)
+  const visibleHeader = isPending ? null : header
   const shownResult = suppressResult ? undefined : result
 
   const handleCopyArgs = async (e: React.MouseEvent) => {
@@ -101,21 +119,17 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
         {/* Header content: tool-specific summary or fallback to tool name.
             Only argument values inside the header are italicised (via <Arg>);
             the verb/framing text stays upright. Mono+600 per pencil dqwZw. */}
-        {header ? (
+        {visibleHeader ? (
           <span
             className="flex-1 truncate font-mono font-semibold text-(--color-text)"
             title={headerTitle ?? undefined}
           >
-            {header}
+            {visibleHeader}
           </span>
         ) : (
           <code className="flex-1 truncate font-mono font-semibold text-(--color-text)">
             {displayName}
           </code>
-        )}
-
-        {isPending && (
-          <span className="shrink-0 font-mono text-(--color-text-muted)">pending</span>
         )}
 
         {hasDetails && (

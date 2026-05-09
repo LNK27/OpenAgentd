@@ -121,9 +121,9 @@ describe("ToolCall — generate_image header", () => {
     expect(screen.getByText("generate_image")).toBeTruthy()
   })
 
-  it("shows 'pending' badge when args is undefined", () => {
+  it("does not show a stale pending badge when args is undefined", () => {
     render(<ToolCall name="generate_image" done={false} />)
-    expect(screen.getByText("pending")).toBeTruthy()
+    expect(screen.queryByText("pending")).toBeNull()
   })
 })
 
@@ -447,9 +447,10 @@ describe("ToolCall — generate_image expand/collapse", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — generate_image status indicators", () => {
-  it("shows pending badge when no args", () => {
+  it("shows start state as just the tool name when no args", () => {
     render(<ToolCall name="generate_image" done={false} />)
-    expect(screen.getByText("pending")).toBeTruthy()
+    expect(screen.getByText("generate_image")).toBeTruthy()
+    expect(screen.queryByText("pending")).toBeNull()
   })
 
   it("shows running indicator when running (args set, not done)", () => {

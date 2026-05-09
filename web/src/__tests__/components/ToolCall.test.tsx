@@ -54,23 +54,24 @@ describe("ToolCall — header", () => {
     expect(screen.getByText("custom_tool")).toBeTruthy()
   })
 
-  it("shows 'pending' badge when no args", () => {
+  it("shows only the tool name when no args", () => {
     render(<ToolCall name="read" />)
-    expect(screen.getByText("pending")).toBeTruthy()
+    expect(screen.getByText("read")).toBeTruthy()
+    expect(screen.queryByText("pending")).toBeNull()
   })
 
-  it("shows spinner when running (args set, not done)", () => {
+  it("shows running state when args are set and result is not done", () => {
     render(<ToolCall name="read" args='{"path":"x"}' done={false} />)
     expect(screen.queryByText("pending")).toBeNull()
-    // Running state: no pending badge, no done indicator
+    // Running state: no pending badge, no result section until expanded details exist
     const btn = screen.getByRole("button")
     expect(btn).toBeTruthy()
   })
 
-  it("shows check icon when done", () => {
+  it("shows success state when done without failed result", () => {
     render(<ToolCall name="read" args='{"path":"x"}' done={true} />)
     expect(screen.queryByText("pending")).toBeNull()
-    // Done state: no pending badge
+    // Success state: no pending badge
     const btn = screen.getByRole("button")
     expect(btn).toBeTruthy()
   })
@@ -228,12 +229,10 @@ describe("ToolCall — forget display", () => {
 })
 
 describe("ToolCall — recall display", () => {
-  it("shows conversational header when no args", () => {
+  it("shows tool name when no args", () => {
     render(<ToolCall name="recall" done={false} />)
-    const header = getHeader("Checking memory…")
-    expect(header.textContent).toBe("Checking memory…")
-    expect(header.querySelector("em")).toBeNull()
-    expect(screen.queryByText("recall")).toBeNull()
+    expect(screen.getByText("recall")).toBeTruthy()
+    expect(screen.queryByText("Checking memory…")).toBeNull()
   })
 
   it("shows conversational header with args", () => {
@@ -932,6 +931,22 @@ describe("ToolCall — empty args {} show no args section", () => {
     expect(btn.className).not.toContain("cursor-default")
     await user.click(btn)
     expect(screen.getByText("result")).toBeTruthy()
+  })
+
+  it("shows failed result content when a completed tool failed", async () => {
+    const user = userEvent.setup()
+    render(
+      <ToolCall
+        name="shell"
+        args={JSON.stringify({ command: "pytest" })}
+        done={true}
+        result="[Failed — exit code 1]\n\nAssertionError"
+      />,
+    )
+
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText(/Failed/)).toBeTruthy()
+    expect(screen.getByText(/AssertionError/)).toBeTruthy()
   })
 
   it("date tool with no args shows no args section", async () => {

@@ -40,20 +40,11 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTileLayout } from '@/hooks/useTileLayout'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
-import {
-  Users,
-  FolderOpen,
-  SplitSquareHorizontal,
-  SplitSquareVertical,
-  Menu,
-  Moon,
-} from 'lucide-react'
+import { Users, FolderOpen, Menu } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { AgentChip } from '@/components/ui/agent-chip'
 import { isAgentRole } from '@/lib/agent-roles'
-import { TokenMeter } from '@/components/ui/token-meter'
-import { ViewToggle } from '@/components/ui/view-toggle'
-import { TopbarAction } from '@/components/ui/topbar-action'
+import { AgentTopbar } from '@/components/AgentTopbar'
 import { type InputBarHandle, type SlashCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
 import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
@@ -440,71 +431,54 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
             )}
           </div>
 
-          {/* Right: tokens (desktop) + view toggle (desktop) + panel toggles */}
-          <div className="flex shrink-0 items-center gap-1.5 py-2">
-
-            {/* Token count — desktop only, too noisy on mobile */}
-            {!isMobile && totalAll > 0 && (
-              <TokenMeter
-                input={totalPrompt}
-                output={totalCompletion}
-                cached={totalCached}
-                pulsing={isTeamWorking}
+          {/* Right: tokens, dream, split-pane, view toggle, panel toggles —
+              owned by the reusable ``AgentTopbar`` composite so this header
+              stays in sync with single-agent surfaces and Pencil's
+              ``AgentTopbar`` (`E8lml9`). */}
+          <AgentTopbar
+            isMobile={isMobile}
+            tokens={
+              totalAll > 0
+                ? {
+                    input: totalPrompt,
+                    output: totalCompletion,
+                    cached: totalCached,
+                    pulsing: isTeamWorking,
+                  }
+                : undefined
+            }
+            dreamRunning={dreamMutation.isPending}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            showSplitButtons={
+              effectiveViewMode === 'unified' && minimizedAgents.length > 0
+            }
+            onSplitDown={handleSplitDown}
+            onSplitRight={handleSplitRight}
+            todosSlot={
+              <TodosPopover
+                open={showTodos}
+                onOpenChange={setShowTodos}
+                todos={todos}
+                sessionId={sessionIdState}
               />
-            )}
-
-            {/* Dream running indicator */}
-            {dreamMutation.isPending && (
-              <div
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-(--color-text-muted)"
-                title="Dream is running…"
-              >
-                <Moon size={11} className="animate-pulse" aria-hidden="true" />
-                <span className="hidden sm:inline">Dream…</span>
-              </div>
-            )}
-
-            {/* Unified-view split buttons — desktop only */}
-            {!isMobile && effectiveViewMode === 'unified' && minimizedAgents.length > 0 && (
-              <div className="flex items-center gap-0.5">
-                <button onClick={handleSplitDown} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)" title="Split pane down (Ctrl+J)" aria-label="Split pane down">
-                  <SplitSquareVertical size={12} aria-hidden="true" />
-                </button>
-                <button onClick={handleSplitRight} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)" title="Split pane right (Ctrl+K)" aria-label="Split pane right">
-                  <SplitSquareHorizontal size={12} aria-hidden="true" />
-                </button>
-              </div>
-            )}
-
-            {/* 3-way view toggle — desktop only. Mobile always uses agent view. */}
-            {!isMobile && (
-              <ViewToggle value={viewMode} onValueChange={setViewMode} />
-            )}
-
-            <TodosPopover
-              open={showTodos}
-              onOpenChange={setShowTodos}
-              todos={todos}
-              sessionId={sessionIdState}
-            />
-
-            <TopbarAction
-              Icon={FolderOpen}
-              label="Files"
-              onClick={() => setShowFilesPanel((v) => !v)}
-              disabled={!sessionIdState}
-              title={sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session'}
-              aria-label="Workspace files"
-            />
-
-            <TopbarAction
-              Icon={Users}
-              label="Agents"
-              onClick={() => setShowAgentSidebar((v) => !v)}
-              title="Agent Capabilities (Ctrl+A)"
-              aria-label="Agent capabilities"
-            />
-          </div>
+            }
+            filesAction={{
+              Icon: FolderOpen,
+              label: 'Files',
+              onClick: () => setShowFilesPanel((v) => !v),
+              disabled: !sessionIdState,
+              title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
+              ariaLabel: 'Workspace files',
+            }}
+            agentsAction={{
+              Icon: Users,
+              label: 'Agents',
+              onClick: () => setShowAgentSidebar((v) => !v),
+              title: 'Agent Capabilities (Ctrl+A)',
+              ariaLabel: 'Agent capabilities',
+            }}
+          />
         </header>
 
         {/* Content area */}
