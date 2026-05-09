@@ -24,7 +24,7 @@ export function categoryDotClass(cat: SpanCategory): string {
 }
 
 export function categoryBarClass(cat: SpanCategory, isError: boolean): string {
-  if (isError) return 'bg-(--color-danger)'
+  if (isError) return 'bg-(--color-error)'
   switch (cat) {
     case 'agent_run':
       return 'bg-(--color-accent)'

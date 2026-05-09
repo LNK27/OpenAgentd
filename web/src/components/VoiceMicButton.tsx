@@ -154,10 +154,10 @@ export function VoiceMicButton({
       aria-label={label}
       title={title}
       data-recording={voiceState === 'recording' ? 'true' : undefined}
-      className={`flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full transition-colors disabled:opacity-25 ${
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
         voiceState === 'recording'
-          ? 'bg-(--color-error)/15 text-(--color-error) hover:bg-(--color-error)/25'
-          : 'text-(--color-text-muted) hover:bg-(--color-accent-subtle) hover:text-(--color-text)'
+          ? 'border-(--color-error) bg-(--color-error)/15 text-(--color-error) hover:bg-(--color-error)/25'
+          : 'border-(--color-border) bg-(--color-surface) text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'
       }`}
     >
       {icon}

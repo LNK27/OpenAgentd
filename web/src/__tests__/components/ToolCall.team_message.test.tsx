@@ -112,9 +112,14 @@ describe("ToolCall — team_message header", () => {
     expect(screen.getByText("team_message")).toBeTruthy()
   })
 
-  it("shows 'pending' badge when args is undefined", () => {
+  it("shows no pending badge when args is undefined (start state is name-only)", () => {
     render(<ToolCall name="team_message" done={false} />)
-    expect(screen.getByText("pending")).toBeTruthy()
+    // Lifecycle refactor removed the legacy "pending" text badge; the
+    // start state is communicated by the muted status dot only.
+    expect(screen.queryByText("pending")).toBeNull()
+    const btn = screen.getByRole("button")
+    const dot = btn.querySelector("span.bg-\\(--color-text-muted\\)")
+    expect(dot).toBeTruthy()
   })
 
   it("handles numeric recipient IDs", () => {
@@ -345,9 +350,12 @@ describe("ToolCall — team_message with result", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — team_message status indicators", () => {
-  it("shows pending badge when no args", () => {
+  it("shows muted start dot when no args (lifecycle 'start' state)", () => {
     render(<ToolCall name="team_message" done={false} />)
-    expect(screen.getByText("pending")).toBeTruthy()
+    expect(screen.queryByText("pending")).toBeNull()
+    const btn = screen.getByRole("button")
+    const dot = btn.querySelector("span.bg-\\(--color-text-muted\\)")
+    expect(dot).toBeTruthy()
   })
 
   it("shows running indicator when running (args set, not done)", () => {

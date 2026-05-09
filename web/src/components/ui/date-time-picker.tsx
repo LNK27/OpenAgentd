@@ -26,6 +26,9 @@ interface DateTimePickerProps {
   onChange: (value: string) => void
   placeholder?: string
   className?: string
+  /** Override classes on the trigger button — useful when embedding in a
+   *  drawer where the default `bg-(--bg-key)` clashes with sibling inputs. */
+  triggerClassName?: string
   disabled?: boolean
 }
 
@@ -65,7 +68,7 @@ function TimeUnit({
       onChange={handleChange}
       onKeyDown={handleKey}
       aria-label={label}
-      className="h-9 w-12 rounded-md border border-(--color-border) bg-(--color-surface-2) text-center text-sm tabular-nums text-(--color-text) focus:outline-none focus:ring-1 focus:ring-(--color-accent)"
+      className="h-9 w-12 rounded-[8px] border border-(--color-border) bg-(--bg-page) text-center text-sm tabular-nums text-(--color-text) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)/25"
     />
   )
 }
@@ -77,6 +80,7 @@ export function DateTimePicker({
   onChange,
   placeholder = 'Pick date & time',
   className,
+  triggerClassName,
   disabled,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false)
@@ -116,15 +120,16 @@ export function DateTimePicker({
           disabled={disabled}
           className={cn(
             buttonVariants({ variant: 'outline' }),
-            'h-9 w-full justify-start gap-2 rounded-lg border border-(--color-border) bg-(--color-surface-2) px-3 text-sm font-normal text-(--color-text) hover:bg-(--color-surface-3)',
+            'h-9 w-full justify-start gap-2 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 text-sm font-normal text-(--color-text) hover:border-(--color-border-strong) hover:bg-(--bg-key)',
             !parsed && 'text-(--color-text-muted)',
+            triggerClassName,
           )}
         >
           <CalendarIcon className="size-4 shrink-0 opacity-60" />
           <span>{displayLabel}</span>
         </PopoverTrigger>
 
-        <PopoverContent className="w-auto p-0" align="start">
+          <PopoverContent className="w-auto overflow-hidden p-0" align="start">
           <Calendar
             mode="single"
             selected={parsed}
@@ -145,7 +150,7 @@ export function DateTimePicker({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-md bg-(--color-accent) px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+              className="rounded-[8px] bg-(--color-accent) px-3 py-1.5 text-xs font-medium text-(--color-text-on-accent) transition-opacity hover:opacity-90"
             >
               Done
             </button>

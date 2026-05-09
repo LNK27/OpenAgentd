@@ -58,8 +58,8 @@ export function AgentTabStrip({
               onClick={() => onFocusOpen(name)}
               className={`interactive-weight group flex shrink-0 items-center gap-1.5 rounded-t-lg border-b-2 px-2.5 py-1.5 text-xs transition-all ${
                 isFocused
-                  ? 'border-b-(--color-accent) bg-(--color-accent-subtle) text-(--color-accent)'
-                  : 'border-b-transparent text-(--color-text-2) hover:bg-(--color-accent-dim) hover:text-(--color-text)'
+                  ? 'border-b-(--color-accent) bg-(--bg-key) text-(--color-accent)'
+                  : 'border-b-transparent text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'
               }`}
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
@@ -75,7 +75,7 @@ export function AgentTabStrip({
                 title="Minimize pane"
                 className={`flex items-center rounded p-0.5 transition-colors ${
                   isFocused
-                    ? 'text-(--color-accent) hover:bg-(--color-accent-subtle)'
+                    ? 'text-(--color-accent) hover:bg-(--bg-key)'
                     : 'text-(--color-text-subtle) opacity-0 group-hover:opacity-100 hover:text-(--color-text-2)'
                 }`}
               >×</span>
@@ -88,7 +88,7 @@ export function AgentTabStrip({
             key={name}
             onClick={() => onOpenMinimized(name)}
             title={`Open ${name} as new split pane`}
-            className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-all hover:bg-(--color-accent-dim) hover:text-(--color-text-2)"
+            className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2)"
           >
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
               isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : 'bg-(--color-border-strong)'

@@ -5,7 +5,7 @@
  * backdrop click to close, and X close button.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Clock, Play, Pause, Trash2, Plus, Loader2, AlertCircle, CalendarClock, Zap, ArrowLeft, Pencil } from 'lucide-react'
 import { format } from 'date-fns'
@@ -14,7 +14,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   useScheduledTasksQuery,
   useCreateScheduledTaskMutation,
@@ -35,6 +34,64 @@ interface SchedulerPanelProps {
 }
 
 // ── Shared utility ──────────────────────────────────────────────────────────
+
+// Form fields sit on a bg-(--bg-card) panel; the shared <Input>/<Textarea>/
+// <SelectTrigger> primitives default to bg-transparent which leaves them
+// indistinguishable from the parent. Give them an explicit fillable surface
+// so the controls read as inputs.
+const FIELD_CLASS = 'bg-(--bg-page) dark:bg-(--bg-page)'
+
+// Inline className for SelectContent — the global default (`bg-popover`)
+// resolves to `--bg-card`, the same surface as this drawer, so the dropdown
+// looks like an outlined frame floating on the same paper. Use the page
+// surface for clear contrast and soften the border.
+const SELECT_CONTENT_CLASS = 'bg-(--bg-page) border-(--color-border-strong)'
+
+// Three-option segmented control used for "Schedule type". The shared Tabs
+// primitive inverts in light mode (track = bg-key which is darker than the
+// active bg-background = bg-page), so we render a flat row of buttons that
+// match the rest of this drawer's surfaces.
+function ScheduleTypeSegmented({
+  value,
+  onChange,
+}: {
+  value: ScheduledTaskCreate['schedule_type']
+  onChange: (v: ScheduledTaskCreate['schedule_type']) => void
+}) {
+  const options: { key: ScheduledTaskCreate['schedule_type']; label: string }[] = [
+    { key: 'every', label: 'Every' },
+    { key: 'cron', label: 'Cron' },
+    { key: 'at', label: 'At' },
+  ]
+  return (
+    <div
+      role="tablist"
+      aria-label="Schedule type"
+      className="mt-2 flex w-full gap-1 rounded-md border border-(--color-border) bg-(--bg-page) p-1"
+    >
+      {options.map((opt) => {
+        const active = value === opt.key
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(opt.key)}
+            className={
+              'flex-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors ' +
+              (active
+                ? 'bg-(--bg-card) text-(--color-text) shadow-sm ring-1 ring-(--color-border-strong)'
+                : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')
+            }
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 function formatScheduleLabel(task: Pick<ScheduledTaskResponse, 'schedule_type' | 'at_datetime' | 'every_seconds' | 'cron_expression'>): string {
   if (task.schedule_type === 'at' && task.at_datetime) {
@@ -68,6 +125,26 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
   const tasksQuery = useScheduledTasksQuery()
   const agentsQuery = useTeamAgentsQuery()
 
+  // Refresh on open — the drawer is mounted persistently so AnimatePresence
+  // can play exit animations; without this the list goes stale on reopen.
+  useEffect(() => {
+    if (open) {
+      tasksQuery.refetch()
+      agentsQuery.refetch()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // Close on Escape (only while open) — matches AgentCapabilities drawer.
+  useEffect(() => {
+    if (!open) return
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [open, onClose])
+
   const tasks = tasksQuery.data?.tasks ?? []
   const agents = agentsQuery.data?.agents ?? []
 
@@ -89,6 +166,13 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
     if (isMobile) setMobilePane('list')
   }
 
+  // When a task is deleted from the list, drop the selection if it was the
+  // currently-selected one — otherwise the detail pane (mobile especially)
+  // would render an empty state until the user navigates back manually.
+  const handleTaskDeleted = (id: string) => {
+    if (selectedTaskId === id) handleCloseDetail()
+  }
+
   const handleOpenCreate = () => {
     if (isMobile) setMobilePane('create')
   }
@@ -106,6 +190,7 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
       {open && (
         <>
           <motion.div
+            key="backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -114,21 +199,25 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
             className="fixed inset-0 z-40 bg-black/40"
           />
 
-          <motion.div
+          <motion.aside
+            key="drawer"
             initial={{ x: '100%', opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,90vw)] flex-col overflow-hidden bg-(--color-surface) shadow-2xl"
+            className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,90vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Scheduled tasks"
           >
             {/* Header */}
-            <header className="flex items-center justify-between border-b border-(--color-border) px-4 py-3">
+            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-5 py-4">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 {/* Mobile back button — shown in detail/create pane */}
                 {isMobile && mobilePane !== 'list' && (
                   <button
                     onClick={handleBackToList}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+                    className="shrink-0 rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                     aria-label="Back to task list"
                   >
                     <ArrowLeft size={14} />
@@ -137,15 +226,15 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
                 <div className="flex min-w-0 items-center gap-2">
                   <CalendarClock size={18} className="shrink-0 text-(--color-accent)" />
                   <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-(--color-text)">
-                      {isMobile && mobilePane === 'detail' && selectedTask
-                        ? selectedTask.name
-                        : isMobile && mobilePane === 'create'
-                          ? 'Create Task'
+                    <h2 className="truncate text-base font-semibold text-(--color-text)">
+                      {isMobile && mobilePane === 'create'
+                        ? 'Create Task'
+                        : isMobile && mobilePane === 'detail'
+                          ? (selectedTask?.name ?? 'Task')
                           : 'Scheduled Tasks'}
                     </h2>
                     {(!isMobile || mobilePane === 'list') && (
-                      <p className="text-xs text-(--color-text-subtle)">
+                      <p className="mt-0.5 truncate text-xs text-(--color-text-muted)">
                         Manage cron and scheduled agent tasks
                       </p>
                     )}
@@ -155,24 +244,23 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
               <div className="flex shrink-0 items-center gap-1">
                 {/* Mobile: Create button shown in list pane */}
                 {isMobile && mobilePane === 'list' && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
+                  <button
                     onClick={handleOpenCreate}
+                    className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                     aria-label="Create new task"
                     title="Create task"
                   >
                     <Plus size={16} />
-                  </Button>
+                  </button>
                 )}
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
+                <button
                   onClick={onClose}
+                  className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label="Close scheduler panel"
+                  title="Close (Esc)"
                 >
                   <X size={16} />
-                </Button>
+                </button>
               </div>
             </header>
 
@@ -184,6 +272,7 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
                   {/* Search bar */}
                   <div className="border-b border-(--color-border) p-3">
                     <Input
+                      className={FIELD_CLASS}
                       placeholder="Search tasks…"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -221,6 +310,7 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
                             task={task}
                             isSelected={selectedTaskId === task.id}
                             onSelect={() => handleSelectTask(task.id)}
+                            onDeleted={() => handleTaskDeleted(task.id)}
                           />
                         ))}
                       </div>
@@ -244,7 +334,7 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
                 </div>
               )}
             </div>
-          </motion.div>
+          </motion.aside>
         </>
       )}
     </AnimatePresence>
@@ -257,10 +347,12 @@ function TaskListItem({
   task,
   isSelected,
   onSelect,
+  onDeleted,
 }: {
   task: ScheduledTaskResponse
   isSelected: boolean
   onSelect: () => void
+  onDeleted: () => void
 }) {
   const deleteMutation = useDeleteScheduledTaskMutation()
   const pauseMutation = usePauseScheduledTaskMutation()
@@ -280,8 +372,8 @@ function TaskListItem({
       onClick={onSelect}
       className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
         isSelected
-          ? 'border-(--color-accent) bg-(--color-accent-subtle)'
-          : 'border-(--color-border) bg-(--color-surface-2) hover:border-(--color-border-strong)'
+          ? 'border-(--color-accent) bg-(--bg-key)'
+          : 'border-(--color-border) bg-(--bg-page) hover:border-(--color-border-strong)'
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -291,7 +383,7 @@ function TaskListItem({
             {formatScheduleLabel(task)}
           </p>
           <div className="mt-1 flex items-center gap-2">
-            <span className="inline-block rounded-full bg-(--color-accent-subtle) px-2 py-0.5 text-xs text-(--color-accent)">
+            <span className="inline-flex items-center rounded-md bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)">
               {task.agent}
             </span>
             <span className={`text-xs font-medium ${statusColor}`}>{task.status}</span>
@@ -352,7 +444,7 @@ function TaskListItem({
             onClick={(e) => {
               e.stopPropagation()
               if (confirm(`Delete task "${task.name}"?`)) {
-                deleteMutation.mutate(task.id)
+                deleteMutation.mutate(task.id, { onSuccess: onDeleted })
               }
             }}
             disabled={deleteMutation.isPending}
@@ -449,21 +541,21 @@ function CreateTaskForm({
   return (
     <div className="flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-(--color-border) px-6 py-4">
+      <div className="border-b border-(--color-border) px-5 py-4">
         <div className="flex items-center gap-2">
           <Plus size={18} className="text-(--color-accent)" />
-          <h2 className="text-lg font-semibold text-(--color-text)">Create Task</h2>
+          <h2 className="text-base font-semibold text-(--color-text)">Create Task</h2>
         </div>
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto p-6">
+      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto px-5 py-4">
         <div className="space-y-4">
           {/* Name */}
           <div>
             <label className="block text-sm font-medium text-(--color-text)">Task Name</label>
             <Input
-              className="mt-1"
+              className={`mt-1 ${FIELD_CLASS}`}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="e.g., Daily Report"
@@ -477,10 +569,10 @@ function CreateTaskForm({
               value={formData.agent ?? ''}
               onValueChange={(v) => { if (v) setFormData({ ...formData, agent: v }) }}
             >
-              <SelectTrigger className="mt-1 w-full">
+              <SelectTrigger className={`mt-1 w-full ${FIELD_CLASS}`}>
                 <SelectValue placeholder="Select agent" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className={SELECT_CONTENT_CLASS}>
                 {agents.map((agent) => (
                   <SelectItem key={agent.name} value={agent.name}>
                     {agent.name}
@@ -493,19 +585,10 @@ function CreateTaskForm({
           {/* Schedule Type */}
           <div>
             <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
-            <Tabs
+            <ScheduleTypeSegmented
               value={formData.schedule_type}
-              onValueChange={(v) =>
-                setFormData({ ...formData, schedule_type: v as ScheduledTaskCreate['schedule_type'] })
-              }
-              className="mt-2"
-            >
-              <TabsList className="w-full">
-                <TabsTrigger value="every" className="flex-1">Every</TabsTrigger>
-                <TabsTrigger value="cron" className="flex-1">Cron</TabsTrigger>
-                <TabsTrigger value="at" className="flex-1">At</TabsTrigger>
-              </TabsList>
-            </Tabs>
+              onChange={(v) => setFormData({ ...formData, schedule_type: v })}
+            />
           </div>
 
           {/* Schedule value (conditional) */}
@@ -518,13 +601,14 @@ function CreateTaskForm({
                     <DateTimePicker
                       value={formData.at_datetime ?? ''}
                       onChange={(v) => setFormData({ ...formData, at_datetime: v })}
+                      triggerClassName="bg-(--bg-page) hover:bg-(--bg-page)"
                     />
                   </div>
                 </div>
                 <div className="w-44 shrink-0">
                   <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
                   <Input
-                    className="mt-1"
+                    className={`mt-1 ${FIELD_CLASS}`}
                     value={formData.timezone}
                     onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
                     placeholder={localTz}
@@ -539,7 +623,7 @@ function CreateTaskForm({
             <div>
               <label className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
               <Input
-                className="mt-1"
+                className={`mt-1 ${FIELD_CLASS}`}
                 type="number"
                 min="1"
                 value={formData.every_seconds ?? 3600}
@@ -557,7 +641,7 @@ function CreateTaskForm({
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
                   <Input
-                    className="mt-1"
+                    className={`mt-1 ${FIELD_CLASS}`}
                     value={formData.cron_expression ?? ''}
                     onChange={(e) => setFormData({ ...formData, cron_expression: e.target.value })}
                     placeholder="e.g., 0 9 * * MON-FRI"
@@ -566,7 +650,7 @@ function CreateTaskForm({
                 <div className="w-44 shrink-0">
                   <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
                   <Input
-                    className="mt-1"
+                    className={`mt-1 ${FIELD_CLASS}`}
                     value={formData.timezone}
                     onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
                     placeholder={localTz}
@@ -581,7 +665,7 @@ function CreateTaskForm({
           <div>
             <label className="block text-sm font-medium text-(--color-text)">Prompt</label>
             <Textarea
-              className="mt-1"
+              className={`mt-1 ${FIELD_CLASS}`}
               value={formData.prompt}
               onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
               placeholder="What should the agent do?"
@@ -593,7 +677,7 @@ function CreateTaskForm({
           <div>
             <label className="block text-sm font-medium text-(--color-text)">Session ID (optional)</label>
             <Input
-              className="mt-1"
+              className={`mt-1 ${FIELD_CLASS}`}
               value={formData.session_id ?? ''}
               onChange={(e) => setFormData({ ...formData, session_id: e.target.value || null })}
               placeholder="Leave blank for new session, or enter 'auto'"
@@ -670,147 +754,162 @@ function TaskDetailView({
   return (
     <div className="flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-(--color-border) px-6 py-4">
-        <div className="flex items-start justify-between gap-4">
+      <div className="border-b border-(--color-border) px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-lg font-semibold text-(--color-text)">{task.name}</h2>
+            <h2 className="truncate text-base font-semibold text-(--color-text)">{task.name}</h2>
             <p className="mt-1 text-sm text-(--color-text-muted)">{formatScheduleLabel(task)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button variant="ghost" size="icon-sm" onClick={() => setEditing(true)} title="Edit task">
+            <button
+              onClick={() => setEditing(true)}
+              className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+              aria-label="Edit task"
+              title="Edit task"
+            >
               <Pencil size={16} />
-            </Button>
-            <Button variant="ghost" size="icon-sm" onClick={onClose} title="Close">
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+              aria-label="Close detail"
+              title="Close"
+            >
               <X size={16} />
-            </Button>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="space-y-6">
-          {/* Status section */}
-          <div>
-            <h3 className="text-sm font-semibold text-(--color-text)">Status</h3>
-            <div className="mt-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-(--color-text-muted)">Current</span>
-                <span className={`text-sm font-medium ${statusColor}`}>{task.status}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-(--color-text-muted)">Enabled</span>
-                <span className="text-sm text-(--color-text)">{task.enabled ? 'Yes' : 'No'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-(--color-text-muted)">Run Count</span>
-                <span className="text-sm text-(--color-text)">{task.run_count}</span>
-              </div>
-            </div>
+      {/* Content — sectioned layout matches AgentCapabilities drawer:
+          uppercase muted headings, bordered sections, no outer padding. */}
+      <div className="flex-1 overflow-y-auto">
+        <section className="px-5 py-4">
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+            Status
+          </h3>
+          <div className="space-y-1.5">
+            <DetailRow label="Current">
+              <span className={`text-sm font-medium ${statusColor}`}>{task.status}</span>
+            </DetailRow>
+            <DetailRow label="Enabled">
+              <span className="text-sm text-(--color-text)">{task.enabled ? 'Yes' : 'No'}</span>
+            </DetailRow>
+            <DetailRow label="Run Count">
+              <span className="text-sm text-(--color-text)">{task.run_count}</span>
+            </DetailRow>
           </div>
+        </section>
 
-          {/* Schedule section */}
-          <div>
-            <h3 className="text-sm font-semibold text-(--color-text)">Schedule</h3>
-            <div className="mt-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-(--color-text-muted)">Type</span>
-                <span className="text-sm text-(--color-text) capitalize">{task.schedule_type}</span>
-              </div>
-              {task.schedule_type === 'at' && task.at_datetime && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-(--color-text-muted)">Date/Time</span>
-                  <span className="text-sm text-(--color-text)">
-                    {format(new Date(task.at_datetime), 'dd/MM/yyyy HH:mm')}
-                  </span>
-                </div>
-              )}
-              {task.schedule_type === 'every' && task.every_seconds && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-(--color-text-muted)">Interval</span>
-                  <span className="text-sm text-(--color-text)">{task.every_seconds}s</span>
-                </div>
-              )}
-              {task.schedule_type === 'cron' && task.cron_expression && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-(--color-text-muted)">Expression</span>
-                  <span className="text-sm text-(--color-text)">{task.cron_expression}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-(--color-text-muted)">Timezone</span>
-                <span className="text-sm text-(--color-text)">{task.timezone}</span>
-              </div>
-            </div>
+        <section className="border-t border-(--color-border) px-5 py-4">
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+            Schedule
+          </h3>
+          <div className="space-y-1.5">
+            <DetailRow label="Type">
+              <span className="text-sm text-(--color-text) capitalize">{task.schedule_type}</span>
+            </DetailRow>
+            {task.schedule_type === 'at' && task.at_datetime && (
+              <DetailRow label="Date/Time">
+                <span className="text-sm text-(--color-text)">
+                  {format(new Date(task.at_datetime), 'dd/MM/yyyy HH:mm')}
+                </span>
+              </DetailRow>
+            )}
+            {task.schedule_type === 'every' && task.every_seconds && (
+              <DetailRow label="Interval">
+                <span className="text-sm text-(--color-text)">{task.every_seconds}s</span>
+              </DetailRow>
+            )}
+            {task.schedule_type === 'cron' && task.cron_expression && (
+              <DetailRow label="Expression">
+                <span className="text-sm text-(--color-text)">{task.cron_expression}</span>
+              </DetailRow>
+            )}
+            <DetailRow label="Timezone">
+              <span className="text-sm text-(--color-text)">{task.timezone}</span>
+            </DetailRow>
           </div>
+        </section>
 
-          {/* Agent & Prompt section */}
-          <div>
-            <h3 className="text-sm font-semibold text-(--color-text)">Configuration</h3>
-            <div className="mt-2 space-y-2">
+        <section className="border-t border-(--color-border) px-5 py-4">
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+            Configuration
+          </h3>
+          <div className="space-y-3">
+            <div>
+              <span className="text-xs text-(--color-text-muted)">Agent</span>
+              <p className="mt-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text)">
+                {task.agent}
+              </p>
+            </div>
+            <div>
+              <span className="text-xs text-(--color-text-muted)">Prompt</span>
+              <p className="mt-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm leading-relaxed text-(--color-text) whitespace-pre-wrap">
+                {task.prompt}
+              </p>
+            </div>
+            {task.session_id && (
               <div>
-                <span className="text-sm text-(--color-text-muted)">Agent</span>
-                <p className="mt-1 rounded-lg bg-(--color-surface-2) px-3 py-2 text-sm text-(--color-text)">
-                  {task.agent}
+                <span className="text-xs text-(--color-text-muted)">Session ID</span>
+                <p className="mt-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-xs text-(--color-text) break-all">
+                  {task.session_id}
                 </p>
               </div>
-              <div>
-                <span className="text-sm text-(--color-text-muted)">Prompt</span>
-                <p className="mt-1 rounded-lg bg-(--color-surface-2) px-3 py-2 text-sm text-(--color-text) whitespace-pre-wrap">
-                  {task.prompt}
+            )}
+          </div>
+        </section>
+
+        <section className="border-t border-(--color-border) px-5 py-4">
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+            Run History
+          </h3>
+          <div className="space-y-1.5">
+            {task.last_run_at && (
+              <DetailRow label="Last Run">
+                <span className="text-sm text-(--color-text)">
+                  {formatRelativeDate(task.last_run_at)}
+                </span>
+              </DetailRow>
+            )}
+            {task.next_fire_at && (
+              <DetailRow label="Next Fire">
+                <span className="text-sm text-(--color-text)">
+                  {formatRelativeDate(task.next_fire_at)}
+                </span>
+              </DetailRow>
+            )}
+            {!task.last_run_at && !task.next_fire_at && !task.last_error && (
+              <p className="text-xs italic text-(--color-text-muted)">No runs yet.</p>
+            )}
+            {task.last_error && (
+              <div className="pt-1">
+                <span className="text-xs text-(--color-text-muted)">Last Error</span>
+                <p className="mt-1 rounded-md border border-(--color-error) bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error) whitespace-pre-wrap">
+                  {task.last_error}
                 </p>
               </div>
-              {task.session_id && (
-                <div>
-                  <span className="text-sm text-(--color-text-muted)">Session ID</span>
-                  <p className="mt-1 rounded-lg bg-(--color-surface-2) px-3 py-2 text-sm text-(--color-text) break-all font-mono">
-                    {task.session_id}
-                  </p>
-                </div>
-              )}
-            </div>
+            )}
           </div>
+        </section>
 
-          {/* Run history section */}
-          <div>
-            <h3 className="text-sm font-semibold text-(--color-text)">Run History</h3>
-            <div className="mt-2 space-y-2">
-              {task.last_run_at && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-(--color-text-muted)">Last Run</span>
-                  <span className="text-sm text-(--color-text)">
-                    {formatRelativeDate(task.last_run_at)}
-                  </span>
-                </div>
-              )}
-              {task.next_fire_at && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-(--color-text-muted)">Next Fire</span>
-                  <span className="text-sm text-(--color-text)">
-                    {formatRelativeDate(task.next_fire_at)}
-                  </span>
-                </div>
-              )}
-              {task.last_error && (
-                <div>
-                  <span className="text-sm text-(--color-text-muted)">Last Error</span>
-                  <p className="mt-1 rounded-lg bg-(--color-error-subtle) px-3 py-2 text-sm text-(--color-error) whitespace-pre-wrap">
-                    {task.last_error}
-                  </p>
-                </div>
-              )}
-            </div>
+        <section className="border-t border-(--color-border) px-5 py-3">
+          <div className="space-y-1 text-[11px] text-(--color-text-muted)">
+            <div>Created: {formatRelativeDate(task.created_at)}</div>
+            <div>Updated: {formatRelativeDate(task.updated_at)}</div>
           </div>
-
-          {/* Timestamps */}
-          <div className="border-t border-(--color-border) pt-4">
-            <div className="space-y-2 text-xs text-(--color-text-muted)">
-              <div>Created: {formatRelativeDate(task.created_at)}</div>
-              <div>Updated: {formatRelativeDate(task.updated_at)}</div>
-            </div>
-          </div>
-        </div>
+        </section>
       </div>
+    </div>
+  )
+}
+
+// Compact label/value row used throughout the detail view.
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs text-(--color-text-muted)">{label}</span>
+      {children}
     </div>
   )
 }
@@ -884,21 +983,26 @@ function EditTaskForm({
   return (
     <div className="flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-(--color-border) px-6 py-4">
-        <div className="flex items-center justify-between gap-4">
+      <div className="border-b border-(--color-border) px-5 py-4">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Pencil size={18} className="text-(--color-accent)" />
-            <h2 className="text-lg font-semibold text-(--color-text)">Edit Task</h2>
+            <h2 className="text-base font-semibold text-(--color-text)">Edit Task</h2>
           </div>
-          <Button variant="ghost" size="icon-sm" onClick={onCancel} title="Cancel">
+          <button
+            onClick={onCancel}
+            className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+            aria-label="Cancel edit"
+            title="Cancel"
+          >
             <X size={16} />
-          </Button>
+          </button>
         </div>
         <p className="mt-1 text-sm text-(--color-text-muted)">{task.name}</p>
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto p-6">
+      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto px-5 py-4">
         <div className="space-y-4">
           {/* Agent */}
           <div>
@@ -907,10 +1011,10 @@ function EditTaskForm({
               value={formData.agent ?? ''}
               onValueChange={(v) => { if (v) setFormData({ ...formData, agent: v }) }}
             >
-              <SelectTrigger className="mt-1 w-full">
+              <SelectTrigger className={`mt-1 w-full ${FIELD_CLASS}`}>
                 <SelectValue placeholder="Select agent" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className={SELECT_CONTENT_CLASS}>
                 {agents.map((agent) => (
                   <SelectItem key={agent.name} value={agent.name}>
                     {agent.name}
@@ -923,19 +1027,10 @@ function EditTaskForm({
           {/* Schedule Type */}
           <div>
             <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
-            <Tabs
+            <ScheduleTypeSegmented
               value={formData.schedule_type}
-              onValueChange={(v) =>
-                setFormData({ ...formData, schedule_type: v as ScheduledTaskCreate['schedule_type'] })
-              }
-              className="mt-2"
-            >
-              <TabsList className="w-full">
-                <TabsTrigger value="every" className="flex-1">Every</TabsTrigger>
-                <TabsTrigger value="cron" className="flex-1">Cron</TabsTrigger>
-                <TabsTrigger value="at" className="flex-1">At</TabsTrigger>
-              </TabsList>
-            </Tabs>
+              onChange={(v) => setFormData({ ...formData, schedule_type: v })}
+            />
           </div>
 
           {/* Schedule value (conditional) */}
@@ -948,13 +1043,14 @@ function EditTaskForm({
                     <DateTimePicker
                       value={formData.at_datetime ?? ''}
                       onChange={(v) => setFormData({ ...formData, at_datetime: v })}
+                      triggerClassName="bg-(--bg-page) hover:bg-(--bg-page)"
                     />
                   </div>
                 </div>
                 <div className="w-44 shrink-0">
                   <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
                   <Input
-                    className="mt-1"
+                    className={`mt-1 ${FIELD_CLASS}`}
                     value={formData.timezone}
                     onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
                     placeholder={localTz}
@@ -969,7 +1065,7 @@ function EditTaskForm({
             <div>
               <label className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
               <Input
-                className="mt-1"
+                className={`mt-1 ${FIELD_CLASS}`}
                 type="number"
                 min="1"
                 value={formData.every_seconds ?? 3600}
@@ -987,7 +1083,7 @@ function EditTaskForm({
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
                   <Input
-                    className="mt-1"
+                    className={`mt-1 ${FIELD_CLASS}`}
                     value={formData.cron_expression ?? ''}
                     onChange={(e) => setFormData({ ...formData, cron_expression: e.target.value })}
                     placeholder="e.g., 0 9 * * MON-FRI"
@@ -996,7 +1092,7 @@ function EditTaskForm({
                 <div className="w-44 shrink-0">
                   <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
                   <Input
-                    className="mt-1"
+                    className={`mt-1 ${FIELD_CLASS}`}
                     value={formData.timezone}
                     onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
                     placeholder={localTz}
@@ -1011,7 +1107,7 @@ function EditTaskForm({
           <div>
             <label className="block text-sm font-medium text-(--color-text)">Prompt</label>
             <Textarea
-              className="mt-1"
+              className={`mt-1 ${FIELD_CLASS}`}
               value={formData.prompt}
               onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
               placeholder="What should the agent do?"
@@ -1023,7 +1119,7 @@ function EditTaskForm({
           <div>
             <label className="block text-sm font-medium text-(--color-text)">Session ID (optional)</label>
             <Input
-              className="mt-1"
+              className={`mt-1 ${FIELD_CLASS}`}
               value={formData.session_id ?? ''}
               onChange={(e) => setFormData({ ...formData, session_id: e.target.value || undefined })}
               placeholder="Leave blank for new session, or enter 'auto'"

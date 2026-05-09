@@ -20,12 +20,12 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
   return (
     <div className="flex flex-col gap-5">
       {sampled && (
-        <div className="flex items-start gap-2 rounded-lg border border-(--color-border) bg-(--color-accent-subtle)/40 p-3">
+        <div className="flex items-start gap-2 rounded-lg border border-(--color-border) bg-(--bg-key)/40 p-3">
           <Info size={14} className="mt-0.5 shrink-0 text-(--color-accent)" />
           <p className="text-xs text-(--color-text-2)">
             Spans are sampled at <strong>{Math.round(data.sample_ratio * 100)}%</strong>.
             Figures for non-error, non-slow spans are approximate. Set{' '}
-            <code className="rounded bg-(--color-surface) px-1 py-0.5 text-[10px]">
+            <code className="rounded bg-(--bg-card) px-1 py-0.5 text-[10px]">
               OTEL_SPAN_SAMPLE_RATIO=1.0
             </code>{' '}
             to disable sampling.
@@ -94,7 +94,7 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
               t.tool,
               formatInt(t.calls),
               t.errors > 0 ? (
-                <span className="text-(--color-danger)">{formatInt(t.errors)}</span>
+                <span className="text-(--color-error)">{formatInt(t.errors)}</span>
               ) : (
                 '0'
               ),

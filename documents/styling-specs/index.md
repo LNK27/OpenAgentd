@@ -2,7 +2,7 @@
 title: OpenAgentd Styling
 description: Design-system reference for OpenAgentd brand assets, tokens, components, interaction, and motion
 status: stable
-updated: 2026-04-21
+updated: 2026-05-09
 ---
 
 # OpenAgentd Styling
@@ -15,11 +15,12 @@ Design-system reference for OpenAgentd. Brand assets, tokens, components, intera
 
 | | |
 |---|---|
-| **Palette** | Octobot Agent — warm gold/orange brand pigments on disciplined neutral UI surfaces |
-| **Type** | Geist Variable (UI/body) + JetBrains Mono (code) |
-| **Modes** | Dark-first, light-equal — both designed with equal care |
+| **Aesthetic** | Warm paper notebook — cream surfaces, hand-drawn headlines, calm utility chrome |
+| **Palette** | Octobot brand pigments on a warm `#FAF6EC` paper background; pastel agent chips for role identity |
+| **Type** | Inter (UI/body) + JetBrains Mono (code) + Caveat (handwritten headlines) |
+| **Modes** | Light-first paper, dark-equal — both rendered with equal care |
 | **Motion** | Motion is information; every animation conveys state, progress, or causality |
-| **Token prefix** | `--color-*` (codebase migration from `--color-jb-*` pending) |
+| **Token prefix** | `--color-*`, `--accent-*`, `--bg-*`, `--fg-*`, `--font-*`, `--radius-*` |
 
 ---
 
@@ -27,11 +28,19 @@ Design-system reference for OpenAgentd. Brand assets, tokens, components, intera
 
 | | |
 |---|---|
-| [Colors](./colors.md) | Octobot Agent palette, UI tokens for both modes, state colors, syntax highlighting, chart colors |
-| [Typography](./typography.md) | Geist Variable, JetBrains Mono, type scale, font-weight transitions |
+| [Colors](./colors.md) | Paper palette, agent-chip palette, semantic tokens, marker palette for charts, light/dark theme variables |
+| [Typography](./typography.md) | Inter, JetBrains Mono, Caveat hand-drawn headlines, type scale, font-weight transitions |
 | [Motion](./motion.md) | Motion tokens, spring presets, choreography patterns, reduced-motion fallbacks |
 | [Interaction](./interaction.md) | Hover / focus / active model, keyboard shortcuts, state choreography |
-| [Layout](./layout.md) | 4px grid, breakpoints, depth mechanism, accessibility |
-| [Logo](./logo.md) | Source-faithful octobot mascot, lockups, sizing, asset delivery |
-| [Imagery](./imagery.md) | Octobot mascot usage, icons (lucide), charts (Recharts), screenshots, patterns |
-| [Applications](./applications.md) | Component examples in both modes, theme toggle, design-token export |
+| [Layout](./layout.md) | 4px grid, breakpoints, radius scale, depth, accessibility |
+| [Logo](./logo.md) | Source-faithful Octobot mascot, lockups, sizing, asset delivery |
+| [Imagery](./imagery.md) | Octobot mascot usage, icons (lucide), charts, screenshots, patterns |
+| [Applications](./applications.md) | Component guidelines — agent chips, sidebar, input bar, tool call rows, modals, topbar, popovers, empty states |
+
+---
+
+## What changed in this revision
+
+The styling system was previously specified for a cool zinc/Geist neutral aesthetic with reserved Octobot gold accents. The pencil source design has since converged on a **warm paper notebook** language — cream surfaces (`#FAF6EC`), Caveat handwritten screen headlines, Inter UI, and a four-color **agent chip palette** that gives each agent role a recognizable pastel identity (mint for `openagentd`, blue for `executor`, orange for `consultant`, pink for `explorer`).
+
+Codebase migration from previous token names (`--color-jb-*`, zinc neutrals) to the paper tokens is tracked separately.

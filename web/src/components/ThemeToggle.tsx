@@ -1,7 +1,8 @@
 /**
  * ThemeToggle — three-way preference control (System / Light / Dark).
  *
- * Expanded: segmented control with all three options visible.
+ * Expanded: segmented control of three icon-only buttons. Labels live on
+ * `aria-label` and `title` only — same density rule as `ViewToggle`.
  * Collapsed: single icon button showing the current preference; click cycles
  * `system -> light -> dark -> system`.
  */
@@ -37,7 +38,7 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
         onClick={() => setPreference(NEXT[preference])}
         title={`Theme: ${current.label} (click to cycle)`}
         aria-label={`Theme: ${current.label}. Click to cycle.`}
-        className="interactive-weight flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+        className="interactive-weight flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
       >
         <Icon size={14} />
       </button>
@@ -48,7 +49,7 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
     <div
       role="radiogroup"
       aria-label="Theme preference"
-      className="flex items-center gap-0.5 rounded-lg border border-(--color-border) bg-(--color-bg) p-0.5"
+      className="inline-flex items-center overflow-hidden rounded-md border border-(--color-border-subtle) p-0.5"
     >
       {OPTIONS.map(({ value, label, Icon }) => {
         const active = preference === value
@@ -58,16 +59,16 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
             type="button"
             role="radio"
             aria-checked={active}
-            onClick={() => setPreference(value)}
+            aria-label={label}
             title={label}
-            className={`interactive-weight flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+            onClick={() => setPreference(value)}
+            className={`interactive-weight inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors ${
               active
-                ? 'bg-(--color-accent-subtle) text-(--color-text)'
-                : 'text-(--color-text-muted) hover:text-(--color-text)'
+                ? 'bg-(--color-surface-2) text-(--color-text)'
+                : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)'
             }`}
           >
-            <Icon size={12} />
-            <span>{label}</span>
+            <Icon size={14} aria-hidden="true" />
           </button>
         )
       })}

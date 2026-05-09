@@ -117,42 +117,47 @@ describe('Todos Popover - Sorting Logic', () => {
 })
 
 // ── Status Icon Mapping ────────────────────────────────────────────────────
+//
+// The popover now renders lucide icons (Check / X / Play / Circle)
+// instead of unicode glyphs so the visuals scale and theme cleanly
+// alongside the rest of the design system. We assert by component
+// identity — referentially comparing the lucide components imported
+// from the same module the production code uses.
 
-/**
- * Maps todo status to its display icon.
- * Extracted as a pure function for testability.
- */
-function getStatusIcon(status: TodoItem['status']): string {
-  const icons: Record<TodoItem['status'], string> = {
-    completed: '✓',
-    cancelled: '✗',
-    in_progress: '▶',
-    pending: '○',
+import { Check, Circle, Play, X } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+
+function getStatusIcon(status: TodoItem['status']): LucideIcon {
+  const icons: Record<TodoItem['status'], LucideIcon> = {
+    completed: Check,
+    cancelled: X,
+    in_progress: Play,
+    pending: Circle,
   }
   return icons[status]
 }
 
 describe('Todos Popover - Status Icon Mapping', () => {
-  it('maps completed status to checkmark', () => {
-    expect(getStatusIcon('completed')).toBe('✓')
+  it('maps completed status to a tick icon', () => {
+    expect(getStatusIcon('completed')).toBe(Check)
   })
 
-  it('maps cancelled status to X', () => {
-    expect(getStatusIcon('cancelled')).toBe('✗')
+  it('maps cancelled status to an X icon', () => {
+    expect(getStatusIcon('cancelled')).toBe(X)
   })
 
-  it('maps in_progress status to play symbol', () => {
-    expect(getStatusIcon('in_progress')).toBe('▶')
+  it('maps in_progress status to a play icon', () => {
+    expect(getStatusIcon('in_progress')).toBe(Play)
   })
 
-  it('maps pending status to circle', () => {
-    expect(getStatusIcon('pending')).toBe('○')
+  it('maps pending status to a circle icon', () => {
+    expect(getStatusIcon('pending')).toBe(Circle)
   })
 
   it('returns correct icon for all statuses', () => {
     const statuses: TodoItem['status'][] = ['completed', 'cancelled', 'in_progress', 'pending']
     const icons = statuses.map(getStatusIcon)
-    expect(icons).toEqual(['✓', '✗', '▶', '○'])
+    expect(icons).toEqual([Check, X, Play, Circle])
   })
 })
 
@@ -331,7 +336,7 @@ function getPriorityBadgeClass(priority: TodoItem['priority']): string {
     return 'bg-red-500/10 text-red-500'
   }
   if (priority === 'low') {
-    return 'bg-(--color-accent-dim) text-(--color-text-subtle)'
+    return 'bg-(--bg-key) text-(--color-text-subtle)'
   }
   // medium
   return 'bg-amber-500/10 text-amber-500'
@@ -352,7 +357,7 @@ describe('Todos Popover - Priority Badge Styling', () => {
 
   it('applies accent styling for low priority', () => {
     const classes = getPriorityBadgeClass('low')
-    expect(classes).toContain('bg-(--color-accent-dim)')
+    expect(classes).toContain('bg-(--bg-key)')
     expect(classes).toContain('text-(--color-text-subtle)')
   })
 
@@ -362,7 +367,9 @@ describe('Todos Popover - Priority Badge Styling', () => {
     expect(classes).toHaveLength(3)
     expect(classes[0]).toContain('red')
     expect(classes[1]).toContain('amber')
-    expect(classes[2]).toContain('accent')
+    // Low priority uses paper neutrals (--bg-key + --color-text-subtle)
+    // rather than a marker accent.
+    expect(classes[2]).toContain('bg-(--bg-key)')
   })
 })
 

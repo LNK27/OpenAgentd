@@ -64,14 +64,14 @@ function LightboxIconButton({
     <div className="group relative">
       <button
         onClick={onClick}
-        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg bg-(--color-surface) text-(--color-text) transition-colors hover:bg-(--color-surface-2) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none"
+        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none"
         aria-label={label}
       >
         {icon}
       </button>
       <span
         role="tooltip"
-        className="pointer-events-none absolute top-full right-0 mt-2 whitespace-nowrap rounded-md bg-(--color-surface-2) px-2 py-1 text-xs text-(--color-text) opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="pointer-events-none absolute top-full right-0 mt-2 whitespace-nowrap rounded-md bg-(--bg-key) px-2 py-1 text-xs text-(--color-text) opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {tooltip}
       </span>

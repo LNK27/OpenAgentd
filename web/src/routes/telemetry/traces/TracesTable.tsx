@@ -27,10 +27,10 @@ export function TracesTable({
   // giving fresh labels whenever the table unmounts/remounts on refetch.
   const [now] = useState(() => Date.now())
   return (
-    <div className="overflow-x-auto rounded-lg border border-(--color-border) bg-(--color-surface)">
+    <div className="overflow-x-auto rounded-lg border border-(--color-border) bg-(--bg-card)">
       <table className="min-w-[640px] w-full text-xs">
         <thead>
-          <tr className="border-b border-(--color-border) bg-(--color-surface-2)">
+          <tr className="border-b border-(--color-border) bg-(--bg-key)">
             <Th>When</Th>
             <Th>Session</Th>
             <Th>Agent</Th>
@@ -48,7 +48,7 @@ export function TracesTable({
             <tr
               key={t.trace_id}
               onClick={() => onSelect(t.trace_id)}
-              className="cursor-pointer border-b border-(--color-border) transition-colors last:border-b-0 hover:bg-(--color-accent-subtle)/40"
+              className="cursor-pointer border-b border-(--color-border) transition-colors last:border-b-0 hover:bg-(--bg-key)/40"
             >
               <Td>
                 <span title={new Date(t.start_ms).toLocaleString()}>
@@ -68,7 +68,7 @@ export function TracesTable({
               </Td>
               <Td align="right">
                 {t.error ? (
-                  <span className="rounded bg-(--color-danger-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--color-danger)">
+                  <span className="rounded bg-(--color-error-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--color-error)">
                     error
                   </span>
                 ) : (

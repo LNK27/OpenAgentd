@@ -121,19 +121,18 @@ export function MultiSelect({
             aria-haspopup="listbox"
             tabIndex={0}
             className={cn(
-              'flex min-h-8 w-full cursor-text flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-1.5 py-1 text-sm transition-colors outline-none',
-              'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-              'aria-expanded:border-ring',
-              'dark:bg-input/30',
+              'flex min-h-8 w-full cursor-text flex-wrap items-center gap-1 rounded-lg border border-(--color-border) bg-(--bg-input) px-1.5 py-1 text-sm text-(--color-text) transition-colors outline-none',
+              'focus-visible:border-(--focus-ring) focus-visible:ring-3 focus-visible:ring-(--focus-ring)/50',
+              'aria-expanded:border-(--focus-ring)',
             )}
           >
             {value.length === 0 && (
-              <span className="px-1.5 text-muted-foreground">{placeholder}</span>
+              <span className="px-1.5 text-(--color-text-muted)">{placeholder}</span>
             )}
             {value.map((v) => (
               <span
                 key={v}
-                className="flex items-center gap-1 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground"
+                className="flex items-center gap-1 rounded-sm bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs text-(--color-text)"
               >
                 {v}
                 <button
@@ -147,7 +146,7 @@ export function MultiSelect({
                     remove(v)
                   }}
                   aria-label={`Remove ${v}`}
-                  className="text-muted-foreground transition-colors hover:text-foreground"
+                  className="text-(--color-text-muted) transition-colors hover:text-(--color-text)"
                 >
                   <X size={11} />
                 </button>
@@ -155,7 +154,7 @@ export function MultiSelect({
             ))}
             <ChevronDown
               size={14}
-              className="ml-auto shrink-0 self-center text-muted-foreground"
+              className="ml-auto shrink-0 self-center text-(--color-text-muted)"
               aria-hidden="true"
             />
           </div>
@@ -166,8 +165,8 @@ export function MultiSelect({
         sideOffset={4}
         className="w-[--anchor-width] min-w-72 max-w-[28rem] p-0"
       >
-        <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
-          <Search size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+        <div className="flex items-center gap-2 border-b border-(--color-border) px-2.5 py-2">
+          <Search size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
           <input
             id={searchId}
             ref={searchRef}
@@ -176,10 +175,10 @@ export function MultiSelect({
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKey}
             placeholder="Search…"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            className="flex-1 bg-transparent text-sm text-(--color-text) outline-none placeholder:text-(--color-text-muted)"
             aria-label="Search options"
           />
-          <span className="shrink-0 text-[11px] text-muted-foreground">
+          <span className="shrink-0 text-[11px] text-(--color-text-muted)">
             {filtered.length}/{options.length}
           </span>
         </div>
@@ -189,7 +188,7 @@ export function MultiSelect({
           className="max-h-64 overflow-y-auto py-1"
         >
           {filtered.length === 0 ? (
-            <li className="px-3 py-4 text-center text-sm text-muted-foreground">
+            <li className="px-3 py-4 text-center text-sm text-(--color-text-muted)">
               {emptyLabel}
             </li>
           ) : (
@@ -211,26 +210,26 @@ export function MultiSelect({
                     onMouseEnter={() => setHighlight(i)}
                     className={cn(
                       'flex w-full items-start gap-2 px-2.5 py-1.5 text-left transition-colors',
-                      isHi && 'bg-muted',
+                      isHi && 'bg-(--bg-key)',
                     )}
                   >
                     <span
                       className={cn(
-                        'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border text-foreground transition-colors',
+                        'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors',
                         isSel
-                          ? 'border-foreground bg-foreground text-background'
-                          : 'border-input',
+                          ? 'border-(--color-text) bg-(--color-text) text-(--bg-page)'
+                          : 'border-(--color-border) text-(--color-text)',
                       )}
                       aria-hidden="true"
                     >
                       {isSel && <Check size={10} strokeWidth={3} />}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-mono text-xs text-foreground">
+                      <p className="truncate font-mono text-xs text-(--color-text)">
                         {o.label}
                       </p>
                       {o.description && (
-                        <p className="truncate text-[11px] text-muted-foreground">
+                        <p className="truncate text-[11px] text-(--color-text-muted)">
                           {o.description}
                         </p>
                       )}

@@ -106,25 +106,14 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
            </div>
          )}
 
-         <div className="relative rounded-2xl rounded-br-sm bg-(--color-accent) px-4 py-2.5 text-sm leading-relaxed text-(--color-bg) overflow-hidden">
+         <div className="relative overflow-hidden rounded-md border border-(--color-border) bg-(--color-surface) px-4 py-3 text-sm leading-relaxed text-(--color-text)">
            {/* Expand / collapse button — top-right inside bubble */}
            {needsCollapse && (
              <button
                onClick={() => setExpanded((v) => !v)}
                aria-expanded={expanded}
                title={expanded ? 'Collapse' : 'Expand'}
-               className={[
-                 'absolute top-1.5 right-1.5',
-                 'flex items-center justify-center shrink-0',
-                 'rounded-md',
-                 'h-5 w-5',
-                 'transition-all duration-150',
-                 'active:scale-90',
-               ].join(' ')}
-               style={{
-                 background: 'rgba(0,0,0,0.15)',
-                 color: 'var(--color-bg)',
-               }}
+               className="absolute top-1.5 right-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
              >
                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
              </button>
@@ -136,7 +125,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
                className="pointer-events-none absolute inset-x-0 bottom-0"
                style={{
                  height: '2.4rem',
-                 background: 'linear-gradient(to bottom, transparent 0%, var(--color-accent) 90%)',
+                 background: 'linear-gradient(to bottom, transparent 0%, var(--color-surface) 90%)',
                }}
              />
            )}
@@ -283,9 +272,21 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-4 py-6">
         {isEmpty && (
-           <div className="flex flex-col items-center justify-center gap-3 py-16">
-             <img src={OctobotMascot} className="opacity-25 grayscale" width={72} height={72} alt="Idle octobot" />
-             <p className="text-sm text-(--color-text-subtle)">Waiting for your first message…</p>
+           <div className="flex flex-col items-center justify-center gap-4 py-16">
+             <img
+               src={OctobotMascot}
+               className="opacity-90"
+               width={120}
+               height={120}
+               alt=""
+               aria-hidden="true"
+             />
+             <h2 className="font-hand text-4xl font-bold text-(--color-text)">
+               what&rsquo;s on your mind?
+             </h2>
+             <p className="text-sm text-(--color-text-muted)">
+               Waiting for your first message
+             </p>
            </div>
          )}
 
@@ -359,7 +360,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     {showScrollBtn && (
       <button
         onClick={() => scrollToBottom(true)}
-        className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--color-surface) p-1.5 text-(--color-text-muted) shadow-sm transition-colors hover:text-(--color-text-2)"
+        className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--bg-card) p-1.5 text-(--color-text-muted) shadow-sm transition-colors hover:text-(--color-text-2)"
         aria-label="Scroll to bottom"
       >
         <ChevronDown size={14} />

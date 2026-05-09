@@ -19,14 +19,14 @@ export function PageHeader({
   right: React.ReactNode
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-(--color-border) bg-(--color-surface-2) px-4">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) px-4">
       <div className="flex min-w-0 items-center gap-3">
         <Link
           to="/"
-          className="flex items-center gap-2.5 overflow-hidden rounded-md p-1 -ml-1 transition-colors hover:bg-(--color-accent-subtle)"
+          className="flex items-center gap-2.5 overflow-hidden rounded-md p-1 -ml-1 transition-colors hover:bg-(--bg-key)"
           title="Home"
         >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--color-accent-subtle) ring-1 ring-(--color-border-strong)">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--bg-key) ring-1 ring-(--color-border-strong)">
             <img src={OpenAgentdAppIcon} width={28} height={28} alt="OpenAgentd logo" className="rounded-md" />
           </div>
           <span className="text-sm font-semibold text-(--color-text)">Telemetry</span>
@@ -66,9 +66,9 @@ export function ErrorState({
   onRetry: () => void
 }) {
   return (
-    <div className="rounded-xl border border-(--color-danger-subtle) bg-(--color-danger-subtle)/30 p-5">
+    <div className="rounded-xl border border-(--color-error-subtle) bg-(--color-error-subtle)/30 p-5">
       <div className="flex items-start gap-3">
-        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-(--color-danger)" />
+        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-(--color-error)" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-(--color-text)">
             Could not load observability data
@@ -76,7 +76,7 @@ export function ErrorState({
           <p className="mt-1 text-xs text-(--color-text-muted)">{message}</p>
           <button
             onClick={onRetry}
-            className="mt-3 rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--color-accent-subtle)"
+            className="mt-3 rounded-md border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--bg-key)"
           >
             Retry
           </button>

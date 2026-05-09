@@ -7,11 +7,13 @@ import type { ToolCallState } from './types'
 
 export function StatusDot({ state }: { state: ToolCallState }) {
   const cls =
-    state === 'pending'
+    state === 'start'
       ? 'bg-(--color-text-muted)'
       : state === 'running'
-        ? 'bg-(--color-accent) shadow-[0_0_5px_var(--color-accent)] animate-pulse'
-        : 'bg-(--color-success)'
+        ? 'animate-pulse bg-(--color-marker-orange) shadow-[0_0_5px_var(--color-marker-orange)]'
+        : state === 'failed'
+          ? 'bg-(--color-error)'
+          : 'bg-(--color-success)'
   return (
     <span
       className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${cls}`}

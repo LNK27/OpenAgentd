@@ -141,10 +141,10 @@ export function CodeBlock({ children, rawText }: { children: React.ReactNode; ra
   }
 
   return (
-    <div className="surface-raised group relative my-2 overflow-hidden rounded-xl border border-(--color-border) bg-(--color-surface)">
+    <div className="surface-raised group relative my-2 overflow-hidden rounded-xl border border-(--color-border) bg-(--bg-card)">
       <button
         onClick={handleCopy}
-        className="absolute right-2 top-2 z-10 rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--color-accent-subtle) hover:text-(--color-text-2) md:opacity-0 md:group-hover:opacity-100"
+        className="absolute right-2 top-2 z-10 rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) md:opacity-0 md:group-hover:opacity-100"
         aria-label="Copy code"
         title="Copy"
       >
@@ -241,7 +241,7 @@ const MarkdownVideo = memo(function MarkdownVideo({
   if (errored) {
     return (
       <span
-        className="my-2 inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs text-(--color-text-muted)"
+        className="my-2 inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
         title={alt || 'Video unavailable'}
       >
         <FileVideo size={14} />
@@ -302,7 +302,7 @@ function MarkdownImage({
   if (!src || errored) {
     return (
       <span
-        className="my-2 inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs text-(--color-text-muted)"
+        className="my-2 inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
         title={alt || 'Image unavailable'}
       >
         <ImageOff size={14} />

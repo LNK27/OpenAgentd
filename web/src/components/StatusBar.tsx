@@ -17,7 +17,7 @@ export function StatusBar({
   usage,
 }: StatusBarProps) {
   return (
-    <div className="flex items-center justify-between border-t border-(--color-border) bg-(--color-bg) px-4 py-1 text-xs text-(--color-text-subtle)">
+    <div className="flex items-center justify-between border-t border-(--color-border) bg-(--bg-page) px-4 py-1 text-xs text-(--color-text-subtle)">
       {/* Left: session ID */}
       <div className="flex items-center gap-2">
          {sessionId && (

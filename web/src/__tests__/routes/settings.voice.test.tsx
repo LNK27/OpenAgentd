@@ -103,7 +103,7 @@ describe('VoiceSettingsPage', () => {
 
     const modelInput = await screen.findByLabelText('Model ID') as HTMLInputElement
     expect(modelInput.value).toBe('local:base')
-    expect((screen.getByRole('checkbox', { name: /enabled/i }) as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByRole('switch', { name: /enabled/i }).getAttribute('aria-checked')).toBe('false')
     expect(screen.getByRole('button', { name: /^save$/i }).hasAttribute('disabled')).toBe(true)
   })
 

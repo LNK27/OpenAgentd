@@ -1,11 +1,16 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource/caveat/400.css";
+@import "@fontsource/caveat/500.css";
+@import "@fontsource/caveat/600.css";
+@import "@fontsource/caveat/700.css";
 @import "highlight.js/styles/atom-one-dark.css";
 
 /* ─────────────────────────────────────────────────────────────
- * Silver Instrument — syntax highlighting (highlight.js)
+ * OpenAgentd — syntax highlighting (highlight.js)
  * Tokens are theme-aware via var() references.
  * ───────────────────────────────────────────────────────────── */
 .hljs {
@@ -49,9 +54,11 @@
  * ───────────────────────────────────────────────────────────── */
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', 'Courier New', monospace;
+    --font-hand: 'Caveat', 'Bradley Hand', cursive;
 
-    /* shadcn semantic tokens (mapped onto Silver Instrument) */
+    /* shadcn semantic tokens (mapped onto OpenAgentd paper tokens) */
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -83,70 +90,117 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+    --radius-xs: 6px;
+    --radius-sm: 8px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+    --radius-2xl: 24px;
+    --radius-3xl: 32px;
+    --radius-4xl: 40px;
 }
 
 /* ─────────────────────────────────────────────────────────────
- * Silver Instrument — design tokens
- * Dark mode is default. Light mode overrides via :root.light.
+ * OpenAgentd paper tokens — DARK override
+ * Light mode is canonical (defined on :root below).
  * Theme class is set on <html> before paint (see index.html).
  * ───────────────────────────────────────────────────────────── */
-:root,
 :root.dark {
     color-scheme: dark;
 
-    /* Foundation — surfaces */
-    --color-bg:            #0A0A0B;
-    --color-surface:       #111113;
-    --color-surface-2:     #18181B;
-    --color-surface-3:     #1F1F23;
-    --color-border:        #27272A;
-    --color-border-strong: #3F3F46;
+    /* Surfaces */
+    --bg-page:           #15110D;
+    --bg-sidebar:        #1C1813;
+    --bg-card:           #1C1813;
+    --bg-input:          #1C1813;
+    --bg-key:            #2A2219;
+    --bg-send:           #F5EBD8;
+    --color-surface:     #221C16;
+    --color-surface-2:   #2A2219;
+    --color-bg-elevated: #1C1813;
+
+    /* Borders */
+    --border-soft:         #2C231A;
+    --border-card:         #3A2F23;
+    --color-border-subtle: #2C231A;
+    --color-border:        #3A2F23;
+    --color-border-strong: #5C4B36;
 
     /* Text */
-    --color-text:          #FAFAFA;
-    --color-text-2:        #A1A1AA;
-    --color-text-muted:    #71717A;
-    --color-text-subtle:   #52525B;
+    --color-text:           #F5EBD8;
+    --color-text-2:         #C5B59A;
+    --color-text-muted:     #9C8A72;
+    --color-text-subtle:    #7A6B58;
+    --color-text-on-accent: #15110D;
+    --fg-primary:           #F5EBD8;
+    --fg-secondary:         #C5B59A;
+    --fg-muted:             #9C8A72;
 
-    /* Accent — max-contrast neutral (silver on dark) */
-    --color-accent:        #E4E4E7;
-    --color-accent-hover:  #F4F4F5;
-    --color-accent-subtle: rgba(228, 228, 231, 0.10);
-    --color-accent-dim:    rgba(228, 228, 231, 0.05);
-    --gradient-accent:     linear-gradient(180deg, #FAFAFA 0%, #D4D4D8 100%);
+    /* Accent (UI) */
+    --color-accent:  #F5EBD8;
+    --color-overlay: #00000099;
 
-    /* Semantic state (muted set for dark) */
-    --color-success:         #4ADE80;
-    --color-success-subtle:  rgba(74, 222, 128, 0.12);
-    --color-warning:         #FBBF24;
-    --color-warning-subtle:  rgba(251, 191, 36, 0.12);
-    --color-error:           #F87171;
-    --color-error-subtle:    rgba(248, 113, 113, 0.12);
-    --color-info:            #93C5FD;
-    --color-info-subtle:     rgba(147, 197, 253, 0.12);
+    /* Agent chips */
+    --accent-blue:        #7CC2F0;
+    --accent-blue-soft:   #1E3A52;
+    --accent-blue-text:   #9DD0F5;
+
+    --accent-green:       #5DC487;
+    --accent-green-soft:  #1F3A2A;
+    --accent-green-text:  #92E0B0;
+
+    --accent-orange:      #FDB75D;
+    --accent-orange-soft: #3D2D14;
+    --accent-orange-text: #FCC780;
+
+    --accent-pink:        #F472B6;
+    --accent-pink-soft:   #3D1F2D;
+
+    --accent-purple:      #A78BFA;
+    --accent-purple-soft: #2D2440;
+
+    --accent-red:         #F87171;
+
+    /* Markers (charts) */
+    --color-marker-blue:   #38BDF8;
+    --color-marker-mint:   #4ADE80;
+    --color-marker-orange: #FCC352;
+    --color-marker-pink:   #F472B6;
+    --color-marker-yellow: #FBBF24;
+    --color-violet:        #A78BFA;
+    --color-tint-mint:     rgba(74, 222, 128, 0.15);
+    --color-tint-orange:   rgba(252, 195, 82, 0.15);
+    --color-tint-violet:   rgba(167, 139, 250, 0.15);
+
+    /* Semantic state (re-use chip palette so the system stays small) */
+    --color-success:        var(--accent-green);
+    --color-success-subtle: var(--accent-green-soft);
+    --color-warning:        var(--accent-orange);
+    --color-warning-subtle: var(--accent-orange-soft);
+    --color-error:          #F87171;
+    --color-error-subtle:   rgba(248, 113, 113, 0.12);
+    --color-info:           var(--accent-blue);
+    --color-info-subtle:    var(--accent-blue-soft);
 
     /* Syntax highlighting */
-    --color-syn-comment:   #71717A;
-    --color-syn-keyword:   #C4B5FD;
-    --color-syn-function:  #93C5FD;
-    --color-syn-variable:  #F87171;
-    --color-syn-string:    #86EFAC;
-    --color-syn-number:    #FBBF24;
-    --color-syn-type:      #FCD34D;
-    --color-syn-operator:  #A1A1AA;
+    --color-syn-comment:  #9C8A72;
+    --color-syn-keyword:  #A78BFA;
+    --color-syn-function: #38BDF8;
+    --color-syn-variable: #F87171;
+    --color-syn-string:   #4ADE80;
+    --color-syn-number:   #FBBF24;
+    --color-syn-type:     #FCC780;
+    --color-syn-operator: #C5B59A;
 
-    /* Depth & focus */
-    --focus-ring:          #E4E4E7;
-    --shadow-depth:        none;
+    /* Depth & focus
+     * Focus ring uses --accent-blue rather than --color-accent because the
+     * paper accent is near-black (light) / near-white (dark), so a ring
+     * derived from it reads as a hard rectangle. Blue gives the standard
+     * focus affordance while staying inside the brand palette. */
+    --focus-ring:   var(--accent-blue);
+    --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
 
-    /* Motion — durations (theme-invariant, defined once on dark root) */
+    /* Motion — durations */
     --motion-instant: 80ms;
     --motion-fast:    150ms;
     --motion-base:    240ms;
@@ -160,92 +214,136 @@
     --ease-spring-snappy: cubic-bezier(0.22, 1.4, 0.36, 1);
     --ease-linear:        linear;
 
-    /* shadcn base tokens (map to Silver Instrument) */
-    --background:              var(--color-bg);
-    --foreground:              var(--color-text);
-    --card:                    var(--color-surface-2);
-    --card-foreground:         var(--color-text);
-    --popover:                 var(--color-surface);
-    --popover-foreground:      var(--color-text);
-    --primary:                 var(--color-accent);
-    --primary-foreground:      var(--color-bg);
-    --secondary:               var(--color-surface-2);
-    --secondary-foreground:    var(--color-text);
-    --muted:                   var(--color-surface-2);
-    --muted-foreground:        var(--color-text-muted);
-    --accent:                  var(--color-accent-subtle);
-    --accent-foreground:       var(--color-text);
-    --destructive:             var(--color-error);
-    --border:                  var(--color-border);
-    --input:                   var(--color-border);
-    --ring:                    var(--focus-ring);
-    --radius:                  0.5rem;
-    --sidebar:                 var(--color-surface);
-    --sidebar-foreground:      var(--color-text);
-    --sidebar-primary:         var(--color-accent);
-    --sidebar-primary-foreground: var(--color-bg);
-    --sidebar-accent:          var(--color-surface-2);
-    --sidebar-accent-foreground: var(--color-text);
-    --sidebar-border:          var(--color-border);
-    --sidebar-ring:            var(--focus-ring);
-    --chart-1:                 #93C5FD;
-    --chart-2:                 #86EFAC;
-    --chart-3:                 #FCD34D;
-    --chart-4:                 #C4B5FD;
-    --chart-5:                 #F9A8D4;
+    /* shadcn base tokens (map to OpenAgentd paper tokens) */
+    --background:                 var(--bg-page);
+    --foreground:                 var(--color-text);
+    --card:                       var(--bg-card);
+    --card-foreground:            var(--color-text);
+    --popover:                    var(--bg-card);
+    --popover-foreground:         var(--color-text);
+    --primary:                    var(--color-accent);
+    --primary-foreground:         var(--bg-page);
+    --secondary:                  var(--bg-key);
+    --secondary-foreground:       var(--color-text);
+    --muted:                      var(--bg-key);
+    --muted-foreground:           var(--color-text-muted);
+    --accent:                     var(--bg-key);
+    --accent-foreground:          var(--color-text);
+    --destructive:                var(--color-error);
+    --border:                     var(--color-border);
+    --input:                      var(--color-border);
+    --ring:                       var(--focus-ring);
+    --radius:                     0.5rem;
+    --sidebar:                    var(--bg-sidebar);
+    --sidebar-foreground:         var(--color-text);
+    --sidebar-primary:            var(--color-accent);
+    --sidebar-primary-foreground: var(--bg-page);
+    --sidebar-accent:             var(--bg-key);
+    --sidebar-accent-foreground:  var(--color-text);
+    --sidebar-border:             var(--border-soft);
+    --sidebar-ring:               var(--focus-ring);
+    --chart-1:                    var(--color-marker-blue);
+    --chart-2:                    var(--color-marker-mint);
+    --chart-3:                    var(--color-marker-orange);
+    --chart-4:                    var(--color-violet);
+    --chart-5:                    var(--color-marker-pink);
 }
 
 /* ─────────────────────────────────────────────────────────────
- * Light mode — graphite accent, shadows provide depth
+ * Light mode — warm paper, canonical default. Applies to bare :root
+ * and to :root.light (explicit user pick).
  * ───────────────────────────────────────────────────────────── */
+:root,
 :root.light {
     color-scheme: light;
 
-    --color-bg:            #FAFAFA;
-    --color-surface:       #FFFFFF;
-    --color-surface-2:     #F4F4F5;
-    --color-surface-3:     #E4E4E7;
-    --color-border:        #E4E4E7;
-    --color-border-strong: #D4D4D8;
+    /* Surfaces */
+    --bg-page:           #FAF6EC;
+    --bg-sidebar:        #F5EFDD;
+    --bg-card:           #FFFBF1;
+    --bg-input:          #FAF6EC;
+    --bg-key:            #F0E9D4;
+    --bg-send:           #2D241B;
+    --color-surface:     #FFFDF7;
+    --color-surface-2:   #F5EBD8;
+    --color-bg-elevated: #FFFDF7;
 
-    --color-text:          #09090B;
-    --color-text-2:        #52525B;
-    --color-text-muted:    #71717A;
-    --color-text-subtle:   #A1A1AA;
+    /* Borders */
+    --border-soft:         #E8DFC6;
+    --border-card:         #E0D5B7;
+    --color-border-subtle: #E8DCC2;
+    --color-border:        #D7C7AA;
+    --color-border-strong: #A89880;
 
-    --color-accent:        #27272A;
-    --color-accent-hover:  #18181B;
-    --color-accent-subtle: rgba(39, 39, 42, 0.06);
-    --color-accent-dim:    rgba(39, 39, 42, 0.03);
-    --gradient-accent:     linear-gradient(180deg, #3F3F46 0%, #18181B 100%);
+    /* Text */
+    --color-text:           #1A1714;
+    --color-text-2:         #5F5143;
+    --color-text-muted:     #7A6B58;
+    --color-text-subtle:    #A89880;
+    --color-text-on-accent: #FFFDF7;
+    --fg-primary:           #1F1A14;
+    --fg-secondary:         #6B6253;
+    --fg-muted:             #9A9080;
 
-    --color-success:         #16A34A;
-    --color-success-subtle:  rgba(22, 163, 74, 0.10);
-    --color-warning:         #D97706;
-    --color-warning-subtle:  rgba(217, 119, 6, 0.10);
-    --color-error:           #DC2626;
-    --color-error-subtle:    rgba(220, 38, 38, 0.08);
-    --color-info:            #2563EB;
-    --color-info-subtle:     rgba(37, 99, 235, 0.08);
+    /* Accent (UI) */
+    --color-accent:  #3F3429;
+    --color-overlay: rgba(26, 23, 20, 0.40);
 
-    --color-syn-comment:   #71717A;
-    --color-syn-keyword:   #7C3AED;
-    --color-syn-function:  #2563EB;
-    --color-syn-variable:  #DC2626;
-    --color-syn-string:    #16A34A;
-    --color-syn-number:    #D97706;
-    --color-syn-type:      #B45309;
-    --color-syn-operator:  #52525B;
+    /* Agent chips */
+    --accent-blue:        #5AA8E2;
+    --accent-blue-soft:   #DCEEFB;
+    --accent-blue-text:   #2D6FA8;
 
-    --focus-ring:          #18181B;
-    --shadow-depth:        0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+    --accent-green:       #3DA66A;
+    --accent-green-soft:  #E2F2E5;
+    --accent-green-text:  #2D7A4F;
 
-    /* Light-mode chart spectrum (bumped -600 shades for AA on white) */
-    --chart-1: #2563EB;
-    --chart-2: #16A34A;
-    --chart-3: #D97706;
-    --chart-4: #7C3AED;
-    --chart-5: #DB2777;
+    --accent-orange:      #F59E3B;
+    --accent-orange-soft: #FFF1D8;
+    --accent-orange-text: #C26A1E;
+
+    --accent-pink:        #E63D7A;
+    --accent-pink-soft:   #FBE0EB;
+
+    --accent-purple:      #7C5BCF;
+    --accent-purple-soft: #E8DEF8;
+
+    --accent-red:         #C8333E;
+
+    /* Markers (charts) */
+    --color-marker-blue:   #0284C7;
+    --color-marker-mint:   #16A34A;
+    --color-marker-orange: #FA8030;
+    --color-marker-pink:   #DB2777;
+    --color-marker-yellow: #B77900;
+    --color-violet:        #7C3AED;
+    --color-tint-mint:     rgba(22, 163, 74, 0.10);
+    --color-tint-orange:   rgba(250, 128, 48, 0.10);
+    --color-tint-violet:   rgba(124, 58, 237, 0.10);
+
+    /* Semantic */
+    --color-success:        var(--accent-green);
+    --color-success-subtle: var(--accent-green-soft);
+    --color-warning:        var(--accent-orange);
+    --color-warning-subtle: var(--accent-orange-soft);
+    --color-error:          #B91C1C;
+    --color-error-subtle:   rgba(185, 28, 28, 0.08);
+    --color-info:           var(--accent-blue);
+    --color-info-subtle:    var(--accent-blue-soft);
+
+    /* Syntax */
+    --color-syn-comment:  #7A6B58;
+    --color-syn-keyword:  #7C3AED;
+    --color-syn-function: #0284C7;
+    --color-syn-variable: #B91C1C;
+    --color-syn-string:   #16A34A;
+    --color-syn-number:   #B77900;
+    --color-syn-type:     #C26A1E;
+    --color-syn-operator: #5F5143;
+
+    /* Focus + depth (see dark-mode comment) */
+    --focus-ring:   var(--accent-blue);
+    --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 @layer base {
@@ -322,8 +420,8 @@
   top: -40px;
   left: 0;
   padding: 8px 16px;
-  background: var(--color-accent);
-  color: var(--color-bg);
+  background: var(--bg-send);
+  color: var(--color-text-on-accent);
   z-index: 100;
   transition: top var(--motion-fast) var(--ease-out);
 }
@@ -379,9 +477,9 @@
 
 /* ─────────────────────────────────────────────────────────────
  * Raised surface — cards, panels, grouped containers.
- * Dark: `--shadow-depth` is `none`; brightness carries elevation.
- * Light: real shadow (surfaces are all near-white, brightness can't).
- * Apply to elements that sit one layer above `bg`.
+ * Both modes use the same shadow+border treatment because the
+ * warm dark palette is too compressed for brightness-only depth.
+ * Apply to elements that sit one layer above `bg-page`.
  * ───────────────────────────────────────────────────────────── */
 .surface-raised {
   box-shadow: var(--shadow-depth);
@@ -389,7 +487,7 @@
 
 /* ─────────────────────────────────────────────────────────────
  * Font-weight transition — signature interaction.
- * Apply to buttons, nav items, tabs, menu items. Not prose.
+ * Apply to buttons, nav items, tabs, menu items. Not prose. Not Caveat.
  * ───────────────────────────────────────────────────────────── */
 .interactive-weight {
   font-weight: 400;
@@ -456,12 +554,12 @@
 }
 .oa-prose li { margin-bottom: 0.25em; }
 .oa-prose code {
-  background: var(--color-surface-2);
+  background: var(--bg-key);
   border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 0.15em 0.4em;
   font-size: 0.85em;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: var(--color-syn-string);
 }
 .oa-prose pre {
@@ -490,7 +588,7 @@
   transition: text-decoration-color 120ms ease, color 120ms ease;
 }
 .oa-prose a:hover {
-  color: var(--color-accent-hover, var(--color-accent));
+  color: var(--color-accent);
   text-decoration-color: currentColor;
 }
 .oa-prose a:focus-visible {
@@ -521,7 +619,7 @@
 }
 .oa-prose th {
   color: var(--color-text-2);
-  background: var(--color-surface-2);
+  background: var(--bg-key);
 }
 .oa-prose strong { color: var(--color-text); font-weight: 600; }
-.oa-prose em     { color: var(--color-syn-keyword); }
+.oa-prose em     { color: var(--color-text-2); font-style: italic; }

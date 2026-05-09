@@ -88,10 +88,10 @@ export function AgentEditorPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl p-6">
           {isLoading && (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <p className="text-sm text-(--color-text-muted)">Loading…</p>
           )}
           {isError && (
-            <p className="text-sm text-destructive">Failed to load: {String(error)}</p>
+            <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>
           )}
           {data && (
             <AgentForm
@@ -104,7 +104,7 @@ export function AgentEditorPage() {
             />
           )}
           {dirty && (
-            <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="mt-4 flex items-center gap-2 text-xs text-(--color-text-muted)">
               <Button
                 variant="ghost"
                 size="xs"

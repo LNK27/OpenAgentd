@@ -81,19 +81,19 @@ export function SandboxSettingsPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
+      <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
         {isMobile && (
           <Link
             to="/settings"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             aria-label="Back to settings"
           >
             <ArrowLeft size={14} />
           </Link>
         )}
-        <h1 className="flex-1 truncate text-sm font-semibold">Sandbox</h1>
+        <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Sandbox</h1>
         {dirty && (
-          <span className="text-xs text-muted-foreground" aria-live="polite">
+          <span className="text-xs text-(--color-text-muted)" aria-live="polite">
             Unsaved
           </span>
         )}
@@ -109,23 +109,23 @@ export function SandboxSettingsPage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-5 p-6">
-          <p className="text-sm leading-relaxed text-muted-foreground">
+          <p className="text-sm leading-relaxed text-(--color-text-muted)">
             Glob patterns matched against the resolved absolute path. Use{' '}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">**</code>{' '}
+            <code className="rounded bg-(--bg-key) px-1 py-0.5 font-mono text-xs">**</code>{' '}
             for any depth and{' '}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">*</code>{' '}
+            <code className="rounded bg-(--bg-key) px-1 py-0.5 font-mono text-xs">*</code>{' '}
             for one path segment. The agent&rsquo;s workspace and shared memory
             are always reachable, even when a pattern would otherwise match.{' '}
             <SandboxHelpPopover />
           </p>
 
           {isLoading && (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <p className="text-sm text-(--color-text-muted)">Loading…</p>
           )}
 
           {error && (
             <div
-              className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-xs text-destructive"
+              className="flex items-start gap-2 rounded-lg bg-(--color-error-subtle) p-3 text-xs text-(--color-error)"
               role="alert"
             >
               <AlertCircle size={13} aria-hidden="true" className="mt-0.5" />
@@ -136,9 +136,9 @@ export function SandboxSettingsPage() {
           {!isLoading && !error && (
             <>
               {patterns.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border p-10 text-center">
-                  <p className="text-sm font-medium">No patterns</p>
-                  <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+                <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-(--color-border) p-10 text-center">
+                  <p className="text-sm font-medium text-(--color-text)">No patterns</p>
+                  <p className="max-w-sm text-xs leading-relaxed text-(--color-text-muted)">
                     Agents have unrestricted filesystem access (apart from the
                     built-in DB / state / cache denial). Add a pattern below to
                     block files like <code className="font-mono">.env</code> or
@@ -223,7 +223,7 @@ function SandboxHelpPopover() {
         render={
           <button
             type="button"
-            className="inline-flex items-center gap-0.5 rounded text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+            className="inline-flex items-center gap-0.5 rounded text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40"
           >
             See examples
             <ChevronDown
@@ -241,17 +241,17 @@ function SandboxHelpPopover() {
         <ul className="flex flex-col gap-1.5">
           {EXAMPLES.map((ex) => (
             <li key={ex.pattern} className="flex flex-col gap-0.5">
-              <code className="self-start rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+              <code className="self-start rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text)">
                 {ex.pattern}
               </code>
-              <span className="text-[11px] leading-snug text-muted-foreground">
+              <span className="text-[11px] leading-snug text-(--color-text-muted)">
                 {ex.description}
               </span>
             </li>
           ))}
         </ul>
 
-        <p className="border-t border-border pt-2 text-[11px] leading-snug text-muted-foreground">
+        <p className="border-t border-(--color-border) pt-2 text-[11px] leading-snug text-(--color-text-muted)">
           Built-in DB / state / cache paths are always denied; matching is
           logical-OR across patterns &mdash; one match blocks access.
         </p>

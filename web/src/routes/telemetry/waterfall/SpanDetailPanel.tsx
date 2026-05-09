@@ -30,14 +30,14 @@ export function SpanDetailPanel({
   const tokens = useMemo(() => extractTokens(span.attributes), [span.attributes])
 
   return (
-    <aside className={`flex shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--color-surface-2) ${fullWidth ? 'w-full' : 'w-96'}`}>
+    <aside className={`flex shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-key) ${fullWidth ? 'w-full' : 'w-96'}`}>
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-(--color-border) px-4">
         <h3 className="truncate text-sm font-semibold text-(--color-text)" title={span.name}>
           {span.name}
         </h3>
         <button
           onClick={onClose}
-          className="flex h-6 w-6 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text)"
+          className="flex h-6 w-6 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
           aria-label="Close span detail"
         >
           <X size={14} />
@@ -50,7 +50,7 @@ export function SpanDetailPanel({
             label="Status"
             value={
               span.status === 'ERROR' ? (
-                <span className="text-(--color-danger)">{span.status}</span>
+                <span className="text-(--color-error)">{span.status}</span>
               ) : (
                 span.status || 'OK'
               )
@@ -75,7 +75,7 @@ export function SpanDetailPanel({
               {tokens.map((t) => (
                 <div
                   key={t.label}
-                  className="rounded-md border border-(--color-border) bg-(--color-surface) p-2"
+                  className="rounded-md border border-(--color-border) bg-(--bg-card) p-2"
                 >
                   <p className="text-[9px] uppercase tracking-wide text-(--color-text-muted)">
                     {t.label}
@@ -95,7 +95,7 @@ export function SpanDetailPanel({
         {attrs.length === 0 ? (
           <p className="text-xs text-(--color-text-muted)">No attributes.</p>
         ) : (
-          <dl className="flex flex-col divide-y divide-(--color-border) rounded-md border border-(--color-border) bg-(--color-surface) text-[11px]">
+          <dl className="flex flex-col divide-y divide-(--color-border) rounded-md border border-(--color-border) bg-(--bg-card) text-[11px]">
             {attrs.map(([key, value]) => (
               <div key={key} className="flex flex-col gap-0.5 px-3 py-2">
                 <dt className="font-medium text-(--color-text-muted)">{key}</dt>

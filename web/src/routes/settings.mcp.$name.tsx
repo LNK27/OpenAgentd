@@ -117,10 +117,10 @@ export function McpServerDetailPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-4 p-6">
           {serverQ.isLoading && (
-            <p className="text-sm text-muted-foreground">Loading server…</p>
+            <p className="text-sm text-(--color-text-muted)">Loading server…</p>
           )}
           {serverQ.isError && (
-            <p className="text-sm text-destructive">
+            <p className="text-sm text-(--color-error)">
               Failed to load: {String(serverQ.error)}
             </p>
           )}
@@ -130,15 +130,15 @@ export function McpServerDetailPage() {
               <StatusCard server={server} />
 
               {server.state === 'error' && server.error && (
-                <Card size="sm" className="border-destructive/40 bg-destructive/5">
+                <Card size="sm" className="border-(--color-error)/40 bg-(--color-error-subtle)">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <AlertCircle size={14} className="text-destructive" />
+                    <CardTitle className="flex items-center gap-2 text-(--color-error)">
+                      <AlertCircle size={14} className="text-(--color-error)" />
                       Runtime error
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="font-mono text-xs text-destructive">{server.error}</p>
+                    <p className="font-mono text-xs text-(--color-error)">{server.error}</p>
                   </CardContent>
                 </Card>
               )}
@@ -154,7 +154,7 @@ export function McpServerDetailPage() {
               ) : (
                 <Card size="sm">
                   <CardContent className="pt-4">
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-(--color-text-muted)">
                       No saved configuration found. The server may have been removed
                       from <span className="font-mono">mcp.json</span>.
                     </p>
@@ -163,7 +163,7 @@ export function McpServerDetailPage() {
               )}
 
               {dirty && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 text-xs text-(--color-text-muted)">
                   <Button
                     variant="ghost"
                     size="xs"
@@ -212,12 +212,12 @@ function StatusCard({
           <span
             className={
               server.state === 'ready'
-                ? 'text-green-600 dark:text-green-500'
+                ? 'text-(--accent-green)'
                 : server.state === 'starting'
-                  ? 'text-yellow-600 dark:text-yellow-500'
+                  ? 'text-(--accent-orange)'
                   : server.state === 'error'
-                    ? 'text-destructive'
-                    : 'text-muted-foreground'
+                    ? 'text-(--color-error)'
+                    : 'text-(--color-text-muted)'
             }
           >
             {server.state}
@@ -233,14 +233,14 @@ function StatusCard({
 
         {server.tool_names.length > 0 && (
           <div className="sm:col-span-2">
-            <p className="mb-1.5 text-xs font-medium text-foreground">
+            <p className="mb-1.5 text-xs font-medium text-(--color-text)">
               Tools ({server.tool_names.length})
             </p>
             <div className="flex flex-wrap gap-1">
               {server.tool_names.map((tool) => (
                 <span
                   key={tool}
-                  className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                  className="rounded-md bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text-muted)"
                 >
                   {tool}
                 </span>
@@ -256,8 +256,8 @@ function StatusCard({
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className="font-medium text-foreground">{children}</span>
+      <span className="text-[11px] text-(--color-text-muted)">{label}</span>
+      <span className="font-medium text-(--color-text)">{children}</span>
     </div>
   )
 }
@@ -293,7 +293,7 @@ function RestartCard({
           {pending ? 'Restarting…' : 'Restart'}
         </Button>
         {!enabled && (
-          <p className="mt-2 text-[11px] text-muted-foreground">
+          <p className="mt-2 text-[11px] text-(--color-text-muted)">
             Server is disabled — enable and save first to restart.
           </p>
         )}

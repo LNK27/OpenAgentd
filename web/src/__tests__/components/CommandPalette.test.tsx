@@ -153,7 +153,7 @@ describe("CommandPalette", () => {
     await user.keyboard("{ArrowDown}")
 
     // Second item (idx=1) should now be active (has accent-subtle bg)
-    const activeItems = container.querySelectorAll("[class*='bg-(--color-accent-subtle)']")
+    const activeItems = container.querySelectorAll("[class*='bg-(--bg-key)']")
     expect(activeItems.length).toBeGreaterThan(0)
   })
 

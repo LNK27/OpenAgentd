@@ -49,12 +49,13 @@ function SettingsNavCard({ to, icon: Icon, title, description, count, countLabel
     <Link
       to={to}
       className={cn(
-        'group flex items-center gap-4 rounded-xl border border-border bg-card/40 p-4 transition-all',
-        'hover:border-border/80 hover:bg-card focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40',
+        'group flex items-center gap-4 rounded-xl border border-(--color-border) bg-(--bg-card) p-4 text-(--color-text) transition-colors',
+        'hover:border-(--color-border-strong) hover:bg-(--color-surface)',
+        'focus-visible:border-(--focus-ring) focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
       )}
     >
       <span
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground ring-1 ring-border transition-colors group-hover:text-foreground"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border) transition-colors group-hover:text-(--color-text)"
         aria-hidden="true"
       >
         <Icon size={18} />
@@ -62,17 +63,17 @@ function SettingsNavCard({ to, icon: Icon, title, description, count, countLabel
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold">{title}</span>
-          <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+          <span className="truncate text-sm font-semibold text-(--color-text)">{title}</span>
+          <span className="rounded-md bg-(--bg-key) px-2 py-0.5 font-mono text-[10px] tabular-nums text-(--color-text-muted)">
             {count === null ? '–' : count} {countLabel}
           </span>
         </div>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">{description}</p>
+        <p className="mt-0.5 truncate text-xs text-(--color-text-muted)">{description}</p>
       </div>
 
       <ChevronRight
         size={16}
-        className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+        className="shrink-0 text-(--color-text-muted) transition-transform group-hover:translate-x-0.5 group-hover:text-(--color-text)"
         aria-hidden="true"
       />
     </Link>
@@ -125,7 +126,7 @@ export function SystemUpdateCard() {
   }
 
   return (
-    <Card size="sm" className="border-border bg-card/40">
+    <Card size="sm" className="border-(--color-border) bg-(--bg-card)">
       <CardHeader className="gap-2 sm:grid-cols-[1fr_auto]">
         <div>
           <CardTitle>Application update</CardTitle>
@@ -145,21 +146,21 @@ export function SystemUpdateCard() {
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground ring-1 ring-border/70">
+        <div className="rounded-lg bg-(--bg-key) p-3 text-xs text-(--color-text-muted) ring-1 ring-(--color-border)">
           <div className="flex flex-wrap items-center gap-2">
             <span>Current version:</span>
-            <span className="font-mono text-foreground">
+            <span className="font-mono text-(--color-text)">
               {currentVersion ? `v${currentVersion}` : 'Not checked'}
             </span>
             {status?.latest_version && (
               <>
                 <span>Latest:</span>
-                <span className="font-mono text-foreground">v{status.latest_version}</span>
+                <span className="font-mono text-(--color-text)">v{status.latest_version}</span>
               </>
             )}
           </div>
           {updateQ.error && (
-            <p className="mt-2 text-destructive">
+            <p className="mt-2 text-(--color-error)">
               {updateQ.error instanceof Error ? updateQ.error.message : String(updateQ.error)}
             </p>
           )}
@@ -169,8 +170,8 @@ export function SystemUpdateCard() {
         </div>
 
         {status?.update_available && (
-          <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-medium text-foreground">
+          <div className="flex flex-col gap-2 rounded-lg border border-(--accent-blue)/30 bg-(--accent-blue-soft) p-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-medium text-(--color-text)">
               New update v{status.latest_version} is available.
             </p>
             <Button
@@ -190,7 +191,7 @@ export function SystemUpdateCard() {
 
 function SectionHeader({ children }: { children: string }) {
   return (
-    <h2 className="mb-2 px-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+    <h2 className="mb-2 px-1 text-[11px] font-medium tracking-wider text-(--color-text-muted) uppercase">
       {children}
     </h2>
   )
@@ -219,20 +220,20 @@ export function SettingsHubPage() {
             <Link
               to="/cockpit"
               aria-label="Back to chat"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             >
               <ArrowLeft size={16} aria-hidden="true" />
             </Link>
           )}
           <span
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-muted-foreground ring-1 ring-border"
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
             aria-hidden="true"
           >
             <SettingsIcon size={18} />
           </span>
           <div>
-            <h1 className="text-lg font-semibold">Settings</h1>
-            <p className="text-xs text-muted-foreground">
+            <h1 className="text-lg font-semibold text-(--color-text)">Settings</h1>
+            <p className="text-xs text-(--color-text-muted)">
               Configure your workspace and the agents that run in it.
             </p>
           </div>

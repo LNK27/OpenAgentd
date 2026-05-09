@@ -1,8 +1,8 @@
 ---
 title: Layout & Spacing
-description: 4px grid system, breakpoints, depth mechanism, focus rings, accessibility
+description: 4px grid, breakpoints, radius scale, depth on warm paper surfaces, focus rings, accessibility
 status: stable
-updated: 2026-04-29
+updated: 2026-05-09
 ---
 
 # Layout & Spacing
@@ -45,7 +45,7 @@ All spacing is a multiple of 4px.
 
 **`md` is the mobile/desktop split.** `useIsMobile()` returns `true` when `window.innerWidth < 768px`. For JS-driven layout branches always use this hook rather than raw CSS breakpoints. CSS `md:` utilities are fine for purely visual changes; use the hook when the branch affects behaviour (panel mode, shortcut availability, etc.).
 
-**Avoid `lg:` or larger inside panels and drawers.** A panel's own width is narrower than the viewport, so `lg:` (1024px viewport) will never fire when the panel is open on a mobile screen. Use `isMobile` branches instead — see [`docs/web/mobile.md`](../docs/web/mobile.md).
+**Avoid `lg:` or larger inside panels and drawers.** A panel's own width is narrower than the viewport, so `lg:` (1024px viewport) will never fire when the panel is open on a mobile screen. Use a viewport-aware mobile flag for any layout branch that affects behavior; reserve CSS-only breakpoints for purely visual changes inside panels.
 
 ---
 
@@ -64,56 +64,50 @@ All spacing is a multiple of 4px.
 
 ### Spacing application
 
-```tsx
-// Button — small component
-<button className="px-3 py-2">Label</button>
+- Buttons sit at the small step (`md` token). Cards sit at the standard step (`lg` token). Sections sit at the large step (`xl` token).
+- Sibling gap inside a row matches the small/medium step depending on density. Grid gap between cards matches the cards' own scale step.
+- Vertical rhythm between paragraph blocks uses the medium step; between major sections uses the large step.
 
-// Card — medium component
-<div className="p-4">…</div>
+Pick step sizes by walking up the scale together. A row gap should never be smaller than the parent's padding; section spacing should never be smaller than the section's internal padding.
 
-// Section — large component
-<section className="p-6">…</section>
+---
 
-// Flex gap between siblings
-<div className="flex gap-3">{items}</div>
+## Radius scale
 
-// Grid gap
-<div className="grid grid-cols-3 gap-4">{cards}</div>
+The paper aesthetic is generous with rounding. Cards and the input bar sit at `--radius-lg` or larger; raw rectangles are reserved for code blocks and dense table cells. **Full pills (`rounded-full` on text-bearing elements) are reserved for circular dots, avatars, progress-bar endcaps, and other shapes whose visual job is *to be circular*.** Agent chips, role toggles, and status badges use `--radius-md` so they read as soft-cornered tags, not pharmacy capsules.
 
-// Vertical rhythm
-<div className="space-y-4">{paragraphs}</div>
-```
+| Token | Value | Usage |
+|---|---|---|
+| `--radius-xs` | 6px | Inline code, tiny chips |
+| `--radius-sm` | 8px | Small buttons, table cells |
+| `--radius-md` | 10px | Standard inputs, secondary buttons, **agent chips, role toggles, status badges** |
+| `--radius-lg` | 14px | Cards, popovers, message bubbles, sidebar items |
+| `--radius-2xl` | 24px | Input bar, hero CTAs |
+
+Pick a radius for the family the component belongs to, not for visual taste. Cards that visually feel like a button still get the card radius, and vice-versa — the family is the rule.
 
 ---
 
 ## Depth mechanism
 
-Perceived depth works differently in each mode because the foundational colors are different.
+Both modes use a subtle `box-shadow` plus a `border` to create hierarchy. Unlike a cool zinc theme where brightness steps alone could carry depth, the warm paper palette compresses surface differences too tightly for brightness to do the work — `--bg-page` (`#FAF6EC`) and `--bg-card` (`#FFFBF1`) are only one shade apart by design. The shadow restores the layer separation; the border keeps the card's edge crisp.
 
-| Mode | Mechanism | Reason |
-|------|-----------|--------|
-| **Dark** | Brightness steps between `bg` → `surface` → `surface-2` → `surface-3` | Shadows are invisible on near-black. Brightness creates the layer hierarchy. |
-| **Light** | `box-shadow` via `var(--shadow-depth)` | Surfaces are all near-white, so brightness can't differentiate layers. Shadow does the work. |
+| Mode | Mechanism |
+|---|---|
+| **Light** | Warm-neutral surfaces sit close in value; `var(--shadow-depth)` adds a soft outer drop, and `var(--color-border)` defines the edge. |
+| **Dark** | Dark warm surfaces are also close in value; a slightly deeper shadow + a warm-toned border do the same job. |
 
-```css
-.card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  /* Active only in light mode — empty string in dark */
-  box-shadow: var(--shadow-depth);
-}
-```
+The card composition is canonical: `--bg-card` fill, `--color-border` 1px outline, the radius for the card family, and `--shadow-depth` only when the surface genuinely floats. Flat cards on the page surface skip the shadow — the border alone carries them.
 
 ### Elevation levels
 
-| Level | Dark mode | Light mode |
-|-------|-----------|------------|
-| Ground | `bg` | `bg` |
-| Raised | `surface` | `surface` + `shadow-depth` |
-| Floating | `surface-2` | `surface` + stronger shadow (`0 4px 12px rgba(0,0,0,0.06)`) |
-| Glass | `surface-2 / 20%` + `backdrop-blur-xl` + `shadow-xl` | `surface / 60%` + `backdrop-blur-xl` + `shadow-xl` |
-| Modal | `surface-2` + backdrop | `surface` + heavy shadow (`0 16px 48px rgba(0,0,0,0.12)`) + backdrop |
+| Level | Light mode | Dark mode |
+|---|---|---|
+| Ground | `--bg-page` | `--bg-page` |
+| Raised | `--bg-card` + `--shadow-depth` | `--bg-card` + `--shadow-depth` |
+| Floating | `--color-surface` + stronger shadow (`0 4px 12px rgba(0,0,0,0.06)`) | `--color-surface` + stronger shadow (`0 4px 12px rgba(0,0,0,0.35)`) |
+| Glass | `--bg-card / 60%` + `backdrop-blur-xl` + `shadow-xl` | `--bg-card / 30%` + `backdrop-blur-xl` + `shadow-xl` |
+| Modal | `--bg-card` + heavy shadow (`0 16px 48px rgba(0,0,0,0.12)`) + `--color-overlay` backdrop | `--bg-card` + heavier shadow (`0 16px 48px rgba(0,0,0,0.5)`) + `--color-overlay` backdrop |
 
 **Glass tier** is reserved for overlay surfaces that hover *above live content* — the floating chat composer is the canonical example. Unlike `Floating`, it is deliberately translucent: the backdrop blur is load-bearing, and the surface tint is kept low so the content underneath reads as "behind glass". Use sparingly — one glass surface per view, maximum.
 
@@ -127,7 +121,7 @@ Focus states are the single most important accessibility affordance. Every inter
 
 - **Width**: 2px
 - **Offset**: 2px (outside the element)
-- **Color**: `var(--focus-ring)` — `#E4E4E7` on dark, `#18181B` on light
+- **Color**: `var(--focus-ring)` — resolves to `var(--color-accent)` (warm dark on light, cream on dark)
 - **Transition**: fade in via `var(--motion-fast)` + `var(--ease-out)`
 - **Radius**: matches the element's own `border-radius`
 
@@ -265,7 +259,7 @@ Full motion guidance in [motion.md](./motion.md).
 
 ## Mode switching
 
-Dark is the default; users can pick `system` / `light` / `dark` via a UI toggle.
+Light is the default (paper is the canonical surface); users can pick `system` / `light` / `dark` via a UI toggle.
 
 ### Implementation
 
@@ -280,11 +274,11 @@ Dark is the default; users can pick `system` / `light` / `dark` via a UI toggle.
       var stored = localStorage.getItem('theme'); // 'system' | 'light' | 'dark'
       var mode = stored || 'system';
       var resolved = mode === 'system'
-        ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
         : mode;
       document.documentElement.classList.add(resolved);
     } catch (_) {
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.add('light');
     }
   })();
 </script>
@@ -352,4 +346,5 @@ Panels with a side-by-side list + detail layout (MemoryPanel, WorkspaceFilesPane
 - [ ] `prefers-reduced-motion` honored
 - [ ] No keyboard traps (`Esc` always exits modals/menus)
 - [ ] Touch targets ≥ 44×44px
-- [ ] Depth uses brightness on dark, shadow on light
+- [ ] Depth uses `--shadow-depth` plus border on both modes
+- [ ] Radius scale (`--radius-*`) used — no magic px values

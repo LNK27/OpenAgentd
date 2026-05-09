@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
 import { ArrowUp, Loader2, Paperclip, Square } from 'lucide-react'
-import { ImageAttachment } from './ImageAttachment'
-import { FileCard } from './FileCard'
+import { motion } from 'framer-motion'
+import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
 import type { AgentCapabilities } from '@/api/types'
 
@@ -49,6 +49,32 @@ interface InputBarProps {
    * When true the mic button records, transcribes, and appends to input.
    */
   voiceEnabled?: boolean
+  /**
+   * When true, render the slim icon-only collapsed bar (pencil
+   * `inputBar-collapsed-bar`, node `PKjWT`) instead of the full pill.
+   * Clicking the bar's chat affordance calls `onUnminimize` so the
+   * parent can swap back to the full variant and focus the textarea.
+   */
+  minimized?: boolean
+  /** Called when the user clicks the collapsed bar to expand it. */
+  onUnminimize?: () => void
+  /** Forwarded to the textarea so the parent can drive minimize-on-blur. */
+  onFocus?: () => void
+  /**
+   * Fired when the textarea blurs. ``canMinimize`` is ``false`` when the
+   * input has uncommitted content (text or attachments) the user would
+   * lose visual access to if the bar collapsed; the parent should keep
+   * the bar expanded in that case.
+   */
+  onBlur?: (canMinimize: boolean) => void
+  /**
+   * Called whenever uncommitted content (text or attachments) appears or
+   * disappears. The parent uses this to keep the bar expanded when the
+   * user adds files via the minimized strip's attach button — without
+   * this signal, dropping a file while collapsed would leave the bar
+   * collapsed and the new file invisible.
+   */
+  onHasContentChange?: (hasContent: boolean) => void
 }
 
 export interface InputBarHandle {
@@ -72,6 +98,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   filesBelow = false,
   renderDragHandle,
   voiceEnabled = false,
+  minimized = false,
+  onUnminimize,
+  onFocus,
+  onBlur,
+  onHasContentChange,
 }, ref) {
   const [value, setValue] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -96,12 +127,53 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     }
   }, [blobUrls])
 
+  // ``isMultiLine`` is updated as a side-effect of ``resize`` rather
+  // than a separate effect, so the DOM measurement and the React
+  // state stay in lock-step (one render cycle, no cascade).
+  //
+  // Hysteresis on the promote/demote decision:
+  //   - Promote (false → true): textarea's scrollHeight exceeds one
+  //     line height. Record the value length at the moment of
+  //     promotion in ``promoteLengthRef``.
+  //   - Demote (true → false): only when the value has no newlines
+  //     AND its length is now ≤ 80% of the recorded promote-length.
+  //     The 20% guard band absorbs the layout feedback loop where
+  //     promoting widens the textarea (so the same content fits on
+  //     one line again) which would otherwise demote → re-promote.
+  const [isMultiLine, setIsMultiLine] = useState(false)
+  const promoteLengthRef = useRef(0)
   const resize = useCallback(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
     // max 6 rows ≈ 144px
     el.style.height = `${Math.min(el.scrollHeight, 144)}px`
+    const computed = window.getComputedStyle(el)
+    const lineHeight = parseFloat(computed.lineHeight) ||
+      parseFloat(computed.fontSize) * 1.5
+    const wrapped = el.scrollHeight > lineHeight * 1.4
+    const currentLen = el.value.length
+    const hasNewline = el.value.includes('\n')
+
+    setIsMultiLine((prev) => {
+      if (!prev && wrapped) {
+        // Promote: remember the length so we know when it's safe to
+        // demote later.
+        promoteLengthRef.current = currentLen
+        return true
+      }
+      if (prev && !wrapped && !hasNewline) {
+        // Demote candidate. Only commit if length has dropped clearly
+        // below the promote-length (80% threshold) — guards against
+        // the wrap-promote-rewrap loop in the boundary band.
+        const demoteThreshold = Math.floor(promoteLengthRef.current * 0.8)
+        if (currentLen <= demoteThreshold) {
+          promoteLengthRef.current = 0
+          return false
+        }
+      }
+      return prev
+    })
   }, [])
 
   useImperativeHandle(ref, () => ({
@@ -112,6 +184,30 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       requestAnimationFrame(resize)
     },
   }))
+
+  // Auto-focus the textarea whenever the bar transitions from
+  // minimized → expanded. The textarea is always mounted (visibility
+  // is opacity-driven, not mount-driven) so the ref is reliably
+  // populated; we just need to call ``.focus()`` at the transition.
+  const prevMinimizedRef = useRef(minimized)
+  useEffect(() => {
+    const wasMinimized = prevMinimizedRef.current
+    prevMinimizedRef.current = minimized
+    if (!wasMinimized || minimized) return
+    // ``rAF`` lets framer's parent ``layout`` tween start before
+    // focus, so the caret doesn't appear mid-morph at the wrong
+    // position.
+    const id = requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+    })
+    return () => cancelAnimationFrame(id)
+  }, [minimized])
+
+  // Plain ref now — no auto-focus-on-mount magic needed since the
+  // textarea never unmounts.
+  const setTextareaRef = useCallback((node: HTMLTextAreaElement | null) => {
+    textareaRef.current = node
+  }, [])
 
   const submit = useCallback(() => {
     const trimmed = value.trim()
@@ -302,67 +398,154 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const charCount = value.length
   const showCharCount = charCount > CHAR_WARN_THRESHOLD
 
+  // Surface "has uncommitted content" to the parent so a minimized bar
+  // can re-expand when the user attaches a file via the slim strip.
+  // Edge-triggered on the boolean — not on the underlying length values —
+  // so we only re-render the parent when crossing 0↔1.
+  const hasContent = hasText || files.length > 0
+  const lastHasContentRef = useRef(hasContent)
+  useEffect(() => {
+    if (lastHasContentRef.current !== hasContent) {
+      lastHasContentRef.current = hasContent
+      onHasContentChange?.(hasContent)
+    }
+  }, [hasContent, onHasContentChange])
+
   // Single-row, horizontally scrollable list so many attachments don't push
-  // the input off-screen vertically. `py-2`/`px-2` on the scroll container
-  // give the remove buttons (positioned at `-top-2`/`-right-2` on each
-  // card) room so they're not clipped by `overflow-x-auto` (which forces
-  // the y-axis to clip as well). `-mx-2 -my-2` on the outer wrapper
-  // neutralizes that padding so surrounding layout stays tight.
+  // the input off-screen vertically. The strip owns its own scroll-position
+  // hint (matches pencil's MultiAttachOverflow `attachmentScrollHint`).
   const filePreviews = files.length > 0 ? (
-    <div className={`${filesBelow ? 'mt-3' : 'mb-3'} -mx-2 -my-2`}>
-      <div className="overflow-x-auto px-2 py-2">
-        <div className="flex w-max flex-nowrap items-center gap-2">
-        {files.map((file, idx) => {
-          const isImage = file.type.startsWith('image/')
-          const blobUrl = blobUrls.get(idx) || ''
-
-          if (isImage) {
-            return (
-              <div key={idx} className="shrink-0">
-                <ImageAttachment
-                  src={blobUrl}
-                  alt={file.name}
-                  removable
-                  compact
-                  onRemove={() => removeFile(idx)}
-                />
-              </div>
-            )
-          }
-
-          return (
-            <div key={idx} className="shrink-0">
-              <FileCard
-                name={file.name}
-                mediaType={file.type}
-                removable
-                onRemove={() => removeFile(idx)}
-              />
-            </div>
-          )
-        })}
-        </div>
-      </div>
-    </div>
+    <FilePreviewStrip
+      files={files}
+      blobUrls={blobUrls}
+      onRemove={removeFile}
+      filesBelow={filesBelow}
+    />
   ) : null
 
-  return (
-    <div className={floating ? '' : 'border-t border-(--color-border) bg-(--color-bg) px-4 py-3'}>
-      <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
-        {/* File previews (above when docked at bottom) */}
-        {!filesBelow && filePreviews}
+  // Reusable pill button styles for the action row (attach, mic — pencil
+  // calls these `inputBarAttach`, `inputBarMic`: 32×32, rounded-sm border,
+  // --color-surface fill).
+  const actionBtnClass =
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
 
-        {/* Slash command menu — floating above the input */}
-        {slashMenuOpen && filteredSlashCommands.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 overflow-hidden rounded-lg border border-(--color-border) bg-(--color-surface-2) shadow-lg">
+  // Three states share one DOM tree: minimized, single-line, multi-line.
+  // Multi-line is triggered by the slot's flex-basis:100% which wraps the
+  // row so action buttons land on the line below — no DOM reordering.
+  const handleExpand = () => {
+    onUnminimize?.()
+  }
+  const stopClick = (e: React.MouseEvent) => e.stopPropagation()
+
+  const attachEl = (
+    <button
+      type="button"
+      onClick={(e) => { stopClick(e); fileInputRef.current?.click() }}
+      disabled={disabled}
+      aria-label="Attach file"
+      title="Attach file (paste or drag)"
+      className={actionBtnClass}
+    >
+      <Paperclip size={14} aria-hidden="true" />
+    </button>
+  )
+
+  const voiceEl = (
+    <div onClick={stopClick}>
+      <VoiceMicButton
+        voiceEnabled={voiceEnabled}
+        onTranscript={handleVoiceTranscript}
+        disabled={disabled}
+      />
+    </div>
+  )
+
+  // In minimized mode the send button expands the bar instead of submitting.
+  const sendOrStopEl = canStop && !hasText ? (
+    <button
+      type="button"
+      onClick={(e) => { stopClick(e); onStop?.() }}
+      aria-label="Stop generation"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition-colors hover:opacity-90"
+    >
+      <Square size={12} fill="currentColor" />
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={(e) => {
+        stopClick(e)
+        if (minimized) handleExpand()
+        else submit()
+      }}
+      disabled={!minimized && !canSend}
+      aria-label={minimized ? 'Expand input bar' : 'Send message'}
+      title={minimized ? 'Click to write' : 'Send (Enter) · New line (Shift+Enter) · Commands (/)'}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {disabled && !minimized ? (
+        <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+      ) : (
+        <ArrowUp size={14} aria-hidden="true" />
+      )}
+    </button>
+  )
+
+  // The textarea stays mounted while minimized (opacity + pointer-events
+  // toggle) so the ref stays valid and there's no remount flicker.
+  const messageSlot = (
+    <div
+      aria-hidden={minimized}
+      className={`flex w-full items-center transition-opacity duration-150 ${
+        minimized ? 'pointer-events-none opacity-0' : 'opacity-100'
+      }`}
+    >
+      <textarea
+        ref={setTextareaRef}
+        value={value}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        onFocus={onFocus}
+        onBlur={() => {
+          const canMinimize = value.trim().length === 0 && files.length === 0
+          onBlur?.(canMinimize)
+        }}
+        disabled={disabled || minimized}
+        placeholder={
+          minimized
+            ? ''
+            : disabled
+              ? 'Waiting for response…'
+              : isStreaming
+                ? 'Type /stop to interrupt, or click stop…'
+                : placeholder
+        }
+        rows={1}
+        autoFocus={autoFocus}
+        tabIndex={minimized ? -1 : 0}
+        className="w-full resize-none bg-transparent text-sm leading-relaxed text-(--color-text) placeholder-(--color-text-subtle) focus:outline-none disabled:opacity-50"
+        style={{ maxHeight: '144px' }}
+        aria-label="Message input"
+      />
+    </div>
+  )
+
+  return (
+    <div className={floating ? '' : 'border-t border-(--color-border) bg-(--bg-page) px-4 py-3'}>
+      <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
+        {!minimized && !filesBelow && filePreviews}
+
+        {!minimized && slashMenuOpen && filteredSlashCommands.length > 0 && (
+          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 overflow-hidden rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
             {filteredSlashCommands.map((cmd, idx) => (
               <button
                 key={cmd.id}
                 onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd) }}
                 className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
                   idx === clampedIndex
-                    ? 'bg-(--color-accent-subtle) text-(--color-text)'
-                    : 'text-(--color-text-muted) hover:bg-(--color-accent-dim)'
+                    ? 'bg-(--bg-key) text-(--color-text)'
+                    : 'text-(--color-text-muted) hover:bg-(--bg-key)'
                 }`}
               >
                 <span className="font-mono text-xs text-(--color-accent)">/{cmd.id}</span>
@@ -372,104 +555,68 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           </div>
         )}
 
-        {/* Input pill wrapper — anchors the drag handle to the input itself,
-            so it stays pinned to the pill regardless of file previews. */}
-        <div className="relative">
+        {/* ``flex justify-center`` centers the self-sized minimized pill. */}
+        <div className={`relative ${minimized ? 'flex justify-center' : ''}`}>
           {renderDragHandle?.()}
-
-        {/* Input container */}
-        <div
-          className={`relative flex items-center gap-2 rounded-2xl border border-(--color-border) px-4 py-2.5 transition-all focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent-subtle) ${
-            floating
-              ? 'bg-(--color-surface-2)/20 shadow-xl backdrop-blur-xl'
-              : 'bg-(--color-surface-2)'
-          }`}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-        >
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            disabled={disabled}
-            placeholder={
-              disabled
-                ? 'Waiting for response…'
-                : isStreaming
-                  ? 'Type /stop to interrupt, or click stop…'
-                  : placeholder
-            }
-            rows={1}
-            autoFocus={autoFocus}
-            className="flex-1 resize-none bg-transparent py-1 text-sm leading-relaxed text-(--color-text) placeholder-(--color-text-muted) focus:outline-none disabled:opacity-50"
-            style={{ maxHeight: '144px' }}
-            aria-label="Message input"
-          />
-
-          {/* Character count */}
-          {showCharCount && (
-            <span
-              className={`shrink-0 self-end pb-1 text-xs ${
-                charCount > 2000 ? 'text-(--color-error)' : 'text-(--color-text-muted)'
+          <motion.div
+            layout
+            initial={false}
+            animate={{ padding: minimized ? 6 : 14 }}
+            transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            className={`relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
+              minimized
+                ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
+                : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'
+            }`}
+          >
+            {/* Click-anywhere-to-expand on bare strip whitespace. Action
+                buttons call stopClick so they don't trigger this. No ARIA
+                role here — the Send button is the keyboard-accessible
+                "Expand input bar" affordance. */}
+            <div
+              onClick={minimized ? handleExpand : undefined}
+              className={`flex w-full flex-wrap items-center gap-2 ${
+                minimized ? 'cursor-text' : ''
               }`}
             >
-              {charCount}
-            </span>
-          )}
-
-          {/* Attachment button */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
-            aria-label="Attach file"
-            title="Attach file (paste or drag)"
-            className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text) disabled:opacity-25"
-          >
-            <Paperclip size={14} />
-          </button>
-
-          {/* Voice mic button */}
-          <VoiceMicButton
-            voiceEnabled={voiceEnabled}
-            onTranscript={handleVoiceTranscript}
-            disabled={disabled}
-          />
-
-          {/* Send / Stop button */}
-          {canStop && !hasText ? (
-            <button
-              onClick={onStop}
-              aria-label="Stop generation"
-              className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full bg-(--color-error) text-(--color-bg) shadow-sm transition-all hover:opacity-80 hover:shadow-md"
-            >
-              <Square size={12} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              onClick={submit}
-              disabled={!canSend}
-              aria-label="Send message"
-              title="Send (Enter) · New line (Shift+Enter) · Commands (/)"
-              className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full bg-(--color-accent) text-(--color-bg) shadow-sm transition-all hover:bg-(--color-accent-hover) hover:shadow-md disabled:cursor-not-allowed disabled:opacity-25"
-            >
-              {disabled ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <ArrowUp size={14} />
+              {attachEl}
+              {voiceEl}
+              {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's
+                  w-fit ↔ w-full. ``-ml-2`` absorbs the parent gap-2
+                  when collapsed. */}
+              <div
+                style={{
+                  flexBasis: !minimized && isMultiLine ? '100%' : undefined,
+                  order: !minimized && isMultiLine ? -1 : 0,
+                }}
+                className={`min-w-0 overflow-hidden ${
+                  minimized ? 'w-0 -ml-2' : 'flex-1'
+                }`}
+              >
+                {messageSlot}
+              </div>
+              {!minimized && showCharCount && (
+                <span
+                  className={`shrink-0 font-mono text-xs ${
+                    charCount > 2000 ? 'text-(--color-error)' : 'text-(--color-text-muted)'
+                  }`}
+                >
+                  {charCount}
+                </span>
               )}
-            </button>
-          )}
-        </div>
+              {/* Spacer pushes Send to the right edge in multi-line. */}
+              {!minimized && isMultiLine && <div className="flex-1" />}
+              {sendOrStopEl}
+            </div>
+          </motion.div>
         </div>
 
-        {/* File previews (below when floating near top) */}
-        {filesBelow && filePreviews}
+        {!minimized && filesBelow && filePreviews}
 
-        {/* Hidden file input */}
         <input
           ref={fileInputRef}
           type="file"

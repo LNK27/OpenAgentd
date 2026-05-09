@@ -23,13 +23,13 @@ export function Stat({
   tone?: 'danger'
 }) {
   return (
-    <div className="rounded-lg border border-(--color-border) bg-(--color-surface) p-3">
+    <div className="rounded-lg border border-(--color-border) bg-(--bg-card) p-3">
       <p className="text-[10px] uppercase tracking-wide text-(--color-text-muted)">
         {label}
       </p>
       <p
         className={`mt-1 text-lg font-semibold tabular-nums ${
-          tone === 'danger' ? 'text-(--color-danger)' : 'text-(--color-text)'
+          tone === 'danger' ? 'text-(--color-error)' : 'text-(--color-text)'
         }`}
       >
         {value}
@@ -50,10 +50,10 @@ export function Table({
   align: ('left' | 'right')[]
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-(--color-border) bg-(--color-surface)">
+    <div className="overflow-x-auto rounded-lg border border-(--color-border) bg-(--bg-card)">
       <table className="min-w-[360px] w-full text-xs">
         <thead>
-          <tr className="border-b border-(--color-border) bg-(--color-surface-2)">
+          <tr className="border-b border-(--color-border) bg-(--bg-key)">
             {headers.map((h, i) => (
               <th
                 key={h}
@@ -92,7 +92,7 @@ export function Table({
 
 export function EmptyTable({ label }: { label: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-(--color-border) bg-(--color-surface-2) p-6 text-center">
+    <div className="rounded-lg border border-dashed border-(--color-border) bg-(--bg-key) p-6 text-center">
       <p className="text-xs text-(--color-text-muted)">{label}</p>
     </div>
   )

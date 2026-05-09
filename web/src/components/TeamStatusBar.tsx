@@ -33,7 +33,7 @@ export function TeamStatusBar({
   error,
 }: TeamStatusBarProps) {
   return (
-    <div className="flex items-center justify-between border-t border-(--color-border) bg-(--color-bg) px-4 py-1 text-xs text-(--color-text-muted)">
+    <div className="flex items-center justify-between border-t border-(--color-border) bg-(--bg-page) px-4 py-1 text-xs text-(--color-text-muted)">
       {/* Left */}
       <div className="flex items-center gap-2">
         {sessionId && (
@@ -64,7 +64,7 @@ export function TeamStatusBar({
         {Object.entries(agentStreams).map(([name, stream]) => (
           <div
             key={name}
-            className="flex items-center gap-1 rounded-md bg-(--color-surface-2) px-1.5 py-0.5"
+            className="flex items-center gap-1 rounded-md bg-(--bg-key) px-1.5 py-0.5"
           >
             <StatusDot status={stream.status} />
             <span className="text-(--color-text-2)">{name}</span>

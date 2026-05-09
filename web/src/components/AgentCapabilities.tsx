@@ -51,8 +51,8 @@ function RolePill({ isLead }: { isLead: boolean }) {
     <span
       className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
         isLead
-          ? 'bg-(--color-accent-subtle) text-(--color-accent)'
-          : 'bg-(--color-accent-dim) text-(--color-text-muted)'
+          ? 'bg-(--bg-key) text-(--color-accent)'
+          : 'bg-(--bg-key) text-(--color-text-muted)'
       }`}
     >
       {isLead ? 'Lead' : 'Member'}
@@ -77,7 +77,7 @@ function CapabilityChips({ chips }: { chips: CapabilityChip[] }) {
       {chips.map(({ key, label, icon: Icon }) => (
         <span
           key={key}
-          className="flex items-center gap-1 rounded-md bg-(--color-accent-subtle) px-2 py-0.5 text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)"
+          className="flex items-center gap-1 rounded-md bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)"
           title={label}
         >
           <Icon size={11} className="text-(--color-text-muted)" />
@@ -141,7 +141,7 @@ function ToolRow({ name, description }: { name: string; description: string }) {
   const [open, setOpen] = useState(false)
   const hasDesc = description.trim().length > 0
   return (
-    <div className="overflow-hidden rounded-lg border border-(--color-border) bg-(--color-bg) transition-colors hover:border-(--color-border-strong)">
+    <div className="overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-page) transition-colors hover:border-(--color-border-strong)">
       <button
         onClick={() => hasDesc && setOpen((v) => !v)}
         className={`flex w-full items-center gap-2.5 px-3 py-2 text-left ${hasDesc ? 'cursor-pointer' : 'cursor-default'}`}
@@ -229,7 +229,7 @@ function ToolGroupHeader({
         <h4 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
           Built-in
         </h4>
-        <span className="rounded-full bg-(--color-accent-dim) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
+        <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
           {count}
         </span>
       </div>
@@ -241,7 +241,7 @@ function ToolGroupHeader({
       <h4 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
         MCP · {server}
       </h4>
-      <span className="rounded-full bg-(--color-accent-dim) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
+      <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
         {count}
       </span>
     </div>
@@ -285,14 +285,14 @@ function Tools({
         <h3 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
           Tools
         </h3>
-        <span className="rounded-full bg-(--color-accent-dim) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
+        <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
           {tools.length}
         </span>
       </div>
 
       {showSearch && (
         <div className="shrink-0 px-5 pb-2">
-          <div className="flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--color-bg) px-2.5 py-1.5 focus-within:border-(--color-border-strong)">
+          <div className="flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5 focus-within:border-(--color-border-strong)">
             <Search size={12} className="shrink-0 text-(--color-text-muted)" />
             <input
               type="text"
@@ -350,7 +350,7 @@ function Skills({ skills }: { skills: AgentInfo['skills'] }) {
             <span
               key={s.name}
               title={s.description || undefined}
-              className="flex cursor-default items-center gap-1 rounded-md bg-(--color-accent-subtle) px-2 py-0.5 font-mono text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)"
+              className="flex cursor-default items-center gap-1 rounded-md bg-(--bg-key) px-2 py-0.5 font-mono text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)"
             >
               <Sparkles size={10} className="text-(--color-text-muted)" />
               {s.name}
@@ -378,7 +378,7 @@ function AgentSwitcher({
   onSelect: (name: string) => void
 }) {
   return (
-    <div className="shrink-0 border-b border-(--color-border) bg-(--color-surface-2) px-3 py-2">
+    <div className="shrink-0 border-b border-(--color-border) bg-(--bg-key) px-3 py-2">
       <div className="flex flex-wrap items-center gap-1">
         {agents.map((agent) => {
           const active = agent.name === selectedName
@@ -390,8 +390,8 @@ function AgentSwitcher({
               onClick={() => onSelect(agent.name)}
               className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
                 active
-                  ? 'bg-(--color-accent-subtle) text-(--color-text) ring-1 ring-(--color-border-strong)'
-                  : 'text-(--color-text-muted) hover:bg-(--color-accent-dim) hover:text-(--color-text-2)'
+                  ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)'
+                  : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)'
               }`}
               aria-pressed={active}
             >
@@ -496,7 +496,7 @@ export function AgentCapabilities({
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed inset-y-0 right-0 z-50 flex w-[min(560px,90vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--color-surface) shadow-2xl"
+            className="fixed inset-y-0 right-0 z-50 flex w-[min(560px,90vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-label="Agent details"
@@ -504,7 +504,7 @@ export function AgentCapabilities({
         {/* Header */}
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-(--color-border) px-5 py-4">
           {isLoading || !selected ? (
-            <div className="h-6 w-48 animate-pulse rounded bg-(--color-accent-dim)" />
+            <div className="h-6 w-48 animate-pulse rounded bg-(--bg-key)" />
           ) : (
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -523,7 +523,7 @@ export function AgentCapabilities({
           )}
           <button
             onClick={onClose}
-            className="shrink-0 rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2)"
+            className="shrink-0 rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
             aria-label="Close (Esc)"
             title="Close (Esc)"
           >
@@ -546,9 +546,9 @@ export function AgentCapabilities({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {isLoading || !selected ? (
             <div className="flex-1 space-y-3 p-5">
-              <div className="h-16 animate-pulse rounded-xl bg-(--color-accent-dim)" />
-              <div className="h-24 animate-pulse rounded-xl bg-(--color-accent-dim)" />
-              <div className="h-40 animate-pulse rounded-xl bg-(--color-accent-dim)" />
+              <div className="h-16 animate-pulse rounded-xl bg-(--bg-key)" />
+              <div className="h-24 animate-pulse rounded-xl bg-(--bg-key)" />
+              <div className="h-40 animate-pulse rounded-xl bg-(--bg-key)" />
             </div>
           ) : (
             <>

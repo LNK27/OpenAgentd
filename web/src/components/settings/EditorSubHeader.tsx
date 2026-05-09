@@ -82,7 +82,7 @@ export function EditorSubHeader({
       : null
 
   return (
-    <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background px-4">
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
       {/* Title block ─────────────────────────────────────────────── */}
       <Tooltip>
         <TooltipTrigger
@@ -100,16 +100,16 @@ export function EditorSubHeader({
       </Tooltip>
 
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground ring-1 ring-border"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
         aria-hidden="true"
       >
         <KindIcon size={13} />
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold leading-tight">{name}</p>
+        <p className="truncate text-sm font-semibold leading-tight text-(--color-text)">{name}</p>
         {path && (
-          <p className="truncate font-mono text-[10px] text-muted-foreground">
+          <p className="truncate font-mono text-[10px] text-(--color-text-muted)">
             {path}
           </p>
         )}
@@ -137,7 +137,7 @@ export function EditorSubHeader({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                <span className="flex items-center gap-1 rounded-md bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
                   <AlertCircle size={11} />
                   Error
                 </span>
@@ -150,7 +150,7 @@ export function EditorSubHeader({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                <span className="flex items-center gap-1 rounded-md bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
                   <AlertCircle size={11} />
                   Invalid
                 </span>
@@ -160,10 +160,10 @@ export function EditorSubHeader({
           </Tooltip>
         )}
         {!error && !invalid && dirty && (
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5 text-xs text-(--color-text-muted)">
             <span
               className={cn(
-                'h-1.5 w-1.5 rounded-full bg-foreground',
+                'h-1.5 w-1.5 rounded-full bg-(--color-text)',
                 saving ? 'animate-pulse' : '',
               )}
               aria-hidden="true"

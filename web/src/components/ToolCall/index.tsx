@@ -1,16 +1,18 @@
 /**
- * ToolCall — quiet, aside-style record of a tool invocation.
+ * ToolCall — paper-card record of a tool invocation.
  *
- * Visual language mirrors `Thinking`: no card, no gray fill, no tool-type
- * icon. A single left rule (`border-l` in `--color-border`) with left
- * padding marks the block as a margin note. Identity is carried by a
- * colored status dot (matching the `AgentCapabilities` vocabulary) +
- * either a tool-specific one-line summary or the bare tool name.
+ * Visual language follows the pencil source (nodes ``dqwZw`` / ``LJOUY``)
+ * and the canonical spec at ``applications.md#tool-call-row``:
  *
- * Collapsed: dot + summary + optional done check.
- * Expanded: arguments (optionally as a bash code block) and/or result,
- * each with its own copy button; both sections share the left rule
- * indentation rather than living inside their own surfaces.
+ *   - Outer card: 1px ``--color-border`` outline, ``rounded-md``, on the
+ *     ambient surface (no fill of its own — sits on the chat surface).
+ *   - Header row: status dot + mono tool-name (or one-line summary) +
+ *     chevron, padded ``px-3 py-2``.
+ *   - Expanded body: divider, then the args/result panels on the warm
+ *     ``--bg-key`` surface so the actual content gets a calm reading wash.
+ *
+ * Identity is carried by a colored status dot for the lifecycle:
+ * start / running / success / failed.
  *
  * The per-tool header/args customisation lives in ``./display.tsx``;
  * this module owns only the chrome (collapse, copy, status dot, motion).
@@ -32,19 +34,37 @@ interface ToolCallProps {
   result?: string // tool response content
 }
 
+function isFailedResult(result: string | undefined): boolean {
+  if (!result) return false
+  const firstLine = result.trimStart().split('\n', 1)[0]?.toLowerCase() ?? ''
+  return (
+    firstLine.startsWith('[failed') ||
+    firstLine.startsWith('[error') ||
+    firstLine.includes('exit code 1') ||
+    firstLine.includes('exit 1')
+  )
+}
+
 export function ToolCall({ name, args, done, result }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [expanded, setExpanded] = useState(false)
   const [copiedArgs, setCopiedArgs] = useState(false)
   const [copiedResult, setCopiedResult] = useState(false)
 
-  // Determine status: pending (no args yet) → running (args, not done) → done
+  // Determine status: start (name only) → running (args) → success/failed (result)
   const isPending = args === undefined || args === null
   const isRunning = !isPending && !done
-  const state: ToolCallState = done ? 'done' : isRunning ? 'running' : 'pending'
+  const state: ToolCallState = isPending
+    ? 'start'
+    : isRunning
+      ? 'running'
+      : isFailedResult(result)
+        ? 'failed'
+        : 'success'
 
   const { header, headerTitle, formattedArgs, language, suppressResult } =
     getToolDisplay(name, args)
+  const visibleHeader = isPending ? null : header
   const shownResult = suppressResult ? undefined : result
 
   const handleCopyArgs = async (e: React.MouseEvent) => {
@@ -75,14 +95,14 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
   const displayName = name || 'tool'
 
   return (
-    <div className="tool-row-enter my-2 border-l border-(--color-border) pl-3">
-      {/* Header row — text-first, no card chrome */}
+    <div className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border)">
+      {/* Header row — card-padded, mono name, chevron at end */}
       <button
         type="button"
         onClick={() => hasDetails && setExpanded((v) => !v)}
-        className={`group -ml-1 flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--color-focus-ring) ${
+        className={`group flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
           hasDetails
-            ? 'cursor-pointer hover:text-(--color-text-2)'
+            ? 'cursor-pointer hover:bg-(--bg-key)'
             : 'cursor-default'
         }`}
         aria-expanded={expanded}
@@ -94,34 +114,34 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
             : `${displayName} (no details)`
         }
       >
-        {hasDetails && (
-          <ChevronRight
-            size={12}
-            className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
-            aria-hidden
-          />
-        )}
         <StatusDot state={state} />
 
         {/* Header content: tool-specific summary or fallback to tool name.
             Only argument values inside the header are italicised (via <Arg>);
-            the verb/framing text stays upright. */}
-        {header ? (
-          <span className="flex-1 truncate text-(--color-text-2)" title={headerTitle ?? undefined}>
-            {header}
+            the verb/framing text stays upright. Mono+600 per pencil dqwZw. */}
+        {visibleHeader ? (
+          <span
+            className="flex-1 truncate font-mono font-semibold text-(--color-text)"
+            title={headerTitle ?? undefined}
+          >
+            {visibleHeader}
           </span>
         ) : (
-          <code className="flex-1 truncate font-mono font-medium text-(--color-text-2)">
+          <code className="flex-1 truncate font-mono font-semibold text-(--color-text)">
             {displayName}
           </code>
         )}
 
-        {isPending && (
-          <span className="shrink-0 text-(--color-text-muted)">pending</span>
+        {hasDetails && (
+          <ChevronRight
+            size={14}
+            className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
+            aria-hidden
+          />
         )}
       </button>
 
-      {/* Expandable details — no card, flows under the same left rule */}
+      {/* Expandable details — divider then warm paper body per pencil LJOUY */}
       <AnimatePresence initial={false}>
         {expanded && hasDetails && (
           <motion.div
@@ -132,30 +152,28 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
             transition={{ duration: DURATIONS_S.base, ease: EASINGS.out }}
             className="overflow-hidden"
           >
-            <div className="mt-1.5 space-y-2 pl-1 pb-1">
-              {/* Args section — caption + copy sit above a subtle panel so
-                  the actual content (JSON / bash / text) gets a calm reading
-                  surface without the heavy overlay we used before. */}
-              {formattedArgs && (
-                <section className="relative">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
-                      {language === 'bash' ? 'bash' : 'arguments'}
-                    </span>
-                    <button
-                      onClick={handleCopyArgs}
-                      className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--color-focus-ring)"
-                      aria-label="Copy arguments"
-                      title="Copy"
-                    >
-                      {copiedArgs ? (
-                        <Check size={12} className="text-(--color-success)" />
-                      ) : (
-                        <Copy size={12} />
-                      )}
-                    </button>
-                  </div>
-                  <div className="rounded-md border border-(--color-border) bg-(--color-surface-2) px-2.5 py-2">
+            <div className="border-t border-(--color-border) bg-(--bg-key)">
+              <div className="space-y-3 px-3 py-2.5">
+                {/* Args section — caption + copy sit above the content. */}
+                {formattedArgs && (
+                  <section className="relative">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
+                        {language === 'bash' ? 'bash' : 'arguments'}
+                      </span>
+                      <button
+                        onClick={handleCopyArgs}
+                        className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+                        aria-label="Copy arguments"
+                        title="Copy"
+                      >
+                        {copiedArgs ? (
+                          <Check size={12} className="text-(--color-success)" />
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                      </button>
+                    </div>
                     {language === 'bash' ? (
                       <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-(--color-accent)">
                         <span className="select-none text-(--color-text-muted)">$ </span>
@@ -166,35 +184,35 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
                         {formattedArgs}
                       </pre>
                     )}
-                  </div>
-                </section>
-              )}
+                  </section>
+                )}
 
-              {/* Result section — same caption + panel treatment as args. */}
-              {shownResult && (
-                <section className="relative">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
-                      result
-                    </span>
-                    <button
-                      onClick={handleCopyResult}
-                      className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-subtle) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--color-focus-ring)"
-                      aria-label="Copy result"
-                      title="Copy result"
-                    >
-                      {copiedResult ? (
-                        <Check size={12} className="text-(--color-success)" />
-                      ) : (
-                        <Copy size={12} />
-                      )}
-                    </button>
-                  </div>
-                  <div className="rounded-md border border-(--color-border) bg-(--color-surface-2) px-2.5 py-2 text-xs leading-relaxed text-(--color-text-2)">
-                    <ToolResult toolName={name} result={shownResult} />
-                  </div>
-                </section>
-              )}
+                {/* Result section — same caption treatment as args. */}
+                {shownResult && (
+                  <section className="relative">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
+                        result
+                      </span>
+                      <button
+                        onClick={handleCopyResult}
+                        className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+                        aria-label="Copy result"
+                        title="Copy result"
+                      >
+                        {copiedResult ? (
+                          <Check size={12} className="text-(--color-success)" />
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                      </button>
+                    </div>
+                    <div className="text-xs leading-relaxed text-(--color-text-2)">
+                      <ToolResult toolName={name} result={shownResult} />
+                    </div>
+                  </section>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
