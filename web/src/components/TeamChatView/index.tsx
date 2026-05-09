@@ -41,9 +41,6 @@ import { useTileLayout } from '@/hooks/useTileLayout'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import {
-  Maximize2,
-  LayoutGrid,
-  Layers,
   Users,
   FolderOpen,
   SplitSquareHorizontal,
@@ -53,7 +50,11 @@ import {
   Moon,
 } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { formatTokens } from '@/utils/format'
+import { AgentChip } from '@/components/ui/agent-chip'
+import { isAgentRole } from '@/lib/agent-roles'
+import { TokenMeter } from '@/components/ui/token-meter'
+import { ViewToggle } from '@/components/ui/view-toggle'
+import { TopbarAction } from '@/components/ui/topbar-action'
 import { type InputBarHandle, type SlashCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
 import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
@@ -372,11 +373,33 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
           )}
 
           {/* Left: agent tabs (agent view) or unified tab strip */}
-          <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {effectiveViewMode === 'agent' && agentNames.map((name) => {
               const stream = agentStreams[name]
               const isActive = activeAgent === name
               const isWorking = stream?.status === 'working'
+              const isError = stream?.status === 'error'
+
+              // Override dot color when status diverges from idle.
+              const dotClassName = isError
+                ? 'bg-(--color-error)'
+                : isWorking
+                  ? 'animate-pulse bg-(--color-accent)'
+                  : undefined
+
+              if (isAgentRole(name)) {
+                return (
+                  <AgentChip
+                    key={name}
+                    role={name}
+                    active={isActive}
+                    onClick={() => setActiveAgent(name)}
+                    dotClassName={dotClassName}
+                    label={name === leadName ? `${name} ·` : undefined}
+                  />
+                )
+              }
+
               return (
                 <button
                   key={name}
@@ -388,8 +411,8 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
                   }`}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${
-                    isWorking ? 'animate-pulse bg-(--color-accent)'
-                    : stream?.status === 'error' ? 'bg-(--color-error)'
+                    isError ? 'bg-(--color-error)'
+                    : isWorking ? 'animate-pulse bg-(--color-accent)'
                     : 'bg-(--color-success)'
                   }`} />
                   {name}
@@ -423,26 +446,12 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
 
             {/* Token count — desktop only, too noisy on mobile */}
             {!isMobile && totalAll > 0 && (
-              <div
-                className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-(--color-text-muted)"
-                title={`Prompt: ${totalPrompt.toLocaleString()} · Output: ${totalCompletion.toLocaleString()}${totalCached > 0 ? ` · Cached: ${totalCached.toLocaleString()}` : ''}`}
-              >
-                <span className="text-(--color-text-muted)">tokens</span>
-                <span className="font-mono text-(--color-text-2)">
-                  {formatTokens(totalPrompt)}
-                  <span className="mx-0.5 text-(--color-text-subtle)">/</span>
-                  {formatTokens(totalCompletion)}
-                  {totalCached > 0 && (
-                    <>
-                      <span className="mx-0.5 text-(--color-text-subtle)">/</span>
-                      <span className="text-(--color-syn-operator)">{formatTokens(totalCached)}</span>
-                    </>
-                  )}
-                </span>
-                {isTeamWorking && (
-                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" />
-                )}
-              </div>
+              <TokenMeter
+                input={totalPrompt}
+                output={totalCompletion}
+                cached={totalCached}
+                pulsing={isTeamWorking}
+              />
             )}
 
             {/* Dream running indicator */}
@@ -470,35 +479,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
 
             {/* 3-way view toggle — desktop only. Mobile always uses agent view. */}
             {!isMobile && (
-              <div className="flex items-center rounded-lg border border-(--color-border) bg-(--bg-page) p-0.5">
-                <button
-                  onClick={() => setViewMode('agent')}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${viewMode === 'agent' ? 'bg-(--bg-key) text-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text-2)'}`}
-                  title="Agent view (Ctrl+V)"
-                  aria-label="Agent view"
-                  aria-pressed={viewMode === 'agent'}
-                >
-                  <Maximize2 size={12} aria-hidden="true" />Agent
-                </button>
-                <button
-                  onClick={() => setViewMode('split')}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${viewMode === 'split' ? 'bg-(--bg-key) text-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text-2)'}`}
-                  title="Split view (Ctrl+V)"
-                  aria-label="Split view"
-                  aria-pressed={viewMode === 'split'}
-                >
-                  <LayoutGrid size={12} aria-hidden="true" />Split
-                </button>
-                <button
-                  onClick={() => setViewMode('unified')}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${viewMode === 'unified' ? 'bg-(--bg-key) text-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text-2)'}`}
-                  title="Unified view (Ctrl+V)"
-                  aria-label="Unified view"
-                  aria-pressed={viewMode === 'unified'}
-                >
-                  <Layers size={12} aria-hidden="true" />Unified
-                </button>
-              </div>
+              <ViewToggle value={viewMode} onValueChange={setViewMode} />
             )}
 
             <Popover open={showTodos} onOpenChange={setShowTodos}>
@@ -548,26 +529,22 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
               </PopoverContent>
             </Popover>
 
-            <button
+            <TopbarAction
+              Icon={FolderOpen}
+              label="Files"
               onClick={() => setShowFilesPanel((v) => !v)}
               disabled={!sessionIdState}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-50"
               title={sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session'}
               aria-label="Workspace files"
-            >
-              <FolderOpen size={13} aria-hidden="true" />
-              <span className="hidden md:inline">Files</span>
-            </button>
+            />
 
-            <button
+            <TopbarAction
+              Icon={Users}
+              label="Agents"
               onClick={() => setShowAgentSidebar((v) => !v)}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
               title="Agent Capabilities (Ctrl+A)"
               aria-label="Agent capabilities"
-            >
-              <Users size={13} aria-hidden="true" />
-              <span className="hidden md:inline">Agents</span>
-            </button>
+            />
           </div>
         </header>
 
