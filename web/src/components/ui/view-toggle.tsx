@@ -1,16 +1,21 @@
 /**
- * ViewToggle — three-state segmented control for chat view modes.
+ * ViewToggle — three-state icon-only segmented control for chat view modes.
  *
- * Pencil component `T9nydm` (ViewToggle): single rounded pill, 1px subtle
- * border, three equally-sized icon buttons. The active button has a
- * `--color-surface-2` fill; others are transparent. The pencil uses
- * Material Symbols `person` / `view_column` / `view_quilt`; we map to
- * the lucide equivalents already used elsewhere in the codebase.
+ * Pencil component `T9nydm` (ViewToggle): three equally-sized 28×28
+ * icon-only buttons inside a rounded-md pill bordered with
+ * `--color-border-subtle`. The active button has a `--color-surface-2`
+ * fill; others are transparent. Pencil uses Material Symbols `person` /
+ * `view_column` / `view_quilt`; we map to lucide equivalents already
+ * used elsewhere.
  *
  * Modes:
  *   - "agent"   → focus a single agent (Maximize2)
  *   - "split"   → side-by-side panes  (LayoutGrid)
  *   - "unified" → tabbed unified view (Layers)
+ *
+ * Labels live on `aria-label` and `title` only — the control is too
+ * dense to fit all three labels on the topbar. Tooltips surface them on
+ * hover for sighted users.
  */
 
 import { Maximize2, LayoutGrid, Layers, type LucideIcon } from 'lucide-react'
@@ -33,15 +38,12 @@ const MODES: readonly ModeDef[] = [
 export interface ViewToggleProps {
   value: ViewMode
   onValueChange: (mode: ViewMode) => void
-  /** Show text labels next to icons. Default true on desktop usage. */
-  showLabels?: boolean
   className?: string
 }
 
 export function ViewToggle({
   value,
   onValueChange,
-  showLabels = true,
   className,
 }: ViewToggleProps) {
   return (
@@ -65,14 +67,13 @@ export function ViewToggle({
             title={label}
             onClick={() => onValueChange(mode)}
             className={cn(
-              'inline-flex items-center justify-center gap-1.5 rounded-sm px-2.5 py-1 text-xs leading-none transition-all',
+              'inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors',
               selected
                 ? 'bg-(--color-surface-2) text-(--color-text)'
-                : 'text-(--color-text-muted) hover:text-(--color-text-2)',
+                : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)',
             )}
           >
-            <Icon size={12} aria-hidden="true" />
-            {showLabels && <span className="capitalize">{mode}</span>}
+            <Icon size={14} aria-hidden="true" />
           </button>
         )
       })}
