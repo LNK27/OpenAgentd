@@ -1,7 +1,6 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
 import { ArrowUp, Loader2, Paperclip, Square } from 'lucide-react'
-import { ImageAttachment } from './ImageAttachment'
-import { FileCard } from './FileCard'
+import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
 import type { AgentCapabilities } from '@/api/types'
 
@@ -303,47 +302,15 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const showCharCount = charCount > CHAR_WARN_THRESHOLD
 
   // Single-row, horizontally scrollable list so many attachments don't push
-  // the input off-screen vertically. `py-2`/`px-2` on the scroll container
-  // give the remove buttons (positioned at `-top-2`/`-right-2` on each
-  // card) room so they're not clipped by `overflow-x-auto` (which forces
-  // the y-axis to clip as well). `-mx-2 -my-2` on the outer wrapper
-  // neutralizes that padding so surrounding layout stays tight.
+  // the input off-screen vertically. The strip owns its own scroll-position
+  // hint (matches pencil's MultiAttachOverflow `attachmentScrollHint`).
   const filePreviews = files.length > 0 ? (
-    <div className={`${filesBelow ? 'mt-3' : 'mb-3'} -mx-2 -my-2`}>
-      <div className="overflow-x-auto px-2 py-2">
-        <div className="flex w-max flex-nowrap items-center gap-2">
-        {files.map((file, idx) => {
-          const isImage = file.type.startsWith('image/')
-          const blobUrl = blobUrls.get(idx) || ''
-
-          if (isImage) {
-            return (
-              <div key={idx} className="shrink-0">
-                <ImageAttachment
-                  src={blobUrl}
-                  alt={file.name}
-                  removable
-                  compact
-                  onRemove={() => removeFile(idx)}
-                />
-              </div>
-            )
-          }
-
-          return (
-            <div key={idx} className="shrink-0">
-              <FileCard
-                name={file.name}
-                mediaType={file.type}
-                removable
-                onRemove={() => removeFile(idx)}
-              />
-            </div>
-          )
-        })}
-        </div>
-      </div>
-    </div>
+    <FilePreviewStrip
+      files={files}
+      blobUrls={blobUrls}
+      onRemove={removeFile}
+      filesBelow={filesBelow}
+    />
   ) : null
 
   // Reusable pill button styles for the action row (attach, mic — pencil
