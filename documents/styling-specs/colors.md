@@ -39,7 +39,7 @@ The foundation tokens. Every chrome surface, every divider, every line of body t
 | `--bg-sidebar` | `#F5EFDD` | `#1C1813` | Sidebar background |
 | `--bg-card` | `#FFFBF1` | `#1C1813` | Cards, popovers, dropdowns |
 | `--bg-input` | `#FAF6EC` | `#1C1813` | Text input backgrounds |
-| `--bg-key` | `#F0E9D4` | `#2A2219` | Keyboard cap surfaces, raised pill backgrounds |
+| `--bg-key` | `#F0E9D4` | `#2A2219` | Keyboard cap surfaces, raised badge backgrounds |
 | `--bg-send` | `#2D241B` | `#F5EBD8` | Primary CTA surface (inverted vs page) |
 | `--color-surface` | `#FFFDF7` | `#221C16` | Generic elevated surface |
 | `--color-surface-2` | `#F5EBD8` | `#2A2219` | Generic raised surface |
@@ -50,7 +50,7 @@ The foundation tokens. Every chrome surface, every divider, every line of body t
 | Token | Light mode | Dark mode | Usage |
 |---|---|---|---|
 | `--border-soft` | `#E8DFC6` | `#2C231A` | Subtle dividers |
-| `--border-card` | `#E0D5B7` | `#3A2F23` | Card and pill borders |
+| `--border-card` | `#E0D5B7` | `#3A2F23` | Card and badge borders |
 | `--color-border-subtle` | `#E8DCC2` | `#2C231A` | Decorative dividers |
 | `--color-border` | `#D7C7AA` | `#3A2F23` | Default borders |
 | `--color-border-strong` | `#A89880` | `#5C4B36` | Section breaks, prominent borders |
@@ -99,7 +99,7 @@ Each agent role gets a soft pastel chip with a saturated edge color and a darker
 - **Soft fill + edge dot + text label** is the canonical chip composition. Color alone never identifies an agent.
 - The same chip color set is used in the topbar role toggle (`OpenagentdChip`, `ExecutorChip`, `ConsultantChip`, `ExplorerChip`) and in the message author badge — same color, same role, no exceptions.
 - Don't use chip colors as page accents, dividers, or chart series. They're identity-reserved.
-- A chip's *edge* color (e.g. `#3DA66A`) is the only place that pigment appears outside the chip — use it for the leading dot in queue banners or status pills tied to that agent.
+- A chip's *edge* color (e.g. `#3DA66A`) is the only place that pigment appears outside the chip — use it for the leading dot in queue banners or status badges tied to that agent.
 
 ### CSS implementation
 
@@ -254,16 +254,15 @@ Syntax tokens use the marker palette plus a softened comment color so prose and 
 
 ## Radius scale
 
-The paper aesthetic is generous with radius. Cards, pills, and the input bar all sit at `radius-lg` or larger.
+The paper aesthetic is generous with radius. Cards and the input bar sit at `radius-lg` or larger. **Full pills (`rounded-full`) are reserved for shapes whose visual job is *to be circular* — dots, avatars, progress-bar endcaps.** Agent chips, role toggles, and status badges use `--radius-md` so they read as soft-cornered tags, not pharmacy capsules.
 
 | Token | Value | Usage |
 |---|---|---|
 | `--radius-xs` | 6px | Tiny chips, code-inline backgrounds |
 | `--radius-sm` | 8px | Small components, table cells |
-| `--radius-md` | 10px | Standard buttons, inputs |
+| `--radius-md` | 10px | Standard buttons, inputs, **agent chips, role toggles, status badges** |
 | `--radius-lg` | 14px | Cards, popovers, message bubbles |
 | `--radius-2xl` | 24px | Input bar, hero CTAs |
-| `--radius-pill` | 999px | Chip pills, agent role toggles |
 
 ---
 
@@ -285,7 +284,7 @@ If a surface needs differentiation from `--bg-page`, use `--bg-card` or `--color
 
 When brand pigment lands on the warm page (`#FAF6EC`), use these contrast pairings:
 
-- **Agent Gold pill text** — use `#5F2511` (Kernel Brown), not pure black
+- **Agent Gold chip text** — use `#5F2511` (Kernel Brown), not pure black
 - **Wordmark on Shell White** — use `#1A1714` (`--color-text`)
 - **Loop Orange** — never as body text on light; only as accent strokes or icon fills
 - **Octobot mascot lines** — Kernel Brown is canonical; do not recolor
@@ -478,7 +477,7 @@ Tokens are exposed as Tailwind utilities via `@theme`. Use semantic names, never
 </button>
 
 // Agent chip — green = openagentd
-<span className="bg-(--accent-green-soft) text-(--accent-green-text) px-2.5 py-1 rounded-full text-sm font-medium">
+<span className="bg-(--accent-green-soft) text-(--accent-green-text) px-2.5 py-1 rounded-md text-sm font-medium">
   openagentd
 </span>
 

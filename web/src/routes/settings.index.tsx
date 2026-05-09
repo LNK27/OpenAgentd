@@ -63,7 +63,7 @@ function SettingsNavCard({ to, icon: Icon, title, description, count, countLabel
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-semibold">{title}</span>
-          <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+          <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
             {count === null ? '–' : count} {countLabel}
           </span>
         </div>

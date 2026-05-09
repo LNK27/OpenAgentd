@@ -13,13 +13,13 @@ Component examples using OpenAgentd paper tokens. All examples work in both mode
 
 ## Agent chips (signature component)
 
-The agent chip is the most-used custom component in the product. It identifies which agent is talking, which role is selected in the topbar, and what kind of work is queued. The chip is a soft pastel pill with an edge dot and a darker text color — the three colors come from `--accent-{role}-soft`, `--accent-{role}` (edge), and `--accent-{role}-text`.
+The agent chip is the most-used custom component in the product. It identifies which agent is talking, which role is selected in the topbar, and what kind of work is queued. The chip is a soft-pastel rounded tag (`--radius-md`, *not* a full pill) with an edge dot and a darker text color — the three colors come from `--accent-{role}-soft`, `--accent-{role}` (edge), and `--accent-{role}-text`. Full pills are reserved for genuinely circular shapes (the edge dot itself, status indicators, avatars).
 
 ### The four canonical roles
 
 ```tsx
 // openagentd (router)
-<button className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1
+<button className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
                    bg-(--accent-green-soft) text-(--accent-green-text)
                    text-sm font-medium
                    hover:font-semibold transition-all duration-150">
@@ -28,7 +28,7 @@ The agent chip is the most-used custom component in the product. It identifies w
 </button>
 
 // executor
-<button className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1
+<button className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
                    bg-(--accent-blue-soft) text-(--accent-blue-text)
                    text-sm font-medium
                    hover:font-semibold transition-all duration-150">
@@ -37,7 +37,7 @@ The agent chip is the most-used custom component in the product. It identifies w
 </button>
 
 // consultant
-<button className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1
+<button className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
                    bg-(--accent-orange-soft) text-(--accent-orange-text)
                    text-sm font-medium
                    hover:font-semibold transition-all duration-150">
@@ -46,7 +46,7 @@ The agent chip is the most-used custom component in the product. It identifies w
 </button>
 
 // explorer
-<button className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1
+<button className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
                    bg-(--accent-pink-soft) text-(--color-text)
                    text-sm font-medium
                    hover:font-semibold transition-all duration-150">
@@ -68,7 +68,7 @@ The topbar role toggle uses chips for *all* states — selection is communicated
 ```tsx
 <button
   className={`
-    inline-flex items-center gap-1.5 rounded-full px-2.5 py-1
+    inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
     bg-(--accent-green-soft) text-(--accent-green-text)
     text-sm transition-all duration-150
     ${selected
@@ -529,7 +529,7 @@ function ThemeToggle() {
     <div
       role="radiogroup"
       aria-label="Theme"
-      className="inline-flex gap-0.5 bg-(--bg-card) border border-(--border-card) rounded-full p-0.5"
+      className="inline-flex gap-0.5 bg-(--bg-card) border border-(--border-card) rounded-md p-0.5"
     >
       {(['system', 'light', 'dark'] as const).map((mode) => {
         const Icon = mode === 'system' ? Monitor : mode === 'light' ? Sun : Moon;
@@ -542,7 +542,7 @@ function ThemeToggle() {
             aria-label={`${mode} theme`}
             onClick={() => setTheme(mode)}
             className={`
-              flex items-center justify-center w-7 h-7 rounded-full transition-all duration-150
+              flex items-center justify-center w-7 h-7 rounded-md transition-all duration-150
               ${selected
                 ? 'bg-(--bg-send) text-(--color-text-on-accent)'
                 : 'text-(--color-text-muted) hover:text-(--color-text)'}
@@ -620,7 +620,7 @@ Remove the cursor the moment streaming ends or a tool call starts. A blinking cu
 
 ## Input bar (floating composer)
 
-The input bar is a **paper pill** floating above the conversation — `--bg-card` with a soft border and `--shadow-depth`. It is draggable via a top-edge grip; position is persisted to `localStorage` (`oa-input-position`); a double-click on the grip resets to bottom-center.
+The input bar is a **paper capsule** floating above the conversation — `--bg-card` with a soft border and `--shadow-depth`. It is draggable via a top-edge grip; position is persisted to `localStorage` (`oa-input-position`); a double-click on the grip resets to bottom-center.
 
 ### Surface
 
@@ -635,7 +635,7 @@ The input bar is a **paper pill** floating above the conversation — `--bg-card
 </div>
 ```
 
-The pill uses `--radius-2xl` (24px) — the largest radius in the system. It reads as a *physical writing instrument*, not a toolbar.
+The capsule uses `--radius-2xl` (24px) — the largest radius in the system. It reads as a *physical writing instrument*, not a toolbar.
 
 ### States
 
@@ -646,16 +646,16 @@ The pencil documents distinct input bar states; each maps to a small visual cue 
 | **Empty** | Placeholder text, send button at reduced opacity |
 | **Typing** | Send button at full opacity, character counter (if relevant) |
 | **Streaming** | Send button replaced with a stop icon; thin border accent in the active agent's chip color |
-| **Queue armed** | Small "Queue" pill prefixed with `+1 message · enqueued`, edge in `--accent-orange` |
-| **With attachments** | Attachment chips render adjacent to the pill (above or below per `filesBelow` rule) |
+| **Queue armed** | Small "Queue" badge prefixed with `+1 message · enqueued`, edge in `--accent-orange` |
+| **With attachments** | Attachment chips render adjacent to the bar (above or below per `filesBelow` rule) |
 | **Collapsed** | Compressed height when sidebar is collapsed; same surface, less padding |
 
 ### Attachment previews
 
-File-attachment chips (images rendered as thumbnails, other files as `FileCard`) live in a row adjacent to the input pill. Three rules keep the composer usable:
+File-attachment chips (images rendered as thumbnails, other files as `FileCard`) live in a row adjacent to the input bar. Three rules keep the composer usable:
 
 1. **Direction is position-dependent** — `FloatingInputBar` computes a `filesBelow` boolean and passes it to `InputBar`:
-   - **Default: `true`** — previews render *below* the input pill.
+   - **Default: `true`** — previews render *below* the input bar.
    - **Flips to `false`** only when the panel is docked far from the bottom (`bounds.bottom - panel.bottom ≥ 140px`).
    - Recomputed on mount, `window` resize, drag end, and double-click reset.
 2. **Single row with horizontal scroll, never vertical wrap** — `flex flex-nowrap w-max` inside an `overflow-x-auto` container.
@@ -663,7 +663,7 @@ File-attachment chips (images rendered as thumbnails, other files as `FileCard`)
 
 ### Drag handle
 
-The grip is passed to `InputBar` via the `renderDragHandle` render-prop so that `InputBar` can position it relative to the input pill (not the outer panel). The handle uses `absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2` to sit straddling the pill's top edge.
+The grip is passed to `InputBar` via the `renderDragHandle` render-prop so that `InputBar` can position it relative to the input bar (not the outer panel). The handle uses `absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2` to sit straddling the bar's top edge.
 
 ```tsx
 <InputBar
@@ -776,7 +776,7 @@ When messages are enqueued behind a streaming response, a small banner appears a
 <div
   className="flex items-center gap-2 px-3 py-1.5
              bg-(--accent-orange-soft) text-(--accent-orange-text)
-             rounded-full text-sm font-medium
+             rounded-md text-sm font-medium
              border border-(--accent-orange)/30"
   role="status"
   aria-live="polite"
@@ -789,7 +789,7 @@ When messages are enqueued behind a streaming response, a small banner appears a
 </div>
 ```
 
-Orange (consultant chip) is reused here because "enqueued" is conceptually a *consultation* signal — "this will be considered next, not now". The chip-soft / chip-edge / chip-text triad scales to any small status pill.
+Orange (consultant chip) is reused here because "enqueued" is conceptually a *consultation* signal — "this will be considered next, not now". The chip-soft / chip-edge / chip-text triad scales to any small status badge.
 
 ---
 
@@ -925,8 +925,7 @@ For Figma, Storybook, or other design tools:
     "sm": "8px",
     "md": "10px",
     "lg": "14px",
-    "2xl": "24px",
-    "pill": "999px"
+    "2xl": "24px"
   },
   "spacing": {
     "base": "4px",

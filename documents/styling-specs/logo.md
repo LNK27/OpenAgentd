@@ -47,7 +47,7 @@ Prefer agent-centered language:
 
 Do not lead brand assets with implementation technologies such as FastAPI or React. Those belong in technical docs, not identity lockups.
 
-When text appears inside a filled pill, badge, or bordered container, center it both visually and structurally (`text-anchor="middle"`, `dominant-baseline="middle"` in SVG; flex center in UI code).
+When text appears inside a filled tag, badge, or bordered container, center it both visually and structurally (`text-anchor="middle"`, `dominant-baseline="middle"` in SVG; flex center in UI code).
 
 ---
 
@@ -93,7 +93,7 @@ Do not:
 - Use the old `o.` monogram direction
 - Mention implementation technologies in logo lockups
 - Distort, crop, mirror, or recolor the mascot paths
-- Put non-centered text inside filled pills or badges
+- Put non-centered text inside filled tags or badges
 - Add unrelated decorative patterns behind the mascot
 - Replace the warm palette with generic blue/purple SaaS colors
 - Use the mascot as a repeated background texture

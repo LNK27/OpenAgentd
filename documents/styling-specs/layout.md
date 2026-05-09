@@ -88,21 +88,20 @@ All spacing is a multiple of 4px.
 
 ## Radius scale
 
-The paper aesthetic is generous with rounding. Cards, pills, and the input bar all sit at `--radius-lg` or larger; raw rectangles are reserved for code blocks and dense table cells.
+The paper aesthetic is generous with rounding. Cards and the input bar sit at `--radius-lg` or larger; raw rectangles are reserved for code blocks and dense table cells. **Full pills (`rounded-full` on text-bearing elements) are reserved for circular dots, avatars, progress-bar endcaps, and other shapes whose visual job is *to be circular*.** Agent chips, role toggles, and status badges use `--radius-md` so they read as soft-cornered tags, not pharmacy capsules.
 
 | Token | Value | Usage |
 |---|---|---|
 | `--radius-xs` | 6px | Inline code, tiny chips |
 | `--radius-sm` | 8px | Small buttons, table cells |
-| `--radius-md` | 10px | Standard inputs, secondary buttons |
+| `--radius-md` | 10px | Standard inputs, secondary buttons, **agent chips, role toggles, status badges** |
 | `--radius-lg` | 14px | Cards, popovers, message bubbles, sidebar items |
 | `--radius-2xl` | 24px | Input bar, hero CTAs |
-| `--radius-pill` | 999px | Agent chip pills, role toggles, status badges |
 
 ```tsx
-<div className="rounded-lg">…</div>           // 14px card
-<button className="rounded-md">Submit</button> // 10px button
-<span className="rounded-full">…</span>        // pill
+<div className="rounded-lg">…</div>            // 14px card
+<button className="rounded-md">Submit</button>  // 10px button / chip
+<span className="rounded-full size-2">…</span>  // circular dot only
 ```
 
 ---

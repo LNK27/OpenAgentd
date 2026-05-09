@@ -47,7 +47,7 @@ export function PendingMessageQueue({ inputRef }: PendingMessageQueueProps) {
             </span>
 
             {msg.files && msg.files.length > 0 && (
-              <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-accent)">
+              <span className="shrink-0 rounded-md bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-accent)">
                 +{msg.files.length}
               </span>
             )}

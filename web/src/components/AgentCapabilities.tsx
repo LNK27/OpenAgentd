@@ -229,7 +229,7 @@ function ToolGroupHeader({
         <h4 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
           Built-in
         </h4>
-        <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
+        <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
           {count}
         </span>
       </div>
@@ -241,7 +241,7 @@ function ToolGroupHeader({
       <h4 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
         MCP · {server}
       </h4>
-      <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
+      <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
         {count}
       </span>
     </div>
@@ -285,7 +285,7 @@ function Tools({
         <h3 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
           Tools
         </h3>
-        <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
+        <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
           {tools.length}
         </span>
       </div>

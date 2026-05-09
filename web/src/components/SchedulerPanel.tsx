@@ -291,7 +291,7 @@ function TaskListItem({
             {formatScheduleLabel(task)}
           </p>
           <div className="mt-1 flex items-center gap-2">
-            <span className="inline-block rounded-full bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-accent)">
+            <span className="inline-block rounded-md bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-accent)">
               {task.agent}
             </span>
             <span className={`text-xs font-medium ${statusColor}`}>{task.status}</span>

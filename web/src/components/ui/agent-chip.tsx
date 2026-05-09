@@ -8,7 +8,7 @@
  *
  * - 8×8 colored dot drawn in the role's marker color
  * - mono label
- * - rounded-full pill, padding 6×12, gap 8
+ * - rounded-md badge, padding 6×12, gap 8
  * - active variant: 1.2px border in role's marker color + bold (600) label in `--color-text`
  * - inactive variant: no border, 500-weight label in `--color-text-2`
  *
@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils'
 import type { AgentRole } from '@/lib/agent-roles'
 
 const chipVariants = cva(
-  'inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-xs leading-none transition-all',
+  'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs leading-none transition-all',
   {
     variants: {
       role: {
