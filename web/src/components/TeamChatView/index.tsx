@@ -31,7 +31,7 @@ import { AgentView } from '../AgentView'
 import { Sidebar } from '../Sidebar'
 import { CommandPalette } from '../CommandPalette'
 import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { TodosPopover } from '../TodosPopover'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useTriggerDreamMutation } from '@/queries'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -45,7 +45,6 @@ import {
   FolderOpen,
   SplitSquareHorizontal,
   SplitSquareVertical,
-  ListTodo,
   Menu,
   Moon,
 } from 'lucide-react'
@@ -482,52 +481,12 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
               <ViewToggle value={viewMode} onValueChange={setViewMode} />
             )}
 
-            <Popover open={showTodos} onOpenChange={setShowTodos}>
-              <PopoverTrigger
-                disabled={!sessionIdState}
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-50"
-                title={sessionIdState ? 'Task list (Ctrl+T)' : 'No active session'}
-                aria-label="Task list"
-              >
-                <ListTodo size={13} aria-hidden="true" />
-                <span className="hidden md:inline">Todos</span>
-                {todos.some((t) => t.status === 'in_progress') && (
-                  <span className="size-1.5 rounded-full bg-(--color-accent)" />
-                )}
-              </PopoverTrigger>
-              <PopoverContent side="bottom" align="end" className="w-80 p-0">
-                <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-2">
-                  <span className="text-xs font-semibold text-(--color-text)">Tasks</span>
-                  {todos.length > 0 && (
-                    <span className="text-[10px] text-(--color-text-subtle)">
-                      {todos.filter((t) => t.status === 'completed').length}/{todos.length} done
-                    </span>
-                  )}
-                </div>
-                {todos.length === 0 ? (
-                  <p className="px-3 py-4 text-center text-xs text-(--color-text-subtle)">No tasks yet</p>
-                ) : (
-                  <ul className="max-h-80 overflow-y-auto py-1">
-                    {[...todos].sort((a, b) => {
-                        const order = { in_progress: 0, pending: 1, completed: 2, cancelled: 3 }
-                        return order[a.status] - order[b.status]
-                      }).map((todo) => (
-                      <li key={todo.task_id} className="flex items-start gap-2 px-3 py-1.5">
-                        <span className="mt-0.5 shrink-0 text-[10px]">
-                          {todo.status === 'completed' ? '✓' : todo.status === 'cancelled' ? '✗' : todo.status === 'in_progress' ? '▶' : '○'}
-                        </span>
-                        <span className={`flex-1 text-xs leading-snug ${todo.status === 'completed' || todo.status === 'cancelled' ? 'text-(--color-text-subtle) line-through' : 'text-(--color-text)'}`}>
-                          {todo.content}
-                        </span>
-                        <span className={`shrink-0 self-start rounded px-1 py-0.5 text-[9px] font-medium uppercase ${todo.priority === 'high' ? 'bg-red-500/10 text-red-500' : todo.priority === 'low' ? 'bg-(--bg-key) text-(--color-text-subtle)' : 'bg-amber-500/10 text-amber-500'}`}>
-                          {todo.priority}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </PopoverContent>
-            </Popover>
+            <TodosPopover
+              open={showTodos}
+              onOpenChange={setShowTodos}
+              todos={todos}
+              sessionId={sessionIdState}
+            />
 
             <TopbarAction
               Icon={FolderOpen}
