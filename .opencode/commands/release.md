@@ -39,22 +39,38 @@ PREV_TAG=$(git describe --tags --abbrev=0 HEAD^)
 git log ${PREV_TAG}..HEAD --oneline --no-merges
 ```
 
-Write concise, user-facing notes in this style:
-- Start with `## Breaking Changes` only if migration is required.
-- Use `## What's changed` for the main narrative.
-- Add `## Upgrade` only when users need action.
-- Mention tests briefly if relevant.
-- Include short examples only when they clarify behavior.
-- When referencing install commands for optional extras, always show both `uv` and `pip` variants:
-  ```
-  uv tool install "openagentd[voice-local]"
-  # or
-  pip install "openagentd[voice-local]"
-  ```
-  Add a note that `brew install openagentd` installs the base package only; extras must be installed separately via `uv` or `pip`.
-- End with `**Full changelog:** https://github.com/lthoangg/openagentd/compare/<prev>...<next>`.
+Write tight, user-facing notes. Aim for **under ~150 words total**. Rules:
 
-Skip version bump commits. Use commit subjects as source material, not as the final structure.
+- Skip version-bump commits. Treat commit subjects as raw material — paraphrase, do not transcribe.
+- Lead with the user-visible behavior change, not internals (no module names, no test counts, no implementation details unless required to explain a fix).
+- One short paragraph per section. No bullet lists unless genuinely enumerating multiple distinct items.
+
+Sections (use only the ones that apply, in this order):
+
+1. `## Breaking Changes` — only if migration is required.
+2. `## What's changed` — the main narrative. One paragraph. State what users will notice.
+3. `## Upgrade` — only when users need to do something. Be specific (e.g. "delete and recreate tasks of type X").
+4. `## Install` — always include this fixed block:
+
+   ````
+   ```
+   uv tool install openagentd
+   # or
+   pip install openagentd
+   ```
+
+   `brew install openagentd` installs the base package only; optional extras (e.g. `openagentd[voice-local]`) must be installed via `uv` or `pip`:
+
+   ```
+   uv tool install "openagentd[voice-local]"
+   # or
+   pip install "openagentd[voice-local]"
+   ```
+   ````
+
+5. End with `**Full changelog:** https://github.com/lthoangg/openagentd/compare/<prev>...<next>`.
+
+Avoid: a `## Tests` section, internal file paths, marketing language ("we're excited to..."), and restating what the section heading already says.
 
 6. Trigger release.
 
