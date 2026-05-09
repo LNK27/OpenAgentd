@@ -130,10 +130,10 @@ A signature of the OpenAgentd interaction language. Text shifts weight under the
 
 ### Never do
 
-- ❌ `outline: none` without a replacement
-- ❌ Custom ring that fails 3:1 contrast against the element's background
-- ❌ Ring on `:focus` (shows on mouse click — produces a ring the user didn't ask for)
-- ❌ Ring that's part of the element border (breaks focus visibility for non-rectangular shapes)
+- `outline: none` without a replacement.
+- Custom ring that fails 3:1 contrast against the element's background.
+- Ring on `:focus` — that shows on mouse click and produces a ring the user didn't ask for.
+- Ring that is part of the element's border — breaks focus visibility for non-rectangular shapes.
 
 ---
 
@@ -301,12 +301,15 @@ Never combine loading + disabled visually — the two states look the same but m
 | **Hover-only buttons in tables** | Inaccessible on touch and for keyboard users. Use persistent or menu-based reveal. Exception: secondary desktop-only actions may use `md:opacity-0 md:group-hover:opacity-100` provided they are always visible (`opacity-100`) below `md`. |
 | **Focus ring removed without replacement** | Breaks keyboard accessibility entirely. |
 | **Different focus ring styles per component** | Fragments the visual language. One ring style, system-wide. |
+| **`ring-1 ring-foreground/N` (or `/10`, `/15`) on flat surfaces or floating overlays** | `--color-text` is near-black on cream `--bg-page`, so a low-alpha ring reads as a brown smudge, not separation. Use `border border-(--color-border)` for separation; reserve `ring-*` for focus and decorative chip outlines. |
+| **Drop shadow on a flat card** | The warm border alone carries the elevation. Reserve `--shadow-depth` for genuinely floating chrome (input bar, queue banner, popovers). |
 | **Custom gestures for core functions** | Undiscoverable. Use platform-standard gestures only. |
 | **Double-click for primary actions** | Non-standard on web. Keep single-click primary. |
 | **Hover content that isn't also reachable by focus** | Screen reader and keyboard users are locked out. |
 | **Weight shift on static text** | Only interactive elements shift weight. |
 | **Weight shift on Caveat** | Hand-drawn weights aren't perceptually distinct the way Inter weights are. |
 | **Agent chip color used outside its role** | Chip colors are role-identity-reserved — using mint anywhere that isn't the openagentd role breaks the language. |
+| **Native `<input type="checkbox">` for a feature flag** | Feature flags are runtime state and read as on/off; use the `Switch` primitive. Reserve checkboxes for multi-select and consent. |
 | **Sub-44px touch targets** | Fails touch usability guidelines. |
 | **Proximity effects on sparse lists** | Adds complexity without payoff. |
 

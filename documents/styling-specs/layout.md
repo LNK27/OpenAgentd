@@ -45,7 +45,7 @@ All spacing is a multiple of 4px.
 
 **`md` is the mobile/desktop split.** `useIsMobile()` returns `true` when `window.innerWidth < 768px`. For JS-driven layout branches always use this hook rather than raw CSS breakpoints. CSS `md:` utilities are fine for purely visual changes; use the hook when the branch affects behaviour (panel mode, shortcut availability, etc.).
 
-**Avoid `lg:` or larger inside panels and drawers.** A panel's own width is narrower than the viewport, so `lg:` (1024px viewport) will never fire when the panel is open on a mobile screen. Use `isMobile` branches instead — see [`docs/web/mobile.md`](../docs/web/mobile.md).
+**Avoid `lg:` or larger inside panels and drawers.** A panel's own width is narrower than the viewport, so `lg:` (1024px viewport) will never fire when the panel is open on a mobile screen. Use a viewport-aware mobile flag for any layout branch that affects behavior; reserve CSS-only breakpoints for purely visual changes inside panels.
 
 ---
 
@@ -64,25 +64,11 @@ All spacing is a multiple of 4px.
 
 ### Spacing application
 
-```tsx
-// Button — small component
-<button className="px-3 py-2">Label</button>
+- Buttons sit at the small step (`md` token). Cards sit at the standard step (`lg` token). Sections sit at the large step (`xl` token).
+- Sibling gap inside a row matches the small/medium step depending on density. Grid gap between cards matches the cards' own scale step.
+- Vertical rhythm between paragraph blocks uses the medium step; between major sections uses the large step.
 
-// Card — medium component
-<div className="p-4">…</div>
-
-// Section — large component
-<section className="p-6">…</section>
-
-// Flex gap between siblings
-<div className="flex gap-3">{items}</div>
-
-// Grid gap
-<div className="grid grid-cols-3 gap-4">{cards}</div>
-
-// Vertical rhythm
-<div className="space-y-4">{paragraphs}</div>
-```
+Pick step sizes by walking up the scale together. A row gap should never be smaller than the parent's padding; section spacing should never be smaller than the section's internal padding.
 
 ---
 
@@ -98,11 +84,7 @@ The paper aesthetic is generous with rounding. Cards and the input bar sit at `-
 | `--radius-lg` | 14px | Cards, popovers, message bubbles, sidebar items |
 | `--radius-2xl` | 24px | Input bar, hero CTAs |
 
-```tsx
-<div className="rounded-lg">…</div>            // 14px card
-<button className="rounded-md">Submit</button>  // 10px button / chip
-<span className="rounded-full size-2">…</span>  // circular dot only
-```
+Pick a radius for the family the component belongs to, not for visual taste. Cards that visually feel like a button still get the card radius, and vice-versa — the family is the rule.
 
 ---
 
@@ -115,14 +97,7 @@ Both modes use a subtle `box-shadow` plus a `border` to create hierarchy. Unlike
 | **Light** | Warm-neutral surfaces sit close in value; `var(--shadow-depth)` adds a soft outer drop, and `var(--color-border)` defines the edge. |
 | **Dark** | Dark warm surfaces are also close in value; a slightly deeper shadow + a warm-toned border do the same job. |
 
-```css
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-depth);
-}
-```
+The card composition is canonical: `--bg-card` fill, `--color-border` 1px outline, the radius for the card family, and `--shadow-depth` only when the surface genuinely floats. Flat cards on the page surface skip the shadow — the border alone carries them.
 
 ### Elevation levels
 

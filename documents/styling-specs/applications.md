@@ -1,978 +1,601 @@
 ---
 title: Applications & Templates
-description: Component examples — agent chips, sidebar, input bar, tool calls, theme toggle — using paper tokens
+description: Component guidelines for OpenAgentd UI — agent chips, sidebar, input bar, tool calls, theme toggle
 status: stable
 updated: 2026-05-09
 ---
 
 # Applications & Templates
 
-Component examples using OpenAgentd paper tokens. All examples work in both modes without modification; brand pigment is reserved for the Octobot mascot, agent identity is carried by the chip palette, and chrome stays warm-neutral.
+How OpenAgentd's component language is built and combined. Each section states the role of the component, the surface and motion rules it must follow, the states it can express, and what to avoid. Pair this page with [colors.md](./colors.md), [interaction.md](./interaction.md), [motion.md](./motion.md), and [layout.md](./layout.md) — those define the underlying tokens and behaviors this page composes.
+
+Every component below works in both light and dark modes without per-mode overrides; brand pigment is reserved for the Octobot mascot; agent identity is carried by chips and dots, never by chrome.
 
 ---
 
 ## Agent chips (signature component)
 
-The agent chip is the most-used custom component in the product. It identifies which agent is talking, which role is selected in the topbar, and what kind of work is queued. The chip is a soft-pastel rounded tag (`--radius-md`, *not* a full pill) with an edge dot and a darker text color — the three colors come from `--accent-{role}-soft`, `--accent-{role}` (edge), and `--accent-{role}-text`. Full pills are reserved for genuinely circular shapes (the edge dot itself, status indicators, avatars).
+The agent chip identifies which agent is talking — in the topbar role toggle, in tool-call summaries, in queue rows, in handoff transcripts. It is the most-used custom component in the product.
 
-### The four canonical roles
+**Shape**
 
-```tsx
-// openagentd (router)
-<button className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
-                   bg-(--accent-green-soft) text-(--accent-green-text)
-                   text-sm font-medium
-                   hover:font-semibold transition-all duration-150">
-  <span className="w-1.5 h-1.5 rounded-full bg-(--accent-green)" aria-hidden="true" />
-  openagentd
-</button>
+- Soft-pastel rounded tag at the standard medium radius — *not* a full pill. Full pills are reserved for genuinely circular shapes (the edge dot itself, status indicators, avatars).
+- Three colors per role from the chip palette: a soft fill, a saturated edge color, and a darker text color. See [colors.md § Agent chips](./colors.md#agent-chips).
+- Mono label, small text scale, weight 500 at rest.
+- Edge dot at the leading edge of the chip in the role's saturated edge color.
 
-// executor
-<button className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
-                   bg-(--accent-blue-soft) text-(--accent-blue-text)
-                   text-sm font-medium
-                   hover:font-semibold transition-all duration-150">
-  <span className="w-1.5 h-1.5 rounded-full bg-(--accent-blue)" aria-hidden="true" />
-  executor
-</button>
+**Roles**
 
-// consultant
-<button className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
-                   bg-(--accent-orange-soft) text-(--accent-orange-text)
-                   text-sm font-medium
-                   hover:font-semibold transition-all duration-150">
-  <span className="w-1.5 h-1.5 rounded-full bg-(--accent-orange)" aria-hidden="true" />
-  consultant
-</button>
+The four canonical roles each map to one chip color. The mapping is fixed; do not reuse a role's color for any other purpose.
 
-// explorer
-<button className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
-                   bg-(--accent-pink-soft) text-(--color-text)
-                   text-sm font-medium
-                   hover:font-semibold transition-all duration-150">
-  <span className="w-1.5 h-1.5 rounded-full bg-(--accent-pink)" aria-hidden="true" />
-  explorer
-</button>
-```
+| Role | Chip color |
+|---|---|
+| `openagentd` (router) | Mint / green |
+| `executor` | Blue |
+| `consultant` | Orange |
+| `explorer` | Pink |
 
-### Selected vs unselected
+**States**
 
-The topbar role toggle uses chips for *all* states — selection is communicated by **pigment, not container shape**:
+Selection is communicated by pigment depth and outline, not by container shape — the chip never changes radius, fill family, or layout between states.
 
 | State | Treatment |
 |---|---|
-| **Unselected** | Soft fill + edge dot at full saturation, weight 500 |
-| **Selected** | Same soft fill + thicker 1.5px ring in `--accent-{role}` + weight 600 + slight shadow |
-| **Hover** | Weight 500→600, no fill change (pigment is already there) |
+| Idle | Soft fill, edge dot at full saturation, label weight 500 |
+| Hover | Label weight shifts 500 → 600. No fill change (pigment is already there) |
+| Selected | Same soft fill, label weight 600, 1.5px ring in the role's edge color, subtle drop shadow |
+| Streaming | Edge dot pulses; chip itself stays static |
+| Idle/dim | Used in the topbar when an agent is registered but not the active one — reduce dot opacity, keep label readable |
 
-```tsx
-<button
-  className={`
-    inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
-    bg-(--accent-green-soft) text-(--accent-green-text)
-    text-sm transition-all duration-150
-    ${selected
-      ? 'font-semibold ring-[1.5px] ring-(--accent-green) shadow-sm'
-      : 'font-medium hover:font-semibold'}
-  `}
-  aria-pressed={selected}
->
-  <span className="w-1.5 h-1.5 rounded-full bg-(--accent-green)" />
-  openagentd
-</button>
-```
+**Don't**
 
-### Anti-patterns
-
-- ❌ Using a chip color outside its role (mint anywhere except openagentd)
-- ❌ Replacing the soft fill with the saturated edge color when "selected" (loses readability)
-- ❌ Removing the edge dot (the dot doubles as a status anchor — pulse on streaming, dim when idle)
-- ❌ Using chips as buttons that *don't* refer to an agent role
+- Reuse a chip color outside its role (no mint anywhere except `openagentd`).
+- Replace the soft fill with the saturated edge color in selected state — the result loses readability.
+- Drop the edge dot. The dot doubles as a status anchor (pulse on streaming, dim when idle).
+- Use a chip as a generic button. If a control doesn't refer to an agent role, use the [Buttons](#buttons) family.
 
 ---
 
 ## Buttons
 
-### Primary (send)
+A small, rigid family of variants. Pick by role, never by visual preference.
 
-The primary CTA is the **send button** — paper inverted: warm dark surface, cream text. This is the only place the paper aesthetic flips contrast.
+| Variant | Role | Surface |
+|---|---|---|
+| Primary (default) | The single most important action in a region | Filled in `--color-accent`, text in `--color-text-on-accent`, no border |
+| Outline | Neutral or secondary actions; cancel; "view more" | `--bg-page` fill, `--color-border` outline, hover deepens both |
+| Secondary | Used inside cards/dialogs where outline would clash | `--bg-key` fill, `--color-border` outline |
+| Ghost | Tertiary, mostly icons; "skip", "close", inline edit | Transparent fill, hover wash on `--bg-key` |
+| Destructive | Removes data or breaks state (delete, revoke) | Soft `--color-error-subtle` fill, `--color-error` text and border at low alpha |
+| Link | Inline navigation that visually reads as text | No fill, accent-blue text, underline on hover |
 
-```tsx
-<button
-  className="bg-(--bg-send) text-(--color-text-on-accent)
-             px-4 py-2 rounded-md font-medium
-             hover:brightness-110 transition-all duration-150"
->
-  Send
-</button>
-```
+**Shared rules**
 
-### Secondary
+- One radius family across the variants — primary/outline/secondary at the standard small button radius, icon-only variants use the same family one step smaller.
+- Sizes are token-driven: extra-small, small, default, large, plus icon-only equivalents at each size. Pick the smallest size that meets the 44×44 touch target on mobile.
+- Font weight follows [interaction.md § Font-weight transitions](./interaction.md#font-weight-transitions-signature). Icon-only buttons skip the transition (there is no text to shift).
+- Loading state: replace the label with progressive text ("Saving…", "Connecting…"); never show a spinner *and* keep the original label.
+- Disabled state: 50% opacity, `cursor: not-allowed`, `aria-disabled`. Disabled is *unavailable*; loading is *busy*. They are not the same and must not look the same.
 
-```tsx
-<button
-  className="bg-(--bg-card) text-(--color-text)
-             border border-(--border-card)
-             px-4 py-2 rounded-md font-medium
-             hover:bg-(--bg-key) hover:font-semibold
-             transition-all duration-150"
->
-  Cancel
-</button>
-```
+**Don't**
 
-### Destructive
-
-```tsx
-<button
-  className="bg-transparent text-(--color-error)
-             border border-(--color-error)/30
-             px-4 py-2 rounded-md font-medium
-             hover:bg-(--accent-red)/10 hover:font-semibold
-             transition-all duration-150"
->
-  Delete session
-</button>
-```
-
-### Ghost
-
-```tsx
-<button
-  className="text-(--color-text-2) px-3 py-1.5 rounded-md
-             hover:text-(--color-text) hover:bg-(--bg-key)
-             font-normal hover:font-medium
-             transition-all duration-150"
->
-  Skip
-</button>
-```
-
-### Loading
-
-```tsx
-<button
-  disabled
-  className="bg-(--bg-send)/60 text-(--color-text-on-accent)
-             px-4 py-2 rounded-md font-medium cursor-not-allowed"
->
-  Sending…
-</button>
-```
-
-### With font-weight transition (signature)
-
-Interactive buttons shift weight on hover and active — see [typography.md](./typography.md#font-weight-transitions-signature-interaction).
-
-```tsx
-<button
-  className="bg-(--bg-send) text-(--color-text-on-accent)
-             px-4 py-2 rounded-md
-             font-normal hover:font-medium active:font-semibold
-             transition-all duration-150 ease-out"
->
-  Send
-</button>
-```
+- Build a custom button by hand-stacking utilities. Reach for the `Button` primitive; if its variants don't fit, the variant set should grow rather than be bypassed.
+- Pair two primary buttons in the same action cluster. There is one primary action per region; everything else is outline/ghost/destructive.
+- Use destructive coloring for "discard draft" or other reversible actions. Reserve it for irreversible loss.
 
 ---
 
 ## Card
 
-```tsx
-<div
-  className="bg-(--bg-card) border border-(--border-card)
-             rounded-lg p-6 shadow-[var(--shadow-depth)]"
->
-  <h3 className="text-h3 font-semibold text-(--color-text) mb-2">Session title</h3>
-  <p className="text-(--color-text-muted) text-sm mb-4">
-    Started 3 minutes ago · 2 agents active
-  </p>
-  <button className="text-(--color-accent) font-normal hover:font-medium transition-all">
-    View details →
-  </button>
-</div>
-```
+A card separates a self-contained unit of content from the surrounding page. The OpenAgentd card is a calm paper rectangle — warm fill, hairline border, generous corner radius — and that is it.
+
+**Rules**
+
+- Outer surface: `--bg-card` on `--color-border` with a generous corner radius (the larger end of the radius scale; compact cards trim down but keep the same family).
+- The border alone carries elevation. No drop shadow, no ambient ring, no double outline.
+- Internal padding is consistent across the card; compact variants reduce padding uniformly.
+- A footer-style chrome region distinguishes itself with a subtle `--bg-key` wash and a top divider — never a different border color or a heavier surface.
+- Reach for the shared `Card` family before rolling a hand-built surface; if the slots don't fit, repeat the same recipe inline rather than inventing new tokens.
+
+**Don't**
+
+- Layer shadows on flat cards. Only floating chrome (the queue banner, the input bar, popovers) earns a soft depth shadow.
+- Mix `--border-card` with `--color-border` in the same surface — `--border-card` is deprecated; use `--color-border`.
+- Use `ring-*` for separation; rings are reserved for focus and decorative chip outlines (see [interaction.md § Anti-patterns](./interaction.md#anti-patterns)).
 
 ---
 
 ## Status indicators
 
-Every status pairs color with an icon or label — never color alone.
+Every status pairs color with an icon or label — never color alone. See [colors.md § Status](./colors.md#semantic-status-colors) for the token set.
 
-```tsx
-// Running — pulsing success dot (mint = openagentd's color, also the success state)
-<div className="flex items-center gap-2 text-(--color-text-2)">
-  <span className="relative flex w-2 h-2">
-    <span className="absolute inset-0 bg-(--color-success) rounded-full animate-ping opacity-75" />
-    <span className="relative w-2 h-2 bg-(--color-success) rounded-full" />
-  </span>
-  <span>Running</span>
-</div>
+**Patterns**
 
-// Error
-<div className="flex items-center gap-2 text-(--color-error)">
-  <AlertCircle className="w-4 h-4" />
-  <span>Failed</span>
-</div>
+- Running: pulsing dot in `--color-success` with a written label ("Running", "Streaming").
+- Error: `lucide AlertCircle` in `--color-error` with a written label ("Failed").
+- Success (static): `lucide CheckCircle` in `--color-success` with a written label ("Completed"). Static success uses no animation; only transient confirmations pulse.
+- Pending / queued: `lucide Clock` in `--accent-orange-text` with a written label ("Queued").
 
-// Success (static, non-celebratory)
-<div className="flex items-center gap-2 text-(--color-success)">
-  <CheckCircle className="w-4 h-4" />
-  <span>Completed</span>
-</div>
+**Don't**
 
-// Pending / queued
-<div className="flex items-center gap-2 text-(--accent-orange-text)">
-  <Clock className="w-4 h-4" />
-  <span>Queued</span>
-</div>
-```
+- Rely on color alone (no plain red dot, no plain green checkmark without a label or accessible name).
+- Wrap status in a chip with a role color (mint, blue, orange, pink). Status indicators are neutral; agent identity is conveyed elsewhere.
 
 ---
 
 ## Forms
 
-### Input field
+Form layout, field anatomy, and validation behavior. Use the shared form primitives (`Input`, `Textarea`, `Select`, `RadioGroup`, `Switch`, `Checkbox`, `NumberInput`, `DateTimePicker`) — they share a single field shell so a form composed of mixed types still feels like one form.
 
-```tsx
-<div className="flex flex-col gap-2">
-  <label htmlFor="max-wait" className="text-(--color-text) font-medium text-sm">
-    Max wait time (seconds)
-  </label>
-  <input
-    id="max-wait"
-    type="number"
-    defaultValue={30}
-    className="bg-(--bg-input) border border-(--color-border) rounded-md
-               px-3 py-2 text-(--color-text) placeholder:text-(--color-text-muted)
-               focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring)
-               focus:border-(--color-accent) transition-colors"
-    placeholder="30"
-  />
-  <p className="text-(--color-text-muted) text-sm">
-    Increase for longer-running tool calls.
-  </p>
-</div>
-```
+**Field anatomy**
 
-### Textarea (YAML / config)
+- Label above the field, weight 500, `--color-text`.
+- Field surface: `--bg-input` fill, 1px `--color-border`, standard small radius. Focus replaces the bottom border with `--color-accent` and adds a 2px focus ring (see [interaction.md § Focus ring](./interaction.md#focus-ring-specification)).
+- Help text below the field, small text scale, `--color-text-muted`.
+- Error text replaces help text on validation failure: `--color-error`, with `lucide AlertCircle` glyph at the leading edge. The field gains `aria-invalid="true"` and `aria-describedby` pointing at the error.
+- Required indicators are written ("Required") rather than starred. If a star is used it must repeat the meaning in an accessible name.
 
-```tsx
-<textarea
-  className="bg-(--bg-input) border border-(--color-border) rounded-md
-             px-3 py-2 text-(--color-text) font-mono text-sm
-             placeholder:text-(--color-text-muted)
-             focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring)
-             focus:border-(--color-accent) transition-colors resize-y min-h-[200px]"
-  placeholder="mode: chat&#10;max_wait: 30"
-/>
-```
+**Boolean toggles**
 
-### Field with error
+- Use `Switch` for on/off feature flags and reversible setting toggles. The switch reads as "this is the live state of a thing".
+- Use `Checkbox` for multi-select selections in a list, or for compound consent ("I agree to…").
+- Do not use a native `<input type="checkbox">` to mean a feature flag. Everything that toggles a runtime behavior is a `Switch`.
 
-```tsx
-<div className="flex flex-col gap-2">
-  <label htmlFor="name" className="text-(--color-text) font-medium text-sm">
-    Session name
-  </label>
-  <input
-    id="name"
-    aria-invalid="true"
-    aria-describedby="name-error"
-    className="bg-(--bg-input) border border-(--color-error) rounded-md
-               px-3 py-2 text-(--color-text)
-               focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring)"
-  />
-  <p id="name-error" className="text-(--color-error) text-sm flex items-center gap-1.5">
-    <AlertCircle className="w-3.5 h-3.5" />
-    Name is required.
-  </p>
-</div>
-```
+**Selects and pickers**
+
+- Use the shared `Select` (built on base-ui) for any single-choice picker — its trigger inherits the same field shell as `Input`.
+- For numeric ranges where stepping matters, use `NumberInput` rather than a `<select>` with hard-coded options.
+- For dates and times, use `DateTimePicker`. Do not roll a bespoke pair of inputs.
+
+**Don't**
+
+- Place validation messages above the field — they belong below where the eye lands after typing.
+- Use placeholder text as the only label. Placeholders disappear when the user starts typing and are inaccessible.
+- Combine a busy state and a disabled state visually. A submitting form locks input and shows progress; a disabled form has reduced opacity. They are different intents.
 
 ---
 
 ## Code block
 
-Syntax colors resolve correctly in both modes via tokens from [colors.md](./colors.md#syntax-highlighting--code).
+Code is rendered with JetBrains Mono and the syntax tokens from [colors.md § Syntax highlighting](./colors.md#syntax-highlighting--code).
 
-```tsx
-<pre className="bg-(--color-surface) border border-(--color-border) rounded-lg p-4 overflow-x-auto">
-  <code className="text-(--color-text) font-mono text-sm leading-relaxed">
-    <span className="text-(--color-syn-keyword)">const</span>{' '}
-    <span className="text-(--color-text)">agent</span>{' '}
-    <span className="text-(--color-syn-operator)">=</span>{' '}
-    <span className="text-(--color-syn-keyword)">new</span>{' '}
-    <span className="text-(--color-syn-type)">Agent</span>()
-    <span className="text-(--color-syn-operator)">.</span>
-    <span className="text-(--color-syn-function)">init</span>()
-  </code>
-</pre>
-```
+**Rules**
 
-For rendered markdown, use the `.prose` class — styled globally to consume the syntax tokens.
+- Block surface: `--color-surface` on 1px `--color-border`, standard small radius.
+- Inline code: `--bg-key` wash on a tighter padding, no border. Same mono family as block code.
+- Long blocks scroll horizontally; lines never wrap mid-token.
+- Copy controls (when present) live in the top-right corner, ghost-button-sized, revealed on hover and persistent on focus. They do not occupy layout space.
 
-### Inline code
-
-```tsx
-<code className="bg-(--bg-key) px-1.5 py-0.5 rounded-xs font-mono text-sm">
-  app/agent/mode/chat.py
-</code>
-```
+For rendered markdown, use the `.prose` class — it is styled globally to consume the syntax tokens.
 
 ---
 
-## Empty room (signature empty state)
+## Empty states (hand-drawn pattern)
 
-The canonical empty state — mascot + Caveat callout. This is the "what's on your mind?" screen.
+Empty surfaces — no sessions, no tasks, no files, no agents matched a search — reuse the same hand-drawn idiom: a short Caveat callout in `--color-text-subtle`, sometimes paired with the Octobot mascot. The voice is conversational, not instructional.
 
-```tsx
-<div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-  <img
-    src="/brand/octobot-agentd-source.png"
-    alt=""
-    className="w-24 h-24 select-none"
-    draggable={false}
-  />
-  <h2 className="font-hand text-[44px] leading-none text-(--color-text)">
-    what&apos;s on your mind?
-  </h2>
-</div>
-```
+**Rules**
 
-Caveat is purely visual here — the screen reader gets nothing. If the empty state needs to convey instructions, add an Inter description below the callout (or replace the Caveat with an Inter heading entirely).
+- Caveat at the hand size from [typography.md § Hierarchy](./typography.md#type-hierarchy). Centered, with line breaks shaped to read like written speech.
+- Color is `--color-text-subtle` so the callout sits one layer behind the surrounding chrome.
+- Caveat is decorative; pair it with an accessible Inter equivalent in the DOM, or mark the Caveat `aria-hidden` and lift the meaning into a sibling element.
+- The mascot is optional. Use it on full-page empty states (the "what's on your mind?" home screen). Skip it inside narrow popovers and inline empty rows where it would crowd the surface.
+
+**The canonical empty room**
+
+The home screen's empty state is the most prominent example: mascot at a moderate size, with the Caveat prompt "what's on your mind?" below it. This is the one place the prompt is allowed; do not reuse the exact phrase elsewhere.
+
+**Don't**
+
+- Use Caveat for instructional copy ("Click + to add a task"). Instructions belong in Inter.
+- Wrap the empty state in a card. Empty states sit on the ambient page surface; the chrome is what is missing, not what is present.
 
 ---
 
 ## Error state page
 
-```tsx
-<div className="flex flex-col items-center justify-center min-h-screen bg-(--bg-page) px-4">
-  <AlertCircle className="w-16 h-16 text-(--color-error) mb-4" aria-hidden="true" />
-  <h1 className="text-h1 font-bold text-(--color-text) mb-2">Session failed</h1>
-  <p className="text-(--color-text-muted) text-center mb-6 max-w-[50ch]">
-    Session timeout after 30 seconds. Increase{' '}
-    <code className="bg-(--bg-key) px-1.5 py-0.5 rounded-xs font-mono text-sm">max_wait</code>{' '}
-    in{' '}
-    <code className="bg-(--bg-key) px-1.5 py-0.5 rounded-xs font-mono text-sm">chat.yaml</code>{' '}
-    and try again.
-  </p>
-  <div className="flex gap-3">
-    <button className="bg-(--bg-send) text-(--color-text-on-accent) px-4 py-2 rounded-md hover:brightness-110">
-      Retry
-    </button>
-    <a
-      href="/docs/troubleshoot"
-      className="text-(--color-text-2) hover:text-(--color-text) underline underline-offset-4 self-center"
-    >
-      Troubleshooting guide →
-    </a>
-  </div>
-</div>
-```
+Full-page error (session timeout, route not found, fatal config error). Composition: a single error glyph at large size, a heading at h1 scale, an explanatory paragraph at body scale, and one or two recovery actions.
+
+**Rules**
+
+- Glyph: `lucide AlertCircle` in `--color-error`, large icon size.
+- Heading: Inter bold at h1.
+- Paragraph: `--color-text-muted`, max measure ~50ch, may include inline `code` references to the relevant config keys.
+- Actions: a primary button to retry or recover, plus an outlined or link-styled secondary path to documentation.
+- Layout sits on the page surface — no card, no border. The error is the surface.
 
 ---
 
 ## Modal / dialog
 
-```tsx
-{/* Backdrop */}
-<div className="fixed inset-0 bg-(--color-overlay) flex items-center justify-center z-50 animate-in fade-in duration-150">
-  {/* Panel */}
-  <div
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="dialog-title"
-    className="bg-(--bg-card) border border-(--border-card)
-               rounded-lg shadow-2xl w-96 max-w-[90vw]
-               animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-240"
-  >
-    <div className="border-b border-(--color-border) px-6 py-4">
-      <h2 id="dialog-title" className="text-h3 font-semibold text-(--color-text)">
-        Confirm deletion
-      </h2>
-    </div>
+A modal interrupts the user to demand a decision or surface critical information. It is the heaviest piece of chrome the UI uses; reach for a popover, drawer, or inline disclosure first.
 
-    <div className="px-6 py-4">
-      <p className="text-(--color-text-2)">This cannot be undone. Delete this session?</p>
-    </div>
+**Surface**
 
-    <div className="border-t border-(--color-border) px-6 py-4 flex justify-end gap-3">
-      <button className="text-(--color-text-2) hover:text-(--color-text) px-4 py-2 rounded-md transition-colors">
-        Cancel
-      </button>
-      <button className="bg-(--color-error) text-(--color-text-on-accent) px-4 py-2 rounded-md hover:brightness-110 transition-all">
-        Delete
-      </button>
-    </div>
-  </div>
-</div>
-```
+- Same recipe as [Card](#card) — paper fill, hairline border, generous radius.
+- A translucent backdrop tints the page so the modal reads as elevated *without* a drop shadow. The warm border carries the rest of the elevation.
+- A header region holds the title (semibold, h3 scale) and an optional one-line description (`--color-text-muted`).
+- A footer region (when present) inverts to the `--bg-key` wash, separates with a top divider, and right-aligns the action cluster on `≥ sm` viewports.
 
-Focus is trapped inside the dialog; `Esc` closes it; focus returns to the trigger on close. See [interaction.md](./interaction.md#focus-trap-rules).
+**Behavior**
+
+- Focus is trapped inside the panel. The first focusable control receives focus on open.
+- `Esc` always closes (except for explicit confirmation flows that require an action). Focus returns to the trigger.
+- A close button is offered in the top-right by default; opt out only when the dialog is unconditionally dismissable.
+- Animate in with fade + zoom over the standard motion duration; reverse on close. See [motion.md](./motion.md).
+- Scrolling is scoped to the dialog body, never the page beneath.
+
+**Composition**
+
+- Action buttons follow the [Buttons](#buttons) hierarchy — one primary, one or two secondary/outline, destructive only when destructive.
+- Forms inside the dialog use the standard field rules.
+
+**Don't**
+
+- Stack modals. If a confirmation is needed mid-flow, replace the current modal or use an inline confirmation step.
+- Add a drop shadow or `ring-*` to the panel — the backdrop and border are sufficient.
+- Use a modal for non-blocking information; toast or inline status patterns are better.
+
+The same chrome is reused by drawers (sheets), popovers, dropdown menus, and command palettes — when a floating surface is needed, pick the primitive that matches the interaction model rather than hand-rolling another portal.
 
 ---
 
-## Sidebar navigation (expanded)
+## Sidebar navigation
 
-```tsx
-<aside className="w-64 bg-(--bg-sidebar) border-r border-(--border-soft) h-screen overflow-y-auto flex flex-col">
-  {/* Brand header */}
-  <div className="px-4 py-4 flex items-center gap-2 border-b border-(--border-soft)">
-    <img
-      src="/brand/openagentd-app-icon.png"
-      alt=""
-      className="w-7 h-7"
-      draggable={false}
-    />
-    <span className="font-bold text-(--color-text) tracking-tight">OpenAgentd</span>
-  </div>
+The left rail is the persistent home for: brand identity, primary nav actions, and the recent-session list. It collapses to an icon-only strip on desktop and slides in as a full-width drawer on mobile.
 
-  {/* Primary nav */}
-  <nav aria-label="Primary" className="flex flex-col gap-0.5 p-3 flex-1">
-    <a
-      href="/chat"
-      className="flex items-center gap-3 px-3 py-2 rounded-md
-                 text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)
-                 font-normal hover:font-medium
-                 transition-all duration-150"
-    >
-      <MessageCircle className="w-4 h-4" aria-hidden="true" />
-      <span>New chat</span>
-    </a>
-    <a
-      href="/commands"
-      aria-current="page"
-      className="flex items-center gap-3 px-3 py-2 rounded-md
-                 bg-(--bg-key) text-(--color-text) font-medium"
-    >
-      <Command className="w-4 h-4" aria-hidden="true" />
-      <span>Commands</span>
-    </a>
-    <a
-      href="/memory"
-      className="flex items-center gap-3 px-3 py-2 rounded-md
-                 text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)
-                 font-normal hover:font-medium
-                 transition-all duration-150"
-    >
-      <Brain className="w-4 h-4" aria-hidden="true" />
-      <span>Memory wiki</span>
-    </a>
-  </nav>
+The sidebar composes two reusable primitives: a brand header and a sidebar item. Compose, do not bypass.
 
-  {/* Footer */}
-  <div className="p-3 border-t border-(--border-soft) flex items-center justify-between">
-    <ThemeToggle />
-  </div>
-</aside>
-```
+### Brand header
 
-Current page shows `aria-current="page"` + permanent selected styling (the same warm `--bg-key` used as hover). Hover shifts weight (see [typography.md](./typography.md#font-weight-transitions-signature-interaction)).
+- A 16-unit-tall row containing the mascot, the wordmark, and a dock-toggle button.
+- Mascot: app icon at 44×44, no decoration.
+- Title: Caveat at 28px, bold, `--color-text`. The wordmark is decorative chrome — it is also conveyed by the document title and by the logo asset itself, so a screen reader will still encounter "OpenAgentd" elsewhere.
+- Subtitle: mono 11px, `--color-text-muted`, reading "on-machine ai".
+- Dock toggle: outlined icon button on the right; flips icon between collapse and expand based on the rail's current state.
 
-### Collapsed sidebar
+### Sidebar item
 
-When collapsed, the sidebar shrinks to icon-only. The active item must keep a visible affordance — either the same `--bg-key` fill or a 2px left accent bar in `--color-accent`.
+- Icon + label + optional keyboard hint, in a single row.
+- Two render modes:
+  - Expanded: `[icon] [label …………] [kbd?]`. Padding sits at the standard nav scale; row height ~10 spacing units.
+  - Collapsed: `[icon]` centered in a square cell of the row's height. Label is removed from the DOM (not just visually hidden) so the rail computes correctly.
+- Active state uses `--bg-key` fill with `--color-text` and weight 500. Hover uses the same fill and bumps weight from 500 to 600 (see [typography.md § Font-weight transitions](./typography.md#font-weight-transitions-signature-interaction)).
+- Keyboard hint pill renders as outlined `--color-border` on `--bg-page` with mono text — only visible in expanded mode. On collapsed rails the shortcut is surfaced via the row's `title` attribute instead.
 
-```tsx
-<aside className="w-14 bg-(--bg-sidebar) border-r border-(--border-soft) h-screen flex flex-col items-center py-3 gap-1">
-  {navItems.map((item) => (
-    <a
-      key={item.href}
-      href={item.href}
-      aria-label={item.label}
-      aria-current={item.active ? 'page' : undefined}
-      className={`
-        relative flex items-center justify-center w-9 h-9 rounded-md
-        transition-all duration-150
-        ${item.active
-          ? 'bg-(--bg-key) text-(--color-text)'
-          : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'}
-      `}
-    >
-      <item.Icon className="w-4 h-4" aria-hidden="true" />
-    </a>
-  ))}
-</aside>
-```
+### Recent sessions
+
+- Grouped by relative date headers ("Today", "Yesterday", "Older"). Headers use mono uppercase 10px in `--color-text-muted`.
+- Rows use the proximity-fade pattern (see [interaction.md § Proximity effects](./interaction.md#proximity-effects)): hover wash strength tracks cursor distance, not binary on/off.
+- A delete affordance lives at the trailing edge of each row. On desktop it is hidden until hover; on mobile it is always visible (touch has no hover state).
+- Scheduled sessions add a "sched" mono badge after the title and a second line with the schedule name in `--color-text-subtle`.
+
+### Collapsed rail
+
+- Width snaps to a single icon's worth of horizontal space; row height is preserved.
+- Recent sessions degrade to a vertical column of small dots (one per recent session, capped). The active session's dot uses `--color-accent`.
+- Footer keeps the theme toggle; the health dot is dropped in collapsed mode.
+
+### Mobile drawer
+
+- Slides in from the left over a translucent backdrop. The drawer is always at expanded width; there is no icon-only mode on mobile.
+- Tapping the backdrop or selecting a session closes the drawer.
+- Brand header's dock-toggle is repurposed to a close action; the chevron icon is the same.
+
+### Don't
+
+- Replace `bg-(--bg-sidebar)` with `bg-(--bg-page)`. The sidebar is one tonal step warmer than the page on purpose; the rail must read as part of the chrome.
+- Use a different active-state color from the rest of the nav. Sidebar items, command palette rows, and topbar tabs share the `--bg-key` active wash for consistency.
+- Hide the active session in collapsed mode. The dot column must always show the current session at full color.
 
 ---
 
-## Theme toggle (three-way)
+## Theme toggle
 
-`system` / `light` / `dark`. Persisted to `localStorage`. No flash of wrong theme on load (see [layout.md](./layout.md#mode-switching)).
+A three-state segmented control (`system` / `light` / `dark`), persisted to `localStorage`, applied without a flash of the wrong theme on first paint (see [layout.md § Mode switching](./layout.md#mode-switching)).
 
-```tsx
-import { Monitor, Sun, Moon } from 'lucide-react';
+**Rules**
 
-type Theme = 'system' | 'light' | 'dark';
-
-function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem('theme') as Theme) ?? 'system'
-  );
-
-  useEffect(() => {
-    localStorage.setItem('theme', theme);
-    const resolved =
-      theme === 'system'
-        ? matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
-        : theme;
-    document.documentElement.classList.remove('light', 'dark');
-    document.documentElement.classList.add(resolved);
-  }, [theme]);
-
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Theme"
-      className="inline-flex gap-0.5 bg-(--bg-card) border border-(--border-card) rounded-md p-0.5"
-    >
-      {(['system', 'light', 'dark'] as const).map((mode) => {
-        const Icon = mode === 'system' ? Monitor : mode === 'light' ? Sun : Moon;
-        const selected = theme === mode;
-        return (
-          <button
-            key={mode}
-            role="radio"
-            aria-checked={selected}
-            aria-label={`${mode} theme`}
-            onClick={() => setTheme(mode)}
-            className={`
-              flex items-center justify-center w-7 h-7 rounded-md transition-all duration-150
-              ${selected
-                ? 'bg-(--bg-send) text-(--color-text-on-accent)'
-                : 'text-(--color-text-muted) hover:text-(--color-text)'}
-            `}
-          >
-            <Icon className="w-3.5 h-3.5" />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-```
+- Three icon-only buttons in a single rounded outline (`--bg-card` fill, `--border-card` outline). Icons: `lucide Monitor` / `lucide Sun` / `lucide Moon`.
+- Active button uses the inverted-paper recipe: `--bg-send` fill, `--color-text-on-accent` glyph. Inactive buttons stay transparent with `--color-text-muted` glyphs.
+- The control is a `radiogroup` with `aria-checked` per button. Labels live on `aria-label` only; the icons are too dense for visible text.
+- Reduced motion still applies to the cross-fade between themes — flashes longer than 80ms read as broken.
 
 ---
 
 ## Thinking indicator (streaming)
 
-Full motion spec in [motion.md](./motion.md#thinking-indicator-pulse-dots). Progressive label text named by the agent. The dot color matches the agent's chip edge color.
+A paper card that records an assistant turn's reasoning. It collapses to a one-line header and expands to reveal the full trace. It is part of the assistant turn, not a free-floating ornament.
 
-```tsx
-function ThinkingIndicator({ label, role }: { label: string; role?: AgentRole }) {
-  const dotColor = role ? `var(--accent-${roleToColor[role]})` : 'var(--color-text-muted)';
-  return (
-    <div
-      className="flex items-center gap-2 text-(--color-text-muted)"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="flex gap-1">
-        <span
-          className="w-1.5 h-1.5 rounded-full animate-pulse [animation-delay:0ms]"
-          style={{ backgroundColor: dotColor }}
-        />
-        <span
-          className="w-1.5 h-1.5 rounded-full animate-pulse [animation-delay:200ms]"
-          style={{ backgroundColor: dotColor }}
-        />
-        <span
-          className="w-1.5 h-1.5 rounded-full animate-pulse [animation-delay:400ms]"
-          style={{ backgroundColor: dotColor }}
-        />
-      </div>
-      <span className="text-sm">{label}</span>
-    </div>
-  );
-}
+### Resting / collapsed
 
-// Usage — label updates as the agent progresses, dot color identifies the role
-<ThinkingIndicator role="openagentd" label="Thinking" />
-<ThinkingIndicator role="executor" label="Reading 4 files" />
-<ThinkingIndicator role="explorer" label="Searching memory" />
-```
+A single header row: chevron, label, sub-hint.
+
+- Outer surface: small radius, 1px `--color-border`, no fill — the row sits on the ambient chat surface.
+- Chevron points right at rest, rotates 90° when expanded; muted text color.
+- Label: Inter 13px, medium weight, `--color-text-2`. Default text is "Reasoning".
+- Sub-hint: mono 11px, `--color-text-muted`. Reads "tap to read" when collapsed, "tap to collapse" when expanded.
+
+### Streaming
+
+While reasoning tokens are still arriving, replace the sub-hint with the three-dot animation. The label stays as the visual anchor; the row never reflows mid-thought.
+
+### Label derivation
+
+The label may be promoted from the first non-empty line of the reasoning content, but only once that line has *finalised* — meaning a newline has arrived, or a leading bold heading has closed. Promoted labels are cleaned of common markdown decorations and capped to a short character budget; longer or still-streaming first lines stay on "Reasoning" rather than thrashing or truncating.
+
+When the first line is promoted to the label, the expanded body omits it to avoid duplication.
+
+### Expanded body
+
+A divider separates the header from the body. The body uses the calm `--bg-key` reading wash, mono italic at the small text scale, in `--color-text-muted`. Whitespace is preserved.
+
+The same divider + `--bg-key` wash is shared with the [tool-call row](#tool-call-row) expanded panel — these two surfaces are deliberately sibling-shaped so a turn's reasoning + tool calls + answer scan as a single unit.
+
+### Don't
+
+- Use three free-floating pulse dots inline with prose. That pattern is reserved for waiting/spinner contexts; reasoning always gets the paper card.
+- Color the dot or border by agent role. Reasoning belongs to the assistant turn as a whole; agent identity is carried by chips and bubble flow, not by reasoning chrome.
+- Mutate the label character-by-character while streaming. Only promote first lines that have finalised.
 
 ---
 
 ## Streaming cursor
 
-The blinking cursor that trails live-streamed text. Spec in [motion.md](./motion.md#streaming-cursor-blink).
+A blinking caret trailing live-streamed text. Spec in [motion.md § Streaming cursor](./motion.md#streaming-cursor-blink).
 
-```tsx
-<span className="inline-block w-[0.5ch] h-[1em] bg-(--color-text) align-text-bottom animate-[streaming-cursor_1s_steps(2,end)_infinite]" />
-```
-
-```css
-@keyframes streaming-cursor {
-  0%, 50%   { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-```
-
-Remove the cursor the moment streaming ends or a tool call starts. A blinking cursor with no live generation is a bug.
-
----
-
-## Input bar (floating composer)
-
-The input bar is a **paper capsule** floating above the conversation — `--bg-card` with a soft border and `--shadow-depth`. It is draggable via a top-edge grip; position is persisted to `localStorage` (`oa-input-position`); a double-click on the grip resets to bottom-center.
-
-### Surface
-
-```tsx
-<div
-  className="bg-(--bg-card)/90 backdrop-blur-xl
-             border border-(--border-card) shadow-[var(--shadow-depth)]
-             rounded-2xl
-             px-3 py-2"
->
-  {/* grip + textarea + attach + send */}
-</div>
-```
-
-The capsule uses `--radius-2xl` (24px) — the largest radius in the system. It reads as a *physical writing instrument*, not a toolbar.
-
-### States
-
-The pencil documents distinct input bar states; each maps to a small visual cue rather than a different layout:
-
-| State | Cue |
-|---|---|
-| **Empty** | Placeholder text, send button at reduced opacity |
-| **Typing** | Send button at full opacity, character counter (if relevant) |
-| **Streaming** | Send button replaced with a stop icon; thin border accent in the active agent's chip color |
-| **Queue armed** | Small "Queue" badge prefixed with `+1 message · enqueued`, edge in `--accent-orange` |
-| **With attachments** | Attachment chips render adjacent to the bar (above or below per `filesBelow` rule) |
-| **Collapsed** | Compressed height when sidebar is collapsed; same surface, less padding |
-
-### Attachment previews
-
-File-attachment chips (images rendered as thumbnails, other files as `FileCard`) live in a row adjacent to the input bar. Three rules keep the composer usable:
-
-1. **Direction is position-dependent** — `FloatingInputBar` computes a `filesBelow` boolean and passes it to `InputBar`:
-   - **Default: `true`** — previews render *below* the input bar.
-   - **Flips to `false`** only when the panel is docked far from the bottom (`bounds.bottom - panel.bottom ≥ 140px`).
-   - Recomputed on mount, `window` resize, drag end, and double-click reset.
-2. **Single row with horizontal scroll, never vertical wrap** — `flex flex-nowrap w-max` inside an `overflow-x-auto` container.
-3. **Image thumbnails render in *compact* mode** — `max-h-[160px] max-w-[160px]` instead of the default 200×200. Click-to-expand lightbox is unaffected.
-
-### Drag handle
-
-The grip is passed to `InputBar` via the `renderDragHandle` render-prop so that `InputBar` can position it relative to the input bar (not the outer panel). The handle uses `absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2` to sit straddling the bar's top edge.
-
-```tsx
-<InputBar
-  floating
-  filesBelow={filesBelow}
-  renderDragHandle={() => (
-    <button
-      type="button"
-      aria-label="Drag input bar (double-click to reset position)"
-      title="Drag to move · Double-click to reset"
-      onPointerDown={(e) => dragControls.start(e)}
-      onDoubleClick={handleReset}
-      className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2
-                 w-12 h-3 flex items-center justify-center
-                 rounded-full bg-(--bg-card) border border-(--border-card)
-                 text-(--color-text-muted) hover:text-(--color-text)
-                 transition-colors"
-    >
-      <GripHorizontal size={12} aria-hidden="true" />
-    </button>
-  )}
-  {...inputProps}
-/>
-```
-
-Use framer-motion's `useDragControls` with `dragListener={false}` on the motion wrapper, then start drag manually from the handle's `onPointerDown`. This is the only reliable way to gate drag to a sub-region without breaking pointer events on the rest of the panel.
-
----
-
-## Draggable panes
-
-The same handle-only drag pattern applies to team view agent panes. Drag is gated to a visible `GripVertical`; the whole panel remains a valid drop target via `onDragOver` / `onDrop` on its root.
-
-```tsx
-<div onDragOver={handleDragOver} onDrop={handleDrop} className="relative">
-  <div
-    draggable
-    onDragStart={handleDragStart}
-    className="absolute top-2 left-2 cursor-grab"
-    aria-label="Reorder pane"
-  >
-    <GripVertical className="w-4 h-4 text-(--color-text-muted)" />
-  </div>
-  {/* pane content — selectable, clickable, normal */}
-</div>
-```
+- Half-character-width vertical bar in `--color-text`, full line-height tall.
+- Two-step blink at 1s — fully on, fully off; no fade.
+- Removed the moment streaming ends or a tool call starts. A blinking caret with no live generation is a bug.
 
 ---
 
 ## Tool-call row
 
-Slides in from below with a spring ([motion.md](./motion.md#tool-call-row-slide-in)). Tool calls are role-tagged: the wrench icon picks up the calling agent's chip edge color.
+A paper card recording one tool invocation. Identity is carried by a colored status dot, not a tool icon, so the same chrome serves every tool the agent might call.
 
-### Collapsed (single line)
+### Lifecycle
 
-```tsx
-<div
-  className="bg-(--bg-card) border border-(--border-card) rounded-md
-             px-3 py-2 flex items-center gap-3
-             animate-in slide-in-from-bottom-1 fade-in duration-240 ease-out"
->
-  <Wrench className="w-4 h-4 text-(--accent-blue)" aria-hidden="true" />
-  <span className="text-sm font-mono text-(--color-text-2)">read_file</span>
-  <span className="text-sm text-(--color-text-muted) truncate font-mono">
-    app/agent/mode/chat.py
-  </span>
-  <span className="ml-auto text-xs text-(--color-text-muted)">124ms</span>
-  <ChevronRight
-    className="w-3.5 h-3.5 text-(--color-text-subtle) transition-transform"
-    aria-hidden="true"
-  />
-</div>
-```
+| State | When | Dot |
+|---|---|---|
+| Start | Tool name has arrived but arguments have not | Muted, gentle pulse |
+| Running | Arguments are streaming, no result yet | Accent-blue, gentle pulse |
+| Success | Result has landed and does not look like a failure | `--color-success`, static |
+| Failed | Result begins with a known failure prefix or a non-zero exit signal | `--color-error`, static |
 
-### Expanded (with output)
+The failure detection is conservative: prefer false negatives over false positives. The dot only flips to error when the result text matches one of the agreed failure shapes (e.g. `[failed`, `[error`, `exit code 1`, `exit 1`). Tool result formatters must use those prefixes consistently so the indicator stays trustworthy.
 
-```tsx
-<div
-  className="bg-(--bg-card) border border-(--border-card) rounded-md
-             flex flex-col
-             animate-in slide-in-from-bottom-1 fade-in duration-240 ease-out"
->
-  {/* Header row — same as collapsed */}
-  <div className="px-3 py-2 flex items-center gap-3 border-b border-(--border-soft)">
-    <Wrench className="w-4 h-4 text-(--accent-blue)" aria-hidden="true" />
-    <span className="text-sm font-mono text-(--color-text-2)">read_file</span>
-    <span className="text-sm text-(--color-text-muted) truncate font-mono">
-      app/agent/mode/chat.py
-    </span>
-    <span className="ml-auto text-xs text-(--color-text-muted)">124ms</span>
-    <ChevronDown className="w-3.5 h-3.5 text-(--color-text-subtle)" aria-hidden="true" />
-  </div>
+### Chrome
 
-  {/* Output — code block on slightly inset surface */}
-  <pre className="px-3 py-2 bg-(--color-tint-mint) text-sm font-mono text-(--color-text) overflow-x-auto">
-    <code>{toolOutput}</code>
-  </pre>
-</div>
-```
+- Outer card: small radius, 1px `--color-border`, no fill — sits on the ambient chat surface so a stack of rows reads as a single column.
+- Header row: status dot, mono name (or a tool-specific summary), chevron at the trailing edge. Header padding sits at the small-card scale.
+- Hover wash on `--bg-key` only when the row is expandable. A row with no details is non-interactive and skips the wash.
+- Expanded body: divider, then the calm `--bg-key` wash. Inside the body, two sections — arguments and result — each captioned with mono uppercase 10px in `--color-text-subtle`, with copy-to-clipboard affordance per section.
 
-The output uses `--color-tint-mint` (very-low-alpha mint) as a subtle "this came back successfully" wash — *only* when the call returned `success`. Errors use `--accent-red` at 8% alpha; pending (still executing) uses `--color-tint-orange`.
+### Per-tool customisation
+
+Tools may customise the header summary (e.g. "Read `src/main.py`" instead of "read_file") and the way arguments are rendered (e.g. shell commands prefixed with `$`, JSON formatted as syntax-highlighted blocks). That customisation is per-tool and lives next to the chrome, not inside it. The chrome rules do not change between tools.
+
+### Don't
+
+- Add a wrench (or any tool icon) to the header. The status dot is the only identity glyph; a tool icon adds noise without information.
+- Tint the result body green or red to match status. The dot already conveys state; the warm `--bg-key` reads as a calm reading wash regardless of outcome.
+- Fill the outer card. Leave it transparent so the row blends into the chat surface; only the expanded body gets a fill.
+- Use the deprecated `--border-card` token; use `--color-border`.
+
+---
+
+## Agent topbar
+
+The chat surface's right cluster — the consistent bar of controls that follows the user across agent / split / unified views. It sits at the trailing edge of the topbar; the left side varies per view mode.
+
+The topbar is composed from smaller primitives. Each primitive owns its appearance; the topbar owns the order and the visibility rules.
+
+**Primitives in the right cluster (in order)**
+
+1. **Token meter** — desktop only, hidden until totals exceed zero. Shows `input · output · cached` tokens in mono 11px on a transparent background; cached column appears only after the first cache hit. A pulsing dot may follow the numbers while values are still climbing.
+2. **Dream indicator** — small mono row with a pulsing moon glyph, shown while the dream loop is running. Label is hidden on narrow viewports; the pulsing glyph is the minimum.
+3. **Split-pane controls** — desktop only, only meaningful in unified view. Two icon-only ghost buttons for "split down" and "split right".
+4. **View toggle** — desktop only. Three-state segmented control for `agent` / `split` / `unified`. See [View toggle](#view-toggle).
+5. **Topbar action triplet** — Todos, Files, Agents. Each is a small icon+label button (see [Topbar action](#topbar-action)).
+
+**Visibility rules**
+
+- Mobile collapses everything except the action triplet — token meter, dream indicator, split controls, and view toggle are all desktop-only.
+- The topbar is a `shrink-0` flex row. The left side of the topbar must own its `min-w-0` so the topbar never pushes content off-screen.
+
+**Don't**
+
+- Mix the topbar action triplet with the view toggle order. The order is fixed; users learn the position of each control across sessions.
+- Use a chip-colored indicator on a topbar action to signal an open panel state. Use the small accent dot on `TopbarAction` (`indicator`) — that affordance is reserved for that purpose.
+
+---
+
+## View toggle
+
+Three-state icon-only segmented control for chat view modes — `agent` (single agent focus), `split` (side-by-side panes), `unified` (tiled view).
+
+**Rules**
+
+- Three equally-sized icon-only buttons inside a rounded outline. Outline uses `--color-border-subtle`; padding inside is half a unit.
+- Active button: `--color-surface-2` fill, `--color-text` glyph. Inactive: transparent fill, `--color-text-muted` glyph that hovers to `--color-text-2` on `--bg-key`.
+- Icons are mapped to the closest lucide equivalents of the design source's Material Symbols `person` / `view_column` / `view_quilt` (currently `User` / `Columns2` / `LayoutGrid`).
+- Implemented as a `radiogroup`; per-button `aria-checked`. Labels live on `aria-label` and `title` only — the control is too dense to fit visible labels in the topbar; tooltips surface them on hover and on focus.
+
+**Don't**
+
+- Re-skin the active button as a primary-button surface (`--color-accent`). The toggle communicates a *view mode*, not a primary action; it must stay neutral.
+
+---
+
+## Topbar action
+
+Small icon+label button used in the agent topbar (Todos, Files, Agents).
+
+**Rules**
+
+- Padding sits at the compact scale, gap between icon and label is a single spacing unit, radius at the small scale.
+- Transparent fill at rest; hover wash on `--bg-key` with the label color shifting from `--color-text-2` to `--color-text`.
+- Lucide icon at 13px, label at 12px weight 500. Both inherit the same color.
+- Disabled state reduces opacity to 50% and removes the hover wash.
+- Labels are hidden on narrow viewports by default but stay in the DOM as accessible names. Optional small accent dot at the trailing edge signals an active or in-progress state; an override color (e.g. `--color-error`) is allowed for error states.
+
+---
+
+## Todos popover
+
+Task-list popover surfaced from the agent topbar. Trigger is a `TopbarAction`; content is a paper-card panel.
+
+**Trigger**
+
+- Uses the `TopbarAction` primitive directly so it sits inline with Files and Agents.
+- The accent dot is shown when any task is in progress.
+- Disabled (with a "No active session" tooltip) when there is no session.
+
+**Panel chrome**
+
+- Surface: medium-width panel, small radius, `--color-surface` fill, 1px `--color-border` outline (no shadow ring), shadow at the depth scale because the panel floats over chat.
+- Header: mono uppercase 10px title ("Tasks"), mono completion counter ("3 / 8 done") aligned to the trailing edge.
+- Empty state: hand-drawn Caveat callout in `--color-text-subtle` ("No tasks yet — ask the agent to plan"). Same idiom as the rest of the app's empty surfaces.
+
+**Item rules**
+
+- Sort order: in-progress, then pending, then completed, then cancelled.
+- Status glyph leads the row, sized small. Completed and cancelled rows use `line-through` and shift the text to `--color-text-subtle`.
+- Priority badge trails the row in mono uppercase 9px on a soft fill: high uses `--color-error` at low alpha, medium uses `--color-warning` at low alpha, low uses `--bg-key` neutral.
+
+**Don't**
+
+- Color the status glyph by agent role. The popover represents the assistant's task list as a whole.
+- Use the chip palette for priority. Priority is a status concept, not an identity concept.
+
+---
+
+## File preview strip
+
+A horizontal row of file-preview chips below or above the input bar. Used by the input composer when files are attached or staged.
+
+**Rules**
+
+- Single row; horizontal scroll, never wrap.
+- Image attachments render as compact thumbnails (capped at a moderate max edge); other files render as the shared `FileCard`.
+- When the row content overflows the visible width, a thin scroll-position pill appears below the strip — a 3px-tall track with a thumb that mirrors current scroll position. The pill is hidden when content fits.
+- Direction (above vs. below the input) is set by the parent based on docking position. The input bar's parent owns the rule and passes the direction to the strip; the strip never decides for itself.
+
+---
+
+## Input bar (floating composer)
+
+The input bar is a paper capsule floating above the conversation. It is the most-touched surface in the product and follows two distinct mode rules.
+
+### Surface
+
+- `--bg-card` fill (slightly translucent to allow background blur), 1px `--color-border` outline, depth shadow because the bar floats. Radius at the largest scale in the system — the bar reads as a *physical writing instrument*, not a toolbar.
+- Padding is compact; the bar grows vertically with the textarea up to a maximum height, then scrolls internally.
+
+### States
+
+| State | Cue |
+|---|---|
+| Empty | Placeholder text, send button at reduced opacity |
+| Typing | Send button at full opacity; optional character counter on long messages |
+| Streaming | Send button is replaced with a stop control; the bar's border picks up a thin accent in the active agent's chip color |
+| Queue armed | A queue badge appears above the bar (`+1 message · enqueued`); see [Queue banner](#queue-banner) |
+| With attachments | Attachment chips render adjacent to the bar via the [File preview strip](#file-preview-strip) |
+| Minimized | Desktop only — collapses to a slim icon strip when the textarea blurs while empty |
+
+### Desktop minimize / summon
+
+A blurred composer should not dominate the chat surface, but the user must be able to summon it from anywhere. The bar collapses and expands by the same set of rules:
+
+- Starts collapsed on first paint. The slim icon strip is the resting state on desktop.
+- Expands on focus, on attaching a file, while streaming, while there is queued content, while disabled (waiting for a response), or while content is held inside the composer.
+- Collapses again after a short delay following blur, but only when there is genuinely no content. The delay is short enough to feel snappy and long enough to avoid collapsing mid-action when the user clicks an adjacent control inside the bar.
+- A global shortcut (`Ctrl/⌘+I`) summons the composer from any focus context. The textarea takes focus and the bar expands if needed.
+
+Mobile keeps the full bar at all times — the soft keyboard already dictates focus cadence, and a collapse race there would feel broken.
+
+### Drag (desktop)
+
+- The bar is draggable from a top-edge grip handle; pointer events outside the grip do not initiate drag.
+- Position persists across sessions; on resize the position is clamped so the bar stays inside the viewport.
+- A double-click on the grip resets to the default docked position (bottom-center with a small gap).
+
+### Mobile dock
+
+- Static, full-width, pinned to the bottom of the viewport.
+- A top border separates the dock from the chat above; bottom padding accounts for the home indicator (`pb-safe`).
+- No drag, no position memory — the keyboard owns the bottom region and any motion would fight the system.
+
+### Attachment direction
+
+The parent (`FloatingInputBar`) computes whether previews render above or below the bar based on the bar's distance from the viewport bottom: previews default to *below*, and only flip to *above* when the bar is docked near the top of the chat region. The rule recomputes on mount, on window resize, on drag end, and on reset.
+
+### Don't
+
+- Replace the depth shadow with a heavier border. The bar floats; the shadow is what communicates that.
+- Use the bar's radius scale anywhere else. The 24-ish-px corner is reserved for the composer.
+- Show the slim minimized strip on mobile.
+
+---
+
+## Draggable panes
+
+Side-by-side and tiled agent panes use the same handle-only drag pattern. Drag is gated to a visible grip; the rest of the pane remains a normal click/scroll target. The pane is a valid drop target via `onDragOver` / `onDrop` on its root.
+
+- Grip: `lucide GripVertical` (or `GripHorizontal` for top-mounted handles), `--color-text-muted`, sized small.
+- Cursor: `grab` at rest, `grabbing` while pressed.
+- Use the framework's drag-controls pattern — start drag manually from the grip's pointer-down — so the handle is the only drag entry point.
 
 ---
 
 ## Queue banner
 
-When messages are enqueued behind a streaming response, a small banner appears above the input bar.
+When messages are enqueued behind a streaming response, an aggregate banner sits above the input bar. It is the only place orange-marker pigment is reused outside the chip palette.
 
-```tsx
-<div
-  className="flex items-center gap-2 px-3 py-1.5
-             bg-(--accent-orange-soft) text-(--accent-orange-text)
-             rounded-md text-sm font-medium
-             border border-(--accent-orange)/30"
-  role="status"
-  aria-live="polite"
->
-  <span className="w-1.5 h-1.5 rounded-full bg-(--accent-orange)" aria-hidden="true" />
-  <span>+1 message · enqueued</span>
-  <button className="ml-2 text-(--accent-orange-text)/70 hover:text-(--accent-orange-text)">
-    <X className="w-3 h-3" />
-  </button>
-</div>
-```
+**Rules**
 
-Orange (consultant chip) is reused here because "enqueued" is conceptually a *consultation* signal — "this will be considered next, not now". The chip-soft / chip-edge / chip-text triad scales to any small status badge.
+- Surface: `--color-surface` fill, 1px `--color-border` outline, depth shadow because the banner floats near the input bar. Small radius.
+- Header text: mono 11px, weight 600, letter-spaced; reads `QUEUE · N messages awaiting`. The pluralization is computed from the count.
+- Marker dot at the leading edge: `--color-marker-orange`. Optional collapse chevron at the trailing edge when the banner is interactive.
+- Status semantics: when the banner is not interactive, it is a `role="status"` with `aria-live="polite"`. When interactive, it is a button with `aria-expanded`.
+
+Per-message rows below the banner are owned by the pending-queue list, not by the banner itself.
+
+**Don't**
+
+- Use chip-soft / chip-edge / chip-text orange tokens for the banner. The marker tokens are deliberately more saturated; the banner is intentionally louder than a chip.
+- Stack a queue banner inside a card. The banner is itself a floating chrome surface.
 
 ---
 
-## Design token export (JSON)
+## Token meter
 
-For Figma, Storybook, or other design tools:
+Compact pill that shows token totals in the agent topbar.
 
-```json
-{
-  "mode": {
-    "light": {
-      "color": {
-        "bg-page": "#FAF6EC",
-        "bg-sidebar": "#F5EFDD",
-        "bg-card": "#FFFBF1",
-        "bg-input": "#FAF6EC",
-        "bg-key": "#F0E9D4",
-        "bg-send": "#2D241B",
-        "surface": "#FFFDF7",
-        "surface-2": "#F5EBD8",
-        "border-soft": "#E8DFC6",
-        "border-card": "#E0D5B7",
-        "border": "#D7C7AA",
-        "border-strong": "#A89880",
-        "text": "#1A1714",
-        "text-2": "#5F5143",
-        "text-muted": "#7A6B58",
-        "text-subtle": "#A89880",
-        "text-on-accent": "#FFFDF7",
-        "accent": "#3F3429",
-        "accent-blue": "#5AA8E2",
-        "accent-blue-soft": "#DCEEFB",
-        "accent-blue-text": "#2D6FA8",
-        "accent-green": "#3DA66A",
-        "accent-green-soft": "#E2F2E5",
-        "accent-green-text": "#2D7A4F",
-        "accent-orange": "#F59E3B",
-        "accent-orange-soft": "#FFF1D8",
-        "accent-orange-text": "#C26A1E",
-        "accent-pink": "#E63D7A",
-        "accent-pink-soft": "#FBE0EB",
-        "accent-purple": "#7C5BCF",
-        "accent-purple-soft": "#E8DEF8",
-        "accent-red": "#C8333E",
-        "marker-blue": "#0284C7",
-        "marker-mint": "#16A34A",
-        "marker-orange": "#FA8030",
-        "marker-pink": "#DB2777",
-        "marker-yellow": "#B77900",
-        "violet": "#7C3AED",
-        "success": "#3DA66A",
-        "warning": "#F59E3B",
-        "error": "#B91C1C",
-        "info": "#5AA8E2",
-        "overlay": "#1A171466"
-      },
-      "focus-ring": "#3F3429",
-      "shadow-depth": "0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.05)"
-    },
-    "dark": {
-      "color": {
-        "bg-page": "#15110D",
-        "bg-sidebar": "#1C1813",
-        "bg-card": "#1C1813",
-        "bg-input": "#1C1813",
-        "bg-key": "#2A2219",
-        "bg-send": "#F5EBD8",
-        "surface": "#221C16",
-        "surface-2": "#2A2219",
-        "border-soft": "#2C231A",
-        "border-card": "#3A2F23",
-        "border": "#3A2F23",
-        "border-strong": "#5C4B36",
-        "text": "#F5EBD8",
-        "text-2": "#C5B59A",
-        "text-muted": "#9C8A72",
-        "text-subtle": "#7A6B58",
-        "text-on-accent": "#15110D",
-        "accent": "#F5EBD8",
-        "accent-blue": "#7CC2F0",
-        "accent-blue-soft": "#1E3A52",
-        "accent-blue-text": "#9DD0F5",
-        "accent-green": "#5DC487",
-        "accent-green-soft": "#1F3A2A",
-        "accent-green-text": "#92E0B0",
-        "accent-orange": "#FDB75D",
-        "accent-orange-soft": "#3D2D14",
-        "accent-orange-text": "#FCC780",
-        "accent-pink": "#F472B6",
-        "accent-pink-soft": "#3D1F2D",
-        "accent-purple": "#A78BFA",
-        "accent-purple-soft": "#2D2440",
-        "accent-red": "#F87171",
-        "marker-blue": "#38BDF8",
-        "marker-mint": "#4ADE80",
-        "marker-orange": "#FCC352",
-        "marker-pink": "#F472B6",
-        "marker-yellow": "#FBBF24",
-        "violet": "#A78BFA",
-        "success": "#5DC487",
-        "warning": "#FDB75D",
-        "error": "#F87171",
-        "info": "#7CC2F0",
-        "overlay": "#00000099"
-      },
-      "focus-ring": "#F5EBD8",
-      "shadow-depth": "0 1px 2px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.25)"
-    }
-  },
-  "typography": {
-    "font-sans": "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    "font-mono": "'JetBrains Mono', ui-monospace, 'SF Mono', 'Courier New', monospace",
-    "font-hand": "'Caveat', 'Bradley Hand', cursive",
-    "size": {
-      "hand": "44px",
-      "display": "32px",
-      "h1": "28px",
-      "h2": "24px",
-      "h3": "20px",
-      "body": "16px",
-      "sm": "14px",
-      "xs": "12px"
-    },
-    "weight": {
-      "regular": 400,
-      "medium": 500,
-      "semibold": 600,
-      "bold": 700
-    }
-  },
-  "radius": {
-    "xs": "6px",
-    "sm": "8px",
-    "md": "10px",
-    "lg": "14px",
-    "2xl": "24px"
-  },
-  "spacing": {
-    "base": "4px",
-    "xs": "4px",
-    "sm": "8px",
-    "md": "12px",
-    "lg": "16px",
-    "xl": "24px",
-    "2xl": "32px",
-    "3xl": "48px",
-    "4xl": "64px"
-  },
-  "motion": {
-    "duration": {
-      "instant": "80ms",
-      "fast": "150ms",
-      "base": "240ms",
-      "slow": "400ms",
-      "glacial": "800ms"
-    },
-    "ease": {
-      "out": "cubic-bezier(0.16, 1, 0.3, 1)",
-      "in-out": "cubic-bezier(0.4, 0, 0.2, 1)",
-      "spring-soft": "cubic-bezier(0.34, 1.2, 0.64, 1)",
-      "spring-snappy": "cubic-bezier(0.22, 1.4, 0.36, 1)"
-    }
-  }
-}
-```
+- Mono 11px, padding compact, radius at the small scale, no fill.
+- Numbers in `--color-text`; `·` separators in `--color-text-muted`.
+- Cached column appears only when its value exceeds zero — a fresh session shows two numbers, not three.
+- Optional pulsing dot to signal that values are still climbing during a stream.
 
 ---
 
 ## Pre-ship checklist
 
-- [ ] Tokens used (`--bg-*`, `--color-*`, `--accent-*`, `--fg-*`) — no raw hex values
-- [ ] Both modes verified (toggle between light/dark — nothing should look broken)
-- [ ] Body uses Inter; code uses JetBrains Mono; Caveat is opt-in only on hand callouts
-- [ ] Spacing aligns to 4px base; radius uses `--radius-*`
-- [ ] Focus ring visible on `:focus-visible` (tab through the UI to verify)
-- [ ] Contrast ≥ 4.5:1 for body text (Lighthouse / WebAIM)
-- [ ] Icons from lucide-react, sized to the [imagery.md](./imagery.md#sizing) scale
-- [ ] Status colors paired with icon or label (never color alone)
-- [ ] Agent chips use the correct `--accent-{role}-*` triad — soft fill, edge dot, text
-- [ ] Brand pigment (Octobot gold/orange) only on mascot and lockups, never on UI chrome
-- [ ] Motion uses tokens from [motion.md](./motion.md) — no magic ms values
-- [ ] Font-weight transitions on interactive elements only (not on Caveat)
-- [ ] `prefers-reduced-motion` tested
-- [ ] Keyboard navigation works end-to-end (no traps, logical tab order)
-- [ ] Touch targets ≥ 44×44 on mobile
-- [ ] Empty/error/loading states all present
+Before shipping a new component or screen:
+
+- Tokens used everywhere — no raw hex values anywhere in component CSS or inline style.
+- Both modes verified by toggling `system → light → dark`. Nothing flickers, nothing inverts incorrectly.
+- Body text is Inter; code text is JetBrains Mono; Caveat is opt-in only on hand callouts.
+- Spacing aligns to the 4px base; radii come from the radius scale; no magic px values.
+- Focus ring visible on `:focus-visible` for every interactive element. Tab through the surface to verify.
+- Body text contrast ≥ 4.5:1 against its surface (Lighthouse / WebAIM).
+- Icons come from `lucide-react`, sized to [imagery.md § Sizing](./imagery.md#sizing).
+- Status colors are paired with an icon or label; no color-alone signals.
+- Agent chips use the correct role triad — soft fill, edge dot, text. No reuse of role colors outside the role.
+- Brand pigment (Octobot) is on the mascot and lockups only — never on UI chrome.
+- Motion durations and easings come from [motion.md](./motion.md); `prefers-reduced-motion` is honored.
+- Font-weight transitions are on interactive elements only; never on Caveat.
+- Keyboard navigation works end-to-end with logical tab order and no traps.
+- Touch targets ≥ 44×44 on mobile.
+- Empty, error, and loading states are all designed and present.

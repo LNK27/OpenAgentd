@@ -26,11 +26,7 @@ Avoid using the mascot as decoration in dense product chrome. In the app UI, sma
 
 ### Library: lucide-react
 
-Single icon library, no mixing. `lucide-react` ships with the web stack and provides consistent 24px-native outlined icons with 1.5–2px strokes.
-
-```tsx
-import { Play, AlertCircle, CheckCircle } from 'lucide-react';
-```
+Single icon library, no mixing. `lucide-react` ships with the web stack and provides consistent 24px-native outlined icons with 1.5–2px strokes. Don't blend in icons from another library — even tonally similar sets diverge on weight and proportion under close comparison, which makes the UI feel uneven.
 
 ### Sizing
 
@@ -61,20 +57,6 @@ import { Play, AlertCircle, CheckCircle } from 'lucide-react';
 - **Stroke width**: default (stock lucide). Don't override unless the icon looks visually too thin at a specific size.
 - **Icon + label pairing**: when an icon accompanies text, don't duplicate meaning (`<Delete />` + "Delete" is fine; `<Info />` + "Info" is redundant — use a visible text label or an icon-only button with `aria-label`)
 - **Icon-only buttons**: require `aria-label` or a tooltip for accessibility
-
-### Example
-
-```tsx
-// Default, inherits text color
-<Play className="w-6 h-6" />
-
-// Interactive — shifts to accent on hover
-<Play className="w-6 h-6 text-text hover:text-accent transition-colors" />
-
-// Status
-<CheckCircle className="w-6 h-6 text-success" aria-label="Running" />
-<AlertCircle className="w-6 h-6 text-error" aria-label="Error" />
-```
 
 ---
 
@@ -121,27 +103,11 @@ Backgrounds are **solid warm neutrals**. No grid overlays, no dot patterns, no n
 
 ### Color palette
 
-Use the **marker palette** from [colors.md](./colors.md#marker-palette--charts-and-tints). Markers are slightly more saturated than agent chips because they need to read against busy chart backgrounds. Series 1 is always the most prominent data, series 5 the least.
+Use the **marker palette** from [colors.md](./colors.md#marker-palette--charts-and-tints). Markers are slightly more saturated than agent chips because they need to read against busy chart backgrounds. Series 1 is the most prominent data, series 5 the least.
 
-```ts
-// Resolve via CSS custom properties — values flip per mode automatically
-const chartColors = [
-  'var(--color-marker-blue)',   // 1
-  'var(--color-marker-mint)',   // 2
-  'var(--color-marker-orange)', // 3
-  'var(--color-marker-pink)',   // 4
-  'var(--color-marker-yellow)', // 5
-];
+The fixed series order is: blue, mint, orange, pink, yellow. Resolve colors through CSS custom properties (`var(--color-marker-*)`) so values flip per mode automatically. Area fills use the matching low-alpha tint tokens (`--color-tint-*`).
 
-// Area fills use the matching tint (low-alpha)
-const tintFills = [
-  'var(--color-tint-mint)',
-  'var(--color-tint-orange)',
-  'var(--color-tint-violet)',
-];
-```
-
-**Never** use the Octobot brand gold/orange as a chart color unless the data explicitly represents OpenAgentd itself. **Never** use the agent chip colors as chart series — chips are role-identity-reserved, and reusing them in charts will collide perceptually with chip badges on the same screen.
+Never use the Octobot brand gold/orange as a chart color unless the data explicitly represents OpenAgentd itself. Never use the agent chip colors as chart series — chips are role-identity-reserved, and reusing them in charts will collide perceptually with chip badges on the same screen.
 
 ### Design rules
 
@@ -152,29 +118,14 @@ const tintFills = [
 - **Accessibility**: never rely on color alone. Pair series with patterns, symbols, or direct labels.
 - **Responsive**: scale axis labels down at `< 640px`; hide secondary axes on mobile
 
-### Example (Recharts area chart)
+### Chart chrome
 
-```tsx
-<AreaChart data={data}>
-  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-  <XAxis dataKey="time" stroke="var(--color-text-muted)" fontSize={12} />
-  <YAxis stroke="var(--color-text-muted)" fontSize={12} />
-  <Tooltip
-    contentStyle={{
-      background: 'var(--color-surface)',
-      border: '1px solid var(--color-border)',
-      borderRadius: 8,
-    }}
-  />
-  <Area
-    type="monotone"
-    dataKey="requests"
-    stroke="var(--color-marker-blue)"
-    fill="var(--color-marker-blue)"
-    fillOpacity={0.2}
-  />
-</AreaChart>
-```
+Whatever charting library renders the visualization, configure its chrome to consume the same tokens as the rest of the app:
+
+- Gridlines: `--color-border`, dashed and faint.
+- Axis labels: `--color-text-muted`, tiny text scale.
+- Tooltips: `--color-surface` fill, 1px `--color-border` outline, the small radius. Same recipe as a tiny popover.
+- Series strokes: marker tokens at full saturation; series fills use the matching tint at low alpha.
 
 ---
 
@@ -198,40 +149,16 @@ The app uses a custom `.prose` class for rendered markdown.
 
 ## Empty states
 
-### Structure
+The canonical empty state pairs the mascot with a Caveat callout — the "what's on your mind?" moment from the empty room screen. See also [applications.md § Empty states](./applications.md#empty-states-hand-drawn-pattern).
 
-The canonical empty state pairs the **mascot** with a **Caveat callout** — this is the "what's on your mind?" moment from the empty room screen.
+The composition is layered top to bottom:
 
-1. Mascot — 64–96px, `octobot-agentd-source.png`, full color
-2. Callout — Caveat (`--font-hand`), 32–44px, `--color-text`, lowercase, ends with a question mark or period
-3. (Optional) Subtle Inter description — Body, `--color-text-muted`, `max-width: 40ch`
-4. (Optional) Primary CTA only when there's a clear next action
+1. **Mascot** — `octobot-agentd-source.png`, full color, sized at the moderate hero scale (around 64–96px). Use the mascot only on full-page empty states; skip it inside narrow popovers and inline empty rows.
+2. **Callout** — Caveat at the hand size, `--color-text` (or `--color-text-subtle` for less-prominent surfaces), lowercase, ends with a question mark or period. The callout is decorative; pair it with an accessible Inter equivalent or mark it `aria-hidden`.
+3. **Optional description** — body Inter at `--color-text-muted`, capped to a comfortable measure (~40ch).
+4. **Optional primary CTA** — only when there is a clear next action.
 
-```tsx
-<div className="flex flex-col items-center justify-center py-12 gap-4">
-  <img src="/brand/octobot-agentd-source.png" alt="" className="w-20 h-20" />
-  <h2 className="font-hand text-[40px] leading-none text-(--color-text)">
-    what&apos;s on your mind?
-  </h2>
-</div>
-```
-
-For more utilitarian empty states (no mascot, no Caveat — e.g. "No memory items yet"):
-
-```tsx
-<div className="flex flex-col items-center justify-center py-12">
-  <Inbox className="w-12 h-12 text-(--color-text-muted) mb-4" aria-hidden="true" />
-  <h2 className="text-h3 font-semibold text-(--color-text) mb-2">
-    No sessions yet
-  </h2>
-  <p className="text-(--color-text-muted) text-center mb-6 max-w-[40ch]">
-    Create a session to start working with agents.
-  </p>
-  <button className="bg-(--bg-send) text-(--color-text-on-accent) px-4 py-2 rounded-md hover:brightness-110">
-    Create session
-  </button>
-</div>
-```
+For utilitarian empty states (lists with no items, search with no results), drop the mascot and the Caveat. Use a small lucide glyph at `--color-text-muted`, an h3-scale Inter heading, an explanation paragraph at `--color-text-muted`, and a single primary CTA. The voice is calmer here — "No sessions yet" is enough.
 
 ### Skeleton placeholders
 

@@ -195,12 +195,13 @@ State colors are **event signals**, not design accents. They overlap deliberatel
 
 ### Never rely on color alone
 
-Every semantic color pairs with an icon, text label, or both.
+Every semantic color pairs with an icon, a text label, or both.
 
-- ❌ Red button (color only)
-- ✅ Red button + trash icon + "Delete" text
-- ❌ Green dot (color only)
-- ✅ Green dot + "Running" label
+- A destructive button is colored red **and** carries a trash icon and a "Delete" label.
+- A running indicator is a green dot **and** the word "Running".
+- An error inline message uses error red **and** the alert glyph.
+
+Colorblind users, low-vision users, and any user glancing at the screen in full sun all rely on the redundant signal.
 
 ---
 
@@ -463,55 +464,15 @@ Tokens are emitted from a single `@theme` block. Mode is class-based on `<html>`
 
 ## Using colors in code
 
-### Tailwind classes
+Tokens are exposed as Tailwind utilities via `@theme`. Always reach for a semantic token name, never a raw hex value.
 
-Tokens are exposed as Tailwind utilities via `@theme`. Use semantic names, never raw hex.
+- Page surfaces use `--bg-page` and `--color-text`. The page never uses `--bg-card` directly — that token is for elevated surfaces inside the page.
+- The primary CTA is the *paper-inverted* recipe: `--bg-send` fill with `--color-text-on-accent` text. This is the only place the paper aesthetic flips contrast.
+- Agent chips compose three tokens at once: `--accent-{role}-soft` (fill), `--accent-{role}` (edge dot), `--accent-{role}-text` (label). Never compose them with anything else.
+- Destructive controls use `--color-error` text on a soft `--color-error-subtle` (or `--accent-red` at low alpha) wash; the rest of the chrome stays neutral.
+- State badges (queued, in-progress, info) reuse the chip soft/edge/text triad of the matching role color, but pair the color with an icon or label so the meaning never lives in pigment alone.
 
-```tsx
-// Page surface
-<main className="bg-(--bg-page) text-(--color-text)">…</main>
-
-// Primary CTA — paper inverted (warm dark surface, cream text)
-<button className="bg-(--bg-send) text-(--color-text-on-accent) hover:brightness-110">
-  Send
-</button>
-
-// Agent chip — green = openagentd
-<span className="bg-(--accent-green-soft) text-(--accent-green-text) px-2.5 py-1 rounded-md text-sm font-medium">
-  openagentd
-</span>
-
-// Destructive
-<button className="text-(--color-error) hover:bg-(--accent-red)/10">
-  Delete session
-</button>
-
-// Subtle state indicator
-<div className="bg-(--accent-orange-soft) text-(--accent-orange-text) border border-(--accent-orange)/30">
-  Tool call queued
-</div>
-```
-
-### CSS custom properties
-
-```css
-.agent-running {
-  border-color: var(--color-success);
-  background: var(--accent-green-soft);
-}
-
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-depth);
-}
-
-.cta-primary {
-  background: var(--bg-send);
-  color: var(--color-text-on-accent);
-}
-```
+When writing custom CSS or component styles, reference the token via `var(--token)` rather than redeclaring the value. The token map is the single source of truth; component CSS that hard-codes hex is a bug.
 
 ---
 

@@ -63,19 +63,21 @@ font-family: 'Caveat', 'Bradley Hand', cursive;
 
 ### When to use Caveat
 
-✅ **Yes:**
-- Top-of-canvas screen labels in design files (these are typically *outside* the production UI; they label the design context)
-- One reflective prompt on an empty state ("what's on your mind?")
-- Personality moments in marketing surfaces (tagline, hero pull-quote)
+Use Caveat for:
 
-❌ **No:**
-- Body text — always
-- Buttons, labels, nav items, form fields
-- Anything a screen reader needs to read out clearly
-- Multi-line paragraphs
-- Headings inside dense product chrome
+- Top-of-canvas screen labels in design files (typically *outside* production UI — they label the design context).
+- One reflective prompt on an empty state ("what's on your mind?").
+- Personality moments in marketing surfaces — tagline, hero pull-quote.
 
-The "design canvas labels" we see in the pencil (`empty room.`, etc.) are reference labels for the design itself; production app headings are Inter.
+Do not use Caveat for:
+
+- Body text. Ever.
+- Buttons, labels, nav items, form fields.
+- Anything a screen reader must read clearly. Caveat is decorative chrome; pair it with an accessible Inter equivalent or mark it `aria-hidden`.
+- Multi-line paragraphs.
+- Headings inside dense product chrome.
+
+The "design canvas labels" in the pencil source (`empty room.`, etc.) are reference labels for the design file itself; production app headings stay in Inter.
 
 ---
 
@@ -136,11 +138,11 @@ Inter is a variable font, so weight transitions are smooth rather than stepped. 
 
 ### Anti-patterns
 
-- ❌ **Weight shift on idle/static text** — only interactive elements shift
-- ❌ **Weight shift without transition** — produces a layout jump, feels broken
-- ❌ **Shift beyond 600** — 700 Bold is reserved for permanent headings, not hover states
-- ❌ **Different shift amounts within a group** — a nav where some items go 400→500 and others go 400→600 reads as inconsistent
-- ❌ **Weight shift on Caveat** — script weights aren't perceptually different the way Inter weights are; let Caveat sit
+- Weight shift on idle/static text. Only interactive elements shift.
+- Weight shift without a transition. The result is a layout jump that feels broken.
+- Shift beyond 600. Weight 700 (Bold) is reserved for permanent headings, not hover states.
+- Different shift amounts within a group. A nav where some items go 400→500 and others go 400→600 reads as inconsistent.
+- Weight shift on Caveat. Script weights are not perceptually distinct the way Inter weights are; let Caveat sit.
 
 ### When NOT to use weight transitions
 

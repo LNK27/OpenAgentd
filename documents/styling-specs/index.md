@@ -35,7 +35,7 @@ Design-system reference for OpenAgentd. Brand assets, tokens, components, intera
 | [Layout](./layout.md) | 4px grid, breakpoints, radius scale, depth, accessibility |
 | [Logo](./logo.md) | Source-faithful Octobot mascot, lockups, sizing, asset delivery |
 | [Imagery](./imagery.md) | Octobot mascot usage, icons (lucide), charts, screenshots, patterns |
-| [Applications](./applications.md) | Component examples — sidebar, agent chips, input bar, tool call rows, theme toggle |
+| [Applications](./applications.md) | Component guidelines — agent chips, sidebar, input bar, tool call rows, modals, topbar, popovers, empty states |
 
 ---
 
