@@ -429,21 +429,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const actionBtnClass =
     'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
 
-  // ── Continuous-morph model ─────────────────────────────────────────
-  // The bar has three states that all share the same DOM tree:
-  //
-  //   Minimized:     [attach] [voice] [📝 message btn] [send-btn]
-  //   Expand 1-line: [attach] [voice] [textarea       ] [send]
-  //   Expand multi:  [textarea full-width             ]
-  //                  [attach] [voice]      [count] [send]
-  //
-  // The four buttons stay mounted in the same order in every state.
-  // The "message slot" (3rd child) morphs between an icon button and a
-  // textarea via framer-motion `layout` + AnimatePresence. In multi-
-  // line mode the textarea slot escapes to a full-width row above by
-  // setting `flex-basis: 100%` on its wrapper, which causes the
-  // wrapping flex row to wrap; the buttons settle on the second line
-  // automatically. No DOM reordering — just a width tween.
+  // Three states share one DOM tree: minimized, single-line, multi-line.
+  // Multi-line is triggered by the slot's flex-basis:100% which wraps the
+  // row so action buttons land on the line below — no DOM reordering.
   const handleExpand = () => {
     onUnminimize?.()
   }
@@ -472,9 +460,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </div>
   )
 
-  // Send/stop is a single 32×32 button matching the other action
-  // buttons. In minimized mode the click expands the bar instead of
-  // submitting (there's no text yet).
+  // In minimized mode the send button expands the bar instead of submitting.
   const sendOrStopEl = canStop && !hasText ? (
     <button
       type="button"
@@ -505,14 +491,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </button>
   )
 
-  // Message slot: just the textarea now. The slot's width is driven
-  // entirely by the parent ``motion.div`` wrapper — collapsed to 0
-  // when minimized (textarea slides out between voice and send), and
-  // ``flex-1`` / ``basis-full`` when expanded. The textarea is always
-  // mounted so the ref stays valid; ``opacity-0`` + ``pointer-events-
-  // none`` while minimized hides it without a remount-induced flicker.
-  // Send + click-anywhere on the strip already cover the "expand" tap
-  // target, so a dedicated message button would be redundant.
+  // The textarea stays mounted while minimized (opacity + pointer-events
+  // toggle) so the ref stays valid and there's no remount flicker.
   const messageSlot = (
     <div
       aria-hidden={minimized}
@@ -533,8 +513,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         }}
         disabled={disabled || minimized}
         placeholder={
-          // Clear the placeholder while minimizing so its faint
-          // ghost doesn't bleed through the slot opacity fade.
           minimized
             ? ''
             : disabled
@@ -553,16 +531,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </div>
   )
 
-  // ── Outer chrome — same in both variants so the AnimatePresence
-  //     swap doesn't reflow the page; only the inner pill changes.
   return (
     <div className={floating ? '' : 'border-t border-(--color-border) bg-(--bg-page) px-4 py-3'}>
       <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
-        {/* File previews (above when docked at bottom) — only meaningful
-            in expanded mode; hidden during collapse to avoid orphaning. */}
         {!minimized && !filesBelow && filePreviews}
 
-        {/* Slash command menu — floating above the input */}
         {!minimized && slashMenuOpen && filteredSlashCommands.length > 0 && (
           <div className="absolute bottom-full left-0 right-0 z-10 mb-1 overflow-hidden rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
             {filteredSlashCommands.map((cmd, idx) => (
@@ -582,46 +555,27 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           </div>
         )}
 
-        {/* Input pill wrapper — anchors the drag handle to the input
-            itself, so it stays pinned to the pill regardless of file
-            previews. ``flex justify-center`` so the self-sized minimized
-            strip centers within the panel rather than left-aligning. */}
+        {/* ``flex justify-center`` centers the self-sized minimized pill. */}
         <div className={`relative ${minimized ? 'flex justify-center' : ''}`}>
           {renderDragHandle?.()}
-          {/* Continuous-morph card. Padding and width are animated as
-              numeric motion values so framer has a smooth tween across
-              minimized ↔ expanded (the Tailwind class swap is reserved
-              for color/shadow which don't affect layout).
-              ``flex-wrap`` is the trick that powers single ↔ multi-line:
-              when the textarea slot's flex-basis hits 100%, it forces
-              its row to wrap and the four buttons land on the line
-              below. No reordering. */}
           <motion.div
+            layout
             initial={false}
-            animate={{
-              padding: minimized ? 6 : 14,
-              width: minimized ? 'auto' : '100%',
-            }}
+            animate={{ padding: minimized ? 6 : 14 }}
             transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
-            className={`relative ${minimized ? 'inline-block' : 'block'} rounded-lg border bg-(--color-surface) shadow-sm transition-[border-color,box-shadow,background-color] duration-200 ${
+            className={`relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
               minimized
-                ? 'border-(--color-border) hover:bg-(--bg-key)'
-                : 'border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'
+                ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
+                : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'
             }`}
-            style={{ willChange: 'padding, width' }}
           >
-            {/* Click-anywhere-to-expand: the wrapper handles bare
-                clicks (those that bubble up past the action buttons,
-                which call ``stopClick``) so the user can click any
-                whitespace in the minimized strip to summon the full
-                pill. No ARIA role on the wrapper itself — that would
-                hide the descendant interactive controls (button,
-                textarea) from the accessibility tree. The dedicated
-                Send button already provides a keyboard-accessible
+            {/* Click-anywhere-to-expand on bare strip whitespace. Action
+                buttons call stopClick so they don't trigger this. No ARIA
+                role here — the Send button is the keyboard-accessible
                 "Expand input bar" affordance. */}
             <div
               onClick={minimized ? handleExpand : undefined}
@@ -629,69 +583,40 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
                 minimized ? 'cursor-text' : ''
               }`}
             >
-              <motion.div layout className="contents">
-                {attachEl}
-              </motion.div>
-              <motion.div layout className="contents">
-                {voiceEl}
-              </motion.div>
-              {/* Message slot grows to full-row when multi-line via
-                  ``basis-full``, which causes the parent
-                  ``flex-wrap`` to push the remaining buttons to a new
-                  line. The ``order`` keeps the textarea visually
-                  first when wrapped, and the buttons follow. */}
-              {/* Slot wrapper drives the textarea's width and its
-                  collapse-to-zero on minimize. The parent strip has
-                  ``gap-2`` (8px between every flex child); a 0-width
-                  slot still gets that gap on both sides, leaving a
-                  16px ghost gap between voice and send. ``-mx-1``
-                  (negative 4px each side) cancels the half-gap on
-                  each side so the minimized strip reads as a tight
-                  3-button row with no dead space.
-                  ``overflow-hidden`` clips the textarea content
-                  cleanly during the width tween. Multi-line uses
-                  ``basis-full`` to force a wrap onto a new row. */}
-              <motion.div
-                layout
+              {attachEl}
+              {voiceEl}
+              {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's
+                  w-fit ↔ w-full. ``-ml-2`` absorbs the parent gap-2
+                  when collapsed. */}
+              <div
+                style={{
+                  flexBasis: !minimized && isMultiLine ? '100%' : undefined,
+                  order: !minimized && isMultiLine ? -1 : 0,
+                }}
                 className={`min-w-0 overflow-hidden ${
-                  minimized
-                    ? '-mx-1 w-0 flex-none'
-                    : isMultiLine
-                      ? 'order-first basis-full'
-                      : 'flex-1'
+                  minimized ? 'w-0 -ml-2' : 'flex-1'
                 }`}
               >
                 {messageSlot}
-              </motion.div>
-              {/* Char count surfaces past the warn threshold in any
-                  expanded state — long messages typically wrap to
-                  multi-line in practice but the count is useful even
-                  in single-line for the rare edge case. */}
+              </div>
               {!minimized && showCharCount && (
-                <motion.span
-                  layout
+                <span
                   className={`shrink-0 font-mono text-xs ${
                     charCount > 2000 ? 'text-(--color-error)' : 'text-(--color-text-muted)'
                   }`}
                 >
                   {charCount}
-                </motion.span>
+                </span>
               )}
               {/* Spacer pushes Send to the right edge in multi-line. */}
-              {!minimized && isMultiLine && (
-                <motion.div layout className="flex-1" />
-              )}
-              <motion.div layout className="contents">
-                {sendOrStopEl}
-              </motion.div>
+              {!minimized && isMultiLine && <div className="flex-1" />}
+              {sendOrStopEl}
             </div>
           </motion.div>
         </div>
 
-        {/* File previews (below when floating near top) */}
         {!minimized && filesBelow && filePreviews}
 
-        {/* Hidden file input */}
         <input
           ref={fileInputRef}
           type="file"
