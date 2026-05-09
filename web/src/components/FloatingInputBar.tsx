@@ -4,6 +4,7 @@ import { GripHorizontal } from 'lucide-react'
 import { InputBar, type InputBarHandle, type SlashCommand } from './InputBar'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useTeamStore } from '@/stores/useTeamStore'
 import type { AgentCapabilities } from '@/api/types'
 
 // ── Storage ──────────────────────────────────────────────────────────────────
@@ -109,6 +110,115 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     const [offset, setOffset] = useState<StoredOffset>(() => loadOffset())
     const [filesBelow, setFilesBelow] = useState(true)
 
+    // ── Minimize-on-blur (desktop only) ──────────────────────────────────
+    // The bar collapses to the slim icon strip (pencil PKjWT) after the
+    // textarea loses focus while empty, so a blurred composer doesn't
+    // dominate the chat surface. It expands again on focus or whenever
+    // there's any meaningful content (text, attachments, queued messages,
+    // streaming). Mobile keeps the full bar — the soft keyboard already
+    // dictates its own focus/blur cadence and a collapse there would
+    // fight system behavior.
+    const queuedCount = useTeamStore((s) => s._pendingMessages.length)
+    // Start collapsed — the slim icon strip (pencil PKjWT) is the
+    // resting state. The user summons the full pill explicitly via
+    // click, focus, Ctrl/⌘+I, or by attaching a file. This matches
+    // the minimal-chrome aesthetic of the design and prevents an
+    // empty composer from dominating the chat surface on load.
+    const [minimized, setMinimized] = useState(true)
+    const [hasContent, setHasContent] = useState(false)
+    const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const innerRef = useRef<InputBarHandle | null>(null)
+    const setInputRefs = useCallback((handle: InputBarHandle | null) => {
+      innerRef.current = handle
+      if (typeof ref === 'function') ref(handle)
+      else if (ref) ref.current = handle
+    }, [ref])
+
+    const expand = useCallback(() => {
+      if (blurTimerRef.current) {
+        clearTimeout(blurTimerRef.current)
+        blurTimerRef.current = null
+      }
+      setMinimized(false)
+      // Focus is owned by InputBar's auto-focus-on-mount callback ref
+      // — it fires the moment the textarea actually attaches to the
+      // DOM, after AnimatePresence finishes the message-button exit.
+      // A parent-side focus() here would race the unmounted ref.
+    }, [])
+
+    const handleFocus = useCallback(() => {
+      if (blurTimerRef.current) {
+        clearTimeout(blurTimerRef.current)
+        blurTimerRef.current = null
+      }
+      setMinimized(false)
+    }, [])
+
+    const handleBlur = useCallback((canMinimize: boolean) => {
+      if (!canMinimize) return
+      // Short delay so a click on a sibling control inside the bar
+      // (e.g. the attach picker, mic) doesn't trigger a collapse mid-action.
+      blurTimerRef.current = setTimeout(() => {
+        setMinimized(true)
+        blurTimerRef.current = null
+      }, 180)
+    }, [])
+
+    useEffect(() => () => {
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
+    }, [])
+
+    // ── Global summon shortcut: Ctrl+I (⌘I on macOS) ─────────────────
+    // Brings the composer back to the foreground from any focus
+    // context. If the bar is collapsed it expands; either way the
+    // textarea takes focus so the user can immediately start typing.
+    // Mobile is excluded — the soft keyboard owns focus there and a
+    // window-level shortcut would never fire from a virtual keyboard.
+    useEffect(() => {
+      if (isMobile) return
+      const onKeyDown = (e: KeyboardEvent) => {
+        // ``e.key`` is the printed character so the check is layout
+        // safe; we accept upper- and lower-case to cover Caps Lock.
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'i' || e.key === 'I')) {
+          // Don't fight with browser-native Ctrl+I in editable
+          // surfaces *outside* our composer (e.g. a Markdown editor
+          // mounted somewhere on the page). The composer's textarea
+          // doesn't use italics so summoning while focus is already
+          // there is harmless and just refocuses.
+          e.preventDefault()
+          expand()
+        }
+      }
+      window.addEventListener('keydown', onKeyDown)
+      return () => window.removeEventListener('keydown', onKeyDown)
+    }, [isMobile, expand])
+
+    // External signals that should keep the bar expanded regardless of
+    // focus state. ``isStreaming`` and ``queuedCount`` come from props /
+    // store; ``disabled`` covers the "waiting for response" pause;
+    // ``hasContent`` covers text/attachments held inside InputBar so
+    // dropping a file via the slim strip's attach button immediately
+    // re-expands the bar. Derived (not stored) so we don't cascade
+    // renders inside an effect.
+    const forceExpanded =
+      inputProps.isStreaming === true ||
+      inputProps.disabled === true ||
+      queuedCount > 0 ||
+      hasContent
+
+    const handleHasContentChange = useCallback((next: boolean) => {
+      setHasContent(next)
+      // When content arrives while minimized, also cancel any pending
+      // collapse so the bar settles into the expanded state cleanly.
+      if (next && blurTimerRef.current) {
+        clearTimeout(blurTimerRef.current)
+        blurTimerRef.current = null
+      }
+    }, [])
+
+    const effectiveMinimized = !isMobile && minimized && !forceExpanded
+
     const NEAR_BOTTOM_THRESHOLD = 140
 
     const recomputeFilesBelow = useCallback(() => {
@@ -176,8 +286,8 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       return (
         // border-t separates from chat content; pb-safe clears the home indicator
         <div className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl">
-          <PendingMessageQueue inputRef={ref as React.RefObject<InputBarHandle | null>} />
-          <InputBar ref={ref} floating filesBelow={false} {...inputProps} />
+          <PendingMessageQueue inputRef={innerRef} />
+          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} />
         </div>
       )
     }
@@ -197,11 +307,16 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         className="pointer-events-auto absolute bottom-4 left-1/2 z-20 w-full max-w-xl -translate-x-1/2 px-4"
         style={{ touchAction: 'none' }}
       >
-        <PendingMessageQueue inputRef={ref as React.RefObject<InputBarHandle | null>} />
+        <PendingMessageQueue inputRef={innerRef} />
         <InputBar
-          ref={ref}
+          ref={setInputRefs}
           floating
           filesBelow={filesBelow}
+          minimized={effectiveMinimized}
+          onUnminimize={expand}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onHasContentChange={handleHasContentChange}
           renderDragHandle={() => (
             <button
               type="button"

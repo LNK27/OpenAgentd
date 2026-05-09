@@ -33,10 +33,17 @@ function Harness(props: {
 }
 
 describe('FloatingInputBar', () => {
-  it('renders the inner InputBar textarea', () => {
+  it('keeps the inner InputBar textarea mounted but hidden from AT while minimized', () => {
     render(<Harness />)
-    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    // The textarea is always in the DOM regardless of minimized state
+    // — visibility is opacity-driven so the ref stays valid and focus
+    // can land instantly on expand. While minimized, the wrapping
+    // ``aria-hidden`` correctly removes it from the accessibility
+    // tree, so we query by label (DOM-level) rather than role
+    // (a11y-tree-level).
+    const textarea = screen.getByLabelText('Message input')
     expect(textarea).toBeTruthy()
+    expect(textarea.getAttribute('disabled')).not.toBeNull()
   })
 
   it('exposes a drag handle labelled for screen readers', () => {
@@ -105,9 +112,17 @@ describe('FloatingInputBar', () => {
     }
   })
 
-  it('forwards the placeholder prop to the inner InputBar', () => {
+  it('forwards the placeholder prop to the inner InputBar when expanded', async () => {
+    const user = userEvent.setup()
     render(<Harness placeholder="Ask the team…" />)
-    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    // Placeholder is empty while the bar is minimized so its ghost
+    // doesn't bleed through the slot opacity fade. The minimized
+    // strip's Send button (only one with that accessible name) does
+    // double-duty as "expand input bar" — clicking it flips
+    // ``minimized=false`` and the textarea's placeholder updates.
+    const sendBtn = screen.getByRole('button', { name: 'Expand input bar' })
+    await user.click(sendBtn)
+    const textarea = await screen.findByRole('textbox', { name: 'Message input' })
     expect(textarea.getAttribute('placeholder')).toBe('Ask the team…')
   })
 })
