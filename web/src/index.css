@@ -101,11 +101,10 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
- * OpenAgentd paper tokens — DARK default
- * Light mode overrides via :root.light.
+ * OpenAgentd paper tokens — DARK override
+ * Light mode is canonical (defined on :root below).
  * Theme class is set on <html> before paint (see index.html).
  * ───────────────────────────────────────────────────────────── */
-:root,
 :root.dark {
     color-scheme: dark;
 
@@ -247,8 +246,10 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
- * Light mode — warm paper, shared shadow+border for elevation
+ * Light mode — warm paper, canonical default. Applies to bare :root
+ * and to :root.light (explicit user pick).
  * ───────────────────────────────────────────────────────────── */
+:root,
 :root.light {
     color-scheme: light;
 
