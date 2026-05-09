@@ -24,9 +24,21 @@ export function TileArea({ tileLayout, agentStreams, leadName }: TileAreaProps) 
 
   if (!root) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <img src={OctobotMascot} className="opacity-25 grayscale" width={64} height={64} alt="Idle octobot" />
-        <p className="text-sm text-(--color-text-muted)">No agent panes open · click a tab above to open one</p>
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
+        <img
+          src={OctobotMascot}
+          className="opacity-90"
+          width={96}
+          height={96}
+          alt=""
+          aria-hidden="true"
+        />
+        <h2 className="font-hand text-3xl font-bold text-(--color-text)">
+          empty room.
+        </h2>
+        <p className="text-sm text-(--color-text-muted)">
+          Click a tab above to open an agent pane
+        </p>
       </div>
     )
   }

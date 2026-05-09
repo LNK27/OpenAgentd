@@ -283,9 +283,21 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-4 py-6">
         {isEmpty && (
-           <div className="flex flex-col items-center justify-center gap-3 py-16">
-             <img src={OctobotMascot} className="opacity-25 grayscale" width={72} height={72} alt="Idle octobot" />
-             <p className="text-sm text-(--color-text-subtle)">Waiting for your first message…</p>
+           <div className="flex flex-col items-center justify-center gap-4 py-16">
+             <img
+               src={OctobotMascot}
+               className="opacity-90"
+               width={120}
+               height={120}
+               alt=""
+               aria-hidden="true"
+             />
+             <h2 className="font-hand text-4xl font-bold text-(--color-text)">
+               what&rsquo;s on your mind?
+             </h2>
+             <p className="text-sm text-(--color-text-muted)">
+               Waiting for your first message
+             </p>
            </div>
          )}
 

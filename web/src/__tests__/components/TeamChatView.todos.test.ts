@@ -362,7 +362,9 @@ describe('Todos Popover - Priority Badge Styling', () => {
     expect(classes).toHaveLength(3)
     expect(classes[0]).toContain('red')
     expect(classes[1]).toContain('amber')
-    expect(classes[2]).toContain('accent')
+    // Low priority uses paper neutrals (--bg-key + --color-text-subtle)
+    // rather than a marker accent.
+    expect(classes[2]).toContain('bg-(--bg-key)')
   })
 })
 
