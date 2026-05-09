@@ -54,7 +54,7 @@ export function SettingsLayout() {
   // Router navigates to the detail route and we render only the Outlet.
   if (isMobile) {
     return (
-      <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+      <div className="flex h-dvh flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
         {/* On a list route show the list; on a detail route show the outlet */}
         {onDetail ? (
           <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -75,7 +75,7 @@ export function SettingsLayout() {
 
   // Desktop layout: three-column
   return (
-    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh overflow-hidden bg-(--bg-page) text-(--color-text)">
       <CategoryRail />
       {listKind && <CategoryList kind={listKind} />}
       <main className="flex min-w-0 flex-1 flex-col">

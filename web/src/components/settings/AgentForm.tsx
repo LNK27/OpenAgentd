@@ -227,7 +227,7 @@ function ParseErrorBanner({
   onSwitchToRaw: () => void
 }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+    <div className="flex items-start gap-2 rounded-lg border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">
       <AlertCircle size={14} className="mt-0.5 shrink-0" />
       <div className="flex-1">
         <p className="font-medium">Parse error</p>
@@ -595,7 +595,7 @@ function ModelPicker({
         disabled={disabled}
       >
         <SelectTrigger
-          className={cn('flex-1', invalid && 'aria-invalid:border-destructive')}
+          className={cn('flex-1', invalid && 'aria-invalid:border-(--color-error)')}
           aria-invalid={invalid || undefined}
         >
           <SelectValue placeholder={allowEmpty ? '(none)' : 'Select a model…'} />
@@ -652,15 +652,15 @@ function Field({
   // silently delete a chip when the user clicks empty space in the field.
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <span className="text-xs font-medium text-foreground">
+      <span className="text-xs font-medium text-(--color-text)">
         {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
+        {required && <span className="ml-0.5 text-(--color-error)">*</span>}
       </span>
       {children}
       {error ? (
-        <p className="text-[11px] text-destructive">{error}</p>
+        <p className="text-[11px] text-(--color-error)">{error}</p>
       ) : hint ? (
-        <p className="text-[11px] text-muted-foreground">{hint}</p>
+        <p className="text-[11px] text-(--color-text-muted)">{hint}</p>
       ) : null}
     </div>
   )

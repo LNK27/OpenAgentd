@@ -110,10 +110,10 @@ const META: Record<Kind, KindMeta> = {
 }
 
 const STATE_COLOR: Record<ServerStatus['state'], string> = {
-  ready: 'bg-green-500',
-  starting: 'bg-yellow-500',
-  error: 'bg-destructive',
-  stopped: 'bg-muted-foreground/40',
+  ready: 'bg-(--accent-green)',
+  starting: 'bg-(--accent-orange)',
+  error: 'bg-(--color-error)',
+  stopped: 'bg-(--color-text-muted)/40',
 }
 
 // ─── Public entry point ────────────────────────────────────────────────────
@@ -221,22 +221,22 @@ function ListShell({ meta, rows, isLoading, isError }: ListShellProps) {
       aria-label={meta.title}
       className={
         isMobile
-          ? 'flex h-full min-h-0 flex-1 flex-col border-r-0 bg-background'
-          : 'flex h-full w-72 shrink-0 flex-col border-r border-border bg-background'
+          ? 'flex h-full min-h-0 flex-1 flex-col border-r-0 bg-(--bg-page)'
+          : 'flex h-full w-72 shrink-0 flex-col border-r border-(--color-border) bg-(--bg-page)'
       }
     >
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-(--color-border) px-3">
         {/* Mobile: back arrow to return to settings hub */}
         {isMobile && (
           <Link
             to="/settings"
             aria-label="Back to settings"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
           >
             <ArrowLeft size={16} aria-hidden="true" />
           </Link>
         )}
-        <h2 className="flex-1 truncate text-sm font-semibold">{meta.title}</h2>
+        <h2 className="flex-1 truncate text-sm font-semibold text-(--color-text)">{meta.title}</h2>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -256,11 +256,11 @@ function ListShell({ meta, rows, isLoading, isError }: ListShellProps) {
 
       {/* Search */}
       {rows.length > 0 && (
-        <div className="border-b border-border p-2">
+        <div className="border-b border-(--color-border) p-2">
           <div className="relative">
             <Search
               size={12}
-              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-(--color-text-muted)"
               aria-hidden="true"
             />
             <Input
@@ -277,19 +277,19 @@ function ListShell({ meta, rows, isLoading, isError }: ListShellProps) {
       {/* Body */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading && (
-          <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+          <p className="px-3 py-6 text-center text-xs text-(--color-text-muted)">
             Loading…
           </p>
         )}
         {isError && (
-          <p className="px-3 py-6 text-center text-xs text-destructive">
+          <p className="px-3 py-6 text-center text-xs text-(--color-error)">
             Failed to load.
           </p>
         )}
         {!isLoading && !isError && rows.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
-            <p className="text-sm font-medium">{meta.emptyTitle}</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">
+            <p className="text-sm font-medium text-(--color-text)">{meta.emptyTitle}</p>
+            <p className="text-xs leading-relaxed text-(--color-text-muted)">
               {meta.emptyBody}
             </p>
             <Button size="sm" render={<Link to={meta.newRoute} />}>
@@ -299,7 +299,7 @@ function ListShell({ meta, rows, isLoading, isError }: ListShellProps) {
           </div>
         )}
         {!isLoading && !isError && rows.length > 0 && filtered.length === 0 && (
-          <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+          <p className="px-3 py-6 text-center text-xs text-(--color-text-muted)">
             No matches for &ldquo;{query}&rdquo;.
           </p>
         )}
@@ -340,17 +340,17 @@ function ListRowLink({
       aria-current={active ? 'page' : undefined}
       className={cn(
         'flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors',
-        'hover:bg-muted',
-        'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40',
-        active && 'bg-muted',
+        'hover:bg-(--bg-key) text-(--color-text-2)',
+        'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
+        active && 'bg-(--bg-key) text-(--color-text)',
       )}
     >
       <span
         className={cn(
           'flex h-7 w-7 shrink-0 items-center justify-center rounded-md ring-1',
           row.iconTone === 'accent'
-            ? 'bg-foreground/5 text-foreground ring-border'
-            : 'bg-muted text-muted-foreground ring-border',
+            ? 'bg-(--bg-key) text-(--color-text) ring-(--color-border)'
+            : 'bg-(--bg-key) text-(--color-text-muted) ring-(--color-border)',
         )}
         aria-hidden="true"
       >
@@ -361,7 +361,7 @@ function ListRowLink({
           <span
             className={cn(
               'truncate text-sm',
-              active ? 'font-semibold text-foreground' : 'font-medium',
+              active ? 'font-semibold text-(--color-text)' : 'font-medium',
             )}
           >
             {row.name}
@@ -370,7 +370,7 @@ function ListRowLink({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className="text-destructive">
+                  <span className="text-(--color-error)">
                     <AlertCircle size={11} aria-label="Invalid configuration" />
                   </span>
                 }
@@ -382,7 +382,7 @@ function ListRowLink({
           )}
         </div>
         {row.subtitle && (
-          <p className="truncate text-[11px] text-muted-foreground">
+          <p className="truncate text-[11px] text-(--color-text-muted)">
             {row.subtitle}
           </p>
         )}
@@ -396,7 +396,7 @@ function McpStatusDot({ server }: { server: ServerStatus }) {
   if (server.state === 'error') {
     return (
       <span
-        className="flex shrink-0 items-center text-destructive"
+        className="flex shrink-0 items-center text-(--color-error)"
         title={server.error ?? 'Server failed to start'}
         aria-label={`Error: ${server.error ?? 'unknown'}`}
       >

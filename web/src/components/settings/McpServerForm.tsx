@@ -217,15 +217,15 @@ function Field({
 }) {
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <span className="text-xs font-medium text-foreground">
+      <span className="text-xs font-medium text-(--color-text)">
         {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
+        {required && <span className="ml-0.5 text-(--color-error)">*</span>}
       </span>
       {children}
       {error ? (
-        <p className="text-[11px] text-destructive">{error}</p>
+        <p className="text-[11px] text-(--color-error)">{error}</p>
       ) : hint ? (
-        <p className="text-[11px] text-muted-foreground">{hint}</p>
+        <p className="text-[11px] text-(--color-text-muted)">{hint}</p>
       ) : null}
     </div>
   )
@@ -251,7 +251,7 @@ function EnabledToggle({
     <div
       role="radiogroup"
       aria-label="Server enabled state"
-      className="inline-flex h-9 rounded-md bg-muted p-0.5 ring-1 ring-border"
+      className="inline-flex h-9 rounded-md bg-(--bg-key) p-0.5 ring-1 ring-(--color-border)"
     >
       <ToggleOption
         active={value}
@@ -290,8 +290,8 @@ function ToggleOption({
       className={cn(
         'flex-1 rounded-sm px-3 text-xs font-medium transition-colors',
         active
-          ? 'bg-background text-foreground shadow-sm'
-          : 'text-muted-foreground hover:text-foreground',
+          ? 'bg-(--bg-card) text-(--color-text) shadow-sm'
+          : 'text-(--color-text-muted) hover:text-(--color-text)',
         disabled && 'cursor-not-allowed opacity-50',
       )}
     >
@@ -327,7 +327,7 @@ function PairListField({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-foreground">{label}</span>
+        <span className="text-xs font-medium text-(--color-text)">{label}</span>
         <Button
           size="xs"
           variant="ghost"
@@ -341,7 +341,7 @@ function PairListField({
       </div>
 
       {pairs.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">None.</p>
+        <p className="text-[11px] text-(--color-text-muted)">None.</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {pairs.map((pair, idx) => (
@@ -374,7 +374,7 @@ function PairListField({
         </div>
       )}
 
-      {error && <p className="text-[11px] text-destructive">{error}</p>}
+      {error && <p className="text-[11px] text-(--color-error)">{error}</p>}
     </div>
   )
 }

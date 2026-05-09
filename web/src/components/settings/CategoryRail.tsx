@@ -74,7 +74,7 @@ export function CategoryRail() {
   return (
     <nav
       aria-label="Settings categories"
-      className="flex h-full w-14 shrink-0 flex-col items-center gap-1 border-r border-border bg-muted/30 py-3"
+      className="flex h-full w-14 shrink-0 flex-col items-center gap-1 border-r border-(--color-border) bg-(--bg-sidebar) py-3"
     >
       {/* Exit settings → app home */}
       <Tooltip>
@@ -85,8 +85,8 @@ export function CategoryRail() {
               aria-label="Exit settings"
               className={cn(
                 'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
-                'text-muted-foreground hover:bg-muted hover:text-foreground',
-                'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40',
+                'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)',
+                'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
               )}
             >
               <ArrowLeft size={16} aria-hidden="true" />
@@ -97,7 +97,7 @@ export function CategoryRail() {
       </Tooltip>
 
       <div
-        className="my-1.5 h-px w-6 shrink-0 bg-border"
+        className="my-1.5 h-px w-6 shrink-0 bg-(--color-border)"
         role="separator"
         aria-hidden="true"
       />
@@ -115,10 +115,10 @@ export function CategoryRail() {
                   aria-current={active ? 'page' : undefined}
                   className={cn(
                     'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
-                    'text-muted-foreground hover:bg-muted hover:text-foreground',
-                    'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40',
+                    'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)',
+                    'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
                     active &&
-                      'bg-foreground/10 text-foreground ring-1 ring-border hover:bg-foreground/10',
+                      'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border) hover:bg-(--bg-key)',
                   )}
                 >
                   <Icon size={16} aria-hidden="true" />

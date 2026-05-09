@@ -17,6 +17,7 @@ import { useToastStore } from '@/stores/useToastStore'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import type { SpeechConfig } from '@/api/client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -100,20 +101,20 @@ export function VoiceSettingsPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
+      <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
         {isMobile && (
           <Link
             to="/settings"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             aria-label="Back to settings"
           >
             <ArrowLeft size={14} />
           </Link>
         )}
-        <Mic size={15} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-        <h1 className="flex-1 truncate text-sm font-semibold">Voice input</h1>
+        <Mic size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+        <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Voice input</h1>
         {dirty && (
-          <span className="text-xs text-muted-foreground" aria-live="polite">
+          <span className="text-xs text-(--color-text-muted)" aria-live="polite">
             Unsaved
           </span>
         )}
@@ -129,19 +130,19 @@ export function VoiceSettingsPage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl space-y-5 p-6">
-          <p className="text-sm leading-relaxed text-muted-foreground">
+          <p className="text-sm leading-relaxed text-(--color-text-muted)">
             Voice input lets you record from the microphone and insert the
             transcript into the chat input for review before sending.
             Transcription runs locally — no audio leaves your machine.
           </p>
 
           {isLoading && (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <p className="text-sm text-(--color-text-muted)">Loading…</p>
           )}
 
           {error && (
             <div
-              className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-xs text-destructive"
+              className="flex items-start gap-2 rounded-lg bg-(--color-error-subtle) p-3 text-xs text-(--color-error)"
               role="alert"
             >
               <span>{error instanceof Error ? error.message : String(error)}</span>
@@ -152,35 +153,33 @@ export function VoiceSettingsPage() {
             <div className="space-y-5">
 
               {/* ── Enable / disable ───────────────────────────────── */}
-              <section className="space-y-3 rounded-xl border border-border p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                   Status
                 </h2>
 
                 <label className="flex cursor-pointer items-center gap-3 text-sm">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={form.enabled}
-                    onChange={(e) => setField('enabled', e.target.checked)}
-                    className="h-4 w-4 rounded border-border accent-foreground"
+                    onCheckedChange={(checked) => setField('enabled', checked)}
                   />
-                  <span className="text-foreground">Enabled</span>
+                  <span className="text-(--color-text)">Enabled</span>
                 </label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-(--color-text-muted)">
                   When disabled the mic button in the chat input is shown but inactive.
-                  Requires the <code className="rounded bg-muted px-1 font-mono">voice-local</code> extra:{' '}
-                  <code className="rounded bg-muted px-1 font-mono">uv sync --extra voice-local</code>
+                  Requires the <code className="rounded bg-(--bg-key) px-1 font-mono">voice-local</code> extra:{' '}
+                  <code className="rounded bg-(--bg-key) px-1 font-mono">uv sync --extra voice-local</code>
                 </p>
               </section>
 
               {/* ── Model ─────────────────────────────────────────── */}
-              <section className="space-y-3 rounded-xl border border-border p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                   Model
                 </h2>
 
                 <div className="grid gap-1.5">
-                  <label htmlFor="voice-model" className="text-xs font-medium text-muted-foreground">
+                  <label htmlFor="voice-model" className="text-xs font-medium text-(--color-text-muted)">
                     Model ID
                   </label>
                   <Input
@@ -190,7 +189,7 @@ export function VoiceSettingsPage() {
                     placeholder="local:base"
                     className="h-9 font-mono text-sm"
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-(--color-text-muted)">
                     Format: <code className="font-mono">provider:name</code>.
                     V1 supports <code className="font-mono">local:base</code>,{' '}
                     <code className="font-mono">local:small</code>, and{' '}
@@ -200,13 +199,13 @@ export function VoiceSettingsPage() {
               </section>
 
               {/* ── Language & limits ─────────────────────────────── */}
-              <section className="space-y-3 rounded-xl border border-border p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                   Transcription
                 </h2>
 
                 <div className="grid gap-1.5">
-                  <label htmlFor="voice-language" className="text-xs font-medium text-muted-foreground">
+                  <label htmlFor="voice-language" className="text-xs font-medium text-(--color-text-muted)">
                     Language
                   </label>
                   <Input
@@ -216,7 +215,7 @@ export function VoiceSettingsPage() {
                     placeholder="auto"
                     className="h-9 font-mono text-sm"
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-(--color-text-muted)">
                     <code className="font-mono">auto</code> lets Whisper detect the language.
                     Use a BCP-47 code to force a specific language —{' '}
                     e.g. <code className="font-mono">en</code>, <code className="font-mono">fr</code>,{' '}
@@ -225,7 +224,7 @@ export function VoiceSettingsPage() {
                 </div>
 
                 <div className="grid gap-1.5">
-                  <label htmlFor="voice-max-mb" className="text-xs font-medium text-muted-foreground">
+                  <label htmlFor="voice-max-mb" className="text-xs font-medium text-(--color-text-muted)">
                     Max upload (MB)
                   </label>
                   <Input
@@ -240,7 +239,7 @@ export function VoiceSettingsPage() {
                     }}
                     className="h-9 w-28 font-mono text-sm"
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-(--color-text-muted)">
                     Recordings larger than this are rejected before transcription.
                     A few minutes of compressed WebM audio is typically under 5 MB.
                   </p>
