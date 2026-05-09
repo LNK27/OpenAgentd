@@ -1,8 +1,8 @@
 ---
 title: Layout & Spacing
-description: 4px grid system, breakpoints, depth mechanism, focus rings, accessibility
+description: 4px grid, breakpoints, radius scale, depth on warm paper surfaces, focus rings, accessibility
 status: stable
-updated: 2026-04-29
+updated: 2026-05-09
 ---
 
 # Layout & Spacing
@@ -86,34 +86,54 @@ All spacing is a multiple of 4px.
 
 ---
 
+## Radius scale
+
+The paper aesthetic is generous with rounding. Cards, pills, and the input bar all sit at `--radius-lg` or larger; raw rectangles are reserved for code blocks and dense table cells.
+
+| Token | Value | Usage |
+|---|---|---|
+| `--radius-xs` | 6px | Inline code, tiny chips |
+| `--radius-sm` | 8px | Small buttons, table cells |
+| `--radius-md` | 10px | Standard inputs, secondary buttons |
+| `--radius-lg` | 14px | Cards, popovers, message bubbles, sidebar items |
+| `--radius-2xl` | 24px | Input bar, hero CTAs |
+| `--radius-pill` | 999px | Agent chip pills, role toggles, status badges |
+
+```tsx
+<div className="rounded-lg">…</div>           // 14px card
+<button className="rounded-md">Submit</button> // 10px button
+<span className="rounded-full">…</span>        // pill
+```
+
+---
+
 ## Depth mechanism
 
-Perceived depth works differently in each mode because the foundational colors are different.
+Both modes use a subtle `box-shadow` plus a `border` to create hierarchy. Unlike a cool zinc theme where brightness steps alone could carry depth, the warm paper palette compresses surface differences too tightly for brightness to do the work — `--bg-page` (`#FAF6EC`) and `--bg-card` (`#FFFBF1`) are only one shade apart by design. The shadow restores the layer separation; the border keeps the card's edge crisp.
 
-| Mode | Mechanism | Reason |
-|------|-----------|--------|
-| **Dark** | Brightness steps between `bg` → `surface` → `surface-2` → `surface-3` | Shadows are invisible on near-black. Brightness creates the layer hierarchy. |
-| **Light** | `box-shadow` via `var(--shadow-depth)` | Surfaces are all near-white, so brightness can't differentiate layers. Shadow does the work. |
+| Mode | Mechanism |
+|---|---|
+| **Light** | Warm-neutral surfaces sit close in value; `var(--shadow-depth)` adds a soft outer drop, and `var(--color-border)` defines the edge. |
+| **Dark** | Dark warm surfaces are also close in value; a slightly deeper shadow + a warm-toned border do the same job. |
 
 ```css
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  /* Active only in light mode — empty string in dark */
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-depth);
 }
 ```
 
 ### Elevation levels
 
-| Level | Dark mode | Light mode |
-|-------|-----------|------------|
-| Ground | `bg` | `bg` |
-| Raised | `surface` | `surface` + `shadow-depth` |
-| Floating | `surface-2` | `surface` + stronger shadow (`0 4px 12px rgba(0,0,0,0.06)`) |
-| Glass | `surface-2 / 20%` + `backdrop-blur-xl` + `shadow-xl` | `surface / 60%` + `backdrop-blur-xl` + `shadow-xl` |
-| Modal | `surface-2` + backdrop | `surface` + heavy shadow (`0 16px 48px rgba(0,0,0,0.12)`) + backdrop |
+| Level | Light mode | Dark mode |
+|---|---|---|
+| Ground | `--bg-page` | `--bg-page` |
+| Raised | `--bg-card` + `--shadow-depth` | `--bg-card` + `--shadow-depth` |
+| Floating | `--color-surface` + stronger shadow (`0 4px 12px rgba(0,0,0,0.06)`) | `--color-surface` + stronger shadow (`0 4px 12px rgba(0,0,0,0.35)`) |
+| Glass | `--bg-card / 60%` + `backdrop-blur-xl` + `shadow-xl` | `--bg-card / 30%` + `backdrop-blur-xl` + `shadow-xl` |
+| Modal | `--bg-card` + heavy shadow (`0 16px 48px rgba(0,0,0,0.12)`) + `--color-overlay` backdrop | `--bg-card` + heavier shadow (`0 16px 48px rgba(0,0,0,0.5)`) + `--color-overlay` backdrop |
 
 **Glass tier** is reserved for overlay surfaces that hover *above live content* — the floating chat composer is the canonical example. Unlike `Floating`, it is deliberately translucent: the backdrop blur is load-bearing, and the surface tint is kept low so the content underneath reads as "behind glass". Use sparingly — one glass surface per view, maximum.
 
@@ -127,7 +147,7 @@ Focus states are the single most important accessibility affordance. Every inter
 
 - **Width**: 2px
 - **Offset**: 2px (outside the element)
-- **Color**: `var(--focus-ring)` — `#E4E4E7` on dark, `#18181B` on light
+- **Color**: `var(--focus-ring)` — resolves to `var(--color-accent)` (warm dark on light, cream on dark)
 - **Transition**: fade in via `var(--motion-fast)` + `var(--ease-out)`
 - **Radius**: matches the element's own `border-radius`
 
@@ -265,7 +285,7 @@ Full motion guidance in [motion.md](./motion.md).
 
 ## Mode switching
 
-Dark is the default; users can pick `system` / `light` / `dark` via a UI toggle.
+Light is the default (paper is the canonical surface); users can pick `system` / `light` / `dark` via a UI toggle.
 
 ### Implementation
 
@@ -280,11 +300,11 @@ Dark is the default; users can pick `system` / `light` / `dark` via a UI toggle.
       var stored = localStorage.getItem('theme'); // 'system' | 'light' | 'dark'
       var mode = stored || 'system';
       var resolved = mode === 'system'
-        ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
         : mode;
       document.documentElement.classList.add(resolved);
     } catch (_) {
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.add('light');
     }
   })();
 </script>
@@ -352,4 +372,5 @@ Panels with a side-by-side list + detail layout (MemoryPanel, WorkspaceFilesPane
 - [ ] `prefers-reduced-motion` honored
 - [ ] No keyboard traps (`Esc` always exits modals/menus)
 - [ ] Touch targets ≥ 44×44px
-- [ ] Depth uses brightness on dark, shadow on light
+- [ ] Depth uses `--shadow-depth` plus border on both modes
+- [ ] Radius scale (`--radius-*`) used — no magic px values

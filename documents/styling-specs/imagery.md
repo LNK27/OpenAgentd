@@ -1,8 +1,8 @@
 ---
 title: Imagery & Graphics
-description: Icons from lucide, charts with Recharts, data visualization, patterns, and screenshots
+description: Octobot mascot, lucide icons, charts on the marker palette, agent chips, screenshots, patterns
 status: stable
-updated: 2026-04-21
+updated: 2026-05-09
 ---
 
 # Imagery & Graphics
@@ -11,16 +11,18 @@ updated: 2026-04-21
 
 ## Mascot and brand imagery
 
-OpenAgentd uses the octobot mascot from `documents/assets/brand/octobot-agentd-source.png` as the single source of truth. Do not redraw, simplify, or replace the mascot with a generic robot/octopus. Source-faithful lockups live in `documents/assets/brand/`; app-imported copies live in `web/src/assets/brand/`.
+OpenAgentd uses the Octobot mascot from `documents/assets/brand/octobot-agentd-source.png` as the single source of truth. Do not redraw, simplify, or replace the mascot with a generic robot/octopus. Source-faithful lockups live in `documents/assets/brand/`; app-imported copies live in `web/src/assets/brand/`.
 
 Use the full-color mascot for:
 
 - README and social headers
-- Empty states and onboarding moments
-- App icon and avatar-style surfaces
+- Empty states and onboarding moments — paired with a Caveat callout (`what's on your mind?`) on the empty room screen
+- App icon, sidebar logo, and avatar-style surfaces
 - Launch or release graphics
 
-Avoid using the mascot as decoration in dense product chrome. In the app UI, small repeated logo positions should use `openagentd-app-icon.png`; larger quiet empty states can use `octobot-agentd-source.png` at low opacity.
+The mascot's warm gold/orange pigments are designed for the paper page (`--bg-page` / `#FAF6EC`) — they will desaturate on cool gray surfaces. Always render against paper, Shell White, or Console Ink (see [logo.md](./logo.md#palette)).
+
+Avoid using the mascot as decoration in dense product chrome. In the app UI, small repeated logo positions should use `openagentd-app-icon.png`; larger quiet empty states can use `octobot-agentd-source.png` at full opacity (the warm paper provides enough quietness on its own — fading the mascot tends to muddy the linework).
 
 ### Library: lucide-react
 
@@ -46,6 +48,7 @@ import { Play, AlertCircle, CheckCircle } from 'lucide-react';
 |---------|-------|
 | Default | `currentColor` (inherits from text) |
 | Interactive hover | `var(--color-accent)` |
+| Agent role indicator | matching `--accent-{role}` edge color (e.g. `--accent-green` for openagentd) |
 | Status — success | `var(--color-success)` |
 | Status — warning | `var(--color-warning)` |
 | Status — error | `var(--color-error)` |
@@ -77,23 +80,24 @@ import { Play, AlertCircle, CheckCircle } from 'lucide-react';
 
 ## Patterns & textures
 
-### No decorative patterns
+### No decorative patterns, no gradients in chrome
 
-Backgrounds are **solid** or use a single allowed gradient. No grid overlays, no dot patterns, no noise textures, no parallax layers.
+Backgrounds are **solid warm neutrals**. No grid overlays, no dot patterns, no noise textures, no parallax layers. The paper aesthetic intentionally avoids gradients in UI chrome — the only gradients in the system live inside the mascot artwork itself.
 
 | Context | Treatment |
-|---------|-----------|
-| Page background | `var(--color-bg)` solid |
-| Panel / surface | `var(--color-surface)` solid |
-| Elevated card | `var(--color-surface-2)` solid + `var(--shadow-depth)` (light mode only) |
-| Accent tint | `var(--color-accent-dim)` or `var(--color-accent-subtle)` — for section differentiation, never as decoration |
-| Hero / landing only | `var(--gradient-accent)` — one surface per page |
+|---|---|
+| Page background | `var(--bg-page)` solid |
+| Panel / sidebar | `var(--bg-sidebar)` solid |
+| Card / popover | `var(--bg-card)` solid + `var(--shadow-depth)` |
+| Elevated surface | `var(--color-surface)` solid + `var(--shadow-depth)` |
+| Section tint (rare) | `var(--accent-{role}-soft)` — only for content tied to that agent role |
 
 ### Dividers & borders
 
-- **Default divider**: 1px solid `var(--color-border)`
-- **Strong divider**: 1px solid `var(--color-border-strong)` — for major section breaks
-- **Never**: gradient borders, dashed borders for decoration (dashed is reserved for *drag-target* affordances)
+- **Subtle divider**: 1px solid `var(--border-soft)` — between list rows
+- **Default divider**: 1px solid `var(--color-border)` — between sections, on cards
+- **Strong divider**: 1px solid `var(--color-border-strong)` — major section breaks
+- **Never**: gradient borders, dashed borders for decoration (dashed is reserved for *drag-target* affordances and *queued* states)
 
 ### Drag-target highlight
 
@@ -101,7 +105,7 @@ Backgrounds are **solid** or use a single allowed gradient. No grid overlays, no
 .drag-target {
   outline: 2px dashed color-mix(in srgb, var(--color-accent) 55%, transparent);
   outline-offset: 2px;
-  background: var(--color-accent-dim);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
 }
 ```
 
@@ -117,20 +121,27 @@ Backgrounds are **solid** or use a single allowed gradient. No grid overlays, no
 
 ### Color palette
 
-Use chart colors from [colors.md](./colors.md#chart-colors-data-visualization). Series 1 is always the most prominent data, series 5 the least.
+Use the **marker palette** from [colors.md](./colors.md#marker-palette--charts-and-tints). Markers are slightly more saturated than agent chips because they need to read against busy chart backgrounds. Series 1 is always the most prominent data, series 5 the least.
 
 ```ts
-// Dark mode
-const chartColors = {
-  1: '#93C5FD', // blue
-  2: '#86EFAC', // green
-  3: '#FCD34D', // amber
-  4: '#C4B5FD', // violet
-  5: '#F9A8D4', // pink
-};
+// Resolve via CSS custom properties — values flip per mode automatically
+const chartColors = [
+  'var(--color-marker-blue)',   // 1
+  'var(--color-marker-mint)',   // 2
+  'var(--color-marker-orange)', // 3
+  'var(--color-marker-pink)',   // 4
+  'var(--color-marker-yellow)', // 5
+];
+
+// Area fills use the matching tint (low-alpha)
+const tintFills = [
+  'var(--color-tint-mint)',
+  'var(--color-tint-orange)',
+  'var(--color-tint-violet)',
+];
 ```
 
-**Never** use the brand gold/orange as a chart color unless the data explicitly represents OpenAgentd itself. Brand pigment is identity-reserved.
+**Never** use the Octobot brand gold/orange as a chart color unless the data explicitly represents OpenAgentd itself. **Never** use the agent chip colors as chart series — chips are role-identity-reserved, and reusing them in charts will collide perceptually with chip badges on the same screen.
 
 ### Design rules
 
@@ -158,8 +169,8 @@ const chartColors = {
   <Area
     type="monotone"
     dataKey="requests"
-    stroke="var(--chart-1)"
-    fill="var(--chart-1)"
+    stroke="var(--color-marker-blue)"
+    fill="var(--color-marker-blue)"
     fillOpacity={0.2}
   />
 </AreaChart>
@@ -169,19 +180,19 @@ const chartColors = {
 
 ## Markdown & prose
 
-The app uses a custom `.prose` class (previously `.jb-prose`) for rendered markdown.
+The app uses a custom `.prose` class for rendered markdown.
 
 | Element | Style |
-|---------|-------|
-| `h1`–`h3` | `text` color, 600–700 weight, large top margin |
-| Body | `text` color, 1.6 line-height, `max-width: 65ch` |
-| `code` (inline) | `text` color, `surface-2` background, 4px radius, mono font, 0.9em |
-| `pre code` (block) | `surface` background, `border`, scrollable overflow, mono font, syntax highlighted |
-| Links | `text` color with underline; underline thickens on hover |
+|---|---|
+| `h1`–`h3` | `--color-text`, 600–700 weight, large top margin |
+| Body | `--color-text`, 1.6 line-height, `max-width: 65ch` |
+| `code` (inline) | `--color-text` on `--bg-key`, 6px radius (`--radius-xs`), JetBrains Mono, 0.9em |
+| `pre code` (block) | `--color-surface` background, 1px `--color-border`, JetBrains Mono, syntax highlighted |
+| Links | `--color-accent` with underline at 2px offset; weight 400→500 on hover |
 | Lists | 1.5em padding, disc (ul) / decimal (ol) |
-| Blockquote | Left border 3px `border-strong`, `text-2` color, 1em padding |
-| Tables | 1px borders, `surface-2` header background |
-| `hr` | 1px `border` |
+| Blockquote | Left border 3px `--color-border-strong`, `--color-text-2`, 1em padding |
+| Tables | 1px `--color-border`, `--color-surface-2` header background |
+| `hr` | 1px `--color-border-subtle` |
 
 ---
 
@@ -189,21 +200,34 @@ The app uses a custom `.prose` class (previously `.jb-prose`) for rendered markd
 
 ### Structure
 
-1. Icon — 48px, `text-muted` color
-2. Title — Heading 3, `text`
-3. Description — Body, `text-muted`, `max-width: 40ch`
-4. Primary CTA — uses the accent
+The canonical empty state pairs the **mascot** with a **Caveat callout** — this is the "what's on your mind?" moment from the empty room screen.
+
+1. Mascot — 64–96px, `octobot-agentd-source.png`, full color
+2. Callout — Caveat (`--font-hand`), 32–44px, `--color-text`, lowercase, ends with a question mark or period
+3. (Optional) Subtle Inter description — Body, `--color-text-muted`, `max-width: 40ch`
+4. (Optional) Primary CTA only when there's a clear next action
+
+```tsx
+<div className="flex flex-col items-center justify-center py-12 gap-4">
+  <img src="/brand/octobot-agentd-source.png" alt="" className="w-20 h-20" />
+  <h2 className="font-hand text-[40px] leading-none text-(--color-text)">
+    what&apos;s on your mind?
+  </h2>
+</div>
+```
+
+For more utilitarian empty states (no mascot, no Caveat — e.g. "No memory items yet"):
 
 ```tsx
 <div className="flex flex-col items-center justify-center py-12">
-  <Inbox className="w-12 h-12 text-text-muted mb-4" aria-hidden="true" />
-  <h2 className="text-h3 font-semibold text-text mb-2">
+  <Inbox className="w-12 h-12 text-(--color-text-muted) mb-4" aria-hidden="true" />
+  <h2 className="text-h3 font-semibold text-(--color-text) mb-2">
     No sessions yet
   </h2>
-  <p className="text-text-muted text-center mb-6 max-w-[40ch]">
+  <p className="text-(--color-text-muted) text-center mb-6 max-w-[40ch]">
     Create a session to start working with agents.
   </p>
-  <button className="bg-accent text-bg px-4 py-2 rounded hover:bg-accent-hover">
+  <button className="bg-(--bg-send) text-(--color-text-on-accent) px-4 py-2 rounded-md hover:brightness-110">
     Create session
   </button>
 </div>
@@ -213,7 +237,7 @@ The app uses a custom `.prose` class (previously `.jb-prose`) for rendered markd
 
 For content that will load within a few hundred milliseconds:
 
-- Background: `var(--color-surface-2)`
+- Background: `var(--bg-key)` (warmer than `--color-surface-2`, so skeleton blocks read as "paper waiting for ink")
 - Pulse animation: opacity `0.6 ↔ 1.0` over 1400ms (honors `prefers-reduced-motion`)
 - Shape: match the final content's dimensions to prevent layout shift
 
@@ -224,8 +248,8 @@ For content that will load within a few hundred milliseconds:
 }
 
 .skeleton {
-  background: var(--color-surface-2);
-  border-radius: 4px;
+  background: var(--bg-key);
+  border-radius: var(--radius-sm);
   animation: skeleton-pulse 1400ms ease-in-out infinite;
 }
 ```
@@ -238,14 +262,17 @@ Skeletons longer than ~800ms should be replaced with progressive text (see [moti
 
 ### Mode choice
 
+Light (paper) is the canonical mode and the default everywhere unless there's a specific reason to use dark.
+
 | Context | Mode |
-|---------|------|
-| Product marketing (hero, landing, social cards) | **Dark** |
+|---|---|
+| Product marketing (hero, landing, social cards) | **Light (paper)** — the warm cream is the brand surface |
 | Documentation | **Light** |
 | API reference screenshots | **Light** |
-| README | **Dark** |
+| README | **Light** |
 | Blog posts | Match the blog's theme (usually light for long-form reading) |
-| Conference slides | **Dark** |
+| Conference slides on dark stages | **Dark** — for legibility against a dark venue |
+| "What it looks like at night" feature | **Dark** |
 
 ### Composition
 
@@ -258,4 +285,4 @@ Skeletons longer than ~800ms should be replaced with progressive text (see [moti
 
 - **1× and 2×** PNG for web
 - **SVG** when the screenshot is actually a vector mockup (rare)
-- **Full-bleed** or framed with 24px padding on a `--color-bg` background — pick one convention per surface and stick to it
+- **Full-bleed** or framed with 24px padding on a `--bg-page` background — pick one convention per surface and stick to it

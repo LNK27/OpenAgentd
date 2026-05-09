@@ -2,7 +2,7 @@
 title: Interaction
 description: Hover, focus, active states, keyboard model, touch adaptation, and state choreography
 status: stable
-updated: 2026-04-29
+updated: 2026-05-09
 ---
 
 # Interaction
@@ -62,30 +62,24 @@ idle  →  hover  →  focus  →  active  →  loading  →  (success | error) 
 | State | Visual change | Motion token |
 |-------|---------------|--------------|
 | **Idle** | Default — border, text, and background at their resting values | — |
-| **Hover** | Font-weight 400 → 500; background → `accent-subtle`; cursor changes to `pointer` | `var(--motion-fast)` + `var(--ease-out)` |
+| **Hover** | Font-weight 400 → 500; background → `--bg-key` (or role-specific `--accent-{role}-soft` for agent-tagged controls); cursor changes to `pointer` | `var(--motion-fast)` + `var(--ease-out)` |
 | **Focus** | 2px `--focus-ring` outline with 2px offset, fades in from opacity 0 → 1 | `var(--motion-fast)` + `var(--ease-out)` |
-| **Active** | Font-weight 500 → 600; background → `accent-hover`; slight scale 1 → 0.98 (buttons only) | `var(--motion-instant)` + `var(--ease-in-out)` |
+| **Active** | Font-weight 500 → 600; background → next-step warm neutral (`--color-surface-2`); slight scale 1 → 0.98 (buttons only) | `var(--motion-instant)` + `var(--ease-in-out)` |
 | **Loading** | Label replaced with progressive text (`Thinking…`, `Saving…`); input locked; keyboard Escape cancels | — |
 | **Success** | Brief opacity pulse (0.6 → 1.0), no color flash, returns to idle | `var(--motion-base)` + `var(--ease-out)` |
 | **Error** | Label updates to error message; border → `--color-error`; no shake, no bounce | `var(--motion-fast)` + `var(--ease-out)` |
 
-### Direction reverses in light mode
+### Direction stays consistent across modes
 
-In dark mode, hover "brightens" (moves toward white). In light mode, hover "darkens" (moves toward black). The perceptual rule is the same ("hover increases contrast with the surrounding surface"), but the direction of the color change reverses.
+In light mode, hover moves to a *slightly warmer/darker* paper tone (`--bg-key` is one shade darker than `--bg-page`). In dark mode, hover moves to a *slightly lighter* warm surface (`--bg-key` is one shade lighter than `--bg-page`). The perceptual rule is the same in both — "hover separates from the surrounding surface" — and because `--bg-key` is mode-aware, a single CSS rule does both:
 
 ```css
-/* Dark mode: hover brightens */
 .button:hover {
-  background: var(--color-accent-subtle);  /* subtle neutral tint */
-}
-
-/* Light mode: hover darkens */
-:root.light .button:hover {
-  background: var(--color-accent-subtle);  /* subtle neutral tint */
+  background: var(--bg-key);
 }
 ```
 
-Because tokens are mode-aware, the same CSS rule produces the correct direction in both modes. Don't write mode-specific rules unless the *behavior* genuinely differs.
+Don't write mode-specific rules unless the *behavior* genuinely differs. Token-based rules give correct light/dark behavior automatically.
 
 ---
 
@@ -115,7 +109,7 @@ A signature of the OpenAgentd interaction language. Text shifts weight under the
 
 - **Width**: 2px
 - **Offset**: 2px (outside the element)
-- **Color**: `var(--focus-ring)` — `#E4E4E7` on dark, `#18181B` on light
+- **Color**: `var(--focus-ring)` — resolves to `var(--color-accent)` (warm dark `#3F3429` on light, cream `#F5EBD8` on dark)
 - **Radius**: matches element's `border-radius`
 - **Fade-in**: opacity 0 → 1, `var(--motion-fast)`, `var(--ease-out)`
 
@@ -168,7 +162,7 @@ function ProximityRow({ mouseY, rowY }: Props) {
   return (
     <div
       style={{
-        backgroundColor: `color-mix(in srgb, var(--color-accent-subtle) ${intensity * 100}%, transparent)`,
+        backgroundColor: `color-mix(in srgb, var(--bg-key) ${intensity * 100}%, transparent)`,
       }}
     />
   );
@@ -229,8 +223,8 @@ Every page has a "Skip to main content" link that appears on the first `Tab` pre
   top: -40px;
   left: 0;
   padding: 8px 16px;
-  background: var(--color-accent);
-  color: var(--color-bg);
+  background: var(--bg-send);
+  color: var(--color-text-on-accent);
   transition: top var(--motion-fast) var(--ease-out);
   z-index: 100;
 }
@@ -311,6 +305,8 @@ Never combine loading + disabled visually — the two states look the same but m
 | **Double-click for primary actions** | Non-standard on web. Keep single-click primary. |
 | **Hover content that isn't also reachable by focus** | Screen reader and keyboard users are locked out. |
 | **Weight shift on static text** | Only interactive elements shift weight. |
+| **Weight shift on Caveat** | Hand-drawn weights aren't perceptually distinct the way Inter weights are. |
+| **Agent chip color used outside its role** | Chip colors are role-identity-reserved — using mint anywhere that isn't the openagentd role breaks the language. |
 | **Sub-44px touch targets** | Fails touch usability guidelines. |
 | **Proximity effects on sparse lists** | Adds complexity without payoff. |
 
@@ -328,5 +324,5 @@ Before shipping an interactive component:
 - [ ] Touch target ≥ 44×44 CSS pixels
 - [ ] `prefers-reduced-motion` honored
 - [ ] No hover-only functionality
-- [ ] Hover direction reverses correctly in light mode
+- [ ] Hover uses `--bg-key` (or role-specific `--accent-{role}-soft`) — works in both modes via tokens
 - [ ] ARIA roles and labels where semantic HTML isn't sufficient

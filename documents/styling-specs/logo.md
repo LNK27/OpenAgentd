@@ -1,23 +1,24 @@
 ---
 title: Logo Specifications
-description: Source-faithful octobot mascot, lockups, sizing rules, clear space, and asset delivery formats
+description: Source-faithful Octobot mascot, lockups, sizing rules, clear space, asset delivery — rendered against warm paper surfaces
 status: stable
-updated: 2026-05-07
+updated: 2026-05-09
 ---
 
 # Logo Specifications
 
 ## Primary logo
 
-- **Format**: Original octobot mascot + `OpenAgentd` wordmark
+- **Format**: Original Octobot mascot + `OpenAgentd` wordmark
 - **Mascot source**: `documents/assets/brand/octobot-agentd-source.png`
 - **Canonical assets**: `documents/assets/brand/`
 - **App assets**: `web/src/assets/brand/`
 - **Wordmark casing**: `OpenAgentd`
-- **Wordmark font**: Inter/system sans, 800 weight
+- **Wordmark font**: Inter, 800 weight (`--font-sans`)
 - **Positioning**: mascot left, wordmark and agent-runtime copy right
+- **Default surface**: warm paper (`--bg-page` / `#FAF6EC`). The mascot's warm gold/orange pigments were composed against this tone; rendering on a cool gray neutral will desaturate the mascot perceptually.
 
-The octobot is the brand. Do not redraw it into a generic robot, simplify the tentacles, replace the eyes, or change the proportions. New assets must embed or directly derive from the source PNG.
+The Octobot is the brand. Do not redraw it into a generic robot, simplify the tentacles, replace the eyes, or change the proportions. New assets must embed or directly derive from the source PNG.
 
 ---
 
@@ -60,7 +61,9 @@ When text appears inside a filled pill, badge, or bordered container, center it 
 | Shell White | `#FBF8F7` | Light brand surfaces and mascot highlights |
 | Console Ink | `#17120F` | Dark brand surfaces |
 
-The product UI can remain neutral and restrained; the brand assets carry the warm octobot palette.
+The product UI uses warm-neutral paper tones (see [colors.md](./colors.md)); the brand assets carry the saturated Octobot palette. The two are designed to coexist — `--bg-page` (`#FAF6EC`) sits intentionally close to Shell White (`#FBF8F7`), so a brand asset placed on a product page reads as continuous rather than pasted-on.
+
+**Do not use the Octobot pigments as UI accents.** The warm dark `--color-accent` (`#3F3429`) handles primary affordances; agent identity uses the chip palette (mint / blue / orange / pink) — see [colors.md](./colors.md#agent-chip-palette). Brand pigment is identity-reserved.
 
 ---
 
@@ -68,7 +71,7 @@ The product UI can remain neutral and restrained; the brand assets carry the war
 
 ### Clear Space
 
-Maintain clear space equal to the octobot eye diameter around the mascot or full lockup. Nothing should intersect the tentacles, antenna, or wordmark area.
+Maintain clear space equal to the Octobot eye diameter around the mascot or full lockup. Nothing should intersect the tentacles, antenna, or wordmark area.
 
 ### Minimum Size
 
@@ -94,6 +97,7 @@ Do not:
 - Add unrelated decorative patterns behind the mascot
 - Replace the warm palette with generic blue/purple SaaS colors
 - Use the mascot as a repeated background texture
+- Render the lockup on a cool gray surface — use `--bg-page`, Shell White, or Console Ink
 
 ---
 

@@ -1,133 +1,194 @@
 ---
 title: Color Palette
-description: Octobot Agent palette, semantic colors, syntax highlighting, accessibility compliance
+description: Paper-warm palette, agent-chip identity, semantic tokens, marker chart palette, accessibility compliance
 status: stable
-updated: 2026-04-21
+updated: 2026-05-09
 ---
 
 # Color Palette
 
 ## Overview
 
-OpenAgentd uses an **Octobot Agent** palette: warm mascot pigments for brand identity, paired with restrained neutral UI surfaces for daily product work. Brand pigment is earned, never decorative: saturated color appears in identity, primary moments, and meaningful agent state.
+OpenAgentd is rendered on **warm paper**: a cream `#FAF6EC` page tone in light mode, deep ink `#15110D` in dark. Surfaces, borders, and text all sit on a warm-neutral axis — slightly chromatic, never sterile gray. On top of that quiet base, **agent-chip pastels** (mint / blue / orange / pink) carry agent-role identity, and the **Octobot brand pigments** (Agent Gold, Loop Orange, Kernel Brown) appear in the mascot and brand surfaces.
 
-**Core principle**: color is a communication channel, not a surface treatment. The product UI stays neutral by default; gold/orange is reserved for the octobot brand, active agent affordances, and important calls to action.
+**Core principle**: color is communication. Surfaces stay warm-neutral so prose and code can dominate; saturated color is reserved for agent identity, state signals, and meaningful action.
 
 ---
 
-## Accent philosophy
+## Three palettes, three jobs
 
-The UI accent remains a high-contrast neutral in dense product surfaces, while brand assets use the warm octobot palette.
+| Palette | Job | Where it appears |
+|---|---|---|
+| **Paper neutrals** | The page itself — surfaces, borders, body text | Sidebar, message canvas, input bar, every chrome surface |
+| **Agent chips** | Identifies which agent is talking or selected | Topbar agent toggles, chip badges next to messages |
+| **Octobot brand** | Brand identity — mascot, lockups, hero moments | Logo, splash, marketing, app icon |
 
-- **Dark mode** → accent is `#E4E4E7` (zinc-200). It is the brightest non-text neutral.
-- **Light mode** → accent is `#27272A` (zinc-800). It is the darkest non-text neutral.
+The three palettes do **not** interchange. Brand gold is never used as a chip color. A chip color is never used for body text. Paper neutrals are never used as a chart color.
 
-The mental model is: neutral UI for sustained work, warm brand pigment for identity and agent energy.
+---
 
-### Brand palette
+## Paper neutrals — surfaces, borders, text
+
+The foundation tokens. Every chrome surface, every divider, every line of body text resolves to one of these.
+
+### Surface & background
+
+| Token | Light mode | Dark mode | Usage |
+|---|---|---|---|
+| `--bg-page` | `#FAF6EC` | `#15110D` | Page background, message canvas |
+| `--bg-sidebar` | `#F5EFDD` | `#1C1813` | Sidebar background |
+| `--bg-card` | `#FFFBF1` | `#1C1813` | Cards, popovers, dropdowns |
+| `--bg-input` | `#FAF6EC` | `#1C1813` | Text input backgrounds |
+| `--bg-key` | `#F0E9D4` | `#2A2219` | Keyboard cap surfaces, raised pill backgrounds |
+| `--bg-send` | `#2D241B` | `#F5EBD8` | Primary CTA surface (inverted vs page) |
+| `--color-surface` | `#FFFDF7` | `#221C16` | Generic elevated surface |
+| `--color-surface-2` | `#F5EBD8` | `#2A2219` | Generic raised surface |
+| `--color-bg-elevated` | `#FFFDF7` | `#1C1813` | Hover surface for elevated content |
+
+### Borders
+
+| Token | Light mode | Dark mode | Usage |
+|---|---|---|---|
+| `--border-soft` | `#E8DFC6` | `#2C231A` | Subtle dividers |
+| `--border-card` | `#E0D5B7` | `#3A2F23` | Card and pill borders |
+| `--color-border-subtle` | `#E8DCC2` | `#2C231A` | Decorative dividers |
+| `--color-border` | `#D7C7AA` | `#3A2F23` | Default borders |
+| `--color-border-strong` | `#A89880` | `#5C4B36` | Section breaks, prominent borders |
+
+### Text & foreground
+
+| Token | Light mode | Dark mode | Usage |
+|---|---|---|---|
+| `--color-text` | `#1A1714` | `#F5EBD8` | Primary text, headings |
+| `--color-text-2` | `#5F5143` | `#C5B59A` | Secondary text |
+| `--color-text-muted` | `#7A6B58` | `#9C8A72` | Hints, placeholders, timestamps |
+| `--color-text-subtle` | `#A89880` | `#7A6B58` | Disabled text, faint metadata |
+| `--color-text-on-accent` | `#FFFDF7` | `#15110D` | Text on filled accent surfaces |
+| `--fg-primary` | `#1F1A14` | `#F5EBD8` | Strong foreground (mascot lines, hand text) |
+| `--fg-secondary` | `#6B6253` | `#C5B59A` | Secondary foreground |
+| `--fg-muted` | `#9A9080` | `#9C8A72` | Muted iconography |
+
+### Color accent (UI)
+
+The non-chip accent is a high-contrast warm neutral, used for primary affordances when no agent identity is involved.
+
+| Token | Light mode | Dark mode | Usage |
+|---|---|---|---|
+| `--color-accent` | `#3F3429` | `#F5EBD8` | Primary CTA, focus ring, active highlights |
+| `--color-overlay` | `#1A171466` (40%) | `#00000099` (60%) | Modal backdrops |
+
+---
+
+## Agent chip palette
+
+Each agent role gets a soft pastel chip with a saturated edge color and a darker text color for readability. Chips are used in topbar toggles, message author tags, and queue indicators.
+
+| Role | Soft (fill) | Edge (icon, dot) | Text | Pencil token prefix |
+|---|---|---|---|---|
+| `openagentd` (router) | `#E2F2E5` / `#1F3A2A` | `#3DA66A` / `#5DC487` | `#2D7A4F` / `#92E0B0` | `accent-green-*` |
+| `executor` | `#DCEEFB` / `#1E3A52` | `#5AA8E2` / `#7CC2F0` | `#2D6FA8` / `#9DD0F5` | `accent-blue-*` |
+| `consultant` | `#FFF1D8` / `#3D2D14` | `#F59E3B` / `#FDB75D` | `#C26A1E` / `#FCC780` | `accent-orange-*` |
+| `explorer` | `#FBE0EB` / `#3D1F2D` | `#E63D7A` / `#F472B6` | — (use `--color-text` on soft) | `accent-pink-*` |
+| Reserved (memory, scheduler) | `#E8DEF8` / `#2D2440` | `#7C5BCF` / `#A78BFA` | — | `accent-purple-*` |
+| Error / destructive | — | `#C8333E` / `#F87171` | — | `accent-red` |
+
+**Format** for each token: `light-mode-value` / `dark-mode-value`.
+
+**Usage rules:**
+
+- **Soft fill + edge dot + text label** is the canonical chip composition. Color alone never identifies an agent.
+- The same chip color set is used in the topbar role toggle (`OpenagentdChip`, `ExecutorChip`, `ConsultantChip`, `ExplorerChip`) and in the message author badge — same color, same role, no exceptions.
+- Don't use chip colors as page accents, dividers, or chart series. They're identity-reserved.
+- A chip's *edge* color (e.g. `#3DA66A`) is the only place that pigment appears outside the chip — use it for the leading dot in queue banners or status pills tied to that agent.
+
+### CSS implementation
+
+```css
+:root.light {
+  --accent-blue:        #5AA8E2;
+  --accent-blue-soft:   #DCEEFB;
+  --accent-blue-text:   #2D6FA8;
+
+  --accent-green:       #3DA66A;
+  --accent-green-soft:  #E2F2E5;
+  --accent-green-text:  #2D7A4F;
+
+  --accent-orange:      #F59E3B;
+  --accent-orange-soft: #FFF1D8;
+  --accent-orange-text: #C26A1E;
+
+  --accent-pink:        #E63D7A;
+  --accent-pink-soft:   #FBE0EB;
+
+  --accent-purple:      #7C5BCF;
+  --accent-purple-soft: #E8DEF8;
+
+  --accent-red:         #C8333E;
+}
+
+:root.dark {
+  --accent-blue:        #7CC2F0;
+  --accent-blue-soft:   #1E3A52;
+  --accent-blue-text:   #9DD0F5;
+
+  --accent-green:       #5DC487;
+  --accent-green-soft:  #1F3A2A;
+  --accent-green-text:  #92E0B0;
+
+  --accent-orange:      #FDB75D;
+  --accent-orange-soft: #3D2D14;
+  --accent-orange-text: #FCC780;
+
+  --accent-pink:        #F472B6;
+  --accent-pink-soft:   #3D1F2D;
+
+  --accent-purple:      #A78BFA;
+  --accent-purple-soft: #2D2440;
+
+  --accent-red:         #F87171;
+}
+```
+
+---
+
+## Octobot brand pigments
+
+Reserved for brand assets — the mascot, lockups, app icon, splash, hero marketing surfaces. Never used in product chrome.
 
 | Name | Hex | Usage |
-|------|-----|-------|
+|---|---|---|
 | Agent Gold | `#FCC352` | Primary brand surface, badge fills, brand emphasis |
 | Loop Orange | `#FA8030` | Energy accent, mascot details, selected brand emphasis |
 | Kernel Brown | `#5F2511` | Mascot linework, text on gold, warm dark contrast |
 | Shell White | `#FBF8F7` | Light brand surfaces and highlights |
 | Console Ink | `#17120F` | Dark brand surfaces |
 
----
-
-## Token tables (both modes, side-by-side)
-
-### Foundation — surfaces, borders, text
-
-| Token | Dark mode | Light mode | Usage |
-|-------|-----------|------------|-------|
-| `--color-bg` | `#0A0A0B` | `#FAFAFA` | Page background |
-| `--color-surface` | `#111113` | `#FFFFFF` | Panels, popovers, dropdowns |
-| `--color-surface-2` | `#18181B` | `#F4F4F5` | Cards, input backgrounds |
-| `--color-surface-3` | `#1F1F23` | `#E4E4E7` | Elevated/active surfaces |
-| `--color-border` | `#27272A` | `#E4E4E7` | Subtle borders, dividers |
-| `--color-border-strong` | `#3F3F46` | `#D4D4D8` | Prominent borders, separators |
-| `--color-text` | `#FAFAFA` | `#09090B` | Primary text, headings |
-| `--color-text-2` | `#A1A1AA` | `#52525B` | Secondary text, labels |
-| `--color-text-muted` | `#71717A` | `#71717A` | Tertiary text, hints, placeholders |
-| `--color-text-subtle` | `#52525B` | `#A1A1AA` | Disabled text, faint metadata |
-
-### Accent — primary action surface
-
-| Token | Dark mode | Light mode | Usage |
-|-------|-----------|------------|-------|
-| `--color-accent` | `#E4E4E7` | `#27272A` | Primary CTA, focus ring, active highlights |
-| `--color-accent-hover` | `#F4F4F5` | `#18181B` | Hover state on accent |
-| `--color-accent-subtle` | `rgba(228, 228, 231, 0.10)` | `rgba(39, 39, 42, 0.06)` | Subtle tinted backgrounds (selected rows, hover fills) |
-| `--color-accent-dim` | `rgba(228, 228, 231, 0.05)` | `rgba(39, 39, 42, 0.03)` | Very subtle tint (section backgrounds) |
-| `--gradient-accent` | `linear-gradient(180deg, #FAFAFA 0%, #D4D4D8 100%)` | `linear-gradient(180deg, #3F3F46 0%, #18181B 100%)` | Primary CTA only — reads as physical metal, not flat gray |
-
-### Semantic — state colors (muted set)
-
-State colors are the *only* place saturated pigment appears. They shift brightness between modes to maintain WCAG AA on each background.
-
-| Token | Dark mode | Light mode | Usage |
-|-------|-----------|------------|-------|
-| `--color-success` | `#4ADE80` | `#16A34A` | Confirmations, running agents, validation |
-| `--color-warning` | `#FBBF24` | `#D97706` | Alerts, pending states, cautions |
-| `--color-error` | `#F87171` | `#DC2626` | Errors, failures, destructive actions |
-| `--color-info` | `#93C5FD` | `#2563EB` | Information, hints, secondary messaging |
-
-### Syntax highlighting — code
-
-| Token | Dark mode | Light mode | Element |
-|-------|-----------|------------|---------|
-| `--color-syn-comment` | `#71717A` | `#71717A` | Comments |
-| `--color-syn-keyword` | `#C4B5FD` | `#7C3AED` | Keywords, reserved words |
-| `--color-syn-function` | `#93C5FD` | `#2563EB` | Function/method names |
-| `--color-syn-variable` | `#F87171` | `#DC2626` | Variable names |
-| `--color-syn-string` | `#86EFAC` | `#16A34A` | String literals |
-| `--color-syn-number` | `#FBBF24` | `#D97706` | Numeric literals |
-| `--color-syn-type` | `#FCD34D` | `#B45309` | Type annotations |
-| `--color-syn-operator` | `#A1A1AA` | `#52525B` | Operators, punctuation |
-
-### Depth & focus
-
-| Token | Dark mode | Light mode | Usage |
-|-------|-----------|------------|-------|
-| `--focus-ring` | `#E4E4E7` | `#18181B` | 2px ring on `:focus-visible`, 2px offset |
-| `--shadow-depth` | `none` | `0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.04)` | Card elevation |
-
-**Why shadows only in light mode**: on dark, brightness steps between surfaces create perceived depth — shadows add noise. On light, surfaces are all near-white and brightness can't create depth, so shadow does the work.
+The product UI's `--bg-page` (`#FAF6EC`) sits intentionally close to Shell White (`#FBF8F7`) — they're meant to feel continuous when the mascot lands on a product page.
 
 ---
 
-## Chart colors (data visualization)
+## Semantic state colors
 
-Charts may use saturated color. Order matters — series 1 always uses the accent position.
+State colors are **event signals**, not design accents. They overlap deliberately with the agent chip palette: error reuses red, info reuses the blue chip edge, success reuses the green chip edge, warning reuses the orange chip edge. This keeps the system small.
 
-| Index | Dark mode | Light mode |
-|-------|-----------|------------|
-| Chart 1 | `#93C5FD` (blue) | `#2563EB` |
-| Chart 2 | `#86EFAC` (green) | `#16A34A` |
-| Chart 3 | `#FCD34D` (amber) | `#D97706` |
-| Chart 4 | `#C4B5FD` (violet) | `#7C3AED` |
-| Chart 5 | `#F9A8D4` (pink) | `#DB2777` |
-
-**Anti-pattern**: never use brand gold/orange as chart colors unless the data explicitly represents OpenAgentd itself. The brand palette is identity-reserved; charts need their own spectrum.
-
----
-
-## Color as information
+| Token | Light mode | Dark mode | Usage |
+|---|---|---|---|
+| `--color-success` | `#3DA66A` (= `accent-green`) | `#5DC487` | Confirmations, running agents, validation |
+| `--color-warning` | `#F59E3B` (= `accent-orange`) | `#FDB75D` | Alerts, pending states, cautions |
+| `--color-error` | `#B91C1C` | `#F87171` | Errors, failures, destructive actions |
+| `--color-info` | `#5AA8E2` (= `accent-blue`) | `#7CC2F0` | Information, hints, secondary messaging |
 
 ### When to use state colors
 
-State colors are **event signals**, not design accents. Use them when something the user needs to notice is happening.
-
 | Signal | Color | Example |
-|--------|-------|---------|
+|---|---|---|
 | Agent is running / streaming | `--color-success` | Pulse dot next to session title |
 | Tool call is pending | `--color-warning` | Dashed border on queued row |
 | Operation failed | `--color-error` | Error banner, destructive button |
 | Informational hint | `--color-info` | First-run tooltip |
 
-**Never use state colors for**:
+### Never use state colors for
+
 - Static branding (logo, heading accents)
 - Decoration (section backgrounds, dividers)
 - Hierarchy (headers are not "info blue")
@@ -141,53 +202,110 @@ Every semantic color pairs with an icon, text label, or both.
 - ❌ Green dot (color only)
 - ✅ Green dot + "Running" label
 
-Accessibility, color-blind users, and grayscale screenshots all require this discipline.
+---
+
+## Marker palette — charts and tints
+
+For data visualization. Marker pigments are slightly more saturated than chip pigments because they need to read against a busy chart background. There is also a low-alpha tint variant for area fills.
+
+| Token | Light mode | Dark mode |
+|---|---|---|
+| `--color-marker-blue` | `#0284C7` | `#38BDF8` |
+| `--color-marker-mint` | `#16A34A` | `#4ADE80` |
+| `--color-marker-orange` | `#FA8030` | `#FCC352` |
+| `--color-marker-pink` | `#DB2777` | `#F472B6` |
+| `--color-marker-yellow` | `#B77900` | `#FBBF24` |
+| `--color-violet` | `#7C3AED` | `#A78BFA` |
+| `--color-tint-mint` | `#16A34A18` | `#4ADE8026` |
+| `--color-tint-orange` | `#FA803018` | `#FCC35226` |
+| `--color-tint-violet` | `#7C3AED18` | `#A78BFA26` |
+
+**Series 1 = blue, Series 2 = mint, Series 3 = orange, Series 4 = pink, Series 5 = yellow.** Never use brand gold/orange or chip colors as chart series unless the series literally represents OpenAgentd or a specific named agent.
+
+---
+
+## Syntax highlighting — code
+
+Syntax tokens use the marker palette plus a softened comment color so prose and code feel continuous.
+
+| Token | Light mode | Dark mode | Element |
+|---|---|---|---|
+| `--color-syn-comment` | `#7A6B58` | `#9C8A72` | Comments — `--color-text-muted` |
+| `--color-syn-keyword` | `#7C3AED` | `#A78BFA` | Keywords, reserved words |
+| `--color-syn-function` | `#0284C7` | `#38BDF8` | Function/method names |
+| `--color-syn-variable` | `#B91C1C` | `#F87171` | Variable names |
+| `--color-syn-string` | `#16A34A` | `#4ADE80` | String literals |
+| `--color-syn-number` | `#B77900` | `#FBBF24` | Numeric literals |
+| `--color-syn-type` | `#C26A1E` | `#FCC780` | Type annotations |
+| `--color-syn-operator` | `#5F5143` | `#C5B59A` | Operators, punctuation — `--color-text-2` |
+
+---
+
+## Depth & focus
+
+| Token | Light mode | Dark mode | Usage |
+|---|---|---|---|
+| `--focus-ring` | `--color-accent` (`#3F3429`) | `--color-accent` (`#F5EBD8`) | 2px ring on `:focus-visible`, 2px offset |
+| `--shadow-depth` | `0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.05)` | `0 1px 2px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.25)` | Card elevation |
+
+**Why both modes get a shadow.** Unlike a cool dark theme where brightness steps create depth, the warm dark mode (`#15110D` page, `#1C1813` card) has very compressed surface differences. A subtle outer shadow restores hierarchy on dark just as it does on light. Keep them small — paper isn't supposed to feel glossy.
+
+---
+
+## Radius scale
+
+The paper aesthetic is generous with radius. Cards, pills, and the input bar all sit at `radius-lg` or larger.
+
+| Token | Value | Usage |
+|---|---|---|
+| `--radius-xs` | 6px | Tiny chips, code-inline backgrounds |
+| `--radius-sm` | 8px | Small components, table cells |
+| `--radius-md` | 10px | Standard buttons, inputs |
+| `--radius-lg` | 14px | Cards, popovers, message bubbles |
+| `--radius-2xl` | 24px | Input bar, hero CTAs |
+| `--radius-pill` | 999px | Chip pills, agent role toggles |
 
 ---
 
 ## Gradient usage
 
-The `--gradient-accent` token is the **only** gradient in the system.
+The paper aesthetic intentionally avoids gradients in chrome. The only sanctioned gradient is on the **mascot itself** (the source PNG already contains warm gradient lighting). Do not apply gradients to:
 
-**Use it for**:
-- Primary CTA buttons (one per screen)
-- Hero surfaces on marketing pages
-- Brand mark variant (reserved)
+- Buttons or CTAs
+- Card backgrounds
+- Text
+- Headings
+- Any UI surface
 
-**Do not use it for**:
-- Section backgrounds
-- Card surfaces
-- Headings or text (gradient text breaks on low-DPI displays)
-- Anything repeated more than once per view
-
-A single gradient button on a flat screen reads as "metal, the primary action". Two gradient buttons read as "two primary actions", which is a design bug.
+If a surface needs differentiation from `--bg-page`, use `--bg-card` or `--color-surface` — flat warm neutrals, not gradients.
 
 ---
 
-## Brand Pigment On Light Backgrounds
+## Brand pigment on light backgrounds
 
-Warm brand pigment can lose contrast on light surfaces if used as text. Use Kernel Brown for text on Agent Gold, and use charcoal text on Shell White surfaces.
+When brand pigment lands on the warm page (`#FAF6EC`), use these contrast pairings:
 
-**Rules**:
-- Use `#5F2511` for text on `#FCC352` pills and badges.
-- Use `#27140C` or `#09090B` for large wordmarks on Shell White.
-- Do not use Loop Orange for body text on light backgrounds.
-- Do not recolor the octobot paths to force contrast; choose an appropriate background instead.
+- **Agent Gold pill text** — use `#5F2511` (Kernel Brown), not pure black
+- **Wordmark on Shell White** — use `#1A1714` (`--color-text`)
+- **Loop Orange** — never as body text on light; only as accent strokes or icon fills
+- **Octobot mascot lines** — Kernel Brown is canonical; do not recolor
 
 ---
 
 ## Accessibility (WCAG 2.1 AA)
 
-All token pairs are verified against their own background:
+All token pairs verified against their own background. Spot-check ratios for the most common pairings:
 
-| Pairing | Dark mode ratio | Light mode ratio | WCAG |
-|---------|-----------------|------------------|------|
-| `text` on `bg` | 18.7:1 | 19.3:1 | AAA |
-| `text-2` on `bg` | 7.1:1 | 8.9:1 | AAA |
-| `text-muted` on `bg` | 4.6:1 | 4.7:1 | AA |
-| `accent` on `bg` | 17.8:1 | 14.1:1 | AAA |
-| `success` on `bg` | 10.4:1 | 4.5:1 | AA |
-| `error` on `bg` | 6.7:1 | 5.9:1 | AA |
+| Pairing | Light mode | Dark mode | WCAG |
+|---|---|---|---|
+| `text` on `bg-page` | 14.6:1 | 13.2:1 | AAA |
+| `text-2` on `bg-page` | 6.8:1 | 7.4:1 | AAA |
+| `text-muted` on `bg-page` | 4.7:1 | 4.6:1 | AA |
+| `accent` on `bg-page` | 11.2:1 | 13.0:1 | AAA |
+| `accent-blue-text` on `accent-blue-soft` | 5.1:1 | 8.4:1 | AA |
+| `accent-green-text` on `accent-green-soft` | 5.0:1 | 7.9:1 | AA |
+| `accent-orange-text` on `accent-orange-soft` | 4.6:1 | 7.2:1 | AA |
+| `error` on `bg-page` | 5.4:1 | 5.7:1 | AA |
 
 **Test tools**:
 - WebAIM Contrast Checker: https://webaim.org/resources/contrastchecker/
@@ -198,84 +316,147 @@ All token pairs are verified against their own background:
 
 ## CSS implementation
 
-The token layer uses class-based mode switching on the `<html>` element (`class="dark"` or `class="light"`), with a three-way UI toggle (system / light / dark) persisted to localStorage. An inline script in `index.html` sets the class before paint to prevent flash of unstyled theme.
+Tokens are emitted from a single `@theme` block. Mode is class-based on `<html>` (`class="light"` / `class="dark"`); a three-way toggle (system / light / dark) persists choice to `localStorage`. An inline script in `index.html` sets the class before paint to prevent flash of unstyled theme.
 
 ```css
-/* ── Default = dark (production) ── */
+/* ── Light mode (default) ── */
 :root,
-:root.dark {
-  --color-bg:            #0A0A0B;
-  --color-surface:       #111113;
-  --color-surface-2:     #18181B;
-  --color-surface-3:     #1F1F23;
-  --color-border:        #27272A;
-  --color-border-strong: #3F3F46;
+:root.light {
+  /* Surfaces */
+  --bg-page:        #FAF6EC;
+  --bg-sidebar:     #F5EFDD;
+  --bg-card:        #FFFBF1;
+  --bg-input:       #FAF6EC;
+  --bg-key:         #F0E9D4;
+  --bg-send:        #2D241B;
+  --color-surface:  #FFFDF7;
+  --color-surface-2:#F5EBD8;
+  --color-bg-elevated:#FFFDF7;
 
-  --color-text:          #FAFAFA;
-  --color-text-2:        #A1A1AA;
-  --color-text-muted:    #71717A;
-  --color-text-subtle:   #52525B;
+  /* Borders */
+  --border-soft:        #E8DFC6;
+  --border-card:        #E0D5B7;
+  --color-border-subtle:#E8DCC2;
+  --color-border:       #D7C7AA;
+  --color-border-strong:#A89880;
 
-  --color-accent:        #E4E4E7;
-  --color-accent-hover:  #F4F4F5;
-  --color-accent-subtle: rgba(228, 228, 231, 0.10);
-  --color-accent-dim:    rgba(228, 228, 231, 0.05);
-  --gradient-accent:     linear-gradient(180deg, #FAFAFA 0%, #D4D4D8 100%);
+  /* Text */
+  --color-text:           #1A1714;
+  --color-text-2:         #5F5143;
+  --color-text-muted:     #7A6B58;
+  --color-text-subtle:    #A89880;
+  --color-text-on-accent: #FFFDF7;
+  --fg-primary:           #1F1A14;
+  --fg-secondary:         #6B6253;
+  --fg-muted:             #9A9080;
 
-  --color-success:       #4ADE80;
-  --color-warning:       #FBBF24;
-  --color-error:         #F87171;
-  --color-info:          #93C5FD;
+  /* Accent (UI) */
+  --color-accent:  #3F3429;
+  --color-overlay: #1A171466;
 
-  --color-syn-comment:   #71717A;
-  --color-syn-keyword:   #C4B5FD;
-  --color-syn-function:  #93C5FD;
-  --color-syn-variable:  #F87171;
-  --color-syn-string:    #86EFAC;
-  --color-syn-number:    #FBBF24;
-  --color-syn-type:      #FCD34D;
-  --color-syn-operator:  #A1A1AA;
+  /* Agent chips */
+  --accent-blue:   #5AA8E2;  --accent-blue-soft:   #DCEEFB;  --accent-blue-text:   #2D6FA8;
+  --accent-green:  #3DA66A;  --accent-green-soft:  #E2F2E5;  --accent-green-text:  #2D7A4F;
+  --accent-orange: #F59E3B;  --accent-orange-soft: #FFF1D8;  --accent-orange-text: #C26A1E;
+  --accent-pink:   #E63D7A;  --accent-pink-soft:   #FBE0EB;
+  --accent-purple: #7C5BCF;  --accent-purple-soft: #E8DEF8;
+  --accent-red:    #C8333E;
 
-  --focus-ring:          #E4E4E7;
-  --shadow-depth:        none;
+  /* Markers (charts) */
+  --color-marker-blue:   #0284C7;
+  --color-marker-mint:   #16A34A;
+  --color-marker-orange: #FA8030;
+  --color-marker-pink:   #DB2777;
+  --color-marker-yellow: #B77900;
+  --color-violet:        #7C3AED;
+  --color-tint-mint:     #16A34A18;
+  --color-tint-orange:   #FA803018;
+  --color-tint-violet:   #7C3AED18;
+
+  /* Semantic */
+  --color-success: var(--accent-green);
+  --color-warning: var(--accent-orange);
+  --color-error:   #B91C1C;
+  --color-info:    var(--accent-blue);
+
+  /* Syntax */
+  --color-syn-comment:  #7A6B58;
+  --color-syn-keyword:  #7C3AED;
+  --color-syn-function: #0284C7;
+  --color-syn-variable: #B91C1C;
+  --color-syn-string:   #16A34A;
+  --color-syn-number:   #B77900;
+  --color-syn-type:     #C26A1E;
+  --color-syn-operator: #5F5143;
+
+  /* Focus + depth */
+  --focus-ring:    var(--color-accent);
+  --shadow-depth:  0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.05);
 }
 
-/* ── Light mode ── */
-:root.light {
-  --color-bg:            #FAFAFA;
-  --color-surface:       #FFFFFF;
-  --color-surface-2:     #F4F4F5;
-  --color-surface-3:     #E4E4E7;
-  --color-border:        #E4E4E7;
-  --color-border-strong: #D4D4D8;
+/* ── Dark mode ── */
+:root.dark {
+  --bg-page:        #15110D;
+  --bg-sidebar:     #1C1813;
+  --bg-card:        #1C1813;
+  --bg-input:       #1C1813;
+  --bg-key:         #2A2219;
+  --bg-send:        #F5EBD8;
+  --color-surface:  #221C16;
+  --color-surface-2:#2A2219;
+  --color-bg-elevated:#1C1813;
 
-  --color-text:          #09090B;
-  --color-text-2:        #52525B;
-  --color-text-muted:    #71717A;
-  --color-text-subtle:   #A1A1AA;
+  --border-soft:        #2C231A;
+  --border-card:        #3A2F23;
+  --color-border-subtle:#2C231A;
+  --color-border:       #3A2F23;
+  --color-border-strong:#5C4B36;
 
-  --color-accent:        #27272A;
-  --color-accent-hover:  #18181B;
-  --color-accent-subtle: rgba(39, 39, 42, 0.06);
-  --color-accent-dim:    rgba(39, 39, 42, 0.03);
-  --gradient-accent:     linear-gradient(180deg, #3F3F46 0%, #18181B 100%);
+  --color-text:           #F5EBD8;
+  --color-text-2:         #C5B59A;
+  --color-text-muted:     #9C8A72;
+  --color-text-subtle:    #7A6B58;
+  --color-text-on-accent: #15110D;
+  --fg-primary:           #F5EBD8;
+  --fg-secondary:         #C5B59A;
+  --fg-muted:             #9C8A72;
 
-  --color-success:       #16A34A;
-  --color-warning:       #D97706;
-  --color-error:         #DC2626;
-  --color-info:          #2563EB;
+  --color-accent:  #F5EBD8;
+  --color-overlay: #00000099;
 
-  --color-syn-comment:   #71717A;
-  --color-syn-keyword:   #7C3AED;
-  --color-syn-function:  #2563EB;
-  --color-syn-variable:  #DC2626;
-  --color-syn-string:    #16A34A;
-  --color-syn-number:    #D97706;
-  --color-syn-type:      #B45309;
-  --color-syn-operator:  #52525B;
+  --accent-blue:   #7CC2F0;  --accent-blue-soft:   #1E3A52;  --accent-blue-text:   #9DD0F5;
+  --accent-green:  #5DC487;  --accent-green-soft:  #1F3A2A;  --accent-green-text:  #92E0B0;
+  --accent-orange: #FDB75D;  --accent-orange-soft: #3D2D14;  --accent-orange-text: #FCC780;
+  --accent-pink:   #F472B6;  --accent-pink-soft:   #3D1F2D;
+  --accent-purple: #A78BFA;  --accent-purple-soft: #2D2440;
+  --accent-red:    #F87171;
 
-  --focus-ring:          #18181B;
-  --shadow-depth:        0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --color-marker-blue:   #38BDF8;
+  --color-marker-mint:   #4ADE80;
+  --color-marker-orange: #FCC352;
+  --color-marker-pink:   #F472B6;
+  --color-marker-yellow: #FBBF24;
+  --color-violet:        #A78BFA;
+  --color-tint-mint:     #4ADE8026;
+  --color-tint-orange:   #FCC35226;
+  --color-tint-violet:   #A78BFA26;
+
+  --color-success: var(--accent-green);
+  --color-warning: var(--accent-orange);
+  --color-error:   #F87171;
+  --color-info:    var(--accent-blue);
+
+  --color-syn-comment:  #9C8A72;
+  --color-syn-keyword:  #A78BFA;
+  --color-syn-function: #38BDF8;
+  --color-syn-variable: #F87171;
+  --color-syn-string:   #4ADE80;
+  --color-syn-number:   #FBBF24;
+  --color-syn-type:     #FCC780;
+  --color-syn-operator: #C5B59A;
+
+  --focus-ring:    var(--color-accent);
+  --shadow-depth:  0 1px 2px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.25);
 }
 ```
 
@@ -285,27 +466,30 @@ The token layer uses class-based mode switching on the `<html>` element (`class=
 
 ### Tailwind classes
 
-Tokens are exposed as Tailwind utilities via the `@theme` block (unprefixed). Use semantic names, not raw hex:
+Tokens are exposed as Tailwind utilities via `@theme`. Use semantic names, never raw hex.
 
 ```tsx
-// Primary CTA (uses the neutral UI accent in dense product surfaces)
-<button className="bg-accent text-bg hover:bg-accent-hover">
-  Start session
+// Page surface
+<main className="bg-(--bg-page) text-(--color-text)">…</main>
+
+// Primary CTA — paper inverted (warm dark surface, cream text)
+<button className="bg-(--bg-send) text-(--color-text-on-accent) hover:brightness-110">
+  Send
 </button>
 
-// Secondary (neutral surface)
-<button className="bg-surface-2 text-text hover:bg-surface-3 border border-border">
-  Cancel
-</button>
+// Agent chip — green = openagentd
+<span className="bg-(--accent-green-soft) text-(--accent-green-text) px-2.5 py-1 rounded-full text-sm font-medium">
+  openagentd
+</span>
 
 // Destructive
-<button className="bg-error text-bg hover:bg-error/90">
+<button className="text-(--color-error) hover:bg-(--accent-red)/10">
   Delete session
 </button>
 
 // Subtle state indicator
-<div className="bg-error-subtle text-error border border-error/20">
-  Agent failed to respond
+<div className="bg-(--accent-orange-soft) text-(--accent-orange-text) border border-(--accent-orange)/30">
+  Tool call queued
 </div>
 ```
 
@@ -314,32 +498,32 @@ Tokens are exposed as Tailwind utilities via the `@theme` block (unprefixed). Us
 ```css
 .agent-running {
   border-color: var(--color-success);
-  background: var(--color-accent-dim);
+  background: var(--accent-green-soft);
 }
 
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-depth);
 }
 
 .cta-primary {
-  background: var(--gradient-accent);
-  color: var(--color-bg);
+  background: var(--bg-send);
+  color: var(--color-text-on-accent);
 }
 ```
 
 ---
 
-## Migration from Gruvbox palette
-
-The previous palette (Gruvbox-inspired, warm gold `#fabd2f` on sepia neutrals) is retired. The rebrand moves OpenAgentd from a **terminal-hobbyist** aesthetic to a **precision-instrument** aesthetic.
+## Migration notes
 
 | Previous | Current | Reason |
-|----------|---------|--------|
-| Generic warm accent | Octobot brand palette + neutral UI accent | Brand color is now source-derived and reserved for identity or agent meaning. |
-| Sepia-warm neutrals (`#1d1b19`, `#ebdbb2`) | Cool zinc neutrals (`#0A0A0B`, `#FAFAFA`) | Removes retro/dotfile association. Reads as contemporary software. |
-| Dark-first, light as afterthought | Dark-first, light-equal | Light mode gets full token spec and testing, not a media-query fallback. |
-| `--color-jb-*` token naming | `--color-*` token naming | Drops project-era prefix. Names now describe function, not origin. |
+|---|---|---|
+| Cool zinc neutrals (`#0A0A0B`, `#FAFAFA`) | Warm paper neutrals (`#FAF6EC`, `#15110D`) | Matches the pencil "notebook" aesthetic. Reads as a calm working surface, not a terminal. |
+| Octobot brand pigment used as UI accent | Octobot pigment reserved for brand assets only | UI accent is now a neutral warm dark; brand pigment stays in mascot/lockup territory. |
+| Single neutral accent for all primary actions | Neutral accent **plus** four agent chips for role identity | Multi-agent product needs a way to identify which role is talking; chips solve it without polluting the chrome. |
+| `--color-jb-*` token naming | `--bg-*`, `--color-*`, `--accent-*`, `--fg-*` named by role | Names describe function (background, text, accent), not project era. |
+| Dark-first defaults | Light-first defaults (paper is the canonical surface) | The product is composed against `#FAF6EC`; dark is a 1:1 themed counterpart. |
 
-**Codebase migration**: the web app currently still uses `--color-jb-*` tokens. A follow-up PR will migrate `web/src/index.css` and all `bg-jb-*` / `text-jb-*` / `border-jb-*` class usages to the unprefixed names. This styling-specs update is intentionally doc-only.
+The web app's existing `--color-jb-*` tokens are tracked for migration in a separate task. This styling-spec rewrite is intentionally doc-only.

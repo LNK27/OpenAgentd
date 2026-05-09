@@ -2,7 +2,7 @@
 title: Motion
 description: Duration tokens, easing functions, choreography patterns, and prefers-reduced-motion fallbacks
 status: stable
-updated: 2026-04-21
+updated: 2026-05-09
 ---
 
 # Motion
@@ -163,7 +163,7 @@ Text label accompanies dots: `Thinking`, `Reading`, `Searching`, etc. — progre
 
 **Meaning**: a message was routed from one team member to another — visible causality in multi-agent orchestration.
 
-**Spec**: sender row briefly glows (accent-subtle background, 300ms fade-out), recipient row slides in as above. The glow is the *cause*, the slide is the *effect*. Order matters.
+**Spec**: sender row briefly glows in the *sender's chip soft color* (`--accent-{role}-soft`, 300ms fade-out), recipient row slides in as above. The glow is the *cause*, the slide is the *effect*. Order matters. Using the role-specific soft tint (mint when openagentd hands off, blue when executor hands off, etc.) makes the causality readable at a glance — the user sees who acted, not just that something moved.
 
 ### Focus ring appear
 

@@ -1,54 +1,100 @@
 ---
 title: Typography
-description: Geist Variable and JetBrains Mono, type hierarchy, font-weight transitions on interaction
+description: Inter (UI/body), JetBrains Mono (code), Caveat (handwritten headlines), type scale, font-weight transitions
 status: stable
-updated: 2026-04-21
+updated: 2026-05-09
 ---
 
 # Typography
 
-## Primary typeface: Geist Variable
+Three families, three jobs. Inter does the work, JetBrains Mono renders code and structured data, Caveat carries the handwritten "this is a notebook" voice on a small set of headlines.
 
-- **Usage**: All text — headings, body copy, UI labels, marketing
-- **Weight range**: 400 (Regular) through 700 (Bold) — variable axis
-- **Source**: `@fontsource-variable/geist` (open source, Vercel)
-- **Character**: Modern, geometric sans-serif. Sharp counters, tight tracking. Reads as precision software.
-- **System fallback**: `-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+---
 
-### Font stack (copy/paste)
+## Three families, three jobs
+
+| Family | Token | Job |
+|---|---|---|
+| **Inter** | `--font-sans` | Every UI surface — body, labels, buttons, nav, prose |
+| **JetBrains Mono** | `--font-mono` | Code blocks, terminal output, file paths, agent IDs, structured data |
+| **Caveat** | `--font-hand` / `--font-script` | Hand-drawn screen titles and reflective callouts only — not body |
+
+Anything that isn't code and isn't a hand-drawn title is Inter. Caveat is reserved — overuse breaks the spell.
+
+---
+
+## Primary typeface: Inter
+
+- **Usage**: All UI text — headings, body copy, labels, buttons, prose
+- **Weights in use**: 400 (Regular), 500 (Medium), 600 (SemiBold), 700 (Bold)
+- **Source**: `@fontsource-variable/inter` (open source)
+- **Character**: Highly legible humanist sans, built for screens. Reads as calm utility against the warm paper.
+- **Token**: `--font-sans`
 
 ```css
-font-family: 'Geist Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 ```
+
+---
 
 ## Secondary typeface: JetBrains Mono
 
-- **Usage**: Code blocks, terminal output, file paths, configuration values, any monospace text
+- **Usage**: Code blocks, terminal output, file paths, agent IDs (`g_abc123`), token meters, anything monospaced or structured
 - **Weights**: 400 (Regular), 500 (Medium), 600 (SemiBold)
 - **Character**: Humanist monospace designed for code. Distinguishes `0O`, `1lI`, `{}()` clearly.
-- **Fallback**: `ui-monospace, "SF Mono", "Courier New", monospace`
-
-### Code font stack (copy/paste)
+- **Token**: `--font-mono`
 
 ```css
-font-family: 'JetBrains Mono', ui-monospace, "SF Mono", "Courier New", monospace;
+font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Courier New', monospace;
 ```
+
+---
+
+## Hand-drawn typeface: Caveat
+
+- **Usage**: Screen titles in design (`empty room.`, `first stream`, `queue armed.`, `idle.`), reflective callouts, the mascot's "what's on your mind?" prompt
+- **Weights**: 400 (Regular), 700 (Bold)
+- **Character**: Casual handwritten script. Carries the notebook voice — a person wrote this, not a system.
+- **Tokens**: `--font-hand` and `--font-script` (alias)
+
+```css
+font-family: 'Caveat', 'Bradley Hand', cursive;
+```
+
+### When to use Caveat
+
+✅ **Yes:**
+- Top-of-canvas screen labels in design files (these are typically *outside* the production UI; they label the design context)
+- One reflective prompt on an empty state ("what's on your mind?")
+- Personality moments in marketing surfaces (tagline, hero pull-quote)
+
+❌ **No:**
+- Body text — always
+- Buttons, labels, nav items, form fields
+- Anything a screen reader needs to read out clearly
+- Multi-line paragraphs
+- Headings inside dense product chrome
+
+The "design canvas labels" we see in the pencil (`empty room.`, etc.) are reference labels for the design itself; production app headings are Inter.
 
 ---
 
 ## Type hierarchy
 
-| Level | Size | Weight | Line height | Letter spacing | Usage |
-|-------|------|--------|-------------|----------------|-------|
-| **Display** | 32px | 700 | 1.25 | -0.5px | Hero titles, main page headers |
-| **Heading 1** | 28px | 700 | 1.30 | -0.3px | Page titles, section headers |
-| **Heading 2** | 24px | 600 | 1.35 | -0.2px | Subsection headers |
-| **Heading 3** | 20px | 600 | 1.40 | 0 | Component titles, subheadings |
-| **Body** | 16px | 400 | 1.50 | 0 | Main content, UI text, paragraphs |
-| **Small** | 14px | 400 | 1.50 | 0.1px | Secondary info, labels, captions |
-| **Tiny** | 12px | 400 | 1.50 | 0.2px | Metadata, timestamps, footnotes |
+| Level | Size | Weight | Line height | Letter spacing | Family | Usage |
+|---|---|---|---|---|---|---|
+| **Hand callout** | 36–48px | 400 | 1.10 | 0 | Caveat | Marketing-only handwritten moment |
+| **Display** | 32px | 700 | 1.25 | -0.5px | Inter | Hero titles, marketing page headers |
+| **Heading 1** | 28px | 700 | 1.30 | -0.3px | Inter | Page titles, section headers |
+| **Heading 2** | 24px | 600 | 1.35 | -0.2px | Inter | Subsection headers |
+| **Heading 3** | 20px | 600 | 1.40 | 0 | Inter | Component titles |
+| **Body** | 16px | 400 | 1.50 | 0 | Inter | Main content, UI text, paragraphs |
+| **Small** | 14px | 400 | 1.50 | 0.1px | Inter | Secondary info, labels, captions, message metadata |
+| **Tiny** | 12px | 400 | 1.50 | 0.2px | Inter | Timestamps, footnotes, token counts |
+| **Code inline** | 14px (0.92em in prose) | 400 | 1.50 | 0 | JetBrains Mono | `inline_code`, file paths |
+| **Code block** | 14px | 400 | 1.55 | 0 | JetBrains Mono | Multi-line code, terminal output |
 
-**Line-height rule**: tighter for display, looser for body. Never go below 1.4 for body text.
+**Line-height rule**: tighter for display, looser for body. Never go below 1.4 for body text. Caveat sets tighter (1.10) because handwritten letters already imply rhythm.
 
 ---
 
@@ -59,7 +105,7 @@ Weight shifts on hover and active states are a signature of the OpenAgentd inter
 ### The rule
 
 | State | Body/label | Interactive (button, link, nav item) |
-|-------|-----------|--------------------------------------|
+|---|---|---|
 | Idle | 400 | 400 |
 | Hover | 400 | 500 |
 | Active / pressed | 400 | 600 |
@@ -67,7 +113,7 @@ Weight shifts on hover and active states are a signature of the OpenAgentd inter
 
 ### CSS implementation
 
-Geist is a variable font, so weight transitions are smooth rather than stepped. Use `font-variation-settings` for sub-weight precision, or `font-weight` with a transition if you don't need in-between values.
+Inter is a variable font, so weight transitions are smooth rather than stepped. Use `font-variation-settings` for sub-weight precision, or `font-weight` with a transition if you don't need in-between values.
 
 ```css
 /* Smooth weight shift on interactive elements */
@@ -76,13 +122,8 @@ Geist is a variable font, so weight transitions are smooth rather than stepped. 
   transition: font-weight 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.interactive:hover {
-  font-weight: 500;
-}
-
-.interactive:active {
-  font-weight: 600;
-}
+.interactive:hover  { font-weight: 500; }
+.interactive:active { font-weight: 600; }
 
 /* Or with variation settings for finer control */
 .interactive {
@@ -90,9 +131,7 @@ Geist is a variable font, so weight transitions are smooth rather than stepped. 
   transition: font-variation-settings 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.interactive:hover {
-  font-variation-settings: 'wght' 500;
-}
+.interactive:hover { font-variation-settings: 'wght' 500; }
 ```
 
 ### Anti-patterns
@@ -101,12 +140,14 @@ Geist is a variable font, so weight transitions are smooth rather than stepped. 
 - ❌ **Weight shift without transition** — produces a layout jump, feels broken
 - ❌ **Shift beyond 600** — 700 Bold is reserved for permanent headings, not hover states
 - ❌ **Different shift amounts within a group** — a nav where some items go 400→500 and others go 400→600 reads as inconsistent
+- ❌ **Weight shift on Caveat** — script weights aren't perceptually different the way Inter weights are; let Caveat sit
 
 ### When NOT to use weight transitions
 
 - Body paragraph links — too much motion in a reading flow
 - Table rows with many cells — shifts the whole row, causes reflow
 - Icon-only buttons — there's no text weight to shift
+- Caveat headlines — the hand-drawn aesthetic doesn't support it
 
 See [interaction.md](./interaction.md) for the full hover/focus/active state model.
 
@@ -119,8 +160,10 @@ The web app exposes typography through the `@theme` inline block in `src/index.c
 ```css
 @theme inline {
   /* Families */
-  --font-sans:    'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', 'Courier New', monospace;
+  --font-hand:    'Caveat', 'Bradley Hand', cursive;
+  --font-script:  var(--font-hand);
   --font-heading: var(--font-sans);
 
   /* Sizes */
@@ -131,6 +174,7 @@ The web app exposes typography through the `@theme` inline block in `src/index.c
   --text-body:    16px;
   --text-sm:      14px;
   --text-xs:      12px;
+  --text-hand:    44px;
 
   /* Weights */
   --weight-regular:  400;
@@ -145,13 +189,36 @@ The web app exposes typography through the `@theme` inline block in `src/index.c
 
 ---
 
+## Tailwind utility usage
+
+```tsx
+// Body — Inter, default weight
+<p className="text-base">Body copy in Inter.</p>
+
+// Heading — Inter, semibold
+<h2 className="text-h2 font-semibold">Section heading</h2>
+
+// Code — JetBrains Mono
+<code className="font-mono text-sm bg-(--bg-key) px-1.5 py-0.5 rounded">
+  app/agent/mode/chat.py
+</code>
+
+// Hand callout — Caveat
+<span className="font-hand text-[44px] leading-none text-(--color-text)">
+  what's on your mind?
+</span>
+```
+
+---
+
 ## Web implementation notes
 
-- Geist Variable loads from `@fontsource-variable/geist` — single variable font file, no per-weight imports needed
-- JetBrains Mono is loaded via a separate CSS import or `@fontsource/jetbrains-mono`
+- Inter loads from `@fontsource-variable/inter` — single variable font, no per-weight imports needed
+- JetBrains Mono is loaded via `@fontsource-variable/jetbrains-mono`
+- Caveat is loaded via `@fontsource/caveat` (400 + 700)
 - Code syntax highlighting uses `highlight.js` with the OpenAgentd theme (see [colors.md](./colors.md#syntax-highlighting--code))
-- All UI text inherits `font-family: var(--font-sans)` from the root; code elements (`<code>`, `<pre>`, `.font-mono`) opt in to the mono stack
-- Font-weight transitions are defined in a `.interactive` utility class or applied directly to `<button>`, `<a>`, and `[role="button"]` elements
+- All UI text inherits `font-family: var(--font-sans)` from the root; code elements (`<code>`, `<pre>`, `.font-mono`) opt into the mono stack; Caveat is opt-in only via `.font-hand` or the `--font-hand` variable
+- Font-weight transitions are defined on `<button>`, `<a>`, and `[role="button"]` elements, plus an explicit `.interactive` utility for custom controls
 
 ---
 
@@ -159,6 +226,7 @@ The web app exposes typography through the `@theme` inline block in `src/index.c
 
 - **Minimum body size**: 16px. Never smaller for paragraph text.
 - **Minimum small size**: 14px for secondary info; 12px only for non-essential metadata (timestamps, byte counts)
+- **Caveat is decorative** — every Caveat callout must have an accessible Inter equivalent in the DOM (or be marked `aria-hidden="true"` if it's purely visual). Screen readers should not depend on script-rendering for meaning.
 - **Line length**: aim for 60–75 characters per line in reading contexts. Use `max-width: 65ch` on prose containers.
 - **Weight + contrast**: thin weights (300 or below) are not used; they fail WCAG on low-DPI screens even when contrast math passes
 - **`prefers-reduced-motion`**: font-weight transitions honor reduced-motion (disable the 200ms transition, snap directly to final weight)
