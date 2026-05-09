@@ -106,25 +106,14 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
            </div>
          )}
 
-         <div className="relative rounded-2xl rounded-br-sm bg-(--color-accent) px-3 py-2 text-xs leading-relaxed text-(--bg-page) overflow-hidden">
+         <div className="relative overflow-hidden rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs leading-relaxed text-(--color-text)">
            {/* Expand / collapse button — top-right inside bubble (compact) */}
            {needsCollapse && (
              <button
                onClick={() => setExpanded((v) => !v)}
                aria-expanded={expanded}
                title={expanded ? 'Collapse' : 'Expand'}
-               className={[
-                 'absolute top-1 right-1',
-                 'flex items-center justify-center shrink-0',
-                 'rounded-md',
-                 'h-4 w-4',
-                 'transition-all duration-150',
-                 'active:scale-90',
-               ].join(' ')}
-               style={{
-                 background: 'rgba(0,0,0,0.15)',
-                 color: 'var(--bg-page)',
-               }}
+               className="absolute top-1 right-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
              >
                {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
              </button>
@@ -136,7 +125,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
                className="pointer-events-none absolute inset-x-0 bottom-0"
                style={{
                  height: '1.9rem',
-                 background: 'linear-gradient(to bottom, transparent 0%, var(--color-accent) 90%)',
+                 background: 'linear-gradient(to bottom, transparent 0%, var(--color-surface) 90%)',
                }}
              />
            )}
