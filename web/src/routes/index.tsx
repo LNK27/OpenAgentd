@@ -33,7 +33,7 @@ export function HomePage() {
             </div>
           </div>
           <div className="text-center">
-            <h1 className="text-3xl font-bold tracking-tight text-(--color-text)">
+            <h1 className="font-hand text-5xl leading-none text-(--color-text)">
               OpenAgentd
             </h1>
             <p className="mt-1 text-sm text-(--color-text-muted)">

@@ -74,7 +74,7 @@ export function Welcome({ onReady }: WelcomeProps) {
 
         {/* Wordmark */}
         <div>
-          <h1 className="text-4xl font-bold tracking-tight text-(--color-text)">
+          <h1 className="font-hand text-6xl leading-none text-(--color-text)">
             OpenAgentd
           </h1>
           <p className="mt-2 text-sm text-(--color-text-muted)">
