@@ -346,6 +346,12 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </div>
   ) : null
 
+  // Reusable pill button styles for the action row (attach, mic — pencil
+  // calls these `inputBarAttach`, `inputBarMic`: 32×32, rounded-sm border,
+  // --color-surface fill).
+  const actionBtnClass =
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
+
   return (
     <div className={floating ? '' : 'border-t border-(--color-border) bg-(--bg-page) px-4 py-3'}>
       <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
@@ -354,7 +360,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
         {/* Slash command menu — floating above the input */}
         {slashMenuOpen && filteredSlashCommands.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-key) shadow-lg">
+          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 overflow-hidden rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
             {filteredSlashCommands.map((cmd, idx) => (
               <button
                 key={cmd.id}
@@ -377,93 +383,96 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         <div className="relative">
           {renderDragHandle?.()}
 
-        {/* Input container */}
-        <div
-          className={`relative flex items-center gap-2 rounded-2xl border border-(--color-border) px-4 py-2.5 transition-all focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--bg-key) ${
-            floating
-              ? 'bg-(--bg-key)/20 shadow-xl backdrop-blur-xl'
-              : 'bg-(--bg-key)'
-          }`}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-        >
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            disabled={disabled}
-            placeholder={
-              disabled
-                ? 'Waiting for response…'
-                : isStreaming
-                  ? 'Type /stop to interrupt, or click stop…'
-                  : placeholder
-            }
-            rows={1}
-            autoFocus={autoFocus}
-            className="flex-1 resize-none bg-transparent py-1 text-sm leading-relaxed text-(--color-text) placeholder-(--color-text-muted) focus:outline-none disabled:opacity-50"
-            style={{ maxHeight: '144px' }}
-            aria-label="Message input"
-          />
-
-          {/* Character count */}
-          {showCharCount && (
-            <span
-              className={`shrink-0 self-end pb-1 text-xs ${
-                charCount > 2000 ? 'text-(--color-error)' : 'text-(--color-text-muted)'
-              }`}
-            >
-              {charCount}
-            </span>
-          )}
-
-          {/* Attachment button */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
-            aria-label="Attach file"
-            title="Attach file (paste or drag)"
-            className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-25"
+          {/* Input container — pencil structure: text on top, action row below.
+              Border + drop shadow + --color-surface fill match pencil's
+              `inputBar-*-bar` frame across all variants. */}
+          <div
+            className="relative flex flex-col gap-2.5 rounded-lg border border-(--color-border-strong) bg-(--color-surface) p-3.5 shadow-md transition-all focus-within:ring-1 focus-within:ring-(--color-accent)"
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
           >
-            <Paperclip size={14} />
-          </button>
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              disabled={disabled}
+              placeholder={
+                disabled
+                  ? 'Waiting for response…'
+                  : isStreaming
+                    ? 'Type /stop to interrupt, or click stop…'
+                    : placeholder
+              }
+              rows={1}
+              autoFocus={autoFocus}
+              className="w-full resize-none bg-transparent text-sm leading-relaxed text-(--color-text) placeholder-(--color-text-subtle) focus:outline-none disabled:opacity-50"
+              style={{ maxHeight: '144px' }}
+              aria-label="Message input"
+            />
 
-          {/* Voice mic button */}
-          <VoiceMicButton
-            voiceEnabled={voiceEnabled}
-            onTranscript={handleVoiceTranscript}
-            disabled={disabled}
-          />
+            {/* Action row: [attach] [mic] [spacer] [count?] [send] */}
+            <div className="flex items-center gap-2">
+              {/* Attachment button */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled}
+                aria-label="Attach file"
+                title="Attach file (paste or drag)"
+                className={actionBtnClass}
+              >
+                <Paperclip size={14} />
+              </button>
 
-          {/* Send / Stop button */}
-          {canStop && !hasText ? (
-            <button
-              onClick={onStop}
-              aria-label="Stop generation"
-              className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full bg-(--color-error) text-(--bg-page) shadow-sm transition-all hover:opacity-80 hover:shadow-md"
-            >
-              <Square size={12} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              onClick={submit}
-              disabled={!canSend}
-              aria-label="Send message"
-              title="Send (Enter) · New line (Shift+Enter) · Commands (/)"
-              className="flex h-8 w-8 shrink-0 self-end items-center justify-center rounded-full bg-(--color-accent) text-(--bg-page) shadow-sm transition-all hover:bg-(--color-accent) hover:shadow-md disabled:cursor-not-allowed disabled:opacity-25"
-            >
-              {disabled ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <ArrowUp size={14} />
+              {/* Voice mic button */}
+              <VoiceMicButton
+                voiceEnabled={voiceEnabled}
+                onTranscript={handleVoiceTranscript}
+                disabled={disabled}
+              />
+
+              <div className="flex-1" />
+
+              {/* Character count */}
+              {showCharCount && (
+                <span
+                  className={`shrink-0 font-mono text-xs ${
+                    charCount > 2000 ? 'text-(--color-error)' : 'text-(--color-text-muted)'
+                  }`}
+                >
+                  {charCount}
+                </span>
               )}
-            </button>
-          )}
-        </div>
+
+              {/* Send / Stop button — pill (padding [8,14]) per pencil */}
+              {canStop && !hasText ? (
+                <button
+                  onClick={onStop}
+                  aria-label="Stop generation"
+                  className="flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-(--color-error) bg-(--color-error) px-3.5 text-(--bg-page) shadow-sm transition-all hover:opacity-90"
+                >
+                  <Square size={12} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  onClick={submit}
+                  disabled={!canSend}
+                  aria-label="Send message"
+                  title="Send (Enter) · New line (Shift+Enter) · Commands (/)"
+                  className="flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-(--color-border-strong) bg-(--color-surface) px-3.5 text-(--color-text) shadow-sm transition-all hover:bg-(--bg-key) disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {disabled ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <ArrowUp size={14} />
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* File previews (below when floating near top) */}
