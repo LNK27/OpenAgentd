@@ -20,14 +20,16 @@ git status --short
 
 4. On a PR branch, update `app/version.txt`, `pyproject.toml`, `web/package.json`, and `uv.lock`.
 
+If the PR only bumps release metadata, use `chore: bump version to <version>` for the commit and PR title. If the PR also contains user-facing features, fixes, or behavior changes, use a title that describes those changes and append the version range, e.g. `Fix frontend update restart (v0.3.3 -> v0.3.4)`.
+
 ```bash
 uv sync
 uv run ruff format app/ tests/
 uv run ruff format --check app/ tests/
 git add app/version.txt pyproject.toml uv.lock web/package.json
-git commit -m "chore: bump version to <version>"
+git commit -m "<release commit title>"
 git push -u origin <branch>
-gh pr create --title "chore: bump version to <version>" --base main
+gh pr create --title "<release PR title>" --base main
 ```
 
 Wait for CI and merge the PR.

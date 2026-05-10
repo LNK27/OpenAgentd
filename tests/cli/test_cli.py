@@ -172,6 +172,11 @@ class TestBuildParser:
         args = parser.parse_args([])
         assert args.func is cli.cmd_start
 
+    def test_start_subcommand_is_start(self):
+        parser = build_parser()
+        args = parser.parse_args(["start"])
+        assert args.func is cli.cmd_start
+
     def test_dev_flag(self):
         parser = build_parser()
         args = parser.parse_args(["--dev"])

@@ -274,11 +274,11 @@ async def test_install_update_starts_background_restart(
     assert args[0][0:2] == ["/bin/sh", "-c"]
 
     script = args[0][2]
-    # Polls for parent exit, then runs update + start unconditionally
+    # Polls for parent exit, then runs update + restart unconditionally
     # (no `&&` short-circuit between update and start).
     assert "kill -0" in script
     assert "/usr/local/bin/openagentd update" in script
-    assert "/usr/local/bin/openagentd start" in script
+    assert "exec /usr/local/bin/openagentd >>" in script
     # The buggy `stop` step has been removed entirely; the parent SIGTERMs
     # itself via _self_terminate_after_response and the restarter polls
     # for the PID to disappear.

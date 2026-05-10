@@ -110,7 +110,7 @@ def _self_terminate_after_response() -> None:
     Runs as a FastAPI ``BackgroundTasks`` callable, *after* the response is
     delivered to the client.  The detached restarter spawned by
     :func:`install_update` is already waiting for our PID to disappear before
-    it runs ``openagentd update`` and ``openagentd start``.
+    it runs ``openagentd update`` and restarts ``openagentd``.
     """
     # Small grace period to let uvicorn flush the response and close the
     # socket cleanly before we tear the process down.
@@ -134,7 +134,7 @@ async def install_update(
 
     1. Spawn a detached ``/bin/sh`` script that polls ``kill -0 $parent_pid``
        until our process is gone, then runs ``openagentd update`` and
-       ``openagentd start`` *unconditionally* (no ``&&`` chain).
+       restarts ``openagentd`` *unconditionally* (no ``&&`` chain).
     2. Append all output to ``$STATE_DIR/logs/self-update.log`` so failures
        leave a trail.
     3. Return the HTTP response, then SIGTERM ourselves via a background task
@@ -168,11 +168,11 @@ async def install_update(
         # Run update — log failures but do not abort the restart.
         f"{quoted_executable} update >> {quoted_log} 2>&1 || "
         f'echo "[$(date -u +%FT%TZ)] update step exited non-zero; '
-        f'continuing to start" >> {quoted_log} 2>&1; '
+        f'continuing to restart" >> {quoted_log} 2>&1; '
         # Give the OS a moment to release the listening port.
         f"sleep 1; "
         f'echo "[$(date -u +%FT%TZ)] starting server" >> {quoted_log} 2>&1; '
-        f"exec {quoted_executable} start >> {quoted_log} 2>&1"
+        f"exec {quoted_executable} >> {quoted_log} 2>&1"
     )
     subprocess.Popen(
         ["/bin/sh", "-c", script],
