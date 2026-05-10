@@ -5,9 +5,9 @@
  * preference is `"system"`, the class tracks `prefers-color-scheme` and updates
  * when the user's OS setting changes.
  *
- * Pre-paint: `web/index.html` contains an inline script that applies the
+ * Pre-paint: `web/public/theme-init.js` applies the
  * correct class before the first paint to prevent a flash of wrong theme.
- * Keep the storage key and logic here in sync with that inline script.
+ * Keep the storage key and logic here in sync with that script.
  */
 
 export type ThemePreference = 'light' | 'dark' | 'system'
@@ -58,7 +58,7 @@ export function setThemePreference(preference: ThemePreference): void {
  * Initialise theme tracking. Applies the current resolved theme and, if the
  * stored preference is `"system"`, subscribes to OS theme changes.
  *
- * Safe to call after the inline pre-paint script — it will re-apply the same
+ * Safe to call after the pre-paint script — it will re-apply the same
  * class, which is a no-op.
  *
  * Returns a cleanup function that removes the media-query listener.

@@ -7,26 +7,7 @@
     <meta name="theme-color" content="#0A0A0B" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#FAFAFA" media="(prefers-color-scheme: light)" />
     <title>openagentd</title>
-    <script>
-      // Pre-paint theme application — prevents flash of wrong theme.
-      // Keep in sync with web/src/lib/theme.ts (storage key and resolution rules).
-      (function () {
-        try {
-          var stored = localStorage.getItem('oa-theme');
-          var pref = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
-          var resolved =
-            pref === 'system'
-              ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-              : pref;
-          var root = document.documentElement;
-          root.classList.toggle('dark', resolved === 'dark');
-          root.classList.toggle('light', resolved === 'light');
-        } catch (e) {
-          // Fall back to light (the canonical default in index.css).
-          document.documentElement.classList.add('light');
-        }
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>
