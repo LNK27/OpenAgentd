@@ -14,6 +14,8 @@
 import { z } from 'zod'
 import { splitFrontmatter } from './frontmatter'
 
+z.config({ jitless: true })
+
 // ── Primitive field schemas ──────────────────────────────────────────────────
 
 /**
