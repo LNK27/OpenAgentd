@@ -139,6 +139,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_auth.set_defaults(func=cmd_auth)
 
+    # ── start ─────────────────────────────────────────────────────────────────
+    sub.add_parser("start", help="Start the background server").set_defaults(
+        func=cmd_start
+    )
+
     # ── stop ──────────────────────────────────────────────────────────────────
     sub.add_parser("stop", help="Stop background server and web UI").set_defaults(
         func=cmd_stop
