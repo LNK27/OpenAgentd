@@ -8,8 +8,8 @@ Flow:
   3. Subscribe to ``GET /team/{sid}/stream`` — print events bucketed per
      agent, with rolling content per ``message`` event.
   4. Re-snapshot ``/team/agents`` to show the resulting live-instance set.
-  5. Print a per-agent summary: spawn / dismiss timeline + streamed
-     character counts + token usage.
+  5. Print a per-agent summary: spawn / dismiss timeline + lifecycle status
+     transitions + streamed character counts + token usage.
 
 Usage:
   uv run python -m manual.team_spawn
@@ -197,6 +197,7 @@ def stream_and_track(
             "agent_text": dict[str, str],
             "spawned": list[(t, handle)],
             "dismissed": list[(t, handle)],
+            "statuses": list[(t, agent, status)],
             "usage": dict[str, dict],  # agent → {prompt, completion, total}
             "errors": list[str],
         }
@@ -206,6 +207,7 @@ def stream_and_track(
     agent_text: dict[str, list[str]] = defaultdict(list)
     spawned: list[tuple[float, str]] = []
     dismissed: list[tuple[float, str]] = []
+    statuses: list[tuple[float, str, str]] = []
     usage: dict[str, dict] = {}
     errors: list[str] = []
 
@@ -263,6 +265,9 @@ def stream_and_track(
                     if text:
                         agent_text[agent].append(text)
 
+                if current_event == "agent_status":
+                    statuses.append((elapsed, agent, data.get("status", "?")))
+
                 # Track spawn / dismiss roster operations.
                 if current_event == "tool_start":
                     name = data.get("name", "")
@@ -315,6 +320,7 @@ def stream_and_track(
         "agent_text": {k: "".join(v) for k, v in agent_text.items()},
         "spawned": spawned,
         "dismissed": dismissed,
+        "statuses": statuses,
         "usage": usage,
         "errors": errors,
     }
@@ -347,6 +353,26 @@ def print_spawn_timeline(trace: dict) -> None:
     for kind, t, args in timeline:
         color = _c(GREEN) if kind == "spawn" else _c(YELLOW)
         print(f"  {t:>6.2f}s  {color}{kind:8s}{_c(RESET)} {_truncate(args, 100)}")
+
+
+def print_status_timeline(trace: dict) -> None:
+    print(f"\n{_c(BOLD)}── lifecycle status timeline ──{_c(RESET)}")
+    statuses = trace["statuses"]
+    if not statuses:
+        print(f"  {_c(DIM)}(no agent_status events captured){_c(RESET)}")
+        return
+
+    for t, agent, status in statuses:
+        color = {
+            "working": YELLOW,
+            "idle": GREEN,
+            "offline": DIM,
+            "error": RED,
+        }.get(status, "")
+        print(
+            f"  {t:>6.2f}s  {_c(_agent_color(agent))}{agent:24s}{_c(RESET)} "
+            f"{_c(color)}{status}{_c(RESET)}"
+        )
 
 
 def print_summary(trace: dict, history: dict | None) -> None:
@@ -444,6 +470,7 @@ def main() -> None:
         print(f"{_c(RED)}post-run /team/agents failed: {exc}{_c(RESET)}")
 
     print_spawn_timeline(trace)
+    print_status_timeline(trace)
     print_streamed_content(trace["agent_text"])
 
     history = None
