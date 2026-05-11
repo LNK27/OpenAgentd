@@ -280,12 +280,16 @@ class TestAgentTeamToolInjection:
         names = {t.name for t in tools}
         assert "team_message" in names
 
-    async def test_lead_gets_team_message_and_team_manage(self, basic_team):
-        """Lead gets team_message + team_manage (memory tools removed)."""
+    async def test_lead_gets_team_message_manage_and_configure(self, basic_team):
+        """Lead gets messaging, roster management, and configuration tools."""
         team = basic_team
         tools = team.get_injected_tools("lead")
         names = {t.name for t in tools}
-        assert names == {"team_message", "team_manage"}
+        assert names == {
+            "team_message",
+            "team_manage",
+            "team_configure",
+        }
         assert "remember" not in names
         assert "recall" not in names
         assert "forget" not in names

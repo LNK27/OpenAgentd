@@ -403,10 +403,10 @@ def _build_agent(
         if tool_name in ("skill", "todo_manage", "schedule_task", "note"):
             continue
         if tool_name not in tool_registry:
-            # Soft-skip: dynamic capability management (team_manage) and
+            # Soft-skip: dynamic capability management (team_configure) and
             # disabled-then-rebuild flows can leave a name in frontmatter
             # that no longer resolves. Log and continue so the agent still
-            # loads; team_manage validates up-front to prevent typos.
+            # loads; team_configure validates up-front to prevent typos.
             logger.warning(
                 "agent_unknown_tool agent={} tool={} available={}",
                 cfg.name,
@@ -422,7 +422,7 @@ def _build_agent(
     # MCP servers: each entry grants the agent access to *all* tools exposed
     # by that server. Unknown / not-ready servers are warn-and-skip so the
     # agent still loads when an MCP server is disabled, mid-restart, or
-    # removed from mcp.json after being granted via team_manage.
+    # removed from mcp.json after being granted via team_configure.
     if cfg.mcp:
         from app.agent.mcp import mcp_manager
 
@@ -503,13 +503,16 @@ def load_team_from_dir(
 ) -> "AgentTeam | None":
     """Load an AgentTeam from a directory of per-agent ``.md`` files.
 
-    The directory may also contain an optional ``team.yaml`` for team-level
-    metadata (name, description).
+    The lead is built eagerly; member ``.md`` files are kept as **blueprints**
+    on the team and only constructed when the lead calls ``team_manage``.
+    This
+    means a fresh server start touches only the lead's tool/MCP/skill
+    resolution — members impose zero startup cost until first use.
 
     Returns ``None`` if the directory does not exist or contains no ``.md`` files.
     """
-    from app.agent.mode.team.member import TeamLead, TeamMember
-    from app.agent.mode.team.team import AgentTeam
+    from app.agent.mode.team.member import TeamLead
+    from app.agent.mode.team.team import AgentTeam, MemberBlueprint
 
     agents_dir = Path(agents_dir).resolve()
     if not agents_dir.exists():
@@ -559,6 +562,28 @@ def load_team_from_dir(
     lead_cfg, lead_path = leads[0]
     member_entries = [(c, p) for (c, p) in agent_configs if c.role == "member"]
 
+    # Validate: blueprint names must be unique and must not collide with the
+    # lead.  Also reject ``#`` in blueprint names since we use ``blueprint#N``
+    # as the runtime instance handle (see AgentTeam.spawn).
+    blueprints: dict[str, MemberBlueprint] = {}
+    for cfg, path in member_entries:
+        if "#" in cfg.name:
+            raise ValueError(
+                f"Member blueprint '{cfg.name}' in '{path.name}' contains '#'. "
+                "Reserved character — instances are named 'blueprint#N'."
+            )
+        if cfg.name == lead_cfg.name:
+            raise ValueError(
+                f"Member '{cfg.name}' in '{path.name}' shares the lead's name."
+            )
+        if cfg.name in blueprints:
+            raise ValueError(f"Duplicate member name '{cfg.name}' in '{path.name}'.")
+        blueprints[cfg.name] = MemberBlueprint(
+            name=cfg.name,
+            description=cfg.description or cfg.name,
+            source_path=path,
+        )
+
     tool_registry = _default_tool_registry()
     if extra_tools:
         tool_registry.update(extra_tools)
@@ -569,45 +594,28 @@ def load_team_from_dir(
     db_factory = resolve_db_factory(db_factory)
 
     # Unknown tools / MCP servers in frontmatter are warn-and-skipped by
-    # ``_build_agent`` so dynamic capability changes (team_manage, mcp.json
-    # edits) never break agent load. ``team_manage`` validates names
+    # ``_build_agent`` so dynamic capability changes (team_configure, mcp.json
+    # edits) never break agent load. ``team_configure`` validates names
     # up-front to prevent typos from being persisted in the first place.
 
-    # Build agents
+    # Build the lead.  Members are NOT built — they are described by their
+    # blueprints on the team and built on demand by ``AgentTeam.spawn``.
     lead_agent = _build_agent(
         lead_cfg, tool_registry, provider_factory, source_path=lead_path
     )
     lead_member = TeamLead(lead_agent, db_factory=db_factory)
 
-    members: dict[str, TeamMember] = {}
-    for cfg, path in member_entries:
-        agent = _build_agent(cfg, tool_registry, provider_factory, source_path=path)
-        members[cfg.name] = TeamMember(agent, db_factory=db_factory)
-
-    # Inject teammates section into each agent's system prompt
-    all_members: dict[str, tuple[TeamLead | TeamMember, str]] = {
-        lead_cfg.name: (lead_member, lead_cfg.description or "team lead"),
-    }
-    for cfg, _ in member_entries:
-        all_members[cfg.name] = (members[cfg.name], cfg.description or cfg.name)
-
-    for agent_name, (member, _) in all_members.items():
-        injected = "\n## Teammates\n"
-        for other_name, (_, other_desc) in all_members.items():
-            if other_name == agent_name:
-                continue
-            role_label = "lead" if other_name == lead_cfg.name else "member"
-            injected += f"- **{other_name}** ({role_label}): {other_desc}\n"
-        member.agent.system_prompt += injected
-
     team = AgentTeam(
         lead=lead_member,
-        members=members,
+        blueprints=blueprints,
+        provider_factory=provider_factory,
+        extra_tools=extra_tools,
+        db_factory=db_factory,
     )
     logger.info(
-        "team_loaded lead={} members={}",
+        "team_loaded lead={} blueprints={}",
         lead_cfg.name,
-        [c.name for (c, _) in member_entries],
+        sorted(blueprints.keys()),
     )
     return team
 

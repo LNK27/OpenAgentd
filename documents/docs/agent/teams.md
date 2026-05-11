@@ -261,6 +261,7 @@ Injected automatically — do not list in `tools:`.
 |---------|---------|-----|
 | `make_team_message_tool(mailbox, agent_name, role)` | `[team_message]` | All team agents (lead + members) |
 | `make_team_manage_tool(team)` | `[team_manage]` | Lead only |
+| `make_team_configure_tool(team)` | `[team_configure]` | Lead only |
 
 ### `team_message` tool
 
@@ -283,7 +284,27 @@ Tool-mechanical rules (one call per audience, no name prefix, content constraint
 ### `team_manage` tool (lead-only)
 
 ```
-team_manage(member: str, action: "add"|"remove"|"list", kind: "skill"|"tool"|"mcp" | None, name: str | None) -> str
+team_manage(action: "spawn"|"dismiss", members: list[str]) -> str
+```
+
+The lead manages the live roster with one batch-capable tool.
+
+- `action="spawn"`: each entry in `members` is either a bare blueprint name (`"executor"`) or an explicit handle (`"executor#1"`). Bare names allocate the next available `#N`; explicit handles restore/reuse that exact instance history.
+- `action="dismiss"`: each entry in `members` must be an explicit live handle (`"executor#1"`). Dismiss removes the in-memory member from the roster and preserves DB history.
+- Partial success is allowed; the return string groups `Spawned`, `Dismissed`, `Already live`, `Not live`, and `Errors` entries.
+
+Examples:
+
+```python
+team_manage(action="spawn", members=["executor", "executor", "explorer"])
+team_manage(action="spawn", members=["executor#1"])  # restore exact history
+team_manage(action="dismiss", members=["executor#1", "explorer#1"])
+```
+
+### `team_configure` tool (lead-only)
+
+```
+team_configure(member: str, action: "add"|"remove"|"list", kind: "skill"|"tool"|"mcp" | None, name: str | None) -> str
 ```
 
 The lead grants or revokes a member's capabilities at runtime by rewriting that member's `.md` frontmatter. The existing drift-detection hot-reload (see [Live config — drift detection](#live-config--drift-detection-no-team-reload)) picks up the change at the start of the member's next turn — no restart, no team rebuild.
@@ -294,10 +315,10 @@ The lead grants or revokes a member's capabilities at runtime by rewriting that 
 - `add` and `remove` are idempotent — already-present / not-present cases return a message and skip the write.
 - `list` reads from disk, so it reflects pending mutations the member hasn't reloaded yet.
 
-Members do not have `team_manage` themselves. The protocol prompts in `app/agent/mode/team/member.py` enforce a lead-as-translator pattern:
+Members do not have `team_configure` themselves. The protocol prompts in `app/agent/mode/team/member.py` enforce a lead-as-translator pattern:
 
 - **Members describe needs in plain language**, not registry names — e.g. *"I need to write files to disk"*, not *"grant me `write`"*. Members may not know what tools/skills/MCP servers actually exist.
-- **The lead translates the need to the exact registry name** and calls `team_manage(add)` — *"I need shadcn examples"* → `team_manage(member="executor", action="add", kind="mcp", name="shadcn")`.
+- **The lead translates the need to the exact registry name** and calls `team_configure(add)` — *"I need shadcn examples"* → `team_configure(member="executor#1", action="add", kind="mcp", name="shadcn")`.
 - **The lead prefers grant + re-delegate over self-execute** when a member explicitly asks for a capability — keeps separation of concerns; self-execute only as a last resort.
 
 Two related protocol invariants in the same file:
@@ -305,7 +326,7 @@ Two related protocol invariants in the same file:
 - **Members must verify before claiming.** After a tool call, members must read the result and never report success on a tool error. After mutating state (file write, etc.) the protocol asks for a cheap follow-up read (`ls`, `read`) before reporting completion. Catches LLM hallucination after a failed tool call.
 - **Lead must sanity-check claims before promising "done".** When a member reports it wrote a file at path X, lead is instructed to verify with a cheap read when feasible.
 
-> **Robustness contract:** `_build_agent` in `app/agent/loader.py` warn-and-skips unknown tool / MCP names instead of raising. This makes it safe to mutate frontmatter even if the underlying registry shifts after a grant (e.g. an MCP server is later removed from `mcp.json`). The member rebuild succeeds; the missing capability is dropped and logged. `team_manage` validates up-front so typos are never persisted in the first place.
+> **Robustness contract:** `_build_agent` in `app/agent/loader.py` warn-and-skips unknown tool / MCP names instead of raising. This makes it safe to mutate frontmatter even if the underlying registry shifts after a grant (e.g. an MCP server is later removed from `mcp.json`). The member rebuild succeeds; the missing capability is dropped and logged. `team_configure` validates up-front so typos are never persisted in the first place.
 
 > **Frontmatter formatting:** the rewrite uses `yaml.safe_dump` — YAML key order and any comments inside the frontmatter are not preserved. Bodies (after the closing `---`) are preserved verbatim. Treat agent `.md` files as machine-managed config.
 

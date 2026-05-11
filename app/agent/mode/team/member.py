@@ -85,11 +85,17 @@ LEAD_COMMUNICATION_RULES = """\
   - Building, writing files, running commands → **executor**
   - Research, web search, reading docs or codebases → **explorer**
   - Hard decisions, architecture review, trade-off analysis → **consultant**
-  - Multiple concerns → assign multiple members in parallel
+  - Multiple concerns → spawn / message multiple members in parallel
+- **Roster management — `team_manage`.** No members are live at the start of a turn. Spawn what you need, address it, dismiss it when done.
+  - To bring members online: `team_manage(action='spawn', members=['executor'])` → returns handles like `executor#1`. Address handles via `team_message(to=['executor#1'])`.
+  - For parallel work: pass the same blueprint more than once — `team_manage(action='spawn', members=['executor', 'executor'])` → `executor#1`, `executor#2`. Each instance has its own chat history.
+  - To restore/reuse history: spawn the explicit handle — `team_manage(action='spawn', members=['executor#1'])`.
+  - To free members when work is done: `team_manage(action='dismiss', members=['executor#1'])`. Dismiss requires explicit handles and preserves history on disk.
+  - **Spawn lazily — do not spawn members preemptively.** Spawn the moment you have actual work for that role; dismiss as soon as their work is done so the team stays lean.
 - Coordination with members must go through the `team_message` tool. Do not respond to the user until all assigned members have reported back.
-- **Capability management** — members start lean. If a member needs a skill, built-in tool, or MCP server they don't have, use `team_manage` to grant it before delegating, and revoke it once the work is done. The member auto-reloads on its next turn.
-  - **You are the translator.** Members describe their *need* in plain language ("I need to write files", "I need shadcn examples"); you map it to the exact registry name (`write`, `mcp` `shadcn`, etc.) and pass that to `team_manage`. Members don't know what tools exist — you do.
-  - **When a member asks for a capability, prefer `team_manage(add)` + re-delegate over doing the work yourself** — the member is closer to the task and keeps separation of concerns. Self-execute only as a last resort.
+- **Capability management — `team_configure`.** Spawned members start with whatever their blueprint declares. If an instance needs an additional skill, built-in tool, or MCP server, use `team_configure` to grant it before delegating, and revoke it once the work is done. The member auto-reloads on its next turn.
+  - **You are the translator.** Members describe their *need* in plain language ("I need to write files", "I need shadcn examples"); you map it to the exact registry name (`write`, `mcp` `shadcn`, etc.) and pass that to `team_configure`. Members don't know what tools exist — you do.
+  - **When a member asks for a capability, prefer `team_configure(add)` + re-delegate over doing the work yourself** — the member is closer to the task and keeps separation of concerns. Self-execute only as a last resort.
 - Always format your responses in **Markdown**. No emoji."""
 
 LEAD_PROTOCOL = """\
@@ -98,14 +104,16 @@ LEAD_PROTOCOL = """\
    - Light (single-step, one tool call, factual answer) → handle it yourself directly.
    - Heavy (produces files, needs research, needs reasoning, 3+ steps) → delegate. Do not do this work yourself.
 2. When delegating:
-   - Identify which members cover the work using the routing guide above.
-   - Assign every relevant member **in parallel** via `team_message`.
+   - Identify which blueprints cover the work using the routing guide above.
+   - **Spawn first.** Call `team_manage(action='spawn', members=[...])`. Use bare blueprint names (`executor`) for new instances, or explicit handles (`executor#1`) to restore/reuse history. Repeated blueprint names create parallel instances (`executor#1`, `executor#2`).
+   - Assign every relevant instance **in parallel** via `team_message(to=['<handle>'])`.
    - When one member's output feeds another, instruct the producer to send directly to the consumer; the last in the chain reports back to you.
    - Briefly let the user know work is underway (plain text — 1 sentence max).
 3. When members report back:
    - If a member's result is partial or more is coming, respond with `<sleep>` to wait.
    - When ALL assigned members have reported final results, respond to the user with the full synthesised answer.
-   - **Sanity-check claims before promising "done" to the user.** When a member says they wrote a file or changed state, verify with a cheap read (`ls`, `read`) when feasible. Members can hallucinate success after a failed tool call — one verification beats one wrong answer."""
+   - **Sanity-check claims before promising "done" to the user.** When a member says they wrote a file or changed state, verify with a cheap read (`ls`, `read`) when feasible. Members can hallucinate success after a failed tool call — one verification beats one wrong answer.
+4. After delivering the answer, dismiss any instance whose work is complete — `team_manage(action='dismiss', members=['executor#1'])` — so future turns start with a clean roster. Restore later with `team_manage(action='spawn', members=['executor#1'])` if you need its history."""
 
 MEMBER_COMMUNICATION_RULES = """\
 ## Communication protocol
@@ -745,20 +753,47 @@ class TeamLead(TeamMemberBase):
             logger.warning("team_lead_error_emit_failed error={}", push_exc)
 
     def build_protocol(self, base_prompt: str, team: "AgentTeam") -> str:
-        """Assemble lead protocol + roster into system prompt."""
+        """Assemble lead protocol + roster (blueprints + live instances) into prompt."""
         sections: list[str] = [
             LEAD_COMMUNICATION_RULES,
             LEAD_MESSAGE_FORMAT,
             LEAD_PROTOCOL,
         ]
 
-        # Build roster — list all members
-        roster_lines: list[str] = []
-        for member in team.members.values():
-            desc = member.agent.description or member.name
-            roster_lines.append(f"- **{member.name}**: {desc}")
-        if roster_lines:
-            sections.append("## Team members\n" + "\n".join(roster_lines))
+        # Blueprints section — spawnable members.  Each blueprint shows
+        # its description and any live instance handles so the lead can
+        # see which roles are already running.
+        if team.blueprints:
+            bp_lines: list[str] = []
+            for bp in team.blueprints.values():
+                live = team.live_instances_for_blueprint(bp.name)
+                live_str = (
+                    f" — live: {', '.join(live)}" if live else " — no live instances"
+                )
+                bp_lines.append(f"- **{bp.name}**: {bp.description}{live_str}")
+            sections.append(
+                "## Spawnable blueprints\n"
+                "Spawn with `team_manage(action='spawn', members=['<name>'])`; "
+                "use explicit handles (`<name>#1`) to restore history.\n"
+                + "\n".join(bp_lines)
+            )
+
+        # Eager-members section (back-compat for tests / direct construction):
+        # any TeamMember in team.members whose handle is *not* a
+        # ``blueprint#N`` form is shown as a plain "always-on" entry.
+        from app.agent.mode.team.team import parse_instance_handle
+
+        plain_members = [
+            (name, m)
+            for name, m in team.members.items()
+            if parse_instance_handle(name) is None
+        ]
+        if plain_members:
+            roster_lines = [
+                f"- **{name}**: {m.agent.description or name}"
+                for name, m in plain_members
+            ]
+            sections.append("## Live members\n" + "\n".join(roster_lines))
 
         protocol = "\n\n".join(sections)
         return f"{base_prompt}\n\n---\n\n{protocol}"
@@ -814,7 +849,10 @@ class TeamMember(TeamMemberBase):
             MEMBER_PROTOCOL.format(lead_name=lead_name),
         ]
 
-        # Build roster — show lead + other members
+        # Build roster — show lead + every currently-live peer instance.
+        # Spawnable-but-not-yet-live blueprints are not shown to members:
+        # only the lead spawns / dismisses, so the member only needs the
+        # current peer roster.
         roster_lines: list[str] = []
         lead = team.lead
         lead_desc = lead.agent.description or lead.name

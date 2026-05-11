@@ -1,14 +1,16 @@
-"""team_manage tool — lead-only orchestrator capability management.
+"""Lead-only team roster and capability management tools.
 
-The lead agent uses this tool to grant or revoke skills, tools, or MCP
-servers from a team member at runtime. Mutations are persisted by
-rewriting the target member's ``.md`` frontmatter; the existing
-config-drift hot-reload (``TeamMemberBase._refresh_agent_from_disk``)
-picks up the change at the start of the member's next turn.
+``team_manage`` owns the live roster: spawn or dismiss member instances in
+batches. ``team_configure`` owns capability changes: grant/revoke skills,
+built-in tools, or MCP servers for a live member.
 
-Use case: keep every member lean by default. When a task needs a
-specialised capability (e.g. the ``shadcn`` MCP server), the lead grants
-it just-in-time and revokes it once the work is done.
+The split keeps the lead's mental model simple: ``team_manage`` controls who
+is online, while ``team_configure`` controls what an online member can do.
+
+Capability mutations are persisted by rewriting the target member's ``.md``
+frontmatter; the existing config-drift hot-reload
+(``TeamMemberBase._refresh_agent_from_disk``) picks up the change at the start
+of the member's next turn.
 
 Validation runs *before* writing so typos can never be persisted into
 ``.md``. Resolution at agent-load time is soft (``loader.py`` warns and
@@ -41,7 +43,17 @@ _PROTECTED_TOOL_NAMES = frozenset(
 )
 
 
-_DESCRIPTION = (
+_MANAGE_DESCRIPTION = (
+    "Manage the live team roster. Use action='spawn' with blueprint names "
+    "like 'executor' to create the next instance, or explicit handles like "
+    "'executor#1' to restore/reuse that instance's history. Use "
+    "action='dismiss' with explicit live handles like 'executor#1' to free "
+    "members when their work is done; history is preserved. Accepts multiple "
+    "members in one call."
+)
+
+
+_CONFIGURE_DESCRIPTION = (
     "Manage a team member's capabilities (skills, built-in tools, MCP servers) "
     "at runtime. Use this to grant a member a specialised capability just-in-time "
     "for a task, then revoke it when the work is done — keeps members focused. "
@@ -51,14 +63,144 @@ _DESCRIPTION = (
 
 
 def make_team_manage_tool(team: "AgentTeam") -> Tool:
-    """Return the ``team_manage`` tool bound to *team*. Lead-only."""
+    """Return the roster-management ``team_manage`` tool. Lead-only."""
 
     async def team_manage(
+        action: Annotated[
+            Literal["spawn", "dismiss"],
+            Field(
+                description=(
+                    "'spawn' brings members online; 'dismiss' removes live "
+                    "instances from the roster while preserving history."
+                )
+            ),
+        ],
+        members: Annotated[
+            list[str],
+            Field(
+                description=(
+                    "For spawn: blueprint names ('executor') create the next "
+                    "available instance, explicit handles ('executor#1') "
+                    "restore/reuse that exact history. For dismiss: pass "
+                    "explicit live handles ('executor#1'). Multiple entries "
+                    "are processed left-to-right."
+                )
+            ),
+        ],
+    ) -> str:
+        """Spawn or dismiss live member instances in a batch."""
+        if not members:
+            return "No members provided."
+
+        if action == "spawn":
+            return await _manage_spawn(team, members)
+        return await _manage_dismiss(team, members)
+
+    return Tool(team_manage, name="team_manage", description=_MANAGE_DESCRIPTION)
+
+
+async def _manage_spawn(team: "AgentTeam", members: list[str]) -> str:
+    spawned: list[str] = []
+    already_live: list[str] = []
+    errors: list[str] = []
+
+    from app.agent.mode.team.team import parse_instance_handle
+
+    for item in members:
+        item = item.strip()
+        if not item:
+            errors.append("empty member name")
+            continue
+
+        parsed = parse_instance_handle(item)
+        if parsed is None:
+            blueprint = item
+            instance_id = None
+        else:
+            blueprint, instance_id = parsed
+
+        try:
+            member = await team.spawn(blueprint, instance_id=instance_id)
+        except ValueError as exc:
+            if "already live" in str(exc):
+                already_live.append(item)
+            else:
+                errors.append(f"{item}: {exc}")
+        except KeyError as exc:
+            errors.append(str(exc))
+        except Exception as exc:
+            logger.exception("team_manage_spawn_failed member={}", item)
+            errors.append(f"{item}: spawn failed: {exc}")
+        else:
+            spawned.append(member.name)
+
+    return _format_manage_result(
+        ("Spawned", spawned),
+        ("Already live", already_live),
+        ("Errors", errors),
+    )
+
+
+async def _manage_dismiss(team: "AgentTeam", members: list[str]) -> str:
+    dismissed: list[str] = []
+    not_live: list[str] = []
+    errors: list[str] = []
+
+    from app.agent.mode.team.team import parse_instance_handle
+
+    for item in members:
+        item = item.strip()
+        if not item:
+            errors.append("empty member name")
+            continue
+        if item == team.lead.name:
+            errors.append(f"Cannot dismiss the team lead '{item}'")
+            continue
+        if parse_instance_handle(item) is None:
+            matches = team.live_instances_for_blueprint(item)
+            if matches:
+                errors.append(
+                    f"Use explicit handles for dismissing '{item}': {matches}"
+                )
+            else:
+                errors.append(
+                    f"Use explicit handles for dismiss; '{item}' is not a live handle."
+                )
+            continue
+
+        try:
+            found = await team.dismiss(item)
+        except Exception as exc:
+            logger.exception("team_manage_dismiss_failed member={}", item)
+            errors.append(f"{item}: dismiss failed: {exc}")
+            continue
+
+        if found:
+            dismissed.append(item)
+        else:
+            not_live.append(item)
+
+    return _format_manage_result(
+        ("Dismissed", dismissed),
+        ("Not live", not_live),
+        ("Errors", errors),
+    )
+
+
+def _format_manage_result(*groups: tuple[str, list[str]]) -> str:
+    parts = [f"{label}: {', '.join(values)}." for label, values in groups if values]
+    return " ".join(parts) if parts else "No changes."
+
+
+def make_team_configure_tool(team: "AgentTeam") -> Tool:
+    """Return the ``team_configure`` tool bound to *team*. Lead-only."""
+
+    async def team_configure(
         member: Annotated[
             str,
             Field(
                 description=(
-                    "Target member name (must be a regular member, not the lead). "
+                    "Target member handle (must be a regular member, not the lead). "
                     "Use the exact name from the team roster."
                 )
             ),
@@ -101,14 +243,14 @@ def make_team_manage_tool(team: "AgentTeam") -> Tool:
             return (
                 f"Member '{member}' not found. "
                 f"Available members: {available}. "
-                f"(The lead '{team.lead.name}' cannot be managed via team_manage.)"
+                f"(The lead '{team.lead.name}' cannot be configured.)"
             )
 
         source = target.agent.source_path
         if source is None:
             return (
                 f"Member '{member}' has no source .md file (in-memory agent); "
-                "team_manage requires a file-backed agent."
+                "team_configure requires a file-backed agent."
             )
 
         # ── action: list ──────────────────────────────────────────────
@@ -136,7 +278,7 @@ def make_team_manage_tool(team: "AgentTeam") -> Tool:
         if kind is None or name is None:
             return (
                 f"Action '{action}' requires both 'kind' and 'name'. "
-                "Example: team_manage(member='executor', action='add', "
+                "Example: team_configure(member='executor#1', action='add', "
                 "kind='mcp', name='shadcn')."
             )
 
@@ -156,7 +298,7 @@ def make_team_manage_tool(team: "AgentTeam") -> Tool:
             )
         except Exception as exc:
             logger.warning(
-                "team_manage_write_failed member={} action={} kind={} name={} error={}",
+                "team_configure_write_failed member={} action={} kind={} name={} error={}",
                 member,
                 action,
                 kind,
@@ -169,7 +311,7 @@ def make_team_manage_tool(team: "AgentTeam") -> Tool:
             return message  # already-present / not-present, no write
 
         logger.info(
-            "team_manage member={} action={} kind={} name={}",
+            "team_configure member={} action={} kind={} name={}",
             member,
             action,
             kind,
@@ -180,7 +322,9 @@ def make_team_manage_tool(team: "AgentTeam") -> Tool:
             "(or now, if idle)."
         )
 
-    return Tool(team_manage, name="team_manage", description=_DESCRIPTION)
+    return Tool(
+        team_configure, name="team_configure", description=_CONFIGURE_DESCRIPTION
+    )
 
 
 # ---------------------------------------------------------------------------
