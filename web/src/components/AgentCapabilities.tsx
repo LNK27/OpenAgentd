@@ -27,9 +27,15 @@ import {
   ArrowRight,
   Sparkles,
   Plug,
+  Network,
 } from 'lucide-react'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
-import type { AgentInfo, AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
+import type {
+  AgentInfo,
+  AgentCapabilities as AgentCapabilitiesType,
+  TeamAgentInfo,
+  TeamBlueprintInfo,
+} from '@/api/types'
 import type { AgentStream } from '@/stores/useTeamStore'
 
 // ── Status dot ────────────────────────────────────────────────────────────────
@@ -40,6 +46,8 @@ function StatusDot({ status }: { status?: string }) {
       ? 'bg-(--color-accent) shadow-[0_0_5px_var(--color-accent)] animate-pulse'
       : status === 'error'
         ? 'bg-(--color-error)'
+        : status === 'offline'
+          ? 'bg-(--color-text-subtle) opacity-50'
         : 'bg-(--color-success)'
   return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${cls}`} aria-hidden />
 }
@@ -407,6 +415,66 @@ function AgentSwitcher({
   )
 }
 
+// ── Blueprint roster ─────────────────────────────────────────────────────────
+
+function BlueprintRoster({ blueprints }: { blueprints: TeamBlueprintInfo[] }) {
+  if (blueprints.length === 0) return null
+
+  return (
+    <section className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-5 py-3">
+      <div className="mb-2 flex items-center gap-2">
+        <Network size={12} className="text-(--color-text-muted)" aria-hidden />
+        <h3 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+          Spawnable blueprints
+        </h3>
+      </div>
+      <div className="space-y-2">
+        {blueprints.map((bp) => {
+          const live = bp.live_instances
+          return (
+            <div
+              key={bp.name}
+              className="rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <code className="font-mono text-xs font-semibold text-(--color-text)">
+                  {bp.name}
+                </code>
+                <span
+                  className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${
+                    live.length > 0
+                      ? 'bg-(--bg-key) text-(--color-accent)'
+                      : 'bg-(--bg-key) text-(--color-text-muted)'
+                  }`}
+                >
+                  {live.length > 0 ? `${live.length} live` : 'idle'}
+                </span>
+              </div>
+              {bp.description && (
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-(--color-text-muted)">
+                  {bp.description}
+                </p>
+              )}
+              {live.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {live.map((handle) => (
+                    <span
+                      key={handle}
+                      className="rounded-md bg-(--bg-key) px-2 py-0.5 font-mono text-[11px] text-(--color-text-2) ring-1 ring-(--color-border-strong)"
+                    >
+                      {handle}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 interface AgentCapabilitiesProps {
@@ -443,21 +511,20 @@ export function AgentCapabilities({
     return () => window.removeEventListener('keydown', h)
   }, [open, onClose])
 
-  const allAgents: AgentInfo[] = data?.agents ?? []
+  const allAgents: TeamAgentInfo[] = data?.agents ?? []
+  const blueprints = data?.blueprints ?? []
   const byName = new Map(allAgents.map((a) => [a.name, a]))
 
   // Resolve which agents to show. Prefer the caller's ordering; fall back to
   // the API list so the panel is never blank.
-  const display: AgentInfo[] = (() => {
+  const display: TeamAgentInfo[] = (() => {
     if (agentNames.length === 0) return allAgents
-    const ordered = agentNames.map((n) => byName.get(n)).filter(Boolean) as AgentInfo[]
+    const ordered = agentNames.map((n) => byName.get(n)).filter(Boolean) as TeamAgentInfo[]
     return ordered.length > 0 ? ordered : allAgents
   })()
 
   // Lead comes from the API `is_lead` flag if present, else first in list.
-  const leadFromApi = allAgents.find(
-    (a) => (a as AgentInfo & { is_lead?: boolean }).is_lead,
-  )
+  const leadFromApi = allAgents.find((a) => a.is_lead)
   const leadName = display.length > 1 ? (leadFromApi?.name ?? display[0]?.name ?? null) : null
 
   const [selectedName, setSelectedName] = useState<string | null>(null)
@@ -541,6 +608,8 @@ export function AgentCapabilities({
             onSelect={setSelectedName}
           />
         )}
+
+        <BlueprintRoster blueprints={blueprints} />
 
         {/* Body */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

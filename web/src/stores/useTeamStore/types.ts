@@ -37,6 +37,7 @@ export type CacheInvalidation =
   | { kind: 'workspace_files'; sessionId: string }
   | { kind: 'scheduler' }
   | { kind: 'todos'; sessionId: string }
+  | { kind: 'team_agents' }
 
 export interface AgentStream {
   /** Finalized blocks from previous turns (flushed on each 'done' event). */

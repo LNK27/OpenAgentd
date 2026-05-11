@@ -5,7 +5,7 @@ import { queryKeys } from './keys'
 /** Team mode — GET /team/agents */
 export function useTeamAgentsQuery() {
   return useQuery({
-    queryKey: [...queryKeys.agents(), 'team'],
+    queryKey: queryKeys.teamAgents(),
     queryFn: listTeamAgents,
     staleTime: 30_000,
   })

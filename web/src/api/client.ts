@@ -11,6 +11,7 @@ import type {
   SessionDetailResponse,
   SessionPageResponse,
   TeamHistoryResponse,
+  TeamAgentsResponse,
   TeamStatusResponse,
   WikiTree,
   WikiFile,
@@ -71,7 +72,7 @@ export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: 
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
 }
 
-export async function listTeamAgents(): Promise<{ agents: ({ is_lead: boolean } & import('./types').AgentInfo)[] }> {
+export async function listTeamAgents(): Promise<TeamAgentsResponse> {
   const res = await fetch(`${API}/team/agents`)
   if (!res.ok) throw new Error(`listTeamAgents failed: ${res.status}`)
   return res.json()

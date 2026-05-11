@@ -57,6 +57,15 @@ describe('applyCacheInvalidations', () => {
     })
   })
 
+  it('maps `team_agents` event to teamAgents()', () => {
+    const client = makeMockClient()
+    applyCacheInvalidations(client, [{ kind: 'team_agents' }])
+    expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.teamAgents(),
+    })
+  })
+
   it('uses the exact key shape ["scheduler", "list"] (regression guard)', () => {
     const client = makeMockClient()
     applyCacheInvalidations(client, [{ kind: 'scheduler' }])
@@ -87,9 +96,10 @@ describe('applyCacheInvalidations', () => {
       { kind: 'scheduler' },
       { kind: 'workspace_files', sessionId: 'sid-1' },
       { kind: 'todos', sessionId: 'sid-1' },
+      { kind: 'team_agents' },
     ]
     applyCacheInvalidations(client, events)
-    expect(client.invalidateQueries).toHaveBeenCalledTimes(4)
+    expect(client.invalidateQueries).toHaveBeenCalledTimes(5)
     expect(client.invalidateQueries.mock.calls[0][0]).toEqual({
       queryKey: queryKeys.wiki.all(),
     })
@@ -101,6 +111,9 @@ describe('applyCacheInvalidations', () => {
     })
     expect(client.invalidateQueries.mock.calls[3][0]).toEqual({
       queryKey: queryKeys.todos('sid-1'),
+    })
+    expect(client.invalidateQueries.mock.calls[4][0]).toEqual({
+      queryKey: queryKeys.teamAgents(),
     })
   })
 
