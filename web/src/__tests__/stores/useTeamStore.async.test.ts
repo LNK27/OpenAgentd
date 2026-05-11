@@ -616,7 +616,13 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().leadName).toBe("lead")
   })
 
-  it("sets agentNames including lead and members", async () => {
+  it("sets agentNames to lead only before a session is active", async () => {
+    await useTeamStore.getState().loadTeamStatus()
+    expect(useTeamStore.getState().agentNames).toEqual(["lead"])
+  })
+
+  it("sets agentNames including lead and members when a session is active", async () => {
+    useTeamStore.setState({ sessionId: "team-sid" })
     await useTeamStore.getState().loadTeamStatus()
     expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
   })
@@ -643,14 +649,29 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
   })
 
-  it("creates agent streams for all agents", async () => {
+  it("creates agent streams for the lead before a session is active", async () => {
+    await useTeamStore.getState().loadTeamStatus()
+    const streams = useTeamStore.getState().agentStreams
+    expect(streams["lead"]).toBeDefined()
+    expect(streams["worker"]).toBeUndefined()
+  })
+
+  it("creates agent streams for all agents when a session is active", async () => {
+    useTeamStore.setState({ sessionId: "team-sid" })
     await useTeamStore.getState().loadTeamStatus()
     const streams = useTeamStore.getState().agentStreams
     expect(streams["lead"]).toBeDefined()
     expect(streams["worker"]).toBeDefined()
   })
 
-  it("sets model on each agent stream", async () => {
+  it("sets model on the lead stream before a session is active", async () => {
+    await useTeamStore.getState().loadTeamStatus()
+    expect(useTeamStore.getState().agentStreams["lead"].model).toBe("gpt-4")
+    expect(useTeamStore.getState().agentStreams["worker"]).toBeUndefined()
+  })
+
+  it("sets model on each agent stream when a session is active", async () => {
+    useTeamStore.setState({ sessionId: "team-sid" })
     await useTeamStore.getState().loadTeamStatus()
     expect(useTeamStore.getState().agentStreams["lead"].model).toBe("gpt-4")
     expect(useTeamStore.getState().agentStreams["worker"].model).toBe("claude-3")
