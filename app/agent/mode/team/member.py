@@ -8,7 +8,7 @@ TeamLead and TeamMember subclass it with role-specific behaviour:
 Agents do **not** run persistent background loops.  Instead, they are
 *activated on demand*: when a message arrives in their mailbox the team calls
 ``_maybe_activate()`` which spawns a single ``asyncio.Task`` that drains the
-inbox, calls ``agent.run()``, and returns to ``available`` state.
+inbox, calls ``agent.run()``, and returns to ``idle`` state.
 
 Streaming is handled by StreamPublisherHook, which pushes every LLM delta
 directly to the shared in-memory stream store (keyed by the team lead's session_id).
@@ -200,7 +200,7 @@ class TeamMemberBase(abc.ABC):
         self.session_id: str = session_id or str(uuid7())
         self.db_factory = db_factory
 
-        self.state: Literal["available", "working", "error"] = "available"
+        self.state: Literal["idle", "working", "error"] = "idle"
         self._cancel_event = asyncio.Event()
         self._active_task: asyncio.Task | None = None
 
@@ -227,14 +227,14 @@ class TeamMemberBase(abc.ABC):
         """Register this member with the team. Called by AgentTeam.start().
 
         Registers the mailbox inbox but does **not** spawn any background task.
-        The agent becomes ``available`` and will be activated on demand when a
+        The agent becomes ``idle`` and will be activated on demand when a
         message arrives.
         """
         self._team = team
         self._mailbox = team.mailbox
         self._mailbox.register(self.name)
 
-        self.state = "available"
+        self.state = "idle"
         logger.info(
             "team_member_registered name={} session_id={}", self.name, self.session_id
         )
@@ -281,7 +281,7 @@ class TeamMemberBase(abc.ABC):
         if self._mailbox and self.name in self._mailbox.registered_agents:
             self._mailbox.deregister(self.name)
 
-        self.state = "available"
+        self.state = "idle"
         logger.info("team_member_stopped name={}", self.name)
 
     # ------------------------------------------------------------------
@@ -407,7 +407,7 @@ class TeamMemberBase(abc.ABC):
             )
 
     async def _run_activation(self) -> None:
-        """One-shot activation: drain inbox, process, return to available."""
+        """One-shot activation: drain inbox, process, return to idle."""
         assert self._mailbox is not None
         assert self._team is not None
 
@@ -424,7 +424,7 @@ class TeamMemberBase(abc.ABC):
         if not pending:
             # Spurious activation — nothing to process. Reset state that
             # _maybe_activate pre-set to "working" and bail out.
-            self.state = "available"
+            self.state = "idle"
             return
 
         # state was already set to "working" by _maybe_activate
@@ -478,11 +478,13 @@ class TeamMemberBase(abc.ABC):
         finally:
             self._on_turn_finally()
             if self.state != "error":
-                self.state = "available"
-            await self._team._emit(
-                agent=self.name, event="agent_status", status="available"
-            )
-            logger.info("team_member_available name={}", self.name)
+                self.state = "idle"
+                await self._team._emit(
+                    agent=self.name,
+                    event="agent_status",
+                    status="idle",
+                )
+                logger.info("team_member_idle name={}", self.name)
 
             # Did mcp.json / agent.md / SKILL.md change during this turn?
             # Drift → rebuild the agent at the start of the next turn.
@@ -492,7 +494,7 @@ class TeamMemberBase(abc.ABC):
             # agent.run() breaks on <sleep>/final-response without running
             # TeamInboxHook again, so any message queued during that last LLM call
             # sits in the inbox.  Calling _maybe_activate here is safe: state is
-            # already "available", so it spawns a fresh activation task that loads
+            # already "idle", so it spawns a fresh activation task that loads
             # history from DB and wakes the agent — exactly like a normal wakeup.
             if not self._mailbox.inbox_empty(self.name):
                 logger.info(

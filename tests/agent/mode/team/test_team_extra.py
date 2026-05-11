@@ -89,11 +89,11 @@ class TestEmitNonAgentStatus:
 
 class TestTryEmitDone:
     @pytest.mark.asyncio
-    async def test_try_emit_done_fires_when_all_available(self):
+    async def test_try_emit_done_fires_when_all_idle(self):
         team, _ = _make_team()
         team._has_active_turn = True
-        team.lead.state = "available"
-        team.members["worker"].state = "available"
+        team.lead.state = "idle"
+        team.members["worker"].state = "idle"
 
         pushed = []
 
@@ -132,7 +132,7 @@ class TestTryEmitDone:
     async def test_try_emit_done_skips_when_member_still_working(self):
         team, _ = _make_team()
         team._has_active_turn = True
-        team.lead.state = "available"
+        team.lead.state = "idle"
         team.members["worker"].state = "working"
 
         pushed = []
@@ -149,8 +149,8 @@ class TestTryEmitDone:
     async def test_try_emit_done_swallows_error(self):
         team, _ = _make_team()
         team._has_active_turn = True
-        team.lead.state = "available"
-        team.members["worker"].state = "available"
+        team.lead.state = "idle"
+        team.members["worker"].state = "idle"
 
         async def fake_push(sid, event):
             raise ConnectionError("stream down")

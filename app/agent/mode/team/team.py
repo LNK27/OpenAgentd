@@ -204,7 +204,7 @@ class AgentTeam:
         self,
         agent: str,
         event: str,
-        status: Literal["working", "available", "error"] | None = None,
+        status: Literal["idle", "working", "offline", "error"] | None = None,
         extra: dict | None = None,
     ) -> None:
         """Push a lifecycle event to the stream store for the current session."""
@@ -231,16 +231,16 @@ class AgentTeam:
             logger.warning("team_emit_failed event={} error={}", event, exc)
 
     async def _try_emit_done(self) -> None:
-        """Emit 'done' when lead + all live members are available.
+        """Emit 'done' when lead + all live members are idle.
 
         Called from every member's _run_activation finally block.
         Guard: only fires after at least one user turn has started.
         """
         if not self._has_active_turn:
             return
-        lead_done = self.lead.state in ("available", "error")
+        lead_done = self.lead.state in ("idle", "error")
         all_members_done = all(
-            m.state in ("available", "error") for m in self.members.values()
+            m.state in ("idle", "error") for m in self.members.values()
         )
         if lead_done and all_members_done:
             self._has_active_turn = False  # reset for next turn
@@ -469,8 +469,8 @@ class AgentTeam:
     ) -> TeamMember:
         bp = self.blueprints.get(blueprint)
         if bp is None:
-            available = sorted(self.blueprints.keys())
-            raise KeyError(f"Unknown blueprint '{blueprint}'. Available: {available}.")
+            idle = sorted(self.blueprints.keys())
+            raise KeyError(f"Unknown blueprint '{blueprint}'. Available: {idle}.")
 
         # Reconcile counter for this lead session if not yet done.  This
         # ensures auto-assigned ``#N`` values are restart-safe and don't
@@ -527,6 +527,12 @@ class AgentTeam:
         member.register(self)
         self.members[handle] = member
         self._members_by_name[handle] = member
+        await self._emit(
+            agent=handle,
+            event="agent_status",
+            status="idle",
+            extra={"blueprint": blueprint},
+        )
 
         logger.info(
             "team_member_spawned blueprint={} handle={} session_id={}",
@@ -587,6 +593,7 @@ class AgentTeam:
         except Exception as exc:
             logger.warning("team_dismiss_stop_failed handle={} error={}", handle, exc)
         logger.info("team_member_dismissed handle={}", handle)
+        await self._emit(agent=handle, event="agent_status", status="offline")
         return True
 
     # ------------------------------------------------------------------

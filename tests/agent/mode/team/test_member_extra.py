@@ -177,7 +177,7 @@ class TestTeamMemberStop:
 
         await member.stop()
 
-        assert member.state == "available"
+        assert member.state == "idle"
         assert "w" not in member._mailbox.registered_agents
 
 

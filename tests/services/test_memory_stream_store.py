@@ -404,15 +404,15 @@ class TestPushEvent:
                 "agent_status", {"agent": "worker", "status": "working"}
             ),
         )
-        # Latest value wins — lead flips to available while worker stays working.
+        # Latest value wins — lead flips to idle while worker stays working.
         await store.push_event(
             "sid-1",
             StreamEnvelope.from_parts(
-                "agent_status", {"agent": "lead", "status": "available"}
+                "agent_status", {"agent": "lead", "status": "idle"}
             ),
         )
         assert _turns["sid-1"].agent_statuses == {
-            "lead": "available",
+            "lead": "idle",
             "worker": "working",
         }
 
@@ -868,7 +868,7 @@ class TestAttach:
         flips isTeamWorking=true before any content arrives. Without this the
         stop button stays hidden on reconnect even while tokens stream in."""
         await store.init_turn("sid-1")
-        _turns["sid-1"].agent_statuses = {"lead": "working", "worker": "available"}
+        _turns["sid-1"].agent_statuses = {"lead": "working", "worker": "idle"}
         _turns["sid-1"].content = {"lead": "partial reply"}
 
         async def _mark_done():
@@ -886,7 +886,7 @@ class TestAttach:
             json.loads(e["data"])["agent"]: json.loads(e["data"])["status"]
             for e in status_events
         }
-        assert by_agent == {"lead": "working", "worker": "available"}
+        assert by_agent == {"lead": "working", "worker": "idle"}
         # Status must precede the message so the UI flips before rendering text.
         first_status_idx = types.index("agent_status")
         first_message_idx = types.index("message")

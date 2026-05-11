@@ -42,7 +42,7 @@ def _mock_agent(name: str, description: str | None = None) -> MagicMock:
 
 
 def _mock_lead(
-    name: str, description: str | None = None, state: str = "available"
+    name: str, description: str | None = None, state: str = "idle"
 ) -> MagicMock:
     """Mock that has build_protocol behaving like TeamLead."""
     member = MagicMock(spec=TeamLead)
@@ -60,7 +60,7 @@ def _mock_lead(
 
 
 def _mock_member(
-    name: str, description: str | None = None, state: str = "available"
+    name: str, description: str | None = None, state: str = "idle"
 ) -> MagicMock:
     """Mock that has build_protocol behaving like TeamMember."""
     m = MagicMock(spec=TeamMember)

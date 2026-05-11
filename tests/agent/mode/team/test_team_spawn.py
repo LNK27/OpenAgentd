@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 import yaml
@@ -28,6 +29,7 @@ from sqlmodel import select
 
 from app.agent.agent_loop import Agent
 from app.agent.loader import load_team_from_dir
+from app.agent.mode.team.mailbox import Message
 from app.agent.mode.team.member import TeamMember
 from app.agent.mode.team.team import (
     AgentTeam,
@@ -83,6 +85,15 @@ def _make_test_provider(model: str | None, model_kwargs: dict | None = None):
     the factory simply returns the same mock provider for every model id.
     """
     return MockTeamProvider("ok")
+
+
+def _status_events(push_mock: AsyncMock) -> list[tuple[str, str]]:
+    events: list[tuple[str, str]] = []
+    for call in push_mock.call_args_list:
+        envelope = call.args[1]
+        if envelope.event == "agent_status":
+            events.append((envelope.data["agent"], envelope.data["status"]))
+    return events
 
 
 def _build_dynamic_team(
@@ -273,6 +284,63 @@ class TestDismiss:
             # Respawning #1 should restore the same DB session id.
             restored = await team.spawn("executor", instance_id=1)
             assert restored.session_id == str(old_session_id)
+        finally:
+            await team.stop()
+
+
+# ---------------------------------------------------------------------------
+# lifecycle SSE status events
+# ---------------------------------------------------------------------------
+
+
+class TestLifecycleStatusEvents:
+    async def test_spawn_emits_idle_status(self, tmp_path, mock_stream_store):
+        team = _build_dynamic_team(tmp_path, {"executor": None})
+        await team.start()
+        try:
+            await team.spawn("executor")
+            assert ("executor#1", "idle") in _status_events(mock_stream_store)
+        finally:
+            await team.stop()
+
+    async def test_member_activation_emits_working_then_idle(
+        self,
+        tmp_path,
+        mock_stream_store,
+    ):
+        team = _build_dynamic_team(tmp_path, {"executor": None})
+        await team.start()
+        try:
+            member = await team.spawn("executor")
+            mock_stream_store.reset_mock()
+
+            await team.mailbox.send(
+                to="executor#1",
+                message=Message(
+                    from_agent="lead",
+                    to_agent="executor#1",
+                    content="[lead]: do one thing",
+                ),
+            )
+            assert member._active_task is not None
+            await member._active_task
+
+            statuses = _status_events(mock_stream_store)
+            assert statuses[0] == ("executor#1", "working")
+            assert statuses[-1] == ("executor#1", "idle")
+            assert member.state == "idle"
+        finally:
+            await team.stop()
+
+    async def test_dismiss_emits_offline_status(self, tmp_path, mock_stream_store):
+        team = _build_dynamic_team(tmp_path, {"executor": None})
+        await team.start()
+        try:
+            await team.spawn("executor")
+            mock_stream_store.reset_mock()
+
+            assert await team.dismiss("executor#1") is True
+            assert ("executor#1", "offline") in _status_events(mock_stream_store)
         finally:
             await team.stop()
 

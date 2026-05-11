@@ -124,11 +124,11 @@ class ErrorEvent(BaseModel):
 
 
 class AgentStatusEvent(BaseModel):
-    """An agent changed lifecycle state (working / available / error)."""
+    """An agent changed lifecycle state."""
 
     type: Literal["agent_status"] = "agent_status"
     agent: str
-    status: Literal["working", "available", "error"]
+    status: Literal["idle", "working", "offline", "error"]
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

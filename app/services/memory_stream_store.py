@@ -339,12 +339,15 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
             # false (and the stop button hidden) until the next `done`
             # event — even as tokens continued streaming in.
             for agent, status in state.agent_statuses.items():
-                if not agent or status not in ("working", "available", "error"):
+                if not agent or status not in ("idle", "working", "offline", "error"):
                     continue
                 yield StreamEnvelope.from_event(
                     AgentStatusEvent(
                         agent=agent,
-                        status=cast(Literal["working", "available", "error"], status),
+                        status=cast(
+                            Literal["idle", "working", "offline", "error"],
+                            status,
+                        ),
                     )
                 ).to_wire()
 
