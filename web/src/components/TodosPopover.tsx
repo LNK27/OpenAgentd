@@ -142,13 +142,13 @@ export function TodosPopover({
           )}
         </div>
 
-        <div className="flex min-h-[28rem] max-h-[76vh] flex-col overflow-auto p-3">
+        <div className="scrollbar-none flex h-[min(76vh,36rem)] min-h-[28rem] flex-col overflow-x-auto overflow-y-hidden p-3">
           {todos.length === 0 && (
             <p className="mb-3 text-center font-(family-name:--font-hand) text-base text-(--color-text-subtle)">
               No tasks yet — ask the agent to plan
             </p>
           )}
-            <div className="grid min-w-[46rem] flex-1 grid-cols-4 divide-x divide-(--color-border)">
+            <div className="grid min-h-0 min-w-[46rem] flex-1 grid-cols-4 divide-x divide-(--color-border)">
               {todosByStatus.map(({ status, todos: columnTodos }) => {
                 const Icon = STATUS_ICON[status]
                 const iconColor = STATUS_ICON_COLOR[status]
@@ -174,7 +174,7 @@ export function TodosPopover({
                       className={
                         columnTodos.length === 0
                           ? 'flex flex-1 items-center justify-center'
-                          : 'space-y-3'
+                          : 'scrollbar-none min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-2'
                       }
                     >
                       {columnTodos.length === 0 ? (
@@ -190,7 +190,7 @@ export function TodosPopover({
                           return (
                             <article
                               key={todo.task_id}
-                              className="border-t border-(--color-border) pt-2 first:border-t-0 first:pt-0"
+                              className="border-b border-(--color-border) pb-3 last:border-b-0 last:pb-0"
                             >
                               <div className="mb-1.5 flex items-start justify-between gap-2">
                                 <span className="font-mono text-[9px] uppercase tracking-wide text-(--color-text-muted)">
@@ -215,7 +215,7 @@ export function TodosPopover({
                                 {todo.content}
                               </p>
 
-                              <div className="mt-2 space-y-1 border-t border-(--color-border) pt-1.5 font-mono text-[9px] uppercase tracking-wide text-(--color-text-muted)">
+                              <div className="mt-2 space-y-1 font-mono text-[9px] uppercase tracking-wide text-(--color-text-muted)">
                                 <div className="flex items-center gap-1.5">
                                   <UserRound size={10} aria-hidden="true" />
                                   <span>{agent ?? 'Unassigned'}</span>
