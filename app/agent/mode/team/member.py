@@ -86,7 +86,7 @@ LEAD_COMMUNICATION_RULES = """\
   - Research, web search, reading docs or codebases → **explorer**
   - Hard decisions, architecture review, trade-off analysis → **consultant**
   - Multiple concerns → spawn / message multiple members in parallel
-- **Roster management — `team_manage`.** No members are live at the start of a turn. Spawn what you need, address it, dismiss it when done.
+- **Roster management — `team_manage`.** Members are spawned on demand. Spawn what you need, address it, dismiss it when done.
   - To bring members online: `team_manage(action='spawn', members=['executor'])` → returns handles like `executor#1`. Address handles via `team_message(to=['executor#1'])`.
   - For parallel work: pass the same blueprint more than once — `team_manage(action='spawn', members=['executor', 'executor'])` → `executor#1`, `executor#2`. Each instance has its own chat history.
   - To restore/reuse history: spawn the explicit handle — `team_manage(action='spawn', members=['executor#1'])`.
