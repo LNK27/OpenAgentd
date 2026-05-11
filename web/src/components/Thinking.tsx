@@ -6,9 +6,9 @@
  *
  *   - Outer card: 1px ``--color-border`` outline, ``rounded-md``, padded
  *     ``px-3 py-2.5``. Sits on the ambient surface (no fill of its own).
- *   - Header: chevron + label in Inter 13/500 ``--color-text-2`` plus a
- *     mono 11px ``--color-text-muted`` sub-hint ("tap to read" /
- *     "tap to collapse") that mirrors the pencil layout.
+ *   - Header: label in Inter 13/500 ``--color-text-2`` plus a mono 11px
+ *     ``--color-text-muted`` sub-hint ("tap to read" / "tap to collapse")
+ *     that mirrors the pencil layout.
  *   - Streaming: dots replace the sub-hint while content is still
  *     arriving so the label stays the visual anchor.
  *
@@ -25,7 +25,6 @@
 
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronRight } from 'lucide-react'
 import { ThinkingDots } from './motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
@@ -146,11 +145,6 @@ export function Thinking({ content, isStreaming }: ThinkingProps) {
         aria-expanded={expanded}
         aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
       >
-        <ChevronRight
-          size={14}
-          className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
-          aria-hidden
-        />
         <span className="flex-1 truncate text-[13px] font-medium text-(--color-text-2)">
           {label}
         </span>

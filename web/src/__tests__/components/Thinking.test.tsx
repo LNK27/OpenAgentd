@@ -46,6 +46,11 @@ describe("Thinking — rendering & toggle", () => {
     const ariaLabel = button.getAttribute("aria-label")
     expect(ariaLabel).toMatch(/Expand|Collapse/)
   })
+
+  it("does not render a chevron icon", () => {
+    const { container } = render(<Thinking content="x" />)
+    expect(container.querySelector("svg")).toBeNull()
+  })
 })
 
 describe("Thinking — label extraction", () => {
