@@ -143,11 +143,6 @@ export function TodosPopover({
         </div>
 
         <div className="scrollbar-none flex h-[min(76vh,36rem)] min-h-[28rem] flex-col overflow-x-auto overflow-y-hidden p-3">
-          {todos.length === 0 && (
-            <p className="mb-3 text-center font-(family-name:--font-hand) text-base text-(--color-text-subtle)">
-              No tasks yet — ask the agent to plan
-            </p>
-          )}
             <div className="grid min-h-0 min-w-[46rem] flex-1 grid-cols-4 divide-x divide-(--color-border)">
               {todosByStatus.map(({ status, todos: columnTodos }) => {
                 const Icon = STATUS_ICON[status]

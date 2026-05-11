@@ -458,7 +458,7 @@ Task-list popover surfaced from the agent topbar. Trigger is a `TopbarAction`; c
 
 - Surface: medium-width panel, small radius, `--color-surface` fill, 1px `--color-border` outline (no shadow ring), shadow at the depth scale because the panel floats over chat.
 - Header: mono uppercase 10px title ("Tasks"), mono completion counter ("3 / 8 done") aligned to the trailing edge.
-- Empty state: hand-drawn Caveat callout in `--color-text-subtle` ("No tasks yet — ask the agent to plan"). Same idiom as the rest of the app's empty surfaces.
+- Empty state: each status column shows a hand-drawn Caveat `Nothing here` callout in `--color-text-subtle`.
 
 **Item rules**
 

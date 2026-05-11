@@ -85,7 +85,7 @@ Each card shows `task_id`, priority, content, assigned/claimed agent (`claimed_b
 
 The popover header shows a `{done}/{total}` counter when the list is non-empty.
 A dot indicator on the button itself is shown when any item has `status === 'in_progress'`.
-Empty state: all four columns remain visible with per-column `Nothing here` messages and the board-level hint "No tasks yet — ask the agent to plan".
+Empty state: all four columns remain visible with per-column `Nothing here` messages.
 
 The board scrolls horizontally on narrow screens. Each non-empty column owns its own vertical scroll region with hidden scrollbar chrome, keeping the status headers fixed while task cards scroll.
 

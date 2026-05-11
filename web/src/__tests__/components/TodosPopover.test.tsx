@@ -16,7 +16,7 @@ describe('TodosPopover', () => {
       />,
     )
 
-    expect(screen.getByText('No tasks yet — ask the agent to plan')).toBeTruthy()
+    expect(screen.queryByText('No tasks yet — ask the agent to plan')).toBeNull()
     expect(screen.getByRole('region', { name: 'Pending tasks' })).toBeTruthy()
     expect(screen.getByRole('region', { name: 'Working tasks' })).toBeTruthy()
     expect(screen.getByRole('region', { name: 'Done tasks' })).toBeTruthy()
