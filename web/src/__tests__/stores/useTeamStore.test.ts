@@ -73,6 +73,22 @@ describe("newSession", () => {
     useTeamStore.getState().newSession();
     expect(useTeamStore.getState()._sessionGeneration).toBe(before + 1);
   });
+
+  it("aborts the active stream when starting a new session", () => {
+    const abort = new AbortController();
+    useTeamStore.setState({
+      sessionId: "streaming-session",
+      isConnected: true,
+      _abortController: abort,
+    });
+
+    useTeamStore.getState().newSession();
+
+    const s = useTeamStore.getState();
+    expect(abort.signal.aborted).toBe(true);
+    expect(s._abortController).toBeNull();
+    expect(s.isConnected).toBe(false);
+  });
 });
 
 // ── setActiveAgent ────────────────────────────────────────────────────────────

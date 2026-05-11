@@ -55,12 +55,15 @@ export const useTeamStore = create<TeamStore>()(
     cacheInvalidations: [],
 
     newSession: () => {
+      get()._abortController?.abort()
       set((state) => {
         const leadName = state.leadName
         state.sessionId = null
         state.sessionTitle = null
         state.isTeamWorking = false
+        state.isConnected = false
         state.error = null
+        state._abortController = null
         state._pendingMessages = []
         state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
         // Drop any pending cache invalidations from the previous
@@ -162,6 +165,7 @@ export const useTeamStore = create<TeamStore>()(
     connectStream: () => {
       const sessionId = get().sessionId
       if (!sessionId) return new AbortController()
+      const generation = get()._sessionGeneration
 
       get()._abortController?.abort()
       const abort = new AbortController()
@@ -170,11 +174,19 @@ export const useTeamStore = create<TeamStore>()(
       teamStream(
         sessionId,
         {
-          onEvent: (type, data) => get()._handleSSEEvent(type, data),
+          onEvent: (type, data) => {
+            const current = get()
+            if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+            current._handleSSEEvent(type, data)
+          },
           onError: (err) => {
+            const current = get()
+            if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             set((draft) => { draft.error = err.message; draft.isConnected = false })
           },
           onDone: () => {
+            const current = get()
+            if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             set((draft) => { draft.isConnected = false })
           },
         },

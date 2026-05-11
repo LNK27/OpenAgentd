@@ -579,6 +579,33 @@ describe("connectStream", () => {
 
     expect(useTeamStore.getState().isConnected).toBe(false)
   })
+
+  it("ignores stream events after newSession changes generation", () => {
+    let onEvent!: (type: string, data: unknown) => void
+    let onDone!: () => void
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onEvent: (type: string, data: unknown) => void; onDone?: () => void }) => {
+        onEvent = cbs.onEvent
+        onDone = cbs.onDone ?? (() => {})
+      }
+    )
+    useTeamStore.setState({
+      sessionId: "session-1",
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+
+    useTeamStore.getState().connectStream()
+    useTeamStore.getState().newSession()
+    onEvent("message", { agent: "lead", text: "stale token" })
+    onDone()
+
+    const state = useTeamStore.getState()
+    expect(state.sessionId).toBeNull()
+    expect(state.isTeamWorking).toBe(false)
+    expect(state.agentStreams.lead.currentBlocks).toHaveLength(0)
+  })
 })
 
 // ── loadTeamStatus ────────────────────────────────────────────────────────────
