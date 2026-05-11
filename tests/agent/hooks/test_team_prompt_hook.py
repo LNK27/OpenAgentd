@@ -346,6 +346,13 @@ class TestProtocolConstants:
         """LEAD_COMMUNICATION_RULES references team_message tool."""
         assert "team_message" in LEAD_COMMUNICATION_RULES
 
+    def test_lead_communication_rules_do_not_assume_empty_live_roster(self):
+        """Dynamic rosters may carry live handles across turns until dismissed."""
+        assert (
+            "No members are live at the start of a turn" not in LEAD_COMMUNICATION_RULES
+        )
+        assert "Members are spawned on demand" in LEAD_COMMUNICATION_RULES
+
     def test_member_communication_rules_enforces_team_message(self):
         """MEMBER_COMMUNICATION_RULES enforces team_message as ONLY communication method."""
         assert "team_message" in MEMBER_COMMUNICATION_RULES

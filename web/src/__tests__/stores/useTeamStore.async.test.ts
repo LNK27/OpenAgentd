@@ -594,6 +594,28 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
   })
 
+  it("marks historical members offline when they are absent from the live roster", async () => {
+    useTeamStore.setState({
+      agentNames: ["lead", "worker"],
+      agentStreams: {
+        lead: makeStream(),
+        worker: makeStream({ status: "idle" }),
+      },
+    })
+    mockTeamStatus.mockImplementation(() =>
+      Promise.resolve({
+        team: "team",
+        lead: { name: "lead", model: "gpt-4", state: "idle" },
+        members: [],
+      })
+    )
+
+    await useTeamStore.getState().loadTeamStatus()
+
+    expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
+    expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
+  })
+
   it("creates agent streams for all agents", async () => {
     await useTeamStore.getState().loadTeamStatus()
     const streams = useTeamStore.getState().agentStreams
@@ -629,6 +651,32 @@ describe("loadTeamStatus", () => {
     await useTeamStore.getState().loadTeamStatus()
     // Existing blocks preserved — only model is updated
     expect(useTeamStore.getState().agentStreams["lead"].blocks).toHaveLength(1)
+  })
+
+  it("does not revive an offline historical member when session history reloads", async () => {
+    useTeamStore.setState({
+      agentStreams: {
+        worker: makeStream({ status: "offline" }),
+      },
+    })
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [],
+        },
+        members: [{ name: "worker", session_id: "w-sess", messages: [] }],
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
   })
 
   it("sets error when teamStatus throws", async () => {

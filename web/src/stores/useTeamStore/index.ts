@@ -182,14 +182,22 @@ export const useTeamStore = create<TeamStore>()(
         const status = await teamStatus()
         if (status) {
           const allAgents = [status.lead, ...status.members]
+          const liveNames = allAgents.map((a) => a.name)
           set((draft) => {
             draft.leadName = status.lead.name
-            draft.agentNames = allAgents.map((a) => a.name)
+            const historicalNames = draft.agentNames.filter((name) => !liveNames.includes(name))
+            draft.agentNames = [...liveNames, ...historicalNames]
             allAgents.forEach((agent) => {
               if (!draft.agentStreams[agent.name]) {
                 draft.agentStreams[agent.name] = createDefaultAgentStream()
               }
               draft.agentStreams[agent.name].model = agent.model
+            })
+            historicalNames.forEach((name) => {
+              const stream = draft.agentStreams[name]
+              if (stream && name !== status.lead.name && stream.status !== 'error') {
+                stream.status = 'offline'
+              }
             })
             if (!draft.activeAgent && draft.agentNames.length > 0) {
               draft.activeAgent = draft.agentNames[0]
@@ -246,6 +254,7 @@ export const useTeamStore = create<TeamStore>()(
 
           // Load member blocks
           history.members.forEach((member) => {
+            const existingStatus = draft.agentStreams[member.name]?.status
             if (!draft.agentStreams[member.name]) {
               draft.agentStreams[member.name] = createDefaultAgentStream()
             }
@@ -255,7 +264,8 @@ export const useTeamStore = create<TeamStore>()(
             draft.agentStreams[member.name].currentBlocks = []
             draft.agentStreams[member.name].currentText = ''
             draft.agentStreams[member.name].currentThinking = ''
-            draft.agentStreams[member.name].status = 'idle'
+            draft.agentStreams[member.name].status =
+              existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
             const memberUsage = sumUsageFromMessages(member.messages)
             draft.agentStreams[member.name].usage = memberUsage
             // Seed _completionBase so next live turn accumulates correctly

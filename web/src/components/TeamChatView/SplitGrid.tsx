@@ -23,7 +23,8 @@ interface SplitGridProps {
 export function SplitGrid({
   agentNames, leadName, agentStreams,
 }: SplitGridProps) {
-  if (agentNames.length === 0) return null
+  const visibleAgentNames = agentNames.filter((name) => agentStreams[name])
+  if (visibleAgentNames.length === 0) return null
 
   const renderPanel = (name: string) => {
     const stream = agentStreams[name]
@@ -39,15 +40,15 @@ export function SplitGrid({
     )
   }
 
-  const columnCount = Math.ceil(Math.sqrt(agentNames.length))
-  const baseColumnSize = Math.floor(agentNames.length / columnCount)
-  const extraColumns = agentNames.length % columnCount
+  const columnCount = Math.ceil(Math.sqrt(visibleAgentNames.length))
+  const baseColumnSize = Math.floor(visibleAgentNames.length / columnCount)
+  const extraColumns = visibleAgentNames.length % columnCount
   const columns: string[][] = []
   let offset = 0
 
   for (let col = 0; col < columnCount; col += 1) {
     const size = baseColumnSize + (col >= columnCount - extraColumns ? 1 : 0)
-    columns.push(agentNames.slice(offset, offset + size))
+    columns.push(visibleAgentNames.slice(offset, offset + size))
     offset += size
   }
 

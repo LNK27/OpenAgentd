@@ -141,7 +141,8 @@ spawning a peer mid-turn.
 - **Frontend roster display.** `/team/agents` exposes `blueprints` with
   `live_instances`; the web UI lists them in the agent capabilities drawer.
   Split view follows the live `agentNames` list, so spawned instances appear
-  automatically as their stream events arrive.
+  automatically as their stream events arrive. Historical members missing from
+  the live roster remain visible but render as `offline`.
 
 ## Alternative designs considered
 
