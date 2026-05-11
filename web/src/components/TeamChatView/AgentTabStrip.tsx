@@ -49,6 +49,7 @@ export function AgentTabStrip({
         const isFocused = focusedAgent === name
         const isWorking = stream?.status === 'working'
         const isError = stream?.status === 'error'
+        const isOffline = stream?.status === 'offline'
         const isLead = name === leadName
 
         if (isOpen) {
@@ -63,7 +64,7 @@ export function AgentTabStrip({
               }`}
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : 'bg-(--color-success)'
+                isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
               }`} />
               <span className="max-w-30 truncate">
                 {name}{isLead && <span className="ml-1 text-(--color-text-subtle)">·</span>}

@@ -222,8 +222,9 @@ export function AgentPane({
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
   const isWorking = stream.status === 'working'
   const isError   = stream.status === 'error'
+  const isOffline = stream.status === 'offline'
   // Me show waiting indicator when a user message exists but the agent hasn't woken yet
-  const isPending = !isWorking && !isError && stream.currentBlocks.some((b) => b.type === 'user')
+  const isPending = !isWorking && !isError && !isOffline && stream.currentBlocks.some((b) => b.type === 'user')
 
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -286,7 +287,7 @@ export function AgentPane({
     : isLead
     ? 'border-(--color-border-strong)'
     : 'border-(--color-border)'
-  const headerAccent = isError ? 'border-b-(--color-error)' : isWorking ? 'border-b-(--color-accent)' : isLead ? 'border-b-(--color-border-strong)' : 'border-b-(--color-border)'
+  const headerAccent = isError ? 'border-b-(--color-error)' : isWorking ? 'border-b-(--color-accent)' : isOffline ? 'border-b-(--color-text-subtle)' : isLead ? 'border-b-(--color-border-strong)' : 'border-b-(--color-border)'
 
   // Drag model (both split-grid and unified modes):
   //   • Only the GripVertical handle initiates drag (draggable lives on the handle).
@@ -348,7 +349,7 @@ export function AgentPane({
              <span className="text-(--color-text-muted)">{stream.model}</span>
            )}
            <span className={`h-1.5 w-1.5 rounded-full ${
-             isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : 'bg-(--color-success)'
+             isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
            }`} />
          </div>
          {onClose && (
@@ -369,7 +370,7 @@ export function AgentPane({
         {isEmpty && !isWorking && (
             <div className="flex h-full flex-col items-center justify-center gap-3 py-8">
               <img src={OctobotMascot} className="opacity-30 grayscale" width={56} height={56} alt="Idle octobot" />
-              <p className="text-xs text-(--color-text-subtle)">{isError ? stream.lastError || 'Error' : 'Waiting…'}</p>
+              <p className="text-xs text-(--color-text-subtle)">{isError ? stream.lastError || 'Error' : isOffline ? 'Offline' : 'Waiting…'}</p>
             </div>
           )}
 

@@ -369,12 +369,15 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
               const isActive = activeAgent === name
               const isWorking = stream?.status === 'working'
               const isError = stream?.status === 'error'
+              const isOffline = stream?.status === 'offline'
 
               // Override dot color when status diverges from idle.
               const dotClassName = isError
                 ? 'bg-(--color-error)'
                 : isWorking
                   ? 'animate-pulse bg-(--color-accent)'
+                  : isOffline
+                    ? 'bg-(--color-text-subtle) opacity-50'
                   : undefined
 
               if (isAgentRole(name)) {
@@ -403,6 +406,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
                   <span className={`h-1.5 w-1.5 rounded-full ${
                     isError ? 'bg-(--color-error)'
                     : isWorking ? 'animate-pulse bg-(--color-accent)'
+                    : isOffline ? 'bg-(--color-text-subtle) opacity-50'
                     : 'bg-(--color-success)'
                   }`} />
                   {name}

@@ -73,7 +73,7 @@ export const useTeamStore = create<TeamStore>()(
           state.agentStreams[name].currentBlocks = []
           state.agentStreams[name].currentText = ''
           state.agentStreams[name].currentThinking = ''
-          state.agentStreams[name].status = 'available'
+          state.agentStreams[name].status = 'idle'
           state.agentStreams[name].lastError = null
           state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
           state.agentStreams[name]._completionBase = 0
@@ -237,7 +237,7 @@ export const useTeamStore = create<TeamStore>()(
             draft.agentStreams[leadName].currentBlocks = []
             draft.agentStreams[leadName].currentText = ''
             draft.agentStreams[leadName].currentThinking = ''
-            draft.agentStreams[leadName].status = 'available'
+            draft.agentStreams[leadName].status = 'idle'
             const leadUsage = sumUsageFromMessages(history.lead.messages)
             draft.agentStreams[leadName].usage = leadUsage
             // Seed _completionBase so next live turn accumulates correctly
@@ -255,7 +255,7 @@ export const useTeamStore = create<TeamStore>()(
             draft.agentStreams[member.name].currentBlocks = []
             draft.agentStreams[member.name].currentText = ''
             draft.agentStreams[member.name].currentThinking = ''
-            draft.agentStreams[member.name].status = 'available'
+            draft.agentStreams[member.name].status = 'idle'
             const memberUsage = sumUsageFromMessages(member.messages)
             draft.agentStreams[member.name].usage = memberUsage
             // Seed _completionBase so next live turn accumulates correctly

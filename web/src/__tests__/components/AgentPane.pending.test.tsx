@@ -29,7 +29,7 @@ function makeStream(overrides: Partial<AgentStream> = {}): AgentStream {
     currentBlocks: [],
     currentText: "",
     currentThinking: "",
-    status: "available",
+    status: "idle",
     usage: {
       promptTokens: 0,
       completionTokens: 0,
@@ -50,9 +50,9 @@ function renderPanel(stream: AgentStream) {
 // ── tests ────────────────────────────────────────────────────────────────────
 
 describe("AgentPane — pending dots indicator", () => {
-  it("shows 3 bounce dots when status=available but currentBlocks has a user block (isPending)", () => {
+  it("shows 3 bounce dots when status=idle but currentBlocks has a user block (isPending)", () => {
     const stream = makeStream({
-      status: "available",
+      status: "idle",
       currentBlocks: [makeUserBlock("u1", "Hello")],
     })
     const { container } = renderPanel(stream)
@@ -70,9 +70,9 @@ describe("AgentPane — pending dots indicator", () => {
     expect(dots.length).toBe(3)
   })
 
-  it("does not show bounce dots when status=available and currentBlocks is empty", () => {
+  it("does not show bounce dots when status=idle and currentBlocks is empty", () => {
     const stream = makeStream({
-      status: "available",
+      status: "idle",
       currentBlocks: [],
     })
     const { container } = renderPanel(stream)
@@ -136,9 +136,9 @@ describe("AgentPane — pending dots indicator", () => {
     expect(workingText).toBeNull()
   })
 
-  it("shows 'Waiting…' text when available with no blocks", () => {
+  it("shows 'Waiting…' text when idle with no blocks", () => {
     const stream = makeStream({
-      status: "available",
+      status: "idle",
       currentBlocks: [],
     })
     renderPanel(stream)
@@ -177,9 +177,9 @@ describe("AgentPane — pending dots indicator", () => {
     expect(errorBox?.textContent).toContain("API timeout")
   })
 
-  it("shows bounce dots when status=available with user block even if there are finalized blocks", () => {
+  it("shows bounce dots when status=idle with user block even if there are finalized blocks", () => {
     const stream = makeStream({
-      status: "available",
+      status: "idle",
       blocks: [makeTextBlock("b1", "Previous response")],
       currentBlocks: [makeUserBlock("u1", "New question")],
     })

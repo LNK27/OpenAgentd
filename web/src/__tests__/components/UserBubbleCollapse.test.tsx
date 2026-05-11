@@ -442,7 +442,7 @@ describe("AgentPane — UserBubble collapse feature", () => {
     currentBlocks: [],
     currentText: "",
     currentThinking: "",
-    status: "available",
+    status: "idle",
     usage: {
       promptTokens: 0,
       completionTokens: 0,

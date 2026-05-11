@@ -87,7 +87,7 @@ function makeStream(overrides: object = {}) {
   return {
     blocks: [] as ContentBlock[],
     currentBlocks: [] as ContentBlock[],
-    status: "available" as const,
+    status: "idle" as const,
     usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
     model: null,
     lastError: null,
@@ -135,8 +135,8 @@ beforeEach(() => {
   mockTeamStatus.mockImplementation(() =>
     Promise.resolve({
       team: "team",
-      lead: { name: "lead", model: "gpt-4", state: "available" },
-      members: [{ name: "worker", model: "claude-3", state: "available" }],
+      lead: { name: "lead", model: "gpt-4", state: "idle" },
+      members: [{ name: "worker", model: "claude-3", state: "idle" }],
     })
   )
   mockTeamHistory.mockImplementation(() =>
@@ -425,11 +425,11 @@ describe("sendMessage: queue behaviour", () => {
     expect(pending[0].content).toBe("queued message")
   })
 
-  it("does NOT queue when only members are working (lead is available)", async () => {
+  it("does NOT queue when only members are working (lead is idle)", async () => {
     useTeamStore.setState({
       leadName: "lead",
       agentStreams: {
-        lead: makeStream({ status: "available" as const }),
+        lead: makeStream({ status: "idle" as const }),
         worker: makeStream({ status: "working" as const }),
       },
     })
@@ -910,7 +910,7 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().isTeamWorking).toBe(false)
   })
 
-  it("resets lead agent status to available when switching away from streaming session", async () => {
+  it("resets lead agent status to idle when switching away from streaming session", async () => {
     useTeamStore.setState({
       isTeamWorking: true,
       agentStreams: {
@@ -920,10 +920,10 @@ describe("loadSession", () => {
 
     await useTeamStore.getState().loadSession("session-b")
 
-    expect(useTeamStore.getState().agentStreams["lead"].status).toBe("available")
+    expect(useTeamStore.getState().agentStreams["lead"].status).toBe("idle")
   })
 
-  it("resets member agent status to available when switching away from streaming session", async () => {
+  it("resets member agent status to idle when switching away from streaming session", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
         lead: {
@@ -948,7 +948,7 @@ describe("loadSession", () => {
 
     await useTeamStore.getState().loadSession("session-b")
 
-    expect(useTeamStore.getState().agentStreams["worker"].status).toBe("available")
+    expect(useTeamStore.getState().agentStreams["worker"].status).toBe("idle")
   })
 
   it("clears currentText scratch buffer when switching sessions mid-stream", async () => {
