@@ -103,4 +103,18 @@ describe("SplitGrid automatic layout", () => {
     expect(columns[0][0]).toContain("lead")
     expect(screen.queryByText("executor#1")).toBeNull()
   })
+
+  it("hides offline members from split panes", () => {
+    const streams = {
+      ...makeStreams(["lead", "executor#1"]),
+      "executor#1": makeStream({ status: "offline" }),
+    }
+
+    const { root } = renderGrid(["lead", "executor#1"], streams)
+
+    const columns = columnTexts(root)
+    expect(columns).toHaveLength(1)
+    expect(columns[0][0]).toContain("lead")
+    expect(screen.queryByText("executor#1")).toBeNull()
+  })
 })

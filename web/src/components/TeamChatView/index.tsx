@@ -103,6 +103,8 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
   const activeCurrentBlocks = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.currentBlocks : undefined)
   const activeStatus        = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.status : undefined)
 
+  const splitAgentNames = agentNames.filter((name) => agentStreams[name]?.status !== 'offline')
+
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
 
@@ -407,7 +409,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
 
             {effectiveViewMode === 'split' && (
               <span className="text-xs text-(--color-text-muted)">
-                Split · {agentNames.length} agents
+                Split · {splitAgentNames.length} agents
               </span>
             )}
 
@@ -476,10 +478,10 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
         </header>
 
         {/* Content area */}
-        {effectiveViewMode === 'split' && agentNames.length > 0 ? (
+        {effectiveViewMode === 'split' && splitAgentNames.length > 0 ? (
           <div className="min-h-0 flex-1 p-3">
             <SplitGrid
-              agentNames={agentNames}
+              agentNames={splitAgentNames}
               leadName={leadName}
               agentStreams={agentStreams}
             />

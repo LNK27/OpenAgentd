@@ -199,7 +199,7 @@ describe("InputBar", () => {
     render(<InputBar onSubmit={onSubmit} isStreaming={true} placeholder="Ask anything…" />)
 
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    expect(textarea.placeholder).toMatch(/interrupt/)
+    expect(textarea.placeholder).toMatch(/Queue a follow-up/)
   })
 
   it("exposes keyboard shortcuts via send button tooltip", () => {

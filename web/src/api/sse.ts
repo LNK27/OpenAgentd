@@ -90,6 +90,7 @@ export function readSSE(response: Response, callbacks: SSECallbacks): void {
         }
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       callbacks.onError?.(err instanceof Error ? err : new Error(String(err)))
     }
   }

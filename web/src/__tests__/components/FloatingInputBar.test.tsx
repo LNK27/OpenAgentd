@@ -3,29 +3,48 @@ import { useRef } from 'react'
 import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingInputBar } from '@/components/FloatingInputBar'
+import { useTeamStore } from '@/stores/useTeamStore'
+import type { InputBarHandle } from '@/components/InputBar'
 
 const STORAGE_KEY = 'oa-input-position'
 
 afterEach(cleanup)
 beforeEach(() => {
   localStorage.clear()
+  useTeamStore.setState({ _pendingMessages: [] })
 })
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()))
+}
 
 // Test harness — provides a bounds container with a stable, measurable size.
 function Harness(props: {
   onSubmit?: (message: string, files?: File[]) => void
+  onStop?: () => void
   placeholder?: string
+  exposeFocus?: boolean
+  isStreaming?: boolean
 }) {
   const boundsRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<InputBarHandle>(null)
   return (
     <div
       ref={boundsRef}
       data-testid="bounds"
       style={{ position: 'relative', width: 1200, height: 800 }}
     >
+      {props.exposeFocus && (
+        <button type="button" onClick={() => inputRef.current?.focus()}>
+          Focus input
+        </button>
+      )}
       <FloatingInputBar
+        ref={inputRef}
         boundsRef={boundsRef}
         onSubmit={props.onSubmit ?? (() => {})}
+        onStop={props.onStop}
+        isStreaming={props.isStreaming}
         placeholder={props.placeholder ?? 'Message…'}
       />
     </div>
@@ -117,12 +136,59 @@ describe('FloatingInputBar', () => {
     render(<Harness placeholder="Ask the team…" />)
     // Placeholder is empty while the bar is minimized so its ghost
     // doesn't bleed through the slot opacity fade. The minimized
-    // strip's Send button (only one with that accessible name) does
-    // double-duty as "expand input bar" — clicking it flips
-    // ``minimized=false`` and the textarea's placeholder updates.
-    const sendBtn = screen.getByRole('button', { name: 'Expand input bar' })
-    await user.click(sendBtn)
+    // The collapsed strip's chat button expands the bar so the
+    // textarea's placeholder becomes visible.
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
     const textarea = await screen.findByRole('textbox', { name: 'Message input' })
     expect(textarea.getAttribute('placeholder')).toBe('Ask the team…')
+  })
+
+  it('keeps the collapsed strip available while streaming', () => {
+    render(<Harness isStreaming onStop={() => {}} />)
+
+    const textarea = screen.getByLabelText('Message input')
+    expect(textarea.getAttribute('disabled')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Attach file' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Voice input disabled' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Stop generation' })).toBeTruthy()
+  })
+
+  it('shows queued message details above the queue banner only after expanding', async () => {
+    const user = userEvent.setup()
+    useTeamStore.setState({
+      _pendingMessages: [
+        { id: 'pm-1', content: 'first queued message' },
+        { id: 'pm-2', content: 'second queued message' },
+      ],
+    })
+
+    render(<Harness />)
+
+    const banner = screen.getByRole('button', { name: /2 messages awaiting/i })
+    expect(banner).toBeTruthy()
+    expect(screen.queryByText('first queued message')).toBeNull()
+
+    await user.click(banner)
+
+    const firstMessage = screen.getByText('first queued message')
+    expect(firstMessage).toBeTruthy()
+    expect(
+      firstMessage.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('expands and focuses the textarea through its imperative focus handle', async () => {
+    const user = userEvent.setup()
+    render(<Harness exposeFocus />)
+
+    const textarea = screen.getByLabelText('Message input')
+    expect(textarea.getAttribute('disabled')).not.toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Focus input' }))
+    await act(nextFrame)
+
+    expect(textarea.getAttribute('disabled')).toBeNull()
+    expect(document.activeElement).toBe(textarea)
   })
 })

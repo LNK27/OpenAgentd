@@ -49,18 +49,23 @@ describe("newSession", () => {
     expect(s.isTeamWorking).toBe(false);
   });
 
-  it("resets agent blocks but keeps agentNames", () => {
+  it("resets agent blocks and returns the live roster to the lead", () => {
     useTeamStore.setState({
+      leadName: "lead",
       agentNames: ["lead", "worker"],
       agentStreams: {
         lead: makeStream({ blocks: [{ id: "b1", type: "text" as const, content: "old" }] }),
+        worker: makeStream({ status: "working" }),
       },
+      activeAgent: "worker",
     });
     useTeamStore.getState().newSession();
     const s = useTeamStore.getState();
-    expect(s.agentNames).toEqual(["lead", "worker"]);
+    expect(s.agentNames).toEqual(["lead"]);
+    expect(s.activeAgent).toBe("lead");
     expect(s.agentStreams.lead.blocks).toHaveLength(0);
     expect(s.agentStreams.lead.currentBlocks).toHaveLength(0);
+    expect(s.agentStreams.worker.status).toBe("offline");
   });
 
   it("bumps _sessionGeneration", () => {

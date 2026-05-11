@@ -56,6 +56,7 @@ export const useTeamStore = create<TeamStore>()(
 
     newSession: () => {
       set((state) => {
+        const leadName = state.leadName
         state.sessionId = null
         state.sessionTitle = null
         state.isTeamWorking = false
@@ -67,13 +68,18 @@ export const useTeamStore = create<TeamStore>()(
         // and would target the wrong cache after the reset.
         state.cacheInvalidations = []
         state._pendingMessages = []
+        // A fresh chat starts with only the lead. Historical member streams can
+        // remain cached for prior sessions, but they must not stay in the live roster.
+        state.agentNames = leadName ? [leadName] : []
+        state.activeAgent = leadName ?? null
+
         // Reset each agent's blocks but keep identity (name/model)
         Object.keys(state.agentStreams).forEach((name) => {
           state.agentStreams[name].blocks = []
           state.agentStreams[name].currentBlocks = []
           state.agentStreams[name].currentText = ''
           state.agentStreams[name].currentThinking = ''
-          state.agentStreams[name].status = 'idle'
+          state.agentStreams[name].status = name === leadName ? 'idle' : 'offline'
           state.agentStreams[name].lastError = null
           state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
           state.agentStreams[name]._completionBase = 0

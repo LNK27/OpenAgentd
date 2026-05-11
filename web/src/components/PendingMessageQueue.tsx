@@ -13,7 +13,7 @@ interface PendingMessageQueueProps {
 export function PendingMessageQueue({ inputRef }: PendingMessageQueueProps) {
   const messages = useTeamStore((s) => s._pendingMessages)
   const removePendingMessage = useTeamStore((s) => s.removePendingMessage)
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
 
   if (messages.length === 0) return null
 
@@ -25,11 +25,6 @@ export function PendingMessageQueue({ inputRef }: PendingMessageQueueProps) {
 
   return (
     <div className="mb-2 flex flex-col gap-1.5 px-1">
-      <QueueBanner
-        count={messages.length}
-        expanded={expanded}
-        onToggle={() => setExpanded((v) => !v)}
-      />
       <AnimatePresence initial={false}>
         {expanded && messages.map((msg) => (
           <motion.div
@@ -63,6 +58,11 @@ export function PendingMessageQueue({ inputRef }: PendingMessageQueueProps) {
           </motion.div>
         ))}
       </AnimatePresence>
+      <QueueBanner
+        count={messages.length}
+        expanded={expanded}
+        onToggle={() => setExpanded((v) => !v)}
+      />
     </div>
   )
 }

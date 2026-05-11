@@ -23,7 +23,10 @@ interface SplitGridProps {
 export function SplitGrid({
   agentNames, leadName, agentStreams,
 }: SplitGridProps) {
-  const visibleAgentNames = agentNames.filter((name) => agentStreams[name])
+  const visibleAgentNames = agentNames.filter((name) => {
+    const stream = agentStreams[name]
+    return stream && stream.status !== 'offline'
+  })
   if (visibleAgentNames.length === 0) return null
 
   const renderPanel = (name: string) => {
