@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from app.agent.sandbox import SandboxConfig, set_sandbox
 from app.agent.tools.builtin.todo import (
@@ -399,6 +400,88 @@ async def test_claim_unblocked_assigned_task_marks_in_progress(
     assert store["items"][1]["status"] == "in_progress"
     assert store["items"][1]["claimed_by"] == "member#2"
     assert "[task_2] [in_progress]" in result
+
+
+@pytest.mark.asyncio
+async def test_claim_requires_exact_handle_assignment(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """A spawned instance cannot claim work assigned to another handle."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Implement",
+                status="pending",
+                priority="high",
+                assigned_to="executor#2",
+            )
+        ],
+        _state=None,
+    )
+    state = MockState(metadata={"agent_name": "executor#1"})
+
+    await _todo_manage(
+        actions=[ClaimAction(action="claim", task_id="task_1")],
+        _state=state,
+    )
+
+    store = json.loads(todos_file.read_text())
+    assert store["items"][0]["status"] == "pending"
+    assert store["items"][0]["claimed_by"] is None
+
+
+@pytest.mark.asyncio
+async def test_lead_cannot_claim_member_assigned_task_by_starting_it(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Lead status updates must not claim work assigned to another agent."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Implement",
+                status="pending",
+                priority="high",
+                assigned_to="executor#1",
+            )
+        ],
+        _state=MockState(metadata={"agent_name": "openagentd"}),
+    )
+
+    result = await _todo_manage(
+        actions=[UpdateAction(action="update", task_id="task_1", status="in_progress")],
+        _state=MockState(metadata={"agent_name": "openagentd"}),
+    )
+
+    store = json.loads(todos_file.read_text())
+    assert store["items"][0]["status"] == "pending"
+    assert store["items"][0]["claimed_by"] is None
+    assert "[task_1] [pending]" in result
+
+
+def test_multi_assignee_is_rejected() -> None:
+    """assigned_to is a single claimable owner, not a group expression."""
+    with pytest.raises(ValidationError):
+        CreateAction(
+            action="create",
+            content="Smoke members",
+            status="pending",
+            priority="high",
+            assigned_to="executor/explorer",
+        )
+
+
+def test_blueprint_assignee_is_rejected() -> None:
+    """assigned_to must be a concrete spawned handle."""
+    with pytest.raises(ValidationError):
+        CreateAction(
+            action="create",
+            content="Smoke executor",
+            status="pending",
+            priority="high",
+            assigned_to="executor",
+        )
 
 
 @pytest.mark.asyncio

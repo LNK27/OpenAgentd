@@ -421,10 +421,10 @@ Each item has these fields:
 | `status` | `pending` \| `in_progress` \| `completed` \| `cancelled` |
 | `priority` | `high` \| `medium` \| `low` |
 | `dependencies` | List of prerequisite task IDs that must be `completed` before claim/start |
-| `assigned_to` | Optional agent handle assigned to the task |
+| `assigned_to` | Optional concrete agent handle assigned to the task, e.g. `executor#1` |
 | `claimed_by` | Optional agent handle that claimed the task |
 
-For dependent team work, create downstream tasks with `dependencies=["task_1"]` and keep them `pending`. Members call `claim` before starting; claims are rejected while dependencies are incomplete, so blocked agents do not start early.
+For team work, spawn members before assigning their todos and use the returned concrete handle in `assigned_to` (for example, `executor#1`, not `executor` or `executor/explorer`). For dependent team work, create downstream tasks with `dependencies=["task_1"]` and keep them `pending`. Members call `claim` before starting; claims are rejected while dependencies are incomplete, assigned to another handle, or already claimed, so blocked agents do not start early.
 
 **Frontend:** `tool_call`, `tool_start`, and `tool_end` SSE events for `todo_manage` are suppressed in the UI — no tool block is rendered in the chat. `tool_end` still invalidates `queryKeys.todos(sessionId)`, refetching `GET /api/team/sessions/{id}/todos`. History reload (`parseTeamBlocks`) also filters out `todo_manage` tool calls so they never appear on page refresh. The **Todos** popover in the chat header (`Ctrl+T`) displays the result — see [`documents/docs/web/todos.md`](../../docs/web/todos.md).
 

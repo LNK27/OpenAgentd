@@ -512,7 +512,7 @@ Response model: `TodosResponse` (Pydantic). Each `TodoItemResponse`:
 | `status` | string | `pending` \| `in_progress` \| `completed` \| `cancelled` |
 | `priority` | string | `high` \| `medium` \| `low` |
 | `dependencies` | string[] | Prerequisite task IDs |
-| `assigned_to` | string \| null | Agent handle assigned to the task |
+| `assigned_to` | string \| null | Concrete agent handle assigned to the task, e.g. `executor#1` |
 | `claimed_by` | string \| null | Agent handle that claimed the task |
 
 Returns `{todos: []}` when `.todos.json` does not exist yet. `session_id` must be a valid UUID (400 on malformed).

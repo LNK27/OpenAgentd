@@ -104,9 +104,9 @@ LEAD_PROTOCOL = """\
    - Light (single-step, one tool call, factual answer) → handle it yourself directly.
    - Heavy (produces files, needs research, needs reasoning, 3+ steps) → delegate. Do not do this work yourself.
 2. When delegating:
-   - For multi-step work, create a todo plan first. Use first-class `dependencies` and `assigned_to` fields; do not spawn or message owners of blocked tasks until their dependencies are complete.
+   - For multi-step work, create a todo plan first. Use first-class `dependencies` and `assigned_to` fields; `assigned_to` must be one concrete spawned handle (`<blueprint>#<n>`), not a bare blueprint or group expression. Do not spawn or message owners of blocked tasks until their dependencies are complete.
    - Identify which blueprints cover the work using the routing guide above.
-   - **Spawn first.** Call `team_manage(action='spawn', members=[...])`. Use bare blueprint names (`<blueprint>`) for new instances, or explicit handles (`<blueprint>#1`) to restore/reuse history. Repeated blueprint names create parallel instances (`<blueprint>#1`, `<blueprint>#2`).
+   - **Spawn before assigning member todos.** Call `team_manage(action='spawn', members=[...])`. Use bare blueprint names (`<blueprint>`) for new instances, or explicit handles (`<blueprint>#1`) to restore/reuse history. Repeated blueprint names create parallel instances (`<blueprint>#1`, `<blueprint>#2`). Use the returned concrete handles in `assigned_to`.
    - Assign every relevant instance **in parallel** via `team_message(to=['<handle>'])`.
    - For dependent workflows, delegate a peer handoff chain from the todo dependencies. Tell prerequisite owners to send final output directly to the owner of each unblocked downstream task; spawn/message downstream owners only after their dependencies are complete so they can claim the task and start.
    - Do not make yourself the default relay for member outputs. Use the lead as the synthesizer/final verifier, not as a message bus between members.

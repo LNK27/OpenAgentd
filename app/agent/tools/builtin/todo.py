@@ -68,6 +68,7 @@ class CreateAction(BaseModel):
     )
     assigned_to: str | None = Field(
         default=None,
+        pattern=r"^[^#,/\s]+#\d+$",
         description="Agent handle assigned to this task, if any.",
     )
 
@@ -90,6 +91,7 @@ class UpdateAction(BaseModel):
     )
     assigned_to: str | None = Field(
         default=None,
+        pattern=r"^[^#,/\s]+#\d+$",
         description="Replacement agent handle assigned to this task.",
     )
 
@@ -303,6 +305,12 @@ def _can_member_update(item: dict, actor: str | None) -> bool:
     return item.get("claimed_by") == actor or item.get("assigned_to") == actor
 
 
+def _assignee_matches_actor(assigned_to: Any, actor: str | None) -> bool:
+    if not isinstance(assigned_to, str) or actor is None:
+        return False
+    return assigned_to == actor
+
+
 async def _todo_manage(
     actions: Annotated[
         list[AnyAction],
@@ -356,6 +364,13 @@ async def _apply_actions(
                     log_parts.append(
                         f"blocked {new_id}: waiting for {', '.join(blocked)}"
                     )
+                elif act.assigned_to is not None and not _assignee_matches_actor(
+                    act.assigned_to, actor
+                ):
+                    status = "pending"
+                    log_parts.append(
+                        f"not_assigned {new_id}: assigned to {act.assigned_to}"
+                    )
             store["counter"] += 1
             store["items"].append(
                 {
@@ -399,6 +414,14 @@ async def _apply_actions(
                                 log_parts.append(
                                     f"blocked {act.task_id}: waiting for {', '.join(blocked)}"
                                 )
+                            elif item.get(
+                                "assigned_to"
+                            ) is not None and not _assignee_matches_actor(
+                                item.get("assigned_to"), actor
+                            ):
+                                log_parts.append(
+                                    f"not_assigned {act.task_id}: assigned to {item.get('assigned_to')}"
+                                )
                             else:
                                 item["status"] = act.status
                                 item["claimed_by"] = item.get("claimed_by") or actor
@@ -420,7 +443,9 @@ async def _apply_actions(
                 log_parts.append(f"claim_missing_actor {act.task_id}")
                 continue
             assigned_to = item.get("assigned_to")
-            if assigned_to is not None and assigned_to != actor:
+            if assigned_to is not None and not _assignee_matches_actor(
+                assigned_to, actor
+            ):
                 log_parts.append(
                     f"not_assigned {act.task_id}: assigned to {assigned_to}"
                 )
