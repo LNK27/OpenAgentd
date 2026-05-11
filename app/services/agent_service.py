@@ -388,7 +388,9 @@ async def dispatch_user_message(
 async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]:
     """Cancel all working team members. Returns the cancelled member names."""
     from app.agent.schemas.chat import HumanMessage
+    from app.agent.tools.builtin.todo import release_in_progress_for_actor
     from app.core.db import resolve_db_factory
+    from app.core.paths import workspace_dir
     from app.services.chat_service import save_message
 
     names: list[str] = []
@@ -399,8 +401,20 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
             if member.state != "working":
                 continue
             names.append(member.name)
-            content = f"[{member.name}]: Stopped before completing assigned work."
             sid = session_id or getattr(team.lead, "session_id", None)
+            released = (
+                release_in_progress_for_actor(workspace_dir(sid), member.name)
+                if sid
+                else []
+            )
+            suffix = (
+                f" In-progress todos reset to pending: {', '.join(released)}."
+                if released
+                else ""
+            )
+            content = (
+                f"[{member.name}]: Stopped before completing assigned work.{suffix}"
+            )
             if sid:
                 try:
                     db_factory = resolve_db_factory(team.lead.db_factory)

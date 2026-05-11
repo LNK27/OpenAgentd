@@ -173,20 +173,16 @@ class TestWorkerErrorHandling:
         team = team_with_db
         worker = team.members["worker"]
 
-        # Stop lead from consuming messages so we can inspect the inbox
-        lead = team.lead
-        lead.agent.run = AsyncMock(return_value=None)
-
-        worker.agent.run = AsyncMock(side_effect=RuntimeError("boom"))
-
         await team.start()
+        team.lead.state = "working"
 
-        msg = Message(from_agent="lead", to_agent="worker", content="[lead]: task")
-        await team.mailbox.send(to="worker", message=msg)
-        await asyncio.sleep(0.1)
+        await worker._on_turn_error(RuntimeError("boom"))
 
-        # Worker should be in error state after error
-        assert worker.state == "error"
+        notice = team.mailbox.receive_nowait("lead")
+        assert notice.from_agent == "worker"
+        assert notice.to_agent == "lead"
+        assert "System error" in notice.content
+        assert "temporarily unavailable" in notice.content
 
         await team.stop()
 

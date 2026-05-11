@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from loguru import logger
@@ -167,6 +168,38 @@ def _load_store() -> dict:
 def _save_store(store: dict) -> None:
     path = _todos_path()
     path.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def release_in_progress_for_actor(workspace_root: Path, actor: str) -> list[str]:
+    """Release an actor's unfinished todos for reassignment."""
+    path = workspace_root / TODOS_FILENAME
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    store = _normalize_store(data if isinstance(data, dict) else {})
+    released: list[str] = []
+    for item in store.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") in {"completed", "cancelled"}:
+            continue
+        if item.get("claimed_by") != actor and item.get("assigned_to") != actor:
+            continue
+        if item.get("status") == "in_progress":
+            item["status"] = "pending"
+        item["claimed_by"] = None
+        if item.get("assigned_to") == actor:
+            item["assigned_to"] = None
+        if isinstance(item.get("task_id"), str):
+            released.append(item["task_id"])
+    if released:
+        path.write_text(
+            json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    return released
 
 
 def _format_items(items: list[dict]) -> str:

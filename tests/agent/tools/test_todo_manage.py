@@ -29,6 +29,7 @@ from app.agent.tools.builtin.todo import (
     ReadAction,
     UpdateAction,
     _todo_manage,
+    release_in_progress_for_actor,
     todo_manage,
     todo_manage_member,
 )
@@ -53,6 +54,59 @@ def tmp_sandbox(tmp_path: Path) -> SandboxConfig:
 def todos_file(tmp_sandbox: SandboxConfig) -> Path:
     """Return the path to .todos.json in the sandbox."""
     return tmp_sandbox.workspace_root / ".todos.json"
+
+
+def test_release_in_progress_for_actor_resets_claimed_tasks(tmp_path: Path) -> None:
+    todos = tmp_path / ".todos.json"
+    todos.write_text(
+        json.dumps(
+            {
+                "counter": 3,
+                "items": [
+                    {
+                        "task_id": "task_1",
+                        "content": "stopped work",
+                        "status": "in_progress",
+                        "priority": "high",
+                        "dependencies": [],
+                        "assigned_to": "worker#1",
+                        "claimed_by": "worker#1",
+                    },
+                    {
+                        "task_id": "task_2",
+                        "content": "assigned pending work",
+                        "status": "pending",
+                        "priority": "medium",
+                        "dependencies": [],
+                        "assigned_to": "worker#1",
+                        "claimed_by": None,
+                    },
+                    {
+                        "task_id": "task_3",
+                        "content": "other work",
+                        "status": "in_progress",
+                        "priority": "medium",
+                        "dependencies": [],
+                        "assigned_to": "worker#2",
+                        "claimed_by": "worker#2",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    released = release_in_progress_for_actor(tmp_path, "worker#1")
+
+    assert released == ["task_1", "task_2"]
+    data = json.loads(todos.read_text(encoding="utf-8"))
+    assert data["items"][0]["status"] == "pending"
+    assert data["items"][0]["claimed_by"] is None
+    assert data["items"][0]["assigned_to"] is None
+    assert data["items"][1]["status"] == "pending"
+    assert data["items"][1]["claimed_by"] is None
+    assert data["items"][1]["assigned_to"] is None
+    assert data["items"][2]["status"] == "in_progress"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

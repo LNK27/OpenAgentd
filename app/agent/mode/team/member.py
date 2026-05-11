@@ -833,6 +833,19 @@ class TeamMember(TeamMemberBase):
         assert self._team is not None
         assert self._mailbox is not None
 
+        from app.agent.tools.builtin.todo import release_in_progress_for_actor
+        from app.core.paths import workspace_dir
+
+        released = release_in_progress_for_actor(
+            workspace_dir(self._team.lead.session_id),
+            self.name,
+        )
+        suffix = (
+            f" In-progress todos reset to pending: {', '.join(released)}."
+            if released
+            else ""
+        )
+
         await self._mailbox.send(
             to=self._team.lead.name,
             message=Message(
@@ -840,7 +853,7 @@ class TeamMember(TeamMemberBase):
                 to_agent=self._team.lead.name,
                 content=(
                     f"[{self.name}]: System error — temporarily unavailable. "
-                    f"Please reassign my work to another member."
+                    f"Please reassign my work to another member.{suffix}"
                 ),
             ),
         )

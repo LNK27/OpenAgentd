@@ -7,6 +7,8 @@ Flow:
      spawn one member and give it a long task.
   3. As soon as a non-lead member reports ``agent_status=working``, POST an
      interrupt-only request and verify that member reports ``offline``.
+  4. Verify any claimed in-progress todo for that member was released back to
+     ``pending`` and unassigned.
 
 Usage:
   uv run python -m manual.team_roster_lifecycle
@@ -75,6 +77,14 @@ def fetch_history(client: httpx.Client, base: str, session_id: str) -> dict[str,
     res = client.get(f"{base}/team/{session_id}/history")
     res.raise_for_status()
     return res.json()
+
+
+def fetch_todos(client: httpx.Client, base: str, session_id: str) -> list[dict[str, Any]]:
+    res = client.get(f"{base}/team/sessions/{session_id}/todos")
+    res.raise_for_status()
+    data = res.json()
+    todos = data.get("todos", [])
+    return [todo for todo in todos if isinstance(todo, dict)]
 
 
 def iter_sse(
@@ -149,8 +159,10 @@ def verify_stop_dismisses_member(client: httpx.Client, base: str, wait: int) -> 
         client,
         base,
         "Smoke test: call team_manage(action='spawn', members=['{bp}']), "
-        "then send that spawned member a long task: write numbers 1 through 80, "
-        "one per line. Do not dismiss the member yourself.".format(bp=blueprint),
+        "create one high-priority todo assigned_to the spawned handle, then message "
+        "that member and explicitly tell it to claim the todo before working. The "
+        "task is to write numbers 1 through 80, one per line. Do not dismiss the "
+        "member yourself.".format(bp=blueprint),
     )
     print(f"  session: {sid}")
 
@@ -197,6 +209,27 @@ def verify_stop_dismisses_member(client: httpx.Client, base: str, wait: int) -> 
     if not has_notice:
         print(f"  FAIL: lead history has no stop notice from {working_agent}")
         return False
+    todos = fetch_todos(client, base, sid)
+    touched = [
+        todo
+        for todo in todos
+        if working_agent in {todo.get("assigned_to"), todo.get("claimed_by")}
+        or "write numbers" in str(todo.get("content") or "").lower()
+    ]
+    if not touched:
+        print("  WARN: no matching todo was created; skipped todo release check")
+    else:
+        unreleased = [
+            todo
+            for todo in touched
+            if todo.get("status") == "in_progress"
+            or todo.get("claimed_by") == working_agent
+            or todo.get("assigned_to") == working_agent
+        ]
+        if unreleased:
+            print(f"  FAIL: todos still tied to stopped member: {unreleased}")
+            return False
+        print("  PASS: stopped member todos released to pending/unassigned")
     print(f"  PASS: {working_agent} moved offline and left live roster")
     return True
 
