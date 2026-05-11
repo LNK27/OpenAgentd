@@ -348,6 +348,12 @@ All events carry an `agent` field to identify the source.
 >
 > `agent_status` is stored as a latest-wins `{agent: status}` map in the stream state blob and replayed on reconnect **before** any thinking/message events. This ensures a client that refreshes mid-turn sees per-agent working indicators light up before text tokens arrive. `thinking` and `message` replay is also per-agent — see [`architecture.md`](../architecture.md) for the state schema.
 
+Team rosters are scoped to a lead session. Starting a fresh session resets the live UI roster to the lead only; previous members are restored only when that session history is loaded. Pressing stop during a turn records a short member-to-lead stop notice, dismisses running spawned members, emits `agent_status: offline`, and removes them from the live roster.
+
+Member failures follow the same lead-context rule: a failed member emits `agent_status: error` and sends a mailbox notice to the lead so the next lead turn can reassign or retry the work instead of waiting silently.
+
+When a member is stopped or fails, unfinished todos assigned to or claimed by that member are unassigned; claimed `in_progress` todos are also reset to `pending` so the lead can reassign them.
+
 ### `_try_emit_done` logic
 
 ```python

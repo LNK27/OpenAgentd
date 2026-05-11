@@ -57,7 +57,7 @@ export const useTeamStore = create<TeamStore>()(
     newSession: () => {
       get()._abortController?.abort()
       set((state) => {
-        const leadName = state.leadName
+        const leadName = state.leadName ?? state.agentNames[0] ?? null
         state.sessionId = null
         state.sessionTitle = null
         state.isTeamWorking = false
@@ -76,13 +76,18 @@ export const useTeamStore = create<TeamStore>()(
         state.agentNames = leadName ? [leadName] : []
         state.activeAgent = leadName ?? null
 
-        // Reset each agent's blocks but keep identity (name/model)
+        // Reset the lead and drop member streams. A fresh chat gets a fresh
+        // team roster; prior session members reload from history on demand.
         Object.keys(state.agentStreams).forEach((name) => {
+          if (name !== leadName) {
+            delete state.agentStreams[name]
+            return
+          }
           state.agentStreams[name].blocks = []
           state.agentStreams[name].currentBlocks = []
           state.agentStreams[name].currentText = ''
           state.agentStreams[name].currentThinking = ''
-          state.agentStreams[name].status = name === leadName ? 'idle' : 'offline'
+          state.agentStreams[name].status = 'idle'
           state.agentStreams[name].lastError = null
           state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
           state.agentStreams[name]._completionBase = 0
@@ -199,7 +204,7 @@ export const useTeamStore = create<TeamStore>()(
       try {
         const status = await teamStatus()
         if (status) {
-          const allAgents = [status.lead, ...status.members]
+          const allAgents = get().sessionId ? [status.lead, ...status.members] : [status.lead]
           const liveNames = allAgents.map((a) => a.name)
           set((draft) => {
             draft.leadName = status.lead.name

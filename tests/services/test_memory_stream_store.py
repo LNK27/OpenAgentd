@@ -868,7 +868,11 @@ class TestAttach:
         flips isTeamWorking=true before any content arrives. Without this the
         stop button stays hidden on reconnect even while tokens stream in."""
         await store.init_turn("sid-1")
-        _turns["sid-1"].agent_statuses = {"lead": "working", "worker": "idle"}
+        _turns["sid-1"].agent_statuses = {
+            "lead": "working",
+            "worker": "idle",
+            "executor#1": "offline",
+        }
         _turns["sid-1"].content = {"lead": "partial reply"}
 
         async def _mark_done():
@@ -881,12 +885,16 @@ class TestAttach:
 
         types = [e["event"] for e in events]
         status_events = [e for e in events if e.get("event") == "agent_status"]
-        assert len(status_events) == 2
+        assert len(status_events) == 3
         by_agent = {
             json.loads(e["data"])["agent"]: json.loads(e["data"])["status"]
             for e in status_events
         }
-        assert by_agent == {"lead": "working", "worker": "idle"}
+        assert by_agent == {
+            "lead": "working",
+            "worker": "idle",
+            "executor#1": "offline",
+        }
         # Status must precede the message so the UI flips before rendering text.
         first_status_idx = types.index("agent_status")
         first_message_idx = types.index("message")

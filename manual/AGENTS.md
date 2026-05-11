@@ -19,6 +19,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `team_todos.py` | Print session todos and flag dependency/claim consistency issues | positional `SESSION_ID` |
 | `team_sse.py` | Capture + pretty-print every SSE event from a team turn, including lifecycle states (`idle`, `working`, `offline`, `error`) | `--session ID`, `--wait N`, `--out FILE`, `--no-summary` |
 | `team_spawn.py` | Drive a turn that exercises `team_manage` spawn/dismiss; snapshots `/team/agents`, streams per-agent content, prints spawn/dismiss and lifecycle timelines | `--message TEXT`, `--session ID`, `--wait N`, `--out FILE`, `--no-color`, `--no-history` |
+| `team_roster_lifecycle.py` | Verify fresh sessions do not carry member rosters and stop moves running members to `offline` | `--base URL`, `--wait N` |
 
 ```bash
 # New team turn
@@ -44,6 +45,9 @@ uv run python -m manual.team_sse "msg" --out .openagentd/sse.jsonl     # save ra
 uv run python -m manual.team_spawn                                     # default prompt forces multi-blueprint spawn
 uv run python -m manual.team_spawn --message "Spawn one executor and ask it to count to three"
 uv run python -m manual.team_spawn --out .openagentd/spawn.jsonl       # also save raw JSONL
+
+# Smoke-test per-session roster isolation and stop/offline lifecycle
+uv run python -m manual.team_roster_lifecycle
 ```
 
 ---

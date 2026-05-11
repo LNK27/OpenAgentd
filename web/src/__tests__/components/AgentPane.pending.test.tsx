@@ -15,8 +15,8 @@ function makeTextBlock(id: string, content: string): ContentBlock {
   return { id, type: "text", content }
 }
 
-function makeUserBlock(id: string, content: string): ContentBlock {
-  return { id, type: "user", content }
+function makeUserBlock(id: string, content: string, extra?: Record<string, unknown>): ContentBlock {
+  return { id, type: "user", content, extra }
 }
 
 function makeThinkingBlock(id: string, content: string): ContentBlock {
@@ -182,6 +182,26 @@ describe("AgentPane — pending dots indicator", () => {
       status: "idle",
       blocks: [makeTextBlock("b1", "Previous response")],
       currentBlocks: [makeUserBlock("u1", "New question")],
+    })
+    const { container } = renderPanel(stream)
+    const dots = container.querySelectorAll(".animate-bounce")
+    expect(dots.length).toBe(3)
+  })
+
+  it("does not show bounce dots when an idle member has only an inbox message", () => {
+    const stream = makeStream({
+      status: "idle",
+      currentBlocks: [makeUserBlock("u1", "Peer handoff", { from_agent: "lead" })],
+    })
+    const { container } = renderPanel(stream)
+    const dots = container.querySelectorAll(".animate-bounce")
+    expect(dots.length).toBe(0)
+  })
+
+  it("shows bounce dots while a working member has only an inbox message", () => {
+    const stream = makeStream({
+      status: "working",
+      currentBlocks: [makeUserBlock("u1", "Peer handoff", { from_agent: "lead" })],
     })
     const { container } = renderPanel(stream)
     const dots = container.querySelectorAll(".animate-bounce")

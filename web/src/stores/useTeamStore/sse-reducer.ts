@@ -275,7 +275,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             }
             // Commit this turn's output so next turn accumulates on top
             stream._completionBase = stream.usage.completionTokens
-            // Preserve error status so the red pane stays visible until the
+            // Preserve terminal statuses so offline panes stay out of the
+            // live roster and errors stay visible until retry.
             // user retries (agent_status → working will clear it).
             if (stream.status !== 'error' && stream.status !== 'offline') {
               stream.status = 'idle'
