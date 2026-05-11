@@ -34,6 +34,10 @@ import type { ContentBlock, MessageAttachment } from '@/api/types'
 
 const SCROLL_THRESHOLD = 40
 
+function isDirectUserBlock(block: ContentBlock): boolean {
+  return block.type === 'user' && !block.extra?.from_agent
+}
+
 interface AgentViewProps {
   /** Finalized blocks from previous turns. */
   blocks: ContentBlock[]
@@ -347,8 +351,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
              * stick around after `done` flushes the buffer if a stale
              * `working` status briefly survives.
              */}
-           {((!isWorking && !isError && currentBlocks.some((b) => b.type === 'user')) ||
-             (isWorking && currentBlocks.length > 0 && currentBlocks.every((b) => b.type === 'user'))) && (
+            {((!isWorking && !isError && currentBlocks.some(isDirectUserBlock)) ||
+              (isWorking && currentBlocks.length > 0 && currentBlocks.every((b) => b.type === 'user'))) && (
              <div className="flex items-center gap-1.5 py-1">
                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />

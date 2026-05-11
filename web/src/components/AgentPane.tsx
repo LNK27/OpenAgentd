@@ -49,6 +49,10 @@ interface AgentPaneProps {
 
 const USER_COLLAPSE_LINES = 10
 
+function isDirectUserBlock(block: ContentBlock): boolean {
+  return block.type === 'user' && !block.extra?.from_agent
+}
+
 function UserBubble({ content, timestamp, attachments }: { content: string; timestamp?: Date; attachments?: MessageAttachment[] }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -224,7 +228,7 @@ export function AgentPane({
   const isError   = stream.status === 'error'
   const isOffline = stream.status === 'offline'
   // Me show waiting indicator when a user message exists but the agent hasn't woken yet
-  const isPending = !isWorking && !isError && !isOffline && stream.currentBlocks.some((b) => b.type === 'user')
+  const isPending = !isWorking && !isError && !isOffline && stream.currentBlocks.some(isDirectUserBlock)
 
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
