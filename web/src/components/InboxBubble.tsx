@@ -31,9 +31,10 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
 
   const label = fromAgent
 
-  // Me strip "[agent_name]: " prefixes — label already shows sender
+  // Me strip "[agent_name]: " prefixes — label already shows sender.
+  // Instance handles include suffixes like `#1`.
   const stripped = useMemo(
-    () => content.replace(/^\[[\w-]+\]:\s*/gm, '').trim(),
+    () => content.replace(/^\[[\w#-]+\]:\s*/gm, '').trim(),
     [content],
   )
 
