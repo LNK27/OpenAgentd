@@ -348,6 +348,8 @@ All events carry an `agent` field to identify the source.
 >
 > `agent_status` is stored as a latest-wins `{agent: status}` map in the stream state blob and replayed on reconnect **before** any thinking/message events. This ensures a client that refreshes mid-turn sees per-agent working indicators light up before text tokens arrive. `thinking` and `message` replay is also per-agent — see [`architecture.md`](../architecture.md) for the state schema.
 
+Team rosters are scoped to a lead session. Starting a fresh session resets the live UI roster to the lead only; previous members are restored only when that session history is loaded. Pressing stop during a turn records a short member-to-lead stop notice, dismisses running spawned members, emits `agent_status: offline`, and removes them from the live roster.
+
 ### `_try_emit_done` logic
 
 ```python

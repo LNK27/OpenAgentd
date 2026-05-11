@@ -343,11 +343,43 @@ async def test_interrupt_team_cancels_working_members():
     idle.name = "idler"
 
     team = MagicMock()
+    team.members = {}
     team.all_members = [working, idle]
 
     names = await interrupt_team(team, session_id="sess-1")
     assert names == ["worker-a"]
     cancel_event.set.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_team_dismisses_working_live_members():
+    working = MagicMock()
+    working.state = "working"
+    working.name = "executor#1"
+
+    idle = MagicMock()
+    idle.state = "idle"
+    idle.name = "executor#2"
+
+    team = MagicMock()
+    team.members = {"executor#1": working, "executor#2": idle}
+    team.all_members = [working, idle]
+    team.dismiss = AsyncMock()
+    team._emit = AsyncMock()
+    team.lead.name = "lead"
+    team.lead.session_id = None
+
+    names = await interrupt_team(team, session_id=None)
+    assert names == ["executor#1"]
+    team._emit.assert_awaited_once_with(
+        agent="lead",
+        event="inbox",
+        extra={
+            "content": "[executor#1]: Stopped before completing assigned work.",
+            "from_agent": "executor#1",
+        },
+    )
+    team.dismiss.assert_awaited_once_with("executor#1")
 
 
 @pytest.mark.asyncio
@@ -357,6 +389,7 @@ async def test_interrupt_team_no_working_members():
     idle.name = "idler"
 
     team = MagicMock()
+    team.members = {}
     team.all_members = [idle]
 
     names = await interrupt_team(team, session_id=None)

@@ -65,7 +65,7 @@ describe("newSession", () => {
     expect(s.activeAgent).toBe("lead");
     expect(s.agentStreams.lead.blocks).toHaveLength(0);
     expect(s.agentStreams.lead.currentBlocks).toHaveLength(0);
-    expect(s.agentStreams.worker.status).toBe("offline");
+    expect(s.agentStreams.worker).toBeUndefined();
   });
 
   it("bumps _sessionGeneration", () => {

@@ -387,9 +387,57 @@ async def dispatch_user_message(
 
 async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]:
     """Cancel all working team members. Returns the cancelled member names."""
-    cancelled = [m for m in team.all_members if m.state == "working"]
+    from app.agent.schemas.chat import HumanMessage
+    from app.core.db import resolve_db_factory
+    from app.services.chat_service import save_message
+
+    names: list[str] = []
+
+    live_members = getattr(team, "members", {})
+    if isinstance(live_members, dict):
+        for handle, member in list(live_members.items()):
+            if member.state != "working":
+                continue
+            names.append(member.name)
+            content = f"[{member.name}]: Stopped before completing assigned work."
+            sid = session_id or getattr(team.lead, "session_id", None)
+            if sid:
+                try:
+                    db_factory = resolve_db_factory(team.lead.db_factory)
+                    async with db_factory() as db:
+                        await save_message(
+                            db,
+                            uuid.UUID(sid),
+                            HumanMessage(content=content),
+                            extra={"from_agent": member.name, "interrupted": True},
+                        )
+                        await db.commit()
+                except Exception as exc:
+                    logger.warning(
+                        "team_interrupt_notice_failed member={} error={}",
+                        member.name,
+                        exc,
+                    )
+            try:
+                await team._emit(
+                    agent=team.lead.name,
+                    event="inbox",
+                    extra={"content": content, "from_agent": member.name},
+                )
+            except Exception as exc:
+                logger.warning(
+                    "team_interrupt_notice_emit_failed member={} error={}",
+                    member.name,
+                    exc,
+                )
+            await team.dismiss(handle)
+
+    dismissed = set(names)
+    cancelled = [
+        m for m in team.all_members if m.state == "working" and m.name not in dismissed
+    ]
     for member in cancelled:
         member._cancel_event.set()
-    names = [m.name for m in cancelled]
+    names.extend(m.name for m in cancelled)
     logger.info("team_interrupt session_id={} cancelled={}", session_id, names)
     return names
