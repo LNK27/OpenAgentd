@@ -2,7 +2,7 @@
 title: Chat Input & Message Queue
 description: How the frontend queues messages while the lead is working and drains them after each turn.
 status: stable
-updated: 2026-04-30
+updated: 2026-05-11
 ---
 
 # Chat Input & Message Queue
@@ -55,11 +55,15 @@ Stored in `useTeamStore._pendingMessages: PendingMessage[]`.
 
 ## UI
 
-`PendingMessageQueue` renders above the input bar (both mobile and desktop). Each item shows a clock icon, truncated message preview, optional file count badge, and an × button. Clicking × calls `removePendingMessage(id)` and restores the text via `InputBarHandle.setValue()`.
+`PendingMessageQueue` renders directly above the input bar (both mobile and desktop). It starts collapsed as a `QUEUE · N messages awaiting` banner; clicking the banner expands the queued message details **above** the banner so the banner remains adjacent to the input. Each expanded item shows a clock icon, truncated message preview, optional file count badge, and an × button. Clicking × calls `removePendingMessage(id)` and restores the text via `InputBarHandle.setValue()`.
+
+The desktop floating composer starts as a compact action strip and expands on focus, `Ctrl+I`, New Chat focus, attachment/content insertion, or the Chat affordance. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
 
 The `InputBarHandle` ref exposes:
-- `focus()` — focus the textarea
-- `setValue(text)` — inject text and trigger height recalculation
+- `focus()` — expand the floating composer when needed, then focus the textarea
+- `setValue(text)` — expand the floating composer when needed, inject text, and trigger height recalculation
+
+`newSession()` aborts any active team SSE stream and resets the live roster/scroll state before focusing the empty composer, so stale tokens or scroll affordances from the previous session do not leak into the fresh chat.
 
 ---
 

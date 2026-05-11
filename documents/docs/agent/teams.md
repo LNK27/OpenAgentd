@@ -2,7 +2,7 @@
 title: Multi-Agent Teams
 description: Team architecture, activation loop, mailbox coordination, and member protocols.
 status: stable
-updated: 2026-05-04
+updated: 2026-05-11
 ---
 
 # Agent Teams
@@ -104,7 +104,7 @@ message arrives in mailbox
       │  will drain it before the next LLM call → return
       └─ else:
            state = "working"    ← set synchronously before create_task so that
-           │                       _try_emit_done() never sees a stale "available"
+           │                       _try_emit_done() never sees a stale "idle"
            └─ _active_task = create_task(_run_activation())
 
 _run_activation() ← one-shot task
@@ -112,7 +112,7 @@ _run_activation() ← one-shot task
 ├─ _cancel_event.clear()
 │
 ├─ drain all queued messages (receive_nowait loop)
-│   └─ if inbox empty → state = "available"; return  ← spurious wakeup, no agent.run()
+│   └─ if inbox empty → state = "idle"; return  ← spurious wakeup, no agent.run()
 │
 ├─ emit agent_status working
 │
@@ -137,8 +137,8 @@ _run_activation() ← one-shot task
 │
 └─ finally:
     _on_turn_finally()       ← TeamMember: clear _current_task_id
-    state = "available"
-    emit agent_status available
+    state = "idle"
+    emit agent_status idle
 
     ── late-inbox check ──────────────────────────────────────────────────
     │  A message can arrive in the mailbox while agent.run() is executing
@@ -151,7 +151,7 @@ _run_activation() ← one-shot task
                                _try_emit_done() below sees "working" → will not fire done
     ── end late-inbox check ──────────────────────────────────────────────
 
-    team._try_emit_done()   ← emits "done" only if ALL agents are "available"
+    team._try_emit_done()   ← emits "done" only if ALL live agents are "idle"
 ```
 
 ### Shutdown
@@ -338,20 +338,20 @@ All events carry an `agent` field to identify the source.
 
 | Event | Who emits | Payload |
 |-------|-----------|---------|
-| `agent_status` | `AgentTeam._emit()` | `{agent, status: "working"\|"available"\|"error"}` |
+| `agent_status` | `AgentTeam._emit()` | `{agent, status: "idle"\|"working"\|"offline"\|"error"}` |
 | `inbox` | `TeamInboxHook.before_model()` + `_run_activation()` | `{agent, content, from_agent}` |
 | `error` | `TeamLead._on_turn_error()` | `{message, metadata: {agent, exception}}` — emitted only when the **lead** fails; member failures route through the mailbox instead |
 | `done` | `AgentTeam._try_emit_done()` | `{}` |
 | `message`, `thinking`, `tool_call`, `tool_start`, `tool_end`, `usage` | `StreamPublisherHook` | Same as single-agent, plus `agent` field |
 
-> **Note:** `agent_done` was removed. `agent_status: available` is the sole signal that an individual agent has finished its turn. The frontend uses `agent_status` for per-agent indicators and `done` for the team-wide "all idle" state.
+> **Note:** `agent_done` was removed. `agent_status: idle` is the sole signal that an individual live agent has finished its turn. Dismissed members emit/render as `offline`; `done` preserves `offline` and `error` rather than reviving them. The frontend uses `agent_status` for per-agent indicators and `done` for the team-wide "all idle" state.
 >
 > `agent_status` is stored as a latest-wins `{agent: status}` map in the stream state blob and replayed on reconnect **before** any thinking/message events. This ensures a client that refreshes mid-turn sees per-agent working indicators light up before text tokens arrive. `thinking` and `message` replay is also per-agent — see [`architecture.md`](../architecture.md) for the state schema.
 
 ### `_try_emit_done` logic
 
 ```python
-if self._has_active_turn and lead.state == "available" and all(m.state == "available" for m in members):
+if self._has_active_turn and lead.state == "idle" and all(m.state == "idle" for m in live_members):
     _has_active_turn = False
     push_event(session_id, done_event)
     mark_done(session_id)
@@ -606,7 +606,7 @@ graph TD
     LEAD_TOOL_EXEC --> LEAD_BEFORE_MODEL
     LEAD_DECISION -->|final text only| LEAD_FINAL[Lead produces final answer]
 
-    DELEGATE --> LEAD_AVAILABLE[Lead: available]
+    DELEGATE --> LEAD_IDLE[Lead: idle]
     DELEGATE --> M1_ACTIVATE[Member A: _run_activation spawned]
     DELEGATE --> M2_ACTIVATE[Member B: _run_activation spawned]
 
@@ -628,8 +628,8 @@ graph TD
         M1_DISK --> M1_TOOL_DONE
         M1_TOOL_DONE --> M1_BEFORE_MODEL
         M1_TOOL_D -->|No| M1_REPLY[team_message to Lead mailbox]
-        M1_REPLY --> M1_AVAILABLE[available<br/>agent_status: available SSE]
-        M1_AVAILABLE --> M1_TRY_DONE[_try_emit_done<br/>not all available yet]
+        M1_REPLY --> M1_IDLE[idle<br/>agent_status: idle SSE]
+        M1_IDLE --> M1_TRY_DONE[_try_emit_done<br/>not all idle yet]
     end
 
     subgraph member_b [Member B - concurrent]
@@ -650,8 +650,8 @@ graph TD
         M2_DISK --> M2_TOOL_DONE
         M2_TOOL_DONE --> M2_BEFORE_MODEL
         M2_TOOL_D -->|No| M2_REPLY[team_message to Lead mailbox]
-        M2_REPLY --> M2_AVAILABLE[available<br/>agent_status: available SSE]
-        M2_AVAILABLE --> M2_TRY_DONE[_try_emit_done<br/>not all available yet]
+        M2_REPLY --> M2_IDLE[idle<br/>agent_status: idle SSE]
+        M2_IDLE --> M2_TRY_DONE[_try_emit_done<br/>not all idle yet]
     end
 
     M1_TRY_DONE --> LEAD_ACTIVATE2[Lead: _run_activation spawned<br/>results from A plus B]
@@ -666,8 +666,8 @@ graph TD
     LEAD_AFTER2 --> LEAD_CHECKPOINT2[Checkpointer sync]
     LEAD_CHECKPOINT2 --> LEAD_FINAL
 
-    LEAD_FINAL --> LEAD_AVAILABLE2[Lead: available]
-    LEAD_AVAILABLE2 --> CHECK{All agents available?<br/>lead plus A plus B}
+    LEAD_FINAL --> LEAD_IDLE2[Lead: idle]
+    LEAD_IDLE2 --> CHECK{All live agents idle?<br/>lead plus A plus B}
     CHECK -->|No| LEAD_ACTIVATE2
     CHECK -->|Yes| MARK_DONE[stream_store.mark_done<br/>SSE done event]
     MARK_DONE --> END((End))
@@ -691,10 +691,10 @@ graph TD
     style M1_SSE_INBOX fill:#9B59B6,color:#fff
     style M2_SSE_INBOX fill:#9B59B6,color:#fff
     style LEAD_INBOX2 fill:#9B59B6,color:#fff
-    style LEAD_AVAILABLE fill:#95A5A6,color:#fff
-    style M1_AVAILABLE fill:#95A5A6,color:#fff
-    style M2_AVAILABLE fill:#95A5A6,color:#fff
-    style LEAD_AVAILABLE2 fill:#95A5A6,color:#fff
+    style LEAD_IDLE fill:#95A5A6,color:#fff
+    style M1_IDLE fill:#95A5A6,color:#fff
+    style M2_IDLE fill:#95A5A6,color:#fff
+    style LEAD_IDLE2 fill:#95A5A6,color:#fff
     style LEAD_CHECKPOINT fill:#95A5A6,color:#fff
     style LEAD_CHECKPOINT2 fill:#95A5A6,color:#fff
     style M1_CHECKPOINT_A fill:#95A5A6,color:#fff

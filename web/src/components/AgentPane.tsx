@@ -278,6 +278,13 @@ export function AgentPane({
 
   const isEmpty = allBlocks.length === 0
 
+  useEffect(() => {
+    if (!isEmpty) return
+    pinnedRef.current = true
+    setShowScrollBtn(false)
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [isEmpty])
+
   const borderClass  = isError
     ? 'border-(--color-error)'
     : isDropTarget
