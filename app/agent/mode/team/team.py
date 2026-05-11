@@ -767,15 +767,18 @@ class AgentTeam:
     def get_injected_tools(self, agent_name: str) -> list[Tool]:
         """Return runtime tools to inject into agent.run() for the given agent.
 
-        Everyone gets ``team_message``. The lead additionally gets
-        ``team_manage`` (roster spawn/dismiss) and ``team_configure``
-        (capability management).
+        Everyone gets ``team_message`` and ``todo_manage`` so members can claim
+        assigned tasks. The lead additionally gets ``team_manage`` (roster
+        spawn/dismiss) and ``team_configure`` (capability management).
         """
+        from app.agent.tools.builtin.todo import make_todo_manage_tool
+
         role = "lead" if agent_name == self.lead.name else "member"
         tools: list[Tool] = [
             make_team_message_tool(
                 self.mailbox, agent_name=agent_name, role=role, team=self
-            )
+            ),
+            make_todo_manage_tool(role),
         ]
 
         if agent_name == self.lead.name:

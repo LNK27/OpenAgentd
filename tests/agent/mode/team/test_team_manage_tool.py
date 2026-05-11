@@ -98,12 +98,14 @@ class TestTeamConfigureInjection:
         names = {t.name for t in injected}
         assert "team_configure" in names
         assert "team_message" in names
+        assert "todo_manage" in names
 
     async def test_member_does_not_get_team_configure(self, basic_team):
         injected = basic_team.get_injected_tools("member_a")
         names = {t.name for t in injected}
         assert "team_configure" not in names
         assert "team_message" in names
+        assert "todo_manage" in names
 
 
 # ---------------------------------------------------------------------------

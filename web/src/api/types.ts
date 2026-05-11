@@ -387,6 +387,9 @@ export interface TodoItem {
   content: string
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
   priority: 'high' | 'medium' | 'low'
+  dependencies?: string[]
+  assigned_to?: string | null
+  claimed_by?: string | null
 }
 
 export interface TodosResponse {

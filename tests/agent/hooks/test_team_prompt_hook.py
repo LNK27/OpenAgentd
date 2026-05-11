@@ -374,7 +374,8 @@ class TestProtocolConstants:
         assert "delegate" in LEAD_PROTOCOL.lower()
         assert "peer handoff chain" in LEAD_PROTOCOL
         assert "not as a message bus" in LEAD_PROTOCOL
-        assert "blocked by task_1" in LEAD_PROTOCOL
+        assert "dependencies" in LEAD_PROTOCOL
+        assert "assigned_to" in LEAD_PROTOCOL
         assert "explorer#1" not in LEAD_PROTOCOL
         assert "consultant#1" not in LEAD_PROTOCOL
         assert "executor#1" not in LEAD_PROTOCOL
@@ -389,6 +390,8 @@ class TestProtocolConstants:
     def test_member_protocol_has_workflow(self):
         assert "Member workflow" in MEMBER_PROTOCOL
         assert "<sleep>" in MEMBER_PROTOCOL
+        assert "todo_manage" in MEMBER_PROTOCOL
+        assert "claim" in MEMBER_PROTOCOL
 
     def test_member_protocol_no_old_tool_names(self):
         """Member protocol does not reference removed tools."""

@@ -11,7 +11,7 @@ Requirements validated:
   - JSON list format (old format) returns empty list
   - Valid .todos.json with items returns TodosResponse with all items
   - Items missing required fields are skipped (caught by outer except)
-  - Response schema matches TodoItemResponse (task_id, content, status, priority)
+  - Response schema matches TodoItemResponse
 """
 
 from __future__ import annotations
@@ -432,7 +432,7 @@ class TestGetTodos:
     def test_response_schema_has_required_fields(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Response items have all required fields: task_id, content, status, priority."""
+        """Response items include dependency and claim metadata."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_data = {
@@ -461,8 +461,19 @@ class TestGetTodos:
         assert "content" in item
         assert "status" in item
         assert "priority" in item
+        assert "dependencies" in item
+        assert "assigned_to" in item
+        assert "claimed_by" in item
         # Verify no extra fields (strict schema)
-        assert set(item.keys()) == {"task_id", "content", "status", "priority"}
+        assert set(item.keys()) == {
+            "task_id",
+            "content",
+            "status",
+            "priority",
+            "dependencies",
+            "assigned_to",
+            "claimed_by",
+        }
 
     def test_todos_file_with_extra_fields_in_items(
         self, client, session_id, tmp_path, monkeypatch
@@ -478,6 +489,9 @@ class TestGetTodos:
                     "content": "Test task",
                     "status": "open",
                     "priority": "high",
+                    "dependencies": ["task-000"],
+                    "assigned_to": "member#1",
+                    "claimed_by": "member#1",
                     "extra_field": "should be ignored",
                     "another_extra": 123,
                 }
@@ -494,8 +508,19 @@ class TestGetTodos:
         body = resp.json()
         item = body["todos"][0]
         # Extra fields should not be in response (Pydantic strips them by default)
-        assert set(item.keys()) == {"task_id", "content", "status", "priority"}
+        assert set(item.keys()) == {
+            "task_id",
+            "content",
+            "status",
+            "priority",
+            "dependencies",
+            "assigned_to",
+            "claimed_by",
+        }
         assert item["task_id"] == "task-001"
+        assert item["dependencies"] == ["task-000"]
+        assert item["assigned_to"] == "member#1"
+        assert item["claimed_by"] == "member#1"
 
     def test_different_session_ids_are_independent(self, client, tmp_path, monkeypatch):
         """Different session_ids read from different workspace dirs."""

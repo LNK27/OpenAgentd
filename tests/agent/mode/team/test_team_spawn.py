@@ -512,6 +512,7 @@ class TestRosterManageTool:
         assert "team_manage" in names
         assert "team_configure" in names
         assert "team_message" in names
+        assert "todo_manage" in names
 
     async def test_members_do_not_get_manage_tools(self, tmp_path):
         team = _build_dynamic_team(tmp_path, {"executor": None})
@@ -523,6 +524,7 @@ class TestRosterManageTool:
             assert "team_manage" not in names
             assert "team_configure" not in names
             assert "team_message" in names
+            assert "todo_manage" in names
         finally:
             await team.stop()
 

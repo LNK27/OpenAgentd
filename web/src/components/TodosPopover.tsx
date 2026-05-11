@@ -139,6 +139,7 @@ export function TodosPopover({
             {sorted.map((todo) => {
               const Icon = STATUS_ICON[todo.status]
               const iconColor = STATUS_ICON_COLOR[todo.status]
+              const dependencies = todo.dependencies ?? []
               const isDone =
                 todo.status === 'completed' || todo.status === 'cancelled'
               return (
@@ -159,6 +160,13 @@ export function TodosPopover({
                     }`}
                   >
                     {todo.content}
+                    {(dependencies.length > 0 || todo.assigned_to || todo.claimed_by) && (
+                      <span className="mt-0.5 block font-mono text-[9px] uppercase tracking-wide text-(--color-text-muted)">
+                        {todo.assigned_to && `assigned ${todo.assigned_to}`}
+                        {todo.claimed_by && ` claimed ${todo.claimed_by}`}
+                        {dependencies.length > 0 && ` deps ${dependencies.join(', ')}`}
+                      </span>
+                    )}
                   </span>
                   <span
                     className={`shrink-0 self-start rounded px-1 py-0.5 font-mono text-[9px] font-medium uppercase ${

@@ -287,6 +287,7 @@ class TestAgentTeamToolInjection:
         names = {t.name for t in tools}
         assert names == {
             "team_message",
+            "todo_manage",
             "team_manage",
             "team_configure",
         }
@@ -322,11 +323,12 @@ class TestAgentTeamToolInjection:
         names = {t.name for t in tools}
         assert "team_message" in names
 
-    async def test_member_gets_exactly_one_tool(self, basic_team):
-        """Members get exactly one injected tool."""
+    async def test_member_gets_message_and_todo_tools(self, basic_team):
+        """Members get messaging plus todo claiming."""
         team = basic_team
         tools = team.get_injected_tools("member_a")
-        assert len(tools) == 1
+        names = {t.name for t in tools}
+        assert names == {"team_message", "todo_manage"}
 
     async def test_member_does_not_get_old_message_tools(self, basic_team):
         """Old message_leader and send_message removed from member tools."""
@@ -357,6 +359,8 @@ class TestAgentTeamToolInjection:
         member_names = {t.name for t in team.get_injected_tools("member_a")}
         assert "team_message" in lead_names
         assert "team_message" in member_names
+        assert "todo_manage" in lead_names
+        assert "todo_manage" in member_names
 
     async def test_member_does_not_get_memory_tools(self, basic_team):
         """Members don't get memory tools — only the lead writes memory."""
@@ -366,7 +370,7 @@ class TestAgentTeamToolInjection:
         assert "remember" not in names
         assert "recall" not in names
         assert "forget" not in names
-        assert len(tools) == 1
+        assert names == {"team_message", "todo_manage"}
 
 
 class TestAgentTeamStatus:

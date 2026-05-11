@@ -497,9 +497,8 @@ workspace and returns the current todo list.
 ```json
 {
   "todos": [
-    { "task_id": "task_1", "content": "Research the topic", "status": "completed",  "priority": "high" },
-    { "task_id": "task_2", "content": "Write the report",   "status": "in_progress","priority": "high" },
-    { "task_id": "task_3", "content": "Send summary email", "status": "pending",    "priority": "low"  }
+    { "task_id": "task_1", "content": "Research the topic", "status": "completed", "priority": "high", "dependencies": [], "assigned_to": "member#1", "claimed_by": "member#1" },
+    { "task_id": "task_2", "content": "Write the report", "status": "pending", "priority": "high", "dependencies": ["task_1"], "assigned_to": "member#2", "claimed_by": null }
   ]
 }
 ```
@@ -512,6 +511,9 @@ Response model: `TodosResponse` (Pydantic). Each `TodoItemResponse`:
 | `content` | string | Brief task description |
 | `status` | string | `pending` \| `in_progress` \| `completed` \| `cancelled` |
 | `priority` | string | `high` \| `medium` \| `low` |
+| `dependencies` | string[] | Prerequisite task IDs |
+| `assigned_to` | string \| null | Agent handle assigned to the task |
+| `claimed_by` | string \| null | Agent handle that claimed the task |
 
 Returns `{todos: []}` when `.todos.json` does not exist yet. `session_id` must be a valid UUID (400 on malformed).
 

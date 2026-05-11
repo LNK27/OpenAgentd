@@ -16,8 +16,8 @@ Items are written to ``.todos.json`` inside the sandbox workspace:
     {
         "counter": 3,
         "items": [
-            {"task_id": "task_1", "content": "…", "status": "completed", "priority": "high"},
-            {"task_id": "task_2", "content": "…", "status": "in_progress", "priority": "medium"}
+            {"task_id": "task_1", "content": "…", "status": "completed", "priority": "high", "dependencies": [], "assigned_to": "member#1", "claimed_by": "member#1"},
+            {"task_id": "task_2", "content": "…", "status": "pending", "priority": "medium", "dependencies": ["task_1"], "assigned_to": "member#2", "claimed_by": null}
         ]
     }
 
@@ -31,6 +31,7 @@ avoid redundant disk reads.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
 from loguru import logger
@@ -61,6 +62,14 @@ class CreateAction(BaseModel):
     priority: Literal["high", "medium", "low"] = Field(
         description="Priority level.",
     )
+    dependencies: list[str] = Field(
+        default_factory=list,
+        description="Task IDs that must be completed before this task can start.",
+    )
+    assigned_to: str | None = Field(
+        default=None,
+        description="Agent handle assigned to this task, if any.",
+    )
 
 
 class UpdateAction(BaseModel):
@@ -75,6 +84,30 @@ class UpdateAction(BaseModel):
     priority: Literal["high", "medium", "low"] | None = Field(
         default=None, description="New priority (omit to keep unchanged)."
     )
+    dependencies: list[str] | None = Field(
+        default=None,
+        description="Replacement list of task IDs that must be completed first.",
+    )
+    assigned_to: str | None = Field(
+        default=None,
+        description="Replacement agent handle assigned to this task.",
+    )
+
+
+class MemberUpdateAction(BaseModel):
+    action: Literal["update"]
+    task_id: str = Field(description="ID of the claimed task to update.")
+    content: str | None = Field(
+        default=None, description="New description (omit to keep unchanged)."
+    )
+    status: Literal["pending", "in_progress", "completed", "cancelled"] | None = Field(
+        default=None, description="New status (omit to keep unchanged)."
+    )
+
+
+class ClaimAction(BaseModel):
+    action: Literal["claim"]
+    task_id: str = Field(description="ID of the task to claim (e.g. task_1).")
 
 
 class DeleteAction(BaseModel):
@@ -90,6 +123,20 @@ AnyAction = Annotated[
     CreateAction | UpdateAction | DeleteAction | ReadAction,
     Field(discriminator="action"),
 ]
+
+MemberAnyAction = Annotated[
+    MemberUpdateAction | ClaimAction | ReadAction,
+    Field(discriminator="action"),
+]
+
+ActionModel = (
+    CreateAction
+    | UpdateAction
+    | MemberUpdateAction
+    | ClaimAction
+    | DeleteAction
+    | ReadAction
+)
 
 # ---------------------------------------------------------------------------
 # Storage helpers
@@ -125,10 +172,80 @@ def _format_items(items: list[dict]) -> str:
         return "No todos."
     lines: list[str] = []
     for item in items:
+        dependencies = item.get("dependencies") or []
+        dependency_text = f" deps=[{', '.join(dependencies)}]" if dependencies else ""
+        assigned_to = item.get("assigned_to")
+        assignee_text = f" assigned={assigned_to}" if assigned_to else ""
+        claimed_by = item.get("claimed_by")
+        claim_text = f" claimed={claimed_by}" if claimed_by else ""
         lines.append(
-            f"[{item['task_id']}] [{item['status']}] ({item['priority']}) {item['content']}"
+            f"[{item['task_id']}] [{item['status']}] ({item['priority']}){dependency_text}{assignee_text}{claim_text} {item['content']}"
         )
     return "\n".join(lines)
+
+
+def _normalize_store(store: dict) -> dict:
+    """Ensure persisted todo items have the current shape."""
+    for item in store.get("items", []):
+        if isinstance(item, dict):
+            dependencies = item.get("dependencies", [])
+            item["dependencies"] = (
+                dependencies if isinstance(dependencies, list) else []
+            )
+            item.setdefault("assigned_to", None)
+            item.setdefault("claimed_by", None)
+    return store
+
+
+def _actor_name(state: Any) -> str | None:
+    if state is None:
+        return None
+    agent_name = state.metadata.get("agent_name")
+    return agent_name if isinstance(agent_name, str) else None
+
+
+def _task_ids(store: dict) -> set[str]:
+    return {
+        item["task_id"]
+        for item in store.get("items", [])
+        if isinstance(item, dict) and isinstance(item.get("task_id"), str)
+    }
+
+
+def _completed_task_ids(store: dict) -> set[str]:
+    return {
+        item["task_id"]
+        for item in store.get("items", [])
+        if isinstance(item, dict)
+        and isinstance(item.get("task_id"), str)
+        and item.get("status") == "completed"
+    }
+
+
+def _valid_dependencies(
+    store: dict,
+    task_id: str,
+    dependencies: list[str],
+) -> tuple[bool, str | None]:
+    known = _task_ids(store)
+    unknown = [dep for dep in dependencies if dep not in known]
+    if unknown:
+        return False, f"unknown dependencies for {task_id}: {', '.join(unknown)}"
+    if task_id in dependencies:
+        return False, f"self dependency for {task_id}"
+    return True, None
+
+
+def _blocked_dependencies(store: dict, dependencies: list[str]) -> list[str]:
+    completed = _completed_task_ids(store)
+    return [dep for dep in dependencies if dep not in completed]
+
+
+def _find_item(store: dict, task_id: str) -> dict | None:
+    for item in store.get("items", []):
+        if isinstance(item, dict) and item.get("task_id") == task_id:
+            return item
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -136,14 +253,14 @@ def _format_items(items: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 
 _DESCRIPTION = """\
-Manage the structured task list. Pass one or more actions in a single call;
+Manage the structured task list as the lead. Pass one or more actions in a single call;
 they are executed in order.
 
 Actions
 -------
 create  — Add a new task (returns the assigned task_id).
 update  — Update an existing task by task_id (change any combination of
-          content, status, priority).
+          content, status, priority, dependencies, assigned_to).
 delete  — Remove a task permanently by task_id.
 read    — Return the full task list with task_ids.
 
@@ -151,14 +268,39 @@ Rules
 -----
 - Batch related changes into a single call (e.g. complete the current task
   and start the next one together).
-- Only ONE task should be in_progress at a time.
+- Assign member work with assigned_to and model ordering with dependencies.
+- Only ONE task per agent should be in_progress at a time.
 - Mark tasks completed immediately when done; do not batch updates across turns.
-- For dependent work, encode blockers in task content (for example:
-  "blocked by task_1") and keep blocked tasks pending until prerequisites are
-  complete.
+- Use dependencies=["task_1"] for dependent work. A task with incomplete
+  dependencies cannot be moved to in_progress; keep it pending until
+  prerequisites are complete.
 - Use status=cancelled for tasks that are no longer needed instead of deleting.
 - Skip this tool for single, trivial tasks.\
 """
+
+_MEMBER_DESCRIPTION = """\
+Claim and update your assigned tasks. Pass one or more actions in a single call;
+they are executed in order.
+
+Actions
+-------
+claim   — Claim an assigned, unblocked task and move it to in_progress.
+update  — Update a task you claimed (content and/or status only).
+read    — Return the full task list with task_ids.
+
+Rules
+-----
+- Claim a task before starting work.
+- If claim reports blocked dependencies, do not start; respond `<sleep>` and wait.
+- Only update tasks assigned to or claimed by you.
+- Mark your task completed immediately when done.\
+"""
+
+
+def _can_member_update(item: dict, actor: str | None) -> bool:
+    if actor is None:
+        return False
+    return item.get("claimed_by") == actor or item.get("assigned_to") == actor
 
 
 async def _todo_manage(
@@ -168,9 +310,29 @@ async def _todo_manage(
     ],
     _state: Annotated[Any, InjectedArg()] = None,
 ) -> str:
-    store = _load_store()
+    return await _apply_actions(actions, _state=_state, role="lead")
+
+
+async def _todo_manage_member(
+    actions: Annotated[
+        list[MemberAnyAction],
+        Field(description="Ordered list of claim/read/update actions to execute."),
+    ],
+    _state: Annotated[Any, InjectedArg()] = None,
+) -> str:
+    return await _apply_actions(actions, _state=_state, role="member")
+
+
+async def _apply_actions(
+    actions: Sequence[ActionModel],
+    *,
+    _state: Any,
+    role: Literal["lead", "member"],
+) -> str:
+    store = _normalize_store(_load_store())
     if _state is not None and "_todos" in _state.metadata:
-        store = _state.metadata["_todos"]
+        store = _normalize_store(_state.metadata["_todos"])
+    actor = _actor_name(_state)
 
     log_parts: list[str] = []
 
@@ -180,31 +342,117 @@ async def _todo_manage(
             pass
 
         elif isinstance(act, CreateAction):
+            new_id = f"task_{store['counter'] + 1}"
+            dependencies = list(dict.fromkeys(act.dependencies))
+            valid, error = _valid_dependencies(store, new_id, dependencies)
+            if not valid:
+                log_parts.append(f"invalid_dependencies {new_id}: {error}")
+                continue
+            status = act.status
+            if status == "in_progress":
+                blocked = _blocked_dependencies(store, dependencies)
+                if blocked:
+                    status = "pending"
+                    log_parts.append(
+                        f"blocked {new_id}: waiting for {', '.join(blocked)}"
+                    )
             store["counter"] += 1
-            new_id = f"task_{store['counter']}"
             store["items"].append(
                 {
                     "task_id": new_id,
                     "content": act.content,
-                    "status": act.status,
+                    "status": status,
                     "priority": act.priority,
+                    "dependencies": dependencies,
+                    "assigned_to": act.assigned_to,
+                    "claimed_by": actor if status == "in_progress" else None,
                 }
             )
             log_parts.append(f"created {new_id}")
 
-        elif isinstance(act, UpdateAction):
+        elif isinstance(act, UpdateAction | MemberUpdateAction):
             for item in store["items"]:
                 if item["task_id"] == act.task_id:
+                    if role == "member" and not _can_member_update(item, actor):
+                        log_parts.append(f"not_claimed {act.task_id}")
+                        break
+                    dependencies = item.get("dependencies", [])
+                    if isinstance(act, UpdateAction) and act.dependencies is not None:
+                        dependencies = list(dict.fromkeys(act.dependencies))
+                        valid, error = _valid_dependencies(
+                            store, act.task_id, dependencies
+                        )
+                        if not valid:
+                            log_parts.append(
+                                f"invalid_dependencies {act.task_id}: {error}"
+                            )
+                            break
+                        item["dependencies"] = dependencies
+                    if isinstance(act, UpdateAction) and act.assigned_to is not None:
+                        item["assigned_to"] = act.assigned_to
                     if act.content is not None:
                         item["content"] = act.content
                     if act.status is not None:
-                        item["status"] = act.status
-                    if act.priority is not None:
+                        if act.status == "in_progress":
+                            blocked = _blocked_dependencies(store, dependencies)
+                            if blocked:
+                                log_parts.append(
+                                    f"blocked {act.task_id}: waiting for {', '.join(blocked)}"
+                                )
+                            else:
+                                item["status"] = act.status
+                                item["claimed_by"] = item.get("claimed_by") or actor
+                        else:
+                            item["status"] = act.status
+                    if isinstance(act, UpdateAction) and act.priority is not None:
                         item["priority"] = act.priority
                     log_parts.append(f"updated {act.task_id}")
                     break
             else:
                 log_parts.append(f"not_found {act.task_id}")
+
+        elif isinstance(act, ClaimAction):
+            item = _find_item(store, act.task_id)
+            if item is None:
+                log_parts.append(f"not_found {act.task_id}")
+                continue
+            if actor is None:
+                log_parts.append(f"claim_missing_actor {act.task_id}")
+                continue
+            assigned_to = item.get("assigned_to")
+            if assigned_to is not None and assigned_to != actor:
+                log_parts.append(
+                    f"not_assigned {act.task_id}: assigned to {assigned_to}"
+                )
+                continue
+            claimed_by = item.get("claimed_by")
+            if claimed_by is not None and claimed_by != actor:
+                log_parts.append(
+                    f"already_claimed {act.task_id}: claimed by {claimed_by}"
+                )
+                continue
+            in_progress = [
+                other["task_id"]
+                for other in store.get("items", [])
+                if isinstance(other, dict)
+                and other.get("task_id") != act.task_id
+                and other.get("claimed_by") == actor
+                and other.get("status") == "in_progress"
+            ]
+            if in_progress:
+                log_parts.append(
+                    f"claim_busy {act.task_id}: finish {', '.join(in_progress)} first"
+                )
+                continue
+            blocked = _blocked_dependencies(store, item.get("dependencies", []))
+            if blocked:
+                log_parts.append(
+                    f"blocked {act.task_id}: waiting for {', '.join(blocked)}"
+                )
+                continue
+            item["claimed_by"] = actor
+            item["status"] = "in_progress"
+            log_parts.append(f"claimed {act.task_id}")
 
         elif isinstance(act, DeleteAction):
             before = len(store["items"])
@@ -229,3 +477,14 @@ todo_manage = Tool(
     name="todo_manage",
     description=_DESCRIPTION,
 )
+
+
+todo_manage_member = Tool(
+    _todo_manage_member,
+    name="todo_manage",
+    description=_MEMBER_DESCRIPTION,
+)
+
+
+def make_todo_manage_tool(role: Literal["lead", "member"]) -> Tool:
+    return todo_manage if role == "lead" else todo_manage_member

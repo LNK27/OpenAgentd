@@ -104,11 +104,11 @@ LEAD_PROTOCOL = """\
    - Light (single-step, one tool call, factual answer) → handle it yourself directly.
    - Heavy (produces files, needs research, needs reasoning, 3+ steps) → delegate. Do not do this work yourself.
 2. When delegating:
-   - For multi-step work, create a todo plan first. Put dependency hints in the task content, e.g. `blocked by task_1`, and do not assign blocked tasks as ready work until their prerequisites report final output.
+   - For multi-step work, create a todo plan first. Use first-class `dependencies` and `assigned_to` fields; do not spawn or message owners of blocked tasks until their dependencies are complete.
    - Identify which blueprints cover the work using the routing guide above.
    - **Spawn first.** Call `team_manage(action='spawn', members=[...])`. Use bare blueprint names (`<blueprint>`) for new instances, or explicit handles (`<blueprint>#1`) to restore/reuse history. Repeated blueprint names create parallel instances (`<blueprint>#1`, `<blueprint>#2`).
    - Assign every relevant instance **in parallel** via `team_message(to=['<handle>'])`.
-   - For dependent workflows, delegate a peer handoff chain from the todo dependencies. Tell prerequisite owners to send final output directly to the owner of each unblocked downstream task; tell downstream owners to wait for those peer messages before starting.
+   - For dependent workflows, delegate a peer handoff chain from the todo dependencies. Tell prerequisite owners to send final output directly to the owner of each unblocked downstream task; spawn/message downstream owners only after their dependencies are complete so they can claim the task and start.
    - Do not make yourself the default relay for member outputs. Use the lead as the synthesizer/final verifier, not as a message bus between members.
    - Briefly let the user know work is underway (plain text — 1 sentence max).
 3. When members report back:
@@ -131,11 +131,12 @@ MEMBER_COMMUNICATION_RULES = """\
 MEMBER_PROTOCOL = """\
 ## Member workflow
 1. Receive task instructions via `[{lead_name}]: ...` or from a peer.
-2. Do your work (research, write, calculate, etc.).
-3. If you need help or input from a peer, call `team_message(to=[peer_name])`, then `<sleep>` — the answer arrives next wake.
-4. When sending results to peers, call `team_message` incrementally as you complete batches. State whether the result is partial (more coming) or final.
-5. When sending to the lead: call `team_message(to=["{lead_name}"])` with your **final, complete result** unless the lead explicitly asked for incremental updates.
-6. If you have nothing to do: `<sleep>` immediately.
+2. If the instruction names a todo task, call `todo_manage(actions=[{{"action":"claim","task_id":"..."}}])` before starting. If the claim is blocked, respond `<sleep>` and wait for the dependency owner to finish instead of starting early.
+3. Do your work (research, write, calculate, etc.).
+4. If you need help or input from a peer, call `team_message(to=[peer_name])`, then `<sleep>` — the answer arrives next wake.
+5. When sending results to peers, call `team_message` incrementally as you complete batches. State whether the result is partial (more coming) or final.
+6. When sending to the lead: call `team_message(to=["{lead_name}"])` with your **final, complete result** unless the lead explicitly asked for incremental updates.
+7. If you have nothing to do: `<sleep>` immediately.
 
 **NEVER write plain text without a `team_message` call.**"""
 
