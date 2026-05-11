@@ -419,6 +419,8 @@ Each item has four fields:
 | `status` | `pending` \| `in_progress` \| `completed` \| `cancelled` |
 | `priority` | `high` \| `medium` \| `low` |
 
+For dependent team work, encode blockers in `content` (for example, `blocked by task_1`) and keep blocked tasks `pending` until prerequisites are complete. The todo schema stays intentionally small; dependency semantics live in the task text and lead protocol.
+
 **Frontend:** `tool_call`, `tool_start`, and `tool_end` SSE events for `todo_manage` are suppressed in the UI — no tool block is rendered in the chat. `tool_end` still invalidates `queryKeys.todos(sessionId)`, refetching `GET /api/team/sessions/{id}/todos`. History reload (`parseTeamBlocks`) also filters out `todo_manage` tool calls so they never appear on page refresh. The **Todos** popover in the chat header (`Ctrl+T`) displays the result — see [`documents/docs/web/todos.md`](../../docs/web/todos.md).
 
 ### Scheduler (`builtin/schedule.py`)

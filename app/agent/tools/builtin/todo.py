@@ -153,6 +153,9 @@ Rules
   and start the next one together).
 - Only ONE task should be in_progress at a time.
 - Mark tasks completed immediately when done; do not batch updates across turns.
+- For dependent work, encode blockers in task content (for example:
+  "blocked by task_1") and keep blocked tasks pending until prerequisites are
+  complete.
 - Use status=cancelled for tasks that are no longer needed instead of deleting.
 - Skip this tool for single, trivial tasks.\
 """

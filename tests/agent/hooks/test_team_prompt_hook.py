@@ -372,6 +372,12 @@ class TestProtocolConstants:
     def test_lead_protocol_has_workflow(self):
         assert "Lead workflow" in LEAD_PROTOCOL
         assert "delegate" in LEAD_PROTOCOL.lower()
+        assert "peer handoff chain" in LEAD_PROTOCOL
+        assert "not as a message bus" in LEAD_PROTOCOL
+        assert "blocked by task_1" in LEAD_PROTOCOL
+        assert "explorer#1" not in LEAD_PROTOCOL
+        assert "consultant#1" not in LEAD_PROTOCOL
+        assert "executor#1" not in LEAD_PROTOCOL
 
     def test_member_protocol_no_old_params(self):
         """Member protocol does not reference old mode/stop params."""
