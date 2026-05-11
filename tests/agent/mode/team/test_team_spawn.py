@@ -442,6 +442,7 @@ class TestLegacyAdoption:
             async with _session_factory()() as db:
                 row = await db.get(ChatSession, legacy_id)
                 assert row is not None
+                await db.refresh(row)
                 assert row.agent_name == "executor#1"
         finally:
             await team.stop()
