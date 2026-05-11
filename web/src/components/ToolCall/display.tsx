@@ -397,6 +397,77 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     }
   }
 
+  // ── team_manage: roster action in header, members as args ───────────
+  if (name === 'team_manage') {
+    const action = str(parsed, 'action')
+    const members = Array.isArray(parsed.members)
+      ? (parsed.members as unknown[]).map(String).filter(Boolean)
+      : []
+    const memberLabel = members.length > 0 ? members.join(', ') : 'team'
+    const truncated = trunc(memberLabel)
+    if (action === 'spawn') {
+      return {
+        header: <>Spawning <Arg>{truncated}</Arg></>,
+        headerTitle: `Spawning ${truncated}`,
+        formattedArgs: members.length > 0 ? members.join('\n') : null,
+      }
+    }
+    if (action === 'dismiss') {
+      return {
+        header: <>Dismissing <Arg>{truncated}</Arg></>,
+        headerTitle: `Dismissing ${truncated}`,
+        formattedArgs: null,
+      }
+    }
+    return {
+      header: 'Managing team roster…',
+      headerTitle: 'Managing team roster…',
+      formattedArgs: members.length > 0 ? members.join('\n') : null,
+    }
+  }
+
+  // ── team_configure: capability mutation in header, hide raw JSON ────
+  if (name === 'team_configure') {
+    const member = str(parsed, 'member')
+    const action = str(parsed, 'action')
+    const kind = str(parsed, 'kind')
+    const capabilityName = str(parsed, 'name')
+    const target = member ?? 'member'
+    const capability = [kind, capabilityName].filter(Boolean).join(': ')
+    const lines = [
+      member ? `member: ${member}` : null,
+      action ? `action: ${action}` : null,
+      capability ? `capability: ${capability}` : null,
+    ].filter(Boolean) as string[]
+
+    if (action === 'list') {
+      return {
+        header: <>Checking capabilities for <Arg>{target}</Arg></>,
+        headerTitle: `Checking capabilities for ${target}`,
+        formattedArgs: lines.length > 0 ? lines.join('\n') : null,
+      }
+    }
+    if (action === 'add' && capability) {
+      return {
+        header: <>Granting <Arg>{capability}</Arg> to <Arg>{target}</Arg></>,
+        headerTitle: `Granting ${capability} to ${target}`,
+        formattedArgs: lines.join('\n'),
+      }
+    }
+    if (action === 'remove' && capability) {
+      return {
+        header: <>Revoking <Arg>{capability}</Arg> from <Arg>{target}</Arg></>,
+        headerTitle: `Revoking ${capability} from ${target}`,
+        formattedArgs: lines.join('\n'),
+      }
+    }
+    return {
+      header: <>Configuring <Arg>{target}</Arg></>,
+      headerTitle: `Configuring ${target}`,
+      formattedArgs: lines.length > 0 ? lines.join('\n') : null,
+    }
+  }
+
   // ── Default: tool name as header, pretty-printed JSON as args ──────
   // Hide args entirely if the object is empty.
   if (Object.keys(parsed).length === 0) {

@@ -15,6 +15,8 @@ const INITIAL = {
   error: null,
   _pendingMessages: [] as import('@/stores/useTeamStore').PendingMessage[],
   _sessionGeneration: 0,
+  cacheInvalidations: [],
+  _abortController: null,
 };
 
 beforeEach(() => {
@@ -25,7 +27,7 @@ function makeStream(overrides: object = {}) {
   return {
     blocks: [] as ContentBlock[],
     currentBlocks: [] as ContentBlock[],
-    status: "available" as const,
+    status: "idle" as const,
     usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
     model: null,
     lastError: null,
@@ -47,24 +49,45 @@ describe("newSession", () => {
     expect(s.isTeamWorking).toBe(false);
   });
 
-  it("resets agent blocks but keeps agentNames", () => {
+  it("resets agent blocks and returns the live roster to the lead", () => {
     useTeamStore.setState({
+      leadName: "lead",
       agentNames: ["lead", "worker"],
       agentStreams: {
         lead: makeStream({ blocks: [{ id: "b1", type: "text" as const, content: "old" }] }),
+        worker: makeStream({ status: "working" }),
       },
+      activeAgent: "worker",
     });
     useTeamStore.getState().newSession();
     const s = useTeamStore.getState();
-    expect(s.agentNames).toEqual(["lead", "worker"]);
+    expect(s.agentNames).toEqual(["lead"]);
+    expect(s.activeAgent).toBe("lead");
     expect(s.agentStreams.lead.blocks).toHaveLength(0);
     expect(s.agentStreams.lead.currentBlocks).toHaveLength(0);
+    expect(s.agentStreams.worker.status).toBe("offline");
   });
 
   it("bumps _sessionGeneration", () => {
     const before = useTeamStore.getState()._sessionGeneration;
     useTeamStore.getState().newSession();
     expect(useTeamStore.getState()._sessionGeneration).toBe(before + 1);
+  });
+
+  it("aborts the active stream when starting a new session", () => {
+    const abort = new AbortController();
+    useTeamStore.setState({
+      sessionId: "streaming-session",
+      isConnected: true,
+      _abortController: abort,
+    });
+
+    useTeamStore.getState().newSession();
+
+    const s = useTeamStore.getState();
+    expect(abort.signal.aborted).toBe(true);
+    expect(s._abortController).toBeNull();
+    expect(s.isConnected).toBe(false);
   });
 });
 
@@ -136,6 +159,12 @@ describe("_handleSSEEvent: message", () => {
     expect(useTeamStore.getState().agentStreams["lead"].currentBlocks[0].content).toBe("lead says");
     expect(useTeamStore.getState().agentStreams["worker"].currentBlocks[0].content).toBe("worker says");
   });
+
+  it("adds newly-spawned agents to agentNames when stream events arrive", () => {
+    useTeamStore.setState({ agentNames: ["lead"] });
+    useTeamStore.getState()._handleSSEEvent("message", { agent: "executor#1", text: "hi" });
+    expect(useTeamStore.getState().agentNames).toEqual(["lead", "executor#1"]);
+  });
 });
 
 // ── _handleSSEEvent: thinking ─────────────────────────────────────────────────
@@ -175,6 +204,18 @@ describe("_handleSSEEvent: tool lifecycle", () => {
     expect(block.toolDone).toBe(true);
     expect(block.toolResult).toBe("results");
   });
+
+  it("team_manage tool_end invalidates the team agents cache", () => {
+    useTeamStore.getState()._handleSSEEvent("tool_end", {
+      agent: "lead",
+      name: "team_manage",
+      tool_call_id: "tc1",
+      result: "Spawned: executor#1.",
+    });
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "team_agents" },
+    ]);
+  });
 });
 
 // ── _handleSSEEvent: agent_status ────────────────────────────────────────────
@@ -185,15 +226,20 @@ describe("_handleSSEEvent: agent_status", () => {
     expect(useTeamStore.getState().agentStreams["lead"].status).toBe("working");
   });
 
-  it("sets agent status to available", () => {
-    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "available" });
-    expect(useTeamStore.getState().agentStreams["lead"].status).toBe("available");
+  it("sets agent status to idle", () => {
+    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "idle" });
+    expect(useTeamStore.getState().agentStreams["lead"].status).toBe("idle");
   });
 
   it("sets agent status to error with message", () => {
     useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "error", metadata: { message: "something broke" } });
     expect(useTeamStore.getState().agentStreams["lead"].status).toBe("error");
     expect(useTeamStore.getState().agentStreams["lead"].lastError).toBe("something broke");
+  });
+
+  it("sets agent status to offline", () => {
+    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "offline" });
+    expect(useTeamStore.getState().agentStreams["worker"].status).toBe("offline");
   });
 
   it("keeps isTeamWorking=true while any other agent is still working", () => {
@@ -203,9 +249,9 @@ describe("_handleSSEEvent: agent_status", () => {
     expect(useTeamStore.getState().isTeamWorking).toBe(true);
 
     // Worker goes idle — lead still working, global flag must stay true
-    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "available" });
+    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "idle" });
     const s = useTeamStore.getState();
-    expect(s.agentStreams.worker.status).toBe("available");
+    expect(s.agentStreams.worker.status).toBe("idle");
     expect(s.agentStreams.lead.status).toBe("working");
     expect(s.isTeamWorking).toBe(true);
   });
@@ -213,8 +259,8 @@ describe("_handleSSEEvent: agent_status", () => {
   it("clears isTeamWorking when the last working agent goes idle", () => {
     useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "working" });
     useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "working" });
-    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "available" });
-    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "available" });
+    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "idle" });
+    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "idle" });
     expect(useTeamStore.getState().isTeamWorking).toBe(false);
   });
 
@@ -267,7 +313,7 @@ describe("_handleSSEEvent: done", () => {
     expect(s.agentStreams.worker.currentBlocks).toHaveLength(0);
   });
 
-  it("sets all agent statuses to available", () => {
+  it("sets all agent statuses to idle", () => {
     useTeamStore.setState({
       isTeamWorking: true,
       leadName: "lead",
@@ -277,8 +323,20 @@ describe("_handleSSEEvent: done", () => {
       },
     });
     useTeamStore.getState()._handleSSEEvent("done", {});
-    expect(useTeamStore.getState().agentStreams.lead.status).toBe("available");
-    expect(useTeamStore.getState().agentStreams.worker.status).toBe("available");
+    expect(useTeamStore.getState().agentStreams.lead.status).toBe("idle");
+    expect(useTeamStore.getState().agentStreams.worker.status).toBe("idle");
+  });
+
+  it("preserves offline status on done", () => {
+    useTeamStore.setState({
+      isTeamWorking: true,
+      leadName: "lead",
+      agentStreams: {
+        worker: makeStream({ status: "offline" as const }),
+      },
+    });
+    useTeamStore.getState()._handleSSEEvent("done", {});
+    expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline");
   });
 });
 

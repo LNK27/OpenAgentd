@@ -182,6 +182,38 @@ describe("AgentView — scroll-to-bottom button", () => {
     btn = container.querySelector('button[aria-label="Scroll to bottom"]')
     expect(btn).toBeNull()
   })
+
+  it("hides stale scroll button when the view resets to an empty chat", async () => {
+    const { container, rerender } = renderStream({
+      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
+      currentBlocks: [],
+      isWorking: false,
+    })
+
+    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    Object.defineProperty(scrollDiv, "scrollHeight", {
+      value: 1000,
+      configurable: true,
+    })
+    Object.defineProperty(scrollDiv, "scrollTop", {
+      value: 100,
+      configurable: true,
+      writable: true,
+    })
+    Object.defineProperty(scrollDiv, "clientHeight", {
+      value: 500,
+      configurable: true,
+    })
+
+    scrollDiv.dispatchEvent(new Event("wheel", { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+
+    rerender(<AgentView blocks={[]} currentBlocks={[]} isWorking={false} />)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+  })
 })
 
 describe("AgentView — bounce dots indicator", () => {

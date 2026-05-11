@@ -1,6 +1,7 @@
 export const queryKeys = {
   health: () => ['health'] as const,
   agents: () => ['agents'] as const,
+  teamAgents: () => ['agents', 'team'] as const,
   team: {
     status: () => ['team', 'status'] as const,
     sessions: {

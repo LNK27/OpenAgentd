@@ -386,6 +386,88 @@ describe("ToolCall — team_message display", () => {
 })
 
 // ---------------------------------------------------------------------------
+// team_manage / team_configure display
+// ---------------------------------------------------------------------------
+
+describe("ToolCall — team_manage display", () => {
+  it("shows roster action in the header and members as args", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ action: "spawn", members: ["executor", "explorer"] })
+    render(<ToolCall name="team_manage" args={args} done={false} />)
+
+    expectItalicArg(getHeader("Spawning executor, explorer"), "executor, explorer")
+    await user.click(screen.getByRole("button"))
+    expect(screen.getAllByText(/executor/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/explorer/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/"members"/)).toBeNull()
+  })
+
+  it("renders grouped roster results", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ action: "dismiss", members: ["executor#1"] })
+    render(
+      <ToolCall
+        name="team_manage"
+        args={args}
+        done={true}
+        result="Dismissed: executor#1. Errors: explorer#2: not live."
+      />,
+    )
+
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText("Dismissed")).toBeTruthy()
+    expect(screen.getAllByText("executor#1").length).toBeGreaterThan(0)
+    expect(screen.getByText("Errors")).toBeTruthy()
+  })
+
+  it("hides dismiss arguments when there is no result", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ action: "dismiss", members: ["executor#1"] })
+    render(<ToolCall name="team_manage" args={args} done={false} />)
+
+    expectItalicArg(getHeader("Dismissing executor#1"), "executor#1")
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByText("arguments")).toBeNull()
+  })
+})
+
+describe("ToolCall — team_configure display", () => {
+  it("shows capability mutation in the header", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({
+      member: "executor#1",
+      action: "add",
+      kind: "tool",
+      name: "write",
+    })
+    render(<ToolCall name="team_configure" args={args} done={false} />)
+
+    expect(getHeader("Granting tool: write to executor#1")).toBeTruthy()
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText(/member: executor#1/)).toBeTruthy()
+    expect(screen.getByText(/capability: tool: write/)).toBeTruthy()
+    expect(screen.queryByText(/"member"/)).toBeNull()
+  })
+
+  it("renders capability lists as readable rows", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ member: "executor#1", action: "list" })
+    render(
+      <ToolCall
+        name="team_configure"
+        args={args}
+        done={true}
+        result={"Capabilities for 'executor#1' (from executor.md):\n- skills: []\n- tools:  ['write']\n- mcp:    []"}
+      />,
+    )
+
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText("Capabilities for 'executor#1' (from executor.md):")).toBeTruthy()
+    expect(screen.getByText(/tools:.*write/)).toBeTruthy()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Custom tool display — skill
 // ---------------------------------------------------------------------------
 

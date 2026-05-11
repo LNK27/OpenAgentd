@@ -16,7 +16,9 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `team_sessions.py` | List team sessions or inspect one | `--id ID`, `--all` |
 | `team_history.py` | Print lead + member messages for a session | positional `SESSION_ID` |
 | `team_timeline.py` | Chronological cross-agent timeline (reads DB directly) | `SESSION_ID`, `--full` |
-| `team_sse.py` | Capture + pretty-print every SSE event from a team turn (timing, per-agent attribution, counts) | `--session ID`, `--wait N`, `--out FILE`, `--no-summary` |
+| `team_todos.py` | Print session todos and flag dependency/claim consistency issues | positional `SESSION_ID` |
+| `team_sse.py` | Capture + pretty-print every SSE event from a team turn, including lifecycle states (`idle`, `working`, `offline`, `error`) | `--session ID`, `--wait N`, `--out FILE`, `--no-summary` |
+| `team_spawn.py` | Drive a turn that exercises `team_manage` spawn/dismiss; snapshots `/team/agents`, streams per-agent content, prints spawn/dismiss and lifecycle timelines | `--message TEXT`, `--session ID`, `--wait N`, `--out FILE`, `--no-color`, `--no-history` |
 
 ```bash
 # New team turn
@@ -31,9 +33,17 @@ uv run python -m manual.team_history <SESSION_ID>
 # Chronological timeline across all agents
 uv run python -m manual.team_timeline <SESSION_ID>
 
+# Inspect task ownership/dependencies
+uv run python -m manual.team_todos <SESSION_ID>
+
 # Capture every SSE event with timing + per-agent attribution
 uv run python -m manual.team_sse "Ask the explorer to scan memory/"
 uv run python -m manual.team_sse "msg" --out .openagentd/sse.jsonl     # save raw JSONL
+
+# Smoke-test team_manage spawn/dismiss + stream per-agent content
+uv run python -m manual.team_spawn                                     # default prompt forces multi-blueprint spawn
+uv run python -m manual.team_spawn --message "Spawn one executor and ask it to count to three"
+uv run python -m manual.team_spawn --out .openagentd/spawn.jsonl       # also save raw JSONL
 ```
 
 ---
@@ -187,6 +197,11 @@ uv run python -m manual.team_history <SESSION_ID>
 **Chronological cross-agent timeline:**
 ```bash
 uv run python -m manual.team_timeline <SESSION_ID>
+```
+
+**Check session todos:**
+```bash
+uv run python -m manual.team_todos <SESSION_ID>
 ```
 
 **Verify date injection is frozen at session creation:**

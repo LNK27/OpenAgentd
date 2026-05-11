@@ -1,106 +1,67 @@
 /**
- * SplitGrid — fixed n-pane grid layout for the `split` view mode.
+ * SplitGrid — automatic n-pane grid layout for the `split` view mode.
  *
- * All panes (lead included) are treated equally. The "big" slot in each
- * layout goes to ``panelOrder[0]``; the rest fill remaining slots in
- * order. The lead badge still follows the store's designated lead agent
- * wherever it happens to sit. Layouts are hand-tuned for n = 1..6:
+ * All panes (lead included) are treated equally and follow `agentNames` order.
+ * New spawned agents are appended by the store, so they automatically claim the
+ * next available split-view slot. Columns grow by square capacity:
  *
  *   1 → fullscreen
- *   2 → side-by-side
+ *   2 → side-by-side columns
  *   3 → big left, two stacked right
  *   4 → 2×2
- *   5 → big left + 2×2 right
- *   6 → 3×2
- *
- * Drag-and-drop reorders the underlying ``panelOrder`` array; visual
- * feedback (dragging / drop-target rings) is delegated to ``AgentPane``.
+ *   5..9 → three columns, stacked as needed
  */
-import type React from 'react'
 import { AgentPane } from '../AgentPane'
 import type { AgentStream } from '@/stores/useTeamStore'
 
 interface SplitGridProps {
-  panelOrder: string[]
+  agentNames: string[]
   leadName: string | null
   agentStreams: Record<string, AgentStream>
-  draggingIdx: number | null
-  dropTargetIdx: number | null
-  onDragStart: (idx: number) => void
-  onDragOver: (e: React.DragEvent<HTMLDivElement>, idx: number) => void
-  onDrop: (idx: number) => void
-  onDragEnd: () => void
 }
 
 export function SplitGrid({
-  panelOrder, leadName, agentStreams,
-  draggingIdx, dropTargetIdx,
-  onDragStart, onDragOver, onDrop, onDragEnd,
+  agentNames, leadName, agentStreams,
 }: SplitGridProps) {
-  const n = Math.min(panelOrder.length, 6)
-  if (n === 0) return null
+  const visibleAgentNames = agentNames.filter((name) => {
+    const stream = agentStreams[name]
+    return stream && stream.status !== 'offline'
+  })
+  if (visibleAgentNames.length === 0) return null
 
-  const renderPanel = (idx: number, style: React.CSSProperties) => {
-    const name = panelOrder[idx]
-    if (!name) return null
+  const renderPanel = (name: string) => {
     const stream = agentStreams[name]
     if (!stream) return null
     return (
-      <div key={name} style={style} className="min-h-0">
+      <div key={name} className="min-h-0 flex-1">
         <AgentPane
           name={name}
           stream={stream}
           isLead={name === leadName}
-          isDragging={draggingIdx === idx}
-          isDropTarget={dropTargetIdx === idx && draggingIdx !== idx}
-          onDragStart={() => onDragStart(idx)}
-          onDragOver={(e) => onDragOver(e, idx)}
-          onDrop={() => onDrop(idx)}
-          onDragEnd={onDragEnd}
         />
       </div>
     )
   }
 
-  if (n === 1) return <div className="h-full">{renderPanel(0, {})}</div>
-  if (n === 2) return (
-    <div className="grid h-full gap-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
-      {renderPanel(0, { gridColumn: 1, gridRow: 1 })}
-      {renderPanel(1, { gridColumn: 2, gridRow: 1 })}
-    </div>
-  )
-  if (n === 3) return (
-    <div className="grid h-full gap-3" style={{ gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr' }}>
-      {renderPanel(0, { gridColumn: 1, gridRow: '1 / 3' })}
-      {renderPanel(1, { gridColumn: 2, gridRow: 1 })}
-      {renderPanel(2, { gridColumn: 2, gridRow: 2 })}
-    </div>
-  )
-  if (n === 4) return (
-    <div className="grid h-full gap-3" style={{ gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr' }}>
-      {renderPanel(0, { gridColumn: 1, gridRow: 1 })}
-      {renderPanel(1, { gridColumn: 2, gridRow: 1 })}
-      {renderPanel(2, { gridColumn: 1, gridRow: 2 })}
-      {renderPanel(3, { gridColumn: 2, gridRow: 2 })}
-    </div>
-  )
-  if (n === 5) return (
-    <div className="grid h-full gap-3" style={{ gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr 1fr' }}>
-      {renderPanel(0, { gridColumn: 1, gridRow: '1 / 3' })}
-      {renderPanel(1, { gridColumn: 2, gridRow: 1 })}
-      {renderPanel(2, { gridColumn: 2, gridRow: 2 })}
-      {renderPanel(3, { gridColumn: 3, gridRow: 1 })}
-      {renderPanel(4, { gridColumn: 3, gridRow: 2 })}
-    </div>
-  )
+  const columnCount = Math.ceil(Math.sqrt(visibleAgentNames.length))
+  const baseColumnSize = Math.floor(visibleAgentNames.length / columnCount)
+  const extraColumns = visibleAgentNames.length % columnCount
+  const columns: string[][] = []
+  let offset = 0
+
+  for (let col = 0; col < columnCount; col += 1) {
+    const size = baseColumnSize + (col >= columnCount - extraColumns ? 1 : 0)
+    columns.push(visibleAgentNames.slice(offset, offset + size))
+    offset += size
+  }
+
   return (
-    <div className="grid h-full gap-3" style={{ gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr 1fr' }}>
-      {renderPanel(0, { gridColumn: 1, gridRow: 1 })}
-      {renderPanel(1, { gridColumn: 2, gridRow: 1 })}
-      {renderPanel(2, { gridColumn: 3, gridRow: 1 })}
-      {renderPanel(3, { gridColumn: 1, gridRow: 2 })}
-      {renderPanel(4, { gridColumn: 2, gridRow: 2 })}
-      {renderPanel(5, { gridColumn: 3, gridRow: 2 })}
+    <div className="flex h-full gap-3">
+      {columns.map((column, idx) => (
+        <div key={idx} className="flex min-w-0 flex-1 flex-col gap-3">
+          {column.map(renderPanel)}
+        </div>
+      ))}
     </div>
   )
 }

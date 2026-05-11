@@ -141,7 +141,7 @@ always proceed to wiring after these commands regardless of daemon state.
 
    **The lead must wire it.** Two paths:
 
-   - **Member target (fast path)**: call `team_manage(member="<name>", action="add", kind="mcp", name="<server>")` directly. One tool call, validates against the live registry, takes effect on the member's next turn.
+   - **Member target (fast path)**: call `team_configure(member="<handle>", action="add", kind="mcp", name="<server>")` directly. One tool call, validates against the live registry, takes effect on the member's next turn.
    - **Lead target, or any non-trivial multi-field edit**: call `skill("self-healing")` and follow its diff workflow.
 
    Do not delegate this step to a member agent, even if the member ran the steps above.

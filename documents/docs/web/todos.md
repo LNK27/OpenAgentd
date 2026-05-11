@@ -2,14 +2,15 @@
 title: Todos Popover
 description: Chat header popover showing the agent's current task list with live invalidation on tool_end.
 status: stable
-updated: 2026-04-24
+updated: 2026-05-11
 ---
 
 # Todos popover
 
 A popover card anchored to the **Todos** button in the team chat header. Shows
-the agent's current task list as managed by `todo_manage`, sorted by status and
-updated automatically after each `todo_manage` call.
+the agent's current task list as a four-column task board managed by
+`todo_manage`, grouped by status and updated automatically after each
+`todo_manage` call.
 
 ---
 
@@ -63,7 +64,7 @@ on page refresh too — both `parseTeamBlocks` (team history) and
 
 ## Display
 
-Items are sorted before rendering: `in_progress → pending → completed → cancelled`.
+Items render in status columns: `pending`, `in_progress`, `completed`, and `cancelled`. Columns are always visible, including when the session has no todos yet.
 
 | Status | Icon | Style |
 |--------|------|-------|
@@ -80,11 +81,13 @@ Priority badges:
 | `medium` | Amber tint |
 | `low` | Accent dim |
 
+Each card shows `task_id`, priority, content, assigned/claimed agent (`claimed_by ?? assigned_to ?? "Unassigned"`), and dependency ids. Dependency and ownership fields come from the first-class todo schema, not from parsing task content.
+
 The popover header shows a `{done}/{total}` counter when the list is non-empty.
 A dot indicator on the button itself is shown when any item has `status === 'in_progress'`.
-Empty state: "No tasks yet".
+Empty state: all four columns remain visible with per-column `Nothing here` messages.
 
-The list is scrollable (`max-h-80 overflow-y-auto`) for long task lists.
+The board scrolls horizontally on narrow screens. Each non-empty column owns its own vertical scroll region with hidden scrollbar chrome, keeping the status headers fixed while task cards scroll.
 
 ---
 

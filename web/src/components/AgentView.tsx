@@ -267,6 +267,13 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
 
   const isEmpty = totalLen === 0 && !isWorking
 
+  useEffect(() => {
+    if (!isEmpty) return
+    pinnedRef.current = true
+    setShowScrollBtn(false)
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [isEmpty])
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
     <div ref={scrollRef} className="flex-1 overflow-y-auto">

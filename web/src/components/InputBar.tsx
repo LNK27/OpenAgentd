@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
-import { ArrowUp, Loader2, Paperclip, Square } from 'lucide-react'
+import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
@@ -50,10 +50,10 @@ interface InputBarProps {
    */
   voiceEnabled?: boolean
   /**
-   * When true, render the slim icon-only collapsed bar (pencil
-   * `inputBar-collapsed-bar`, node `PKjWT`) instead of the full pill.
-   * Clicking the bar's chat affordance calls `onUnminimize` so the
-   * parent can swap back to the full variant and focus the textarea.
+   * When true, render the slim collapsed action strip instead of the full
+   * pill. The strip keeps file, voice, chat, and send/stop controls visible.
+   * Clicking the chat affordance calls `onUnminimize` so the parent can swap
+   * back to the full variant and focus the textarea.
    */
   minimized?: boolean
   /** Called when the user clicks the collapsed bar to expand it. */
@@ -460,7 +460,18 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </div>
   )
 
-  // In minimized mode the send button expands the bar instead of submitting.
+  const chatEl = minimized ? (
+    <button
+      type="button"
+      onClick={(e) => { stopClick(e); handleExpand() }}
+      aria-label="Expand input bar"
+      title="Click to write"
+      className={actionBtnClass}
+    >
+      <MessageCircle size={14} aria-hidden="true" />
+    </button>
+  ) : null
+
   const sendOrStopEl = canStop && !hasText ? (
     <button
       type="button"
@@ -475,12 +486,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       type="button"
       onClick={(e) => {
         stopClick(e)
-        if (minimized) handleExpand()
-        else submit()
+        submit()
       }}
-      disabled={!minimized && !canSend}
-      aria-label={minimized ? 'Expand input bar' : 'Send message'}
-      title={minimized ? 'Click to write' : 'Send (Enter) · New line (Shift+Enter) · Commands (/)'}
+      disabled={!canSend}
+      aria-label="Send message"
+      title="Send (Enter) · New line (Shift+Enter) · Commands (/)"
       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
     >
       {disabled && !minimized ? (
@@ -518,7 +528,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
             : disabled
               ? 'Waiting for response…'
               : isStreaming
-                ? 'Type /stop to interrupt, or click stop…'
+                ? 'Queue a follow-up, type /stop, or click stop…'
                 : placeholder
         }
         rows={1}
@@ -585,6 +595,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
             >
               {attachEl}
               {voiceEl}
+              {chatEl}
               {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's
                   w-fit ↔ w-full. ``-ml-2`` absorbs the parent gap-2
                   when collapsed. */}

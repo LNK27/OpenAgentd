@@ -8,7 +8,7 @@ TeamLead and TeamMember subclass it with role-specific behaviour:
 Agents do **not** run persistent background loops.  Instead, they are
 *activated on demand*: when a message arrives in their mailbox the team calls
 ``_maybe_activate()`` which spawns a single ``asyncio.Task`` that drains the
-inbox, calls ``agent.run()``, and returns to ``available`` state.
+inbox, calls ``agent.run()``, and returns to ``idle`` state.
 
 Streaming is handled by StreamPublisherHook, which pushes every LLM delta
 directly to the shared in-memory stream store (keyed by the team lead's session_id).
@@ -85,11 +85,17 @@ LEAD_COMMUNICATION_RULES = """\
   - Building, writing files, running commands → **executor**
   - Research, web search, reading docs or codebases → **explorer**
   - Hard decisions, architecture review, trade-off analysis → **consultant**
-  - Multiple concerns → assign multiple members in parallel
+  - Multiple concerns → spawn / message multiple members in parallel
+- **Roster management — `team_manage`.** Members are spawned on demand. Spawn what you need, address it, dismiss it when done.
+  - To bring members online: `team_manage(action='spawn', members=['<blueprint>'])` -> returns handles like `<blueprint>#1`. Address handles via `team_message(to=['<blueprint>#1'])`.
+  - For parallel work: pass the same blueprint more than once: `team_manage(action='spawn', members=['<blueprint>', '<blueprint>'])` -> `<blueprint>#1`, `<blueprint>#2`. Each instance has its own chat history.
+  - To restore/reuse history: spawn the explicit handle: `team_manage(action='spawn', members=['<blueprint>#1'])`.
+  - To free members when work is done: `team_manage(action='dismiss', members=['<blueprint>#1'])`. Dismiss requires explicit handles and preserves history on disk.
+  - **Spawn lazily — do not spawn members preemptively.** Spawn the moment you have actual work for that role; dismiss as soon as their work is done so the team stays lean.
 - Coordination with members must go through the `team_message` tool. Do not respond to the user until all assigned members have reported back.
-- **Capability management** — members start lean. If a member needs a skill, built-in tool, or MCP server they don't have, use `team_manage` to grant it before delegating, and revoke it once the work is done. The member auto-reloads on its next turn.
-  - **You are the translator.** Members describe their *need* in plain language ("I need to write files", "I need shadcn examples"); you map it to the exact registry name (`write`, `mcp` `shadcn`, etc.) and pass that to `team_manage`. Members don't know what tools exist — you do.
-  - **When a member asks for a capability, prefer `team_manage(add)` + re-delegate over doing the work yourself** — the member is closer to the task and keeps separation of concerns. Self-execute only as a last resort.
+- **Capability management — `team_configure`.** Spawned members start with whatever their blueprint declares. If an instance needs an additional skill, built-in tool, or MCP server, use `team_configure` to grant it before delegating, and revoke it once the work is done. The member auto-reloads on its next turn.
+  - **You are the translator.** Members describe their *need* in plain language ("I need to write files", "I need shadcn examples"); you map it to the exact registry name (`write`, `mcp` `shadcn`, etc.) and pass that to `team_configure`. Members don't know what tools exist — you do.
+  - **When a member asks for a capability, prefer `team_configure(add)` + re-delegate over doing the work yourself** — the member is closer to the task and keeps separation of concerns. Self-execute only as a last resort.
 - Always format your responses in **Markdown**. No emoji."""
 
 LEAD_PROTOCOL = """\
@@ -98,14 +104,18 @@ LEAD_PROTOCOL = """\
    - Light (single-step, one tool call, factual answer) → handle it yourself directly.
    - Heavy (produces files, needs research, needs reasoning, 3+ steps) → delegate. Do not do this work yourself.
 2. When delegating:
-   - Identify which members cover the work using the routing guide above.
-   - Assign every relevant member **in parallel** via `team_message`.
-   - When one member's output feeds another, instruct the producer to send directly to the consumer; the last in the chain reports back to you.
+   - For multi-step work, create a todo plan first. Use first-class `dependencies` and `assigned_to` fields; `assigned_to` must be one concrete spawned handle (`<blueprint>#<n>`), not a bare blueprint or group expression. Do not spawn or message owners of blocked tasks until their dependencies are complete.
+   - Identify which blueprints cover the work using the routing guide above.
+   - **Spawn before assigning member todos.** Call `team_manage(action='spawn', members=[...])`. Use bare blueprint names (`<blueprint>`) for new instances, or explicit handles (`<blueprint>#1`) to restore/reuse history. Repeated blueprint names create parallel instances (`<blueprint>#1`, `<blueprint>#2`). Use the returned concrete handles in `assigned_to`.
+   - Assign every relevant instance **in parallel** via `team_message(to=['<handle>'])`.
+   - For dependent workflows, delegate a peer handoff chain from the todo dependencies. Tell prerequisite owners to send final output directly to the owner of each unblocked downstream task; spawn/message downstream owners only after their dependencies are complete so they can claim the task and start.
+   - Do not make yourself the default relay for member outputs. Use the lead as the synthesizer/final verifier, not as a message bus between members.
    - Briefly let the user know work is underway (plain text — 1 sentence max).
 3. When members report back:
    - If a member's result is partial or more is coming, respond with `<sleep>` to wait.
    - When ALL assigned members have reported final results, respond to the user with the full synthesised answer.
-   - **Sanity-check claims before promising "done" to the user.** When a member says they wrote a file or changed state, verify with a cheap read (`ls`, `read`) when feasible. Members can hallucinate success after a failed tool call — one verification beats one wrong answer."""
+   - **Sanity-check claims before promising "done" to the user.** When a member says they wrote a file or changed state, verify with a cheap read (`ls`, `read`) when feasible. Members can hallucinate success after a failed tool call — one verification beats one wrong answer.
+4. After delivering the answer, dismiss any instance whose work is complete: `team_manage(action='dismiss', members=['<handle>'])` so future turns start with a clean roster. Restore later with `team_manage(action='spawn', members=['<handle>'])` if you need its history."""
 
 MEMBER_COMMUNICATION_RULES = """\
 ## Communication protocol
@@ -121,11 +131,12 @@ MEMBER_COMMUNICATION_RULES = """\
 MEMBER_PROTOCOL = """\
 ## Member workflow
 1. Receive task instructions via `[{lead_name}]: ...` or from a peer.
-2. Do your work (research, write, calculate, etc.).
-3. If you need help or input from a peer, call `team_message(to=[peer_name])`, then `<sleep>` — the answer arrives next wake.
-4. When sending results to peers, call `team_message` incrementally as you complete batches. State whether the result is partial (more coming) or final.
-5. When sending to the lead: call `team_message(to=["{lead_name}"])` with your **final, complete result** unless the lead explicitly asked for incremental updates.
-6. If you have nothing to do: `<sleep>` immediately.
+2. If the instruction names a todo task, call `todo_manage(actions=[{{"action":"claim","task_id":"..."}}])` before starting. If the claim is blocked, respond `<sleep>` and wait for the dependency owner to finish instead of starting early.
+3. Do your work (research, write, calculate, etc.).
+4. If you need help or input from a peer, call `team_message(to=[peer_name])`, then `<sleep>` — the answer arrives next wake.
+5. When sending results to peers, call `team_message` incrementally as you complete batches. State whether the result is partial (more coming) or final.
+6. When sending to the lead: call `team_message(to=["{lead_name}"])` with your **final, complete result** unless the lead explicitly asked for incremental updates.
+7. If you have nothing to do: `<sleep>` immediately.
 
 **NEVER write plain text without a `team_message` call.**"""
 
@@ -192,7 +203,7 @@ class TeamMemberBase(abc.ABC):
         self.session_id: str = session_id or str(uuid7())
         self.db_factory = db_factory
 
-        self.state: Literal["available", "working", "error"] = "available"
+        self.state: Literal["idle", "working", "error"] = "idle"
         self._cancel_event = asyncio.Event()
         self._active_task: asyncio.Task | None = None
 
@@ -219,14 +230,14 @@ class TeamMemberBase(abc.ABC):
         """Register this member with the team. Called by AgentTeam.start().
 
         Registers the mailbox inbox but does **not** spawn any background task.
-        The agent becomes ``available`` and will be activated on demand when a
+        The agent becomes ``idle`` and will be activated on demand when a
         message arrives.
         """
         self._team = team
         self._mailbox = team.mailbox
         self._mailbox.register(self.name)
 
-        self.state = "available"
+        self.state = "idle"
         logger.info(
             "team_member_registered name={} session_id={}", self.name, self.session_id
         )
@@ -273,7 +284,7 @@ class TeamMemberBase(abc.ABC):
         if self._mailbox and self.name in self._mailbox.registered_agents:
             self._mailbox.deregister(self.name)
 
-        self.state = "available"
+        self.state = "idle"
         logger.info("team_member_stopped name={}", self.name)
 
     # ------------------------------------------------------------------
@@ -399,7 +410,7 @@ class TeamMemberBase(abc.ABC):
             )
 
     async def _run_activation(self) -> None:
-        """One-shot activation: drain inbox, process, return to available."""
+        """One-shot activation: drain inbox, process, return to idle."""
         assert self._mailbox is not None
         assert self._team is not None
 
@@ -416,7 +427,7 @@ class TeamMemberBase(abc.ABC):
         if not pending:
             # Spurious activation — nothing to process. Reset state that
             # _maybe_activate pre-set to "working" and bail out.
-            self.state = "available"
+            self.state = "idle"
             return
 
         # state was already set to "working" by _maybe_activate
@@ -470,11 +481,13 @@ class TeamMemberBase(abc.ABC):
         finally:
             self._on_turn_finally()
             if self.state != "error":
-                self.state = "available"
-            await self._team._emit(
-                agent=self.name, event="agent_status", status="available"
-            )
-            logger.info("team_member_available name={}", self.name)
+                self.state = "idle"
+                await self._team._emit(
+                    agent=self.name,
+                    event="agent_status",
+                    status="idle",
+                )
+                logger.info("team_member_idle name={}", self.name)
 
             # Did mcp.json / agent.md / SKILL.md change during this turn?
             # Drift → rebuild the agent at the start of the next turn.
@@ -484,7 +497,7 @@ class TeamMemberBase(abc.ABC):
             # agent.run() breaks on <sleep>/final-response without running
             # TeamInboxHook again, so any message queued during that last LLM call
             # sits in the inbox.  Calling _maybe_activate here is safe: state is
-            # already "available", so it spawns a fresh activation task that loads
+            # already "idle", so it spawns a fresh activation task that loads
             # history from DB and wakes the agent — exactly like a normal wakeup.
             if not self._mailbox.inbox_empty(self.name):
                 logger.info(
@@ -745,20 +758,47 @@ class TeamLead(TeamMemberBase):
             logger.warning("team_lead_error_emit_failed error={}", push_exc)
 
     def build_protocol(self, base_prompt: str, team: "AgentTeam") -> str:
-        """Assemble lead protocol + roster into system prompt."""
+        """Assemble lead protocol + roster (blueprints + live instances) into prompt."""
         sections: list[str] = [
             LEAD_COMMUNICATION_RULES,
             LEAD_MESSAGE_FORMAT,
             LEAD_PROTOCOL,
         ]
 
-        # Build roster — list all members
-        roster_lines: list[str] = []
-        for member in team.members.values():
-            desc = member.agent.description or member.name
-            roster_lines.append(f"- **{member.name}**: {desc}")
-        if roster_lines:
-            sections.append("## Team members\n" + "\n".join(roster_lines))
+        # Blueprints section — spawnable members.  Each blueprint shows
+        # its description and any live instance handles so the lead can
+        # see which roles are already running.
+        if team.blueprints:
+            bp_lines: list[str] = []
+            for bp in team.blueprints.values():
+                live = team.live_instances_for_blueprint(bp.name)
+                live_str = (
+                    f" — live: {', '.join(live)}" if live else " — no live instances"
+                )
+                bp_lines.append(f"- **{bp.name}**: {bp.description}{live_str}")
+            sections.append(
+                "## Spawnable blueprints\n"
+                "Spawn with `team_manage(action='spawn', members=['<name>'])`; "
+                "use explicit handles (`<name>#1`) to restore history.\n"
+                + "\n".join(bp_lines)
+            )
+
+        # Eager-members section (back-compat for tests / direct construction):
+        # any TeamMember in team.members whose handle is *not* a
+        # ``blueprint#N`` form is shown as a plain "always-on" entry.
+        from app.agent.mode.team.team import parse_instance_handle
+
+        plain_members = [
+            (name, m)
+            for name, m in team.members.items()
+            if parse_instance_handle(name) is None
+        ]
+        if plain_members:
+            roster_lines = [
+                f"- **{name}**: {m.agent.description or name}"
+                for name, m in plain_members
+            ]
+            sections.append("## Live members\n" + "\n".join(roster_lines))
 
         protocol = "\n\n".join(sections)
         return f"{base_prompt}\n\n---\n\n{protocol}"
@@ -814,7 +854,10 @@ class TeamMember(TeamMemberBase):
             MEMBER_PROTOCOL.format(lead_name=lead_name),
         ]
 
-        # Build roster — show lead + other members
+        # Build roster — show lead + every currently-live peer instance.
+        # Spawnable-but-not-yet-live blueprints are not shown to members:
+        # only the lead spawns / dismisses, so the member only needs the
+        # current peer roster.
         roster_lines: list[str] = []
         lead = team.lead
         lead_desc = lead.agent.description or lead.name

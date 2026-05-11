@@ -64,7 +64,9 @@ These are proper typed fields on `AgentState` — not entries in `metadata`. Use
 
 | Key | Type | Written by | Read by |
 |-----|------|-----------|--------|
-| `_current_task_id` | `str` | `claim_task` tool (generic) | `_run_activation()` (requeue on error) |
+| `session_id` | `str` | `agent.run()` start | built-in tools needing session scope |
+| `agent_name` | `str` | `agent.run()` start | `todo_manage` claim action |
+| `_todos` | `dict` | `todo_manage` | `todo_manage` subsequent calls in the same turn |
 | `_multimodal_tool_parts` | `dict[str, list[ContentBlock]]` | tool executor (when tool returns `ToolResult`) | agent loop (attaches to `ToolMessage.parts`) |
 
 > **Note:** `total_tokens`, `last_usage` are no longer stored in `metadata` — use `state.usage` instead. `tool_names` and `capabilities` were also promoted from metadata to typed fields.

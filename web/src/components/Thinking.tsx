@@ -4,11 +4,11 @@
  * Visual language follows the pencil source (node ``ptE8V``,
  * ``ThinkingCollapsed``):
  *
- *   - Outer card: 1px ``--color-border`` outline, ``rounded-md``, padded
- *     ``px-3 py-2.5``. Sits on the ambient surface (no fill of its own).
- *   - Header: chevron + label in Inter 13/500 ``--color-text-2`` plus a
- *     mono 11px ``--color-text-muted`` sub-hint ("tap to read" /
- *     "tap to collapse") that mirrors the pencil layout.
+ *   - Outer card: 1px ``--color-border`` outline, ``rounded-md``. Sits on
+ *     the ambient surface (no fill of its own).
+ *   - Header: label in Inter 13/500 ``--color-text-2`` plus a mono 11px
+ *     ``--color-text-muted`` sub-hint ("tap to read" / "tap to collapse")
+ *     that mirrors the pencil layout.
  *   - Streaming: dots replace the sub-hint while content is still
  *     arriving so the label stays the visual anchor.
  *
@@ -25,7 +25,6 @@
 
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronRight } from 'lucide-react'
 import { ThinkingDots } from './motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
@@ -142,16 +141,11 @@ export function Thinking({ content, isStreaming }: ThinkingProps) {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="group flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-(--motion-fast) ease-(--ease-out) hover:bg-(--bg-key) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+        className="group flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors duration-(--motion-fast) ease-(--ease-out) hover:bg-(--bg-key) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         aria-expanded={expanded}
         aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
       >
-        <ChevronRight
-          size={14}
-          className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
-          aria-hidden
-        />
-        <span className="flex-1 truncate text-[13px] font-medium text-(--color-text-2)">
+        <span className="flex-1 truncate text-xs font-medium text-(--color-text-2)">
           {label}
         </span>
         {isStreaming ? (
@@ -160,7 +154,7 @@ export function Thinking({ content, isStreaming }: ThinkingProps) {
             aria-label={`${label}…`}
           />
         ) : (
-          <span className="shrink-0 font-mono text-[11px] text-(--color-text-muted)">
+          <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)">
             {expanded ? 'tap to collapse' : 'tap to read'}
           </span>
         )}

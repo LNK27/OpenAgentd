@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
 import { InputBar, type InputBarHandle, type SlashCommand } from './InputBar'
@@ -111,15 +111,16 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     const [filesBelow, setFilesBelow] = useState(true)
 
     // ── Minimize-on-blur (desktop only) ──────────────────────────────────
-    // The bar collapses to the slim icon strip (pencil PKjWT) after the
+    // The bar collapses to the slim action strip after the
     // textarea loses focus while empty, so a blurred composer doesn't
     // dominate the chat surface. It expands again on focus or whenever
-    // there's any meaningful content (text, attachments, queued messages,
-    // streaming). Mobile keeps the full bar — the soft keyboard already
-    // dictates its own focus/blur cadence and a collapse there would
-    // fight system behavior.
+    // there's any meaningful content (text, attachments, queued messages).
+    // Streaming alone does not force it open; users can move focus elsewhere
+    // and keep only the stop/restore affordances visible. Mobile keeps the
+    // full bar — the soft keyboard already dictates its own focus/blur
+    // cadence and a collapse there would fight system behavior.
     const queuedCount = useTeamStore((s) => s._pendingMessages.length)
-    // Start collapsed — the slim icon strip (pencil PKjWT) is the
+    // Start collapsed — the slim action strip is the
     // resting state. The user summons the full pill explicitly via
     // click, focus, Ctrl/⌘+I, or by attaching a file. This matches
     // the minimal-chrome aesthetic of the design and prevents an
@@ -131,9 +132,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     const innerRef = useRef<InputBarHandle | null>(null)
     const setInputRefs = useCallback((handle: InputBarHandle | null) => {
       innerRef.current = handle
-      if (typeof ref === 'function') ref(handle)
-      else if (ref) ref.current = handle
-    }, [ref])
+    }, [])
 
     const expand = useCallback(() => {
       if (blurTimerRef.current) {
@@ -146,6 +145,17 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       // DOM, after AnimatePresence finishes the message-button exit.
       // A parent-side focus() here would race the unmounted ref.
     }, [])
+
+    useImperativeHandle(ref, () => ({
+      focus: () => {
+        expand()
+        requestAnimationFrame(() => innerRef.current?.focus())
+      },
+      setValue: (text: string) => {
+        expand()
+        innerRef.current?.setValue(text)
+      },
+    }), [expand])
 
     const handleFocus = useCallback(() => {
       if (blurTimerRef.current) {
@@ -195,14 +205,13 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     }, [isMobile, expand])
 
     // External signals that should keep the bar expanded regardless of
-    // focus state. ``isStreaming`` and ``queuedCount`` come from props /
-    // store; ``disabled`` covers the "waiting for response" pause;
-    // ``hasContent`` covers text/attachments held inside InputBar so
+    // focus state. ``queuedCount`` comes from the store; ``disabled``
+    // covers the "waiting for response" pause; ``hasContent`` covers
+    // text/attachments held inside InputBar so
     // dropping a file via the slim strip's attach button immediately
     // re-expands the bar. Derived (not stored) so we don't cascade
     // renders inside an effect.
     const forceExpanded =
-      inputProps.isStreaming === true ||
       inputProps.disabled === true ||
       queuedCount > 0 ||
       hasContent

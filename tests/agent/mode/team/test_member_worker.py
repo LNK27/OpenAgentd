@@ -72,14 +72,14 @@ class TestOnDemandActivation:
         await team.mailbox.send(to="worker", message=msg)
         await asyncio.sleep(0.1)
 
-        assert team.members["worker"].state == "available"
+        assert team.members["worker"].state == "idle"
 
         await team.stop()
 
     async def test_worker_emits_agent_status_events(
         self, team_with_db, mock_stream_store
     ):
-        """Worker emits agent_status working/available events to the stream store."""
+        """Worker emits agent_status working/idle events to the stream store."""
         team = team_with_db
         await team.start()
 
@@ -92,8 +92,8 @@ class TestOnDemandActivation:
 
         await team.stop()
 
-    async def test_worker_returns_to_available_after_processing(self, team_with_db):
-        """Worker returns to available state after processing a message."""
+    async def test_worker_returns_to_idle_after_processing(self, team_with_db):
+        """Worker returns to idle state after processing a message."""
         team = team_with_db
         worker = team.members["worker"]
 
@@ -103,7 +103,7 @@ class TestOnDemandActivation:
         await team.mailbox.send(to="worker", message=msg)
         await asyncio.sleep(0.1)
 
-        assert worker.state == "available"
+        assert worker.state == "idle"
 
         await team.stop()
 

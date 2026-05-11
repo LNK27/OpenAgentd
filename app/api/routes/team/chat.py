@@ -167,7 +167,7 @@ async def team_stream(session_id: str, request: Request):
 
 @router.get("/agents")
 async def list_team_agents(team: TeamDep) -> dict:
-    """Return info on all configured team agents (lead first, then members).
+    """Return info on the lead, all live member instances, and spawnable blueprints.
 
     Refreshes drifted-but-idle agents from disk before serializing so the
     capabilities panel reflects what the *next* turn will use, not the
@@ -179,14 +179,34 @@ async def list_team_agents(team: TeamDep) -> dict:
     Working agents are skipped — refreshing them would race ``agent.run()``
     swapping ``self.agent`` mid-execution.  Those will pick up their edits
     via the regular start-of-turn path.
+
+    Response shape::
+
+        {
+          "agents": [<lead>, <live members>...],
+          "blueprints": [
+            {"name": "executor", "description": "...",
+             "live_instances": ["executor#1", "executor#2"]},
+            ...
+          ]
+        }
     """
     team_obj = _require_team(team)
     team_manager.refresh_idle_agents(team_obj)
     all_members: list[TeamMemberBase] = [team_obj.lead, *team_obj.members.values()]
+    blueprints = [
+        {
+            "name": bp.name,
+            "description": bp.description,
+            "live_instances": team_obj.live_instances_for_blueprint(bp.name),
+        }
+        for bp in team_obj.blueprints.values()
+    ]
     return {
         "agents": [
             _serialize_agent(m.agent, is_lead=(m is team_obj.lead)) for m in all_members
-        ]
+        ],
+        "blueprints": blueprints,
     }
 
 

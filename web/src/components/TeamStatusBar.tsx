@@ -15,6 +15,8 @@ function StatusDot({ status }: { status: string }) {
       ? 'bg-(--color-accent)'
       : status === 'error'
         ? 'bg-(--color-error)'
+        : status === 'offline'
+          ? 'bg-(--color-text-subtle) opacity-50'
         : 'bg-(--color-success)'
   return (
     <span

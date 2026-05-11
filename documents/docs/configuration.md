@@ -414,7 +414,7 @@ model: zai:glm-5-turbo
 You are a helpful assistant. Be concise and direct.
 ```
 
-> **Authoring rule — keep prompt bodies tool-agnostic.** Don't hardcode tool names like `` `shell` `` or `` `web_search` `` in the prompt body. The frontmatter `tools:` list is the source of truth — it can shrink at runtime via `team_manage` (see [`agent/teams.md`](agent/teams.md#team_manage-tool-lead-only)) or via direct edits, and a prompt that names tools that no longer exist drives weak models to hallucinate. Describe intent (*"prefer in-place edits over rewriting whole files"*) instead of tool names.
+> **Authoring rule — keep prompt bodies tool-agnostic.** Don't hardcode tool names like `` `shell` `` or `` `web_search` `` in the prompt body. The frontmatter `tools:` list is the source of truth — it can shrink at runtime via `team_configure` (see [`agent/teams.md`](agent/teams.md#team_configure-tool-lead-only)) or via direct edits, and a prompt that names tools that no longer exist drives weak models to hallucinate. Describe intent (*"prefer in-place edits over rewriting whole files"*) instead of tool names.
 
 ### Fallback model
 
@@ -497,7 +497,7 @@ You are the team orchestrator. Coordinate — do not do the work yourself.
 | `responses_api` | No | `true` to force OpenAI Responses API |
 | `summarization` | No | Per-agent summarization overrides (see Summarization) |
 
-The `team_message` tool is injected automatically into all agents — do not list it manually.
+The `team_message` tool is injected automatically into all team agents, and `todo_manage` is injected automatically into team members for task claiming — do not list them manually.
 
 ### Validation
 
@@ -536,7 +536,7 @@ All tools below are available. List only the ones you want the agent to use unde
 
 `skill` is **always injected** into every agent — do not list it.
 
-`todo_manage`, `schedule_task`, and `note` are **always injected into the lead agent** — do not list them either.
+`todo_manage`, `schedule_task`, and `note` are **always injected into the lead agent** — do not list them either. In team mode, `todo_manage` is also injected into members so they can claim assigned tasks.
 
 All filesystem tools (`read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`) output
 paths **relative to the sandbox workspace root**. Absolute paths are never shown to the model.

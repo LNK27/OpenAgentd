@@ -21,7 +21,7 @@
  *   - ``usage``          — per-delta token counters (turn_total summary skipped).
  *   - ``inbox``          — cross-agent message; rendered as a synthetic user
  *                          block on the recipient stream so split view shows it.
- *   - ``agent_status``   — per-agent working/available/error transitions; also
+ *   - ``agent_status``   — per-agent idle/working/offline/error transitions; also
  *                          recomputes the team-wide ``isTeamWorking`` flag.
  *   - ``done``           — flush ``currentBlocks`` into ``blocks``, stamp any
  *                          unstamped block with the completion time, commit
@@ -57,6 +57,11 @@ import type { CacheInvalidation, TeamStore } from './types'
 type Setter = (fn: (draft: TeamStore) => void) => void
 type Getter = () => TeamStore
 
+function ensureAgent(draft: TeamStore, agent: string) {
+  if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
+  if (!draft.agentNames.includes(agent)) draft.agentNames.push(agent)
+}
+
 interface CreateSSEHandlerArgs {
   set: Setter
   get: Getter
@@ -80,7 +85,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'thinking': {
         const agent = d.agent as string
         set((draft) => {
-          if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
+          ensureAgent(draft, agent)
           draft.agentStreams[agent].currentBlocks = appendThinking(
             draft.agentStreams[agent].currentBlocks, d.text as string
           )
@@ -91,7 +96,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'message': {
         const agent = d.agent as string
         set((draft) => {
-          if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
+          ensureAgent(draft, agent)
           draft.agentStreams[agent].currentBlocks = appendText(
             draft.agentStreams[agent].currentBlocks, d.text as string
           )
@@ -103,7 +108,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (TODO_MUTATING_TOOLS.has(d.name as string)) break
         const agent = d.agent as string
         set((draft) => {
-          if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
+          ensureAgent(draft, agent)
           draft.agentStreams[agent].currentBlocks = initTool(
             draft.agentStreams[agent].currentBlocks,
             d.name as string,
@@ -117,7 +122,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (TODO_MUTATING_TOOLS.has(d.name as string)) break
         const agent = d.agent as string
         set((draft) => {
-          if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
+          ensureAgent(draft, agent)
           draft.agentStreams[agent].currentBlocks = addTool(
             draft.agentStreams[agent].currentBlocks,
             d.name as string,
@@ -134,7 +139,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const toolCallId = d.tool_call_id as string | undefined
         if (!TODO_MUTATING_TOOLS.has(toolName)) {
           set((draft) => {
-            if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
+            ensureAgent(draft, agent)
             draft.agentStreams[agent].currentBlocks = completeTool(
               draft.agentStreams[agent].currentBlocks,
               toolName,
@@ -177,6 +182,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const sid = get().sessionId
           if (sid) events.push({ kind: 'todos', sessionId: sid })
         }
+        if (toolName === 'team_manage') {
+          events.push({ kind: 'team_agents' })
+        }
         if (events.length > 0) {
           set((draft) => { draft.cacheInvalidations.push(...events) })
         }
@@ -191,7 +199,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const agent = (meta?.agent as string) ?? (d.agent as string)
         if (!agent) break
         set((draft) => {
-          if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
+          ensureAgent(draft, agent)
           const stream = draft.agentStreams[agent]
           const u = stream.usage
           // completion_tokens is a running total within the current turn (not a delta).
@@ -209,7 +217,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         // Push inbox message as user block so split view shows it live.
         const agent = d.agent as string
         set((draft) => {
-          if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
+          ensureAgent(draft, agent)
           draft.agentStreams[agent].currentBlocks.push({
             id: generateBlockId(),
             type: 'user',
@@ -225,12 +233,14 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const agent = d.agent as string
         const status = d.status as string
         set((draft) => {
-          if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
+          ensureAgent(draft, agent)
           if (status === 'working') {
             draft.agentStreams[agent].status = 'working'
             draft.isTeamWorking = true
-          } else if (status === 'available') {
-            draft.agentStreams[agent].status = 'available'
+          } else if (status === 'idle') {
+            draft.agentStreams[agent].status = 'idle'
+          } else if (status === 'offline') {
+            draft.agentStreams[agent].status = 'offline'
           } else if (status === 'error') {
             draft.agentStreams[agent].status = 'error'
             draft.agentStreams[agent].lastError =
@@ -267,7 +277,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             stream._completionBase = stream.usage.completionTokens
             // Preserve error status so the red pane stays visible until the
             // user retries (agent_status → working will clear it).
-            if (stream.status !== 'error') stream.status = 'available'
+            if (stream.status !== 'error' && stream.status !== 'offline') {
+              stream.status = 'idle'
+            }
           })
         })
         // Drain the full pending queue in one shot. Combine all queued message

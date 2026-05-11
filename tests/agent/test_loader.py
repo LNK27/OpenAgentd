@@ -522,12 +522,15 @@ def test_load_team_from_dir_with_members(tmp_path):
     factory, _ = _make_provider_factory()
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
-    assert "worker" in team.members
+    # Members are now lazy: they exist as blueprints on the team and are
+    # only materialised in ``team.members`` after ``team.spawn(...)``.
+    assert "worker" in team.blueprints
+    assert team.members == {}
 
 
 def test_todo_tools_injected_into_lead_only(tmp_path):
     """todo_manage is always present on the lead, never on members."""
-    from app.agent.loader import load_team_from_dir
+    from app.agent.loader import load_team_from_dir, rebuild_agent_from_disk
 
     d = _make_agents_dir(
         tmp_path,
@@ -541,7 +544,12 @@ def test_todo_tools_injected_into_lead_only(tmp_path):
     assert team is not None
 
     lead_tool_names = {t.name for t in team.lead.agent._tools.values()}
-    worker_tool_names = {t.name for t in team.members["worker"].agent._tools.values()}
+    # Members are lazy — build the worker agent from its blueprint to
+    # verify what tools it would have when spawned.
+    worker_agent = rebuild_agent_from_disk(
+        team.blueprints["worker"].source_path, provider_factory=factory
+    )
+    worker_tool_names = {t.name for t in worker_agent._tools.values()}
 
     assert "todo_manage" in lead_tool_names
     assert "todo_manage" not in worker_tool_names
@@ -580,15 +588,17 @@ def test_load_team_injects_teammates(tmp_path):
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
 
-    lead_prompt = team.lead.agent.system_prompt
-    assert "Teammates" in lead_prompt
+    # Lead protocol exposes the spawnable-blueprint roster (descriptions
+    # live there now, not in a "Teammates" header).
+    lead_prompt = team.lead.build_protocol(team.lead.agent.system_prompt, team)
+    assert "Spawnable blueprints" in lead_prompt
     assert "Worker A" in lead_prompt
     assert "Worker B" in lead_prompt
-
-    a_prompt = team.members["a"].agent.system_prompt
-    assert "Teammates" in a_prompt
-    assert "The lead" in a_prompt
-    assert "Worker B" in a_prompt
+    # Member protocols are only relevant for live instances; spawning
+    # touches the DB, so only verify that the blueprints are registered
+    # with the expected descriptions.
+    assert team.blueprints["a"].description == "Worker A"
+    assert team.blueprints["b"].description == "Worker B"
 
 
 def test_load_team_skips_unknown_tool(tmp_path):
@@ -656,7 +666,9 @@ def test_load_team_discovers_all_agents(tmp_path):
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
     assert team.lead.name == "lead"
-    assert set(team.members.keys()) == {"worker", "helper"}
+    # Members are lazy blueprints; nothing is live until spawned.
+    assert set(team.blueprints.keys()) == {"worker", "helper"}
+    assert team.members == {}
 
 
 def test_load_team_parse_error_raises(tmp_path):
@@ -693,7 +705,14 @@ def test_load_team_summarization_config(tmp_path):
     factory, _ = _make_provider_factory()
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
-    worker_sc = team.members["worker"].agent.summarization_config
+    # Members are lazy: rebuild from the blueprint source to inspect the
+    # summarization config that would apply when the member is spawned.
+    from app.agent.loader import rebuild_agent_from_disk
+
+    worker_agent = rebuild_agent_from_disk(
+        team.blueprints["worker"].source_path, provider_factory=factory
+    )
+    worker_sc = worker_agent.summarization_config
     assert worker_sc is not None
     assert worker_sc.token_threshold == 50000
     assert worker_sc.model == "zai:glm-4"
@@ -986,7 +1005,7 @@ def test_note_from_registry_overrides_default():
 
 def test_note_tools_injected_into_lead_only_integration(tmp_path):
     """Integration test: load_team_from_dir — lead gets note, member does not."""
-    from app.agent.loader import load_team_from_dir
+    from app.agent.loader import load_team_from_dir, rebuild_agent_from_disk
 
     d = _make_agents_dir(
         tmp_path,
@@ -1000,7 +1019,11 @@ def test_note_tools_injected_into_lead_only_integration(tmp_path):
     assert team is not None
 
     lead_tool_names = {t.name for t in team.lead.agent._tools.values()}
-    worker_tool_names = {t.name for t in team.members["worker"].agent._tools.values()}
+    # Members are lazy; build from the blueprint to verify tool injection.
+    worker_agent = rebuild_agent_from_disk(
+        team.blueprints["worker"].source_path, provider_factory=factory
+    )
+    worker_tool_names = {t.name for t in worker_agent._tools.values()}
 
     assert "note" in lead_tool_names
     assert "note" not in worker_tool_names

@@ -91,6 +91,13 @@ describe("InboxBubble", () => {
     expect(screen.getByText(/Line one/)).toBeTruthy()
   })
 
+  it("strips instance handle prefixes from content", () => {
+    const content = "[consultant#1]: For this smoke test, the required sequence is one, two, and finally three."
+    render(<InboxBubble content={content} fromAgent="consultant#1" />)
+    expect(screen.queryByText(/\[consultant#1\]:/)).toBeNull()
+    expect(screen.getByText(/required sequence is one, two, and finally three/)).toBeTruthy()
+  })
+
   // ── compact mode ────────────────────────────────────────────────────────────
 
   it("applies compact styling when compact=true", () => {

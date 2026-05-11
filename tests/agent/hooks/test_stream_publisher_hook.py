@@ -338,7 +338,7 @@ class TestOnRateLimit:
 class TestAfterAgent:
     @pytest.mark.asyncio
     async def test_does_not_push_agent_done_event(self):
-        # agent_done is no longer emitted from after_agent — agent_status:available
+        # agent_done is no longer emitted from after_agent — agent_status:idle
         # from _run_activation is sufficient to signal completion.
         hook = _make_hook(agent_name="researcher")
         pushed = []

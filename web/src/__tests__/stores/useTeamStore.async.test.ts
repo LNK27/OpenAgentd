@@ -87,7 +87,7 @@ function makeStream(overrides: object = {}) {
   return {
     blocks: [] as ContentBlock[],
     currentBlocks: [] as ContentBlock[],
-    status: "available" as const,
+    status: "idle" as const,
     usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
     model: null,
     lastError: null,
@@ -135,8 +135,8 @@ beforeEach(() => {
   mockTeamStatus.mockImplementation(() =>
     Promise.resolve({
       team: "team",
-      lead: { name: "lead", model: "gpt-4", state: "available" },
-      members: [{ name: "worker", model: "claude-3", state: "available" }],
+      lead: { name: "lead", model: "gpt-4", state: "idle" },
+      members: [{ name: "worker", model: "claude-3", state: "idle" }],
     })
   )
   mockTeamHistory.mockImplementation(() =>
@@ -425,11 +425,11 @@ describe("sendMessage: queue behaviour", () => {
     expect(pending[0].content).toBe("queued message")
   })
 
-  it("does NOT queue when only members are working (lead is available)", async () => {
+  it("does NOT queue when only members are working (lead is idle)", async () => {
     useTeamStore.setState({
       leadName: "lead",
       agentStreams: {
-        lead: makeStream({ status: "available" as const }),
+        lead: makeStream({ status: "idle" as const }),
         worker: makeStream({ status: "working" as const }),
       },
     })
@@ -579,6 +579,33 @@ describe("connectStream", () => {
 
     expect(useTeamStore.getState().isConnected).toBe(false)
   })
+
+  it("ignores stream events after newSession changes generation", () => {
+    let onEvent!: (type: string, data: unknown) => void
+    let onDone!: () => void
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onEvent: (type: string, data: unknown) => void; onDone?: () => void }) => {
+        onEvent = cbs.onEvent
+        onDone = cbs.onDone ?? (() => {})
+      }
+    )
+    useTeamStore.setState({
+      sessionId: "session-1",
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+
+    useTeamStore.getState().connectStream()
+    useTeamStore.getState().newSession()
+    onEvent("message", { agent: "lead", text: "stale token" })
+    onDone()
+
+    const state = useTeamStore.getState()
+    expect(state.sessionId).toBeNull()
+    expect(state.isTeamWorking).toBe(false)
+    expect(state.agentStreams.lead.currentBlocks).toHaveLength(0)
+  })
 })
 
 // ── loadTeamStatus ────────────────────────────────────────────────────────────
@@ -592,6 +619,28 @@ describe("loadTeamStatus", () => {
   it("sets agentNames including lead and members", async () => {
     await useTeamStore.getState().loadTeamStatus()
     expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
+  })
+
+  it("marks historical members offline when they are absent from the live roster", async () => {
+    useTeamStore.setState({
+      agentNames: ["lead", "worker"],
+      agentStreams: {
+        lead: makeStream(),
+        worker: makeStream({ status: "idle" }),
+      },
+    })
+    mockTeamStatus.mockImplementation(() =>
+      Promise.resolve({
+        team: "team",
+        lead: { name: "lead", model: "gpt-4", state: "idle" },
+        members: [],
+      })
+    )
+
+    await useTeamStore.getState().loadTeamStatus()
+
+    expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
+    expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
   })
 
   it("creates agent streams for all agents", async () => {
@@ -629,6 +678,32 @@ describe("loadTeamStatus", () => {
     await useTeamStore.getState().loadTeamStatus()
     // Existing blocks preserved — only model is updated
     expect(useTeamStore.getState().agentStreams["lead"].blocks).toHaveLength(1)
+  })
+
+  it("does not revive an offline historical member when session history reloads", async () => {
+    useTeamStore.setState({
+      agentStreams: {
+        worker: makeStream({ status: "offline" }),
+      },
+    })
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [],
+        },
+        members: [{ name: "worker", session_id: "w-sess", messages: [] }],
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
   })
 
   it("sets error when teamStatus throws", async () => {
@@ -910,7 +985,7 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().isTeamWorking).toBe(false)
   })
 
-  it("resets lead agent status to available when switching away from streaming session", async () => {
+  it("resets lead agent status to idle when switching away from streaming session", async () => {
     useTeamStore.setState({
       isTeamWorking: true,
       agentStreams: {
@@ -920,10 +995,10 @@ describe("loadSession", () => {
 
     await useTeamStore.getState().loadSession("session-b")
 
-    expect(useTeamStore.getState().agentStreams["lead"].status).toBe("available")
+    expect(useTeamStore.getState().agentStreams["lead"].status).toBe("idle")
   })
 
-  it("resets member agent status to available when switching away from streaming session", async () => {
+  it("resets member agent status to idle when switching away from streaming session", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
         lead: {
@@ -948,7 +1023,7 @@ describe("loadSession", () => {
 
     await useTeamStore.getState().loadSession("session-b")
 
-    expect(useTeamStore.getState().agentStreams["worker"].status).toBe("available")
+    expect(useTeamStore.getState().agentStreams["worker"].status).toBe("idle")
   })
 
   it("clears currentText scratch buffer when switching sessions mid-stream", async () => {

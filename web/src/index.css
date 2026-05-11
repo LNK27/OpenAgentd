@@ -397,6 +397,17 @@
   }
 }
 
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Focus ring — :focus-visible only, never on mouse click
  * See documents/styling-specs/interaction.md#focus-ring-specification

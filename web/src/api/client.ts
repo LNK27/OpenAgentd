@@ -11,6 +11,7 @@ import type {
   SessionDetailResponse,
   SessionPageResponse,
   TeamHistoryResponse,
+  TeamAgentsResponse,
   TeamStatusResponse,
   WikiTree,
   WikiFile,
@@ -71,7 +72,7 @@ export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: 
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
 }
 
-export async function listTeamAgents(): Promise<{ agents: ({ is_lead: boolean } & import('./types').AgentInfo)[] }> {
+export async function listTeamAgents(): Promise<TeamAgentsResponse> {
   const res = await fetch(`${API}/team/agents`)
   if (!res.ok) throw new Error(`listTeamAgents failed: ${res.status}`)
   return res.json()
@@ -259,10 +260,10 @@ export async function teamStatus(): Promise<TeamStatusResponse | null> {
   if (!lead) return null
   return {
     team: 'team',
-    lead: { name: lead.name, model: lead.model ?? '', state: 'available' },
+    lead: { name: lead.name, model: lead.model ?? '', state: 'idle' },
     members: agents
       .filter((a: { is_lead: boolean }) => !a.is_lead)
-      .map((a: { name: string; model: string | null }) => ({ name: a.name, model: a.model ?? '', state: 'available' })),
+      .map((a: { name: string; model: string | null }) => ({ name: a.name, model: a.model ?? '', state: 'idle' })),
   }
 }
 

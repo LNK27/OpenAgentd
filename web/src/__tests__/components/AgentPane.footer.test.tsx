@@ -34,7 +34,7 @@ function makeStream(overrides: Partial<AgentStream> = {}): AgentStream {
     currentBlocks: [],
     currentText: "",
     currentThinking: "",
-    status: "available",
+    status: "idle",
     usage: {
       promptTokens: 0,
       completionTokens: 0,
@@ -68,7 +68,7 @@ describe("AgentPane — AssistantFooter", () => {
 
     it("does not render footer when all blocks are user-type", () => {
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [makeUserBlock("u1", "Hello"), makeUserBlock("u2", "World")],
       })
       const { container } = renderPanel(stream)
@@ -78,7 +78,7 @@ describe("AgentPane — AssistantFooter", () => {
 
     it("does not render footer when blocks is empty", () => {
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [],
         currentBlocks: [],
       })
@@ -89,7 +89,7 @@ describe("AgentPane — AssistantFooter", () => {
 
     it("does not render footer when there is no text content and no timestamp", () => {
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [
           makeThinkingBlock("t1", "Thinking..."),
           makeToolBlock("tool1", "read"),
@@ -104,7 +104,7 @@ describe("AgentPane — AssistantFooter", () => {
   describe("copy button", () => {
     it("renders copy button when there is text content", () => {
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [makeTextBlock("b1", "Hello world")],
       })
       renderPanel(stream)
@@ -114,7 +114,7 @@ describe("AgentPane — AssistantFooter", () => {
 
     it("does not render copy button when there is no text content", () => {
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [makeThinkingBlock("t1", "Thinking...")],
       })
       renderPanel(stream)
@@ -124,7 +124,7 @@ describe("AgentPane — AssistantFooter", () => {
 
     it("copy button has correct aria-label", () => {
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [makeTextBlock("b1", "Hello world")],
       })
       renderPanel(stream)
@@ -134,7 +134,7 @@ describe("AgentPane — AssistantFooter", () => {
 
     it("copy button has correct title attribute", () => {
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [makeTextBlock("b1", "Hello world")],
       })
       renderPanel(stream)
@@ -153,7 +153,7 @@ describe("AgentPane — AssistantFooter", () => {
       })
 
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [makeTextBlock("b1", "Hello world")],
       })
       renderPanel(stream)
@@ -174,7 +174,7 @@ describe("AgentPane — AssistantFooter", () => {
       })
 
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [
           makeUserBlock("u1", "Question"),
           makeTextBlock("b1", "First response"),
@@ -201,7 +201,7 @@ describe("AgentPane — AssistantFooter", () => {
       })
 
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [
           makeTextBlock("b1", "Old response"),
           makeUserBlock("u1", "New question"),
@@ -229,7 +229,7 @@ describe("AgentPane — AssistantFooter", () => {
       })
 
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [
           makeUserBlock("u1", "Question"),
           makeTextBlock("b1", "Response<sleep>"),
@@ -248,7 +248,7 @@ describe("AgentPane — AssistantFooter", () => {
     it("renders timestamp when last non-user block has a timestamp", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [makeTextBlock("b1", "Hello", date)],
       })
       const { container } = renderPanel(stream)
@@ -262,7 +262,7 @@ describe("AgentPane — AssistantFooter", () => {
       const date1 = new Date(2024, 0, 15, 10, 0, 0)
       const date2 = new Date(2024, 0, 15, 14, 30, 0)
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [
           makeTextBlock("b1", "First", date1),
           makeThinkingBlock("t1", "Thinking"),
@@ -278,7 +278,7 @@ describe("AgentPane — AssistantFooter", () => {
 
     it("does not render timestamp when no block has a timestamp", () => {
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [makeTextBlock("b1", "Hello")],
       })
       const { container } = renderPanel(stream)
@@ -292,7 +292,7 @@ describe("AgentPane — AssistantFooter", () => {
     it("renders timestamp from tool block if it's the last non-user block", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [
           makeUserBlock("u1", "Question"),
           makeToolBlock("tool1", "read", date),
@@ -310,7 +310,7 @@ describe("AgentPane — AssistantFooter", () => {
     it("renders footer with both copy button and timestamp", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [
           makeUserBlock("u1", "Question"),
           makeTextBlock("b1", "Response", date),
@@ -328,7 +328,7 @@ describe("AgentPane — AssistantFooter", () => {
     it("renders footer with only timestamp when there is no text content", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [
           makeUserBlock("u1", "Question"),
           makeToolBlock("tool1", "read", date),
@@ -356,13 +356,13 @@ describe("AgentPane — AssistantFooter", () => {
       expect(footer).toBeNull()
     })
 
-    it("renders footer when status=available even if turn lives in currentBlocks (not yet flushed)", () => {
-      // Me with the per-turn footer model, the agent being idle (status=available)
+    it("renders footer when status=idle even if turn lives in currentBlocks (not yet flushed)", () => {
+      // Me with the per-turn footer model, the agent being idle (status=idle)
       // means the turn is finished — footer should appear regardless of whether
       // the blocks live in `blocks` or `currentBlocks`.
       const date = new Date(2024, 0, 15, 14, 30, 0)
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [],
         currentBlocks: [makeTextBlock("b1", "Response", date)],
       })
@@ -388,10 +388,10 @@ describe("AgentPane — AssistantFooter", () => {
       expect(copyBtn).toBeTruthy()
     })
 
-    it("renders footer when status=available and currentBlocks is empty (turn fully flushed)", () => {
+    it("renders footer when status=idle and currentBlocks is empty (turn fully flushed)", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
       const stream = makeStream({
-        status: "available",
+        status: "idle",
         blocks: [makeUserBlock("u1", "Question"), makeTextBlock("b1", "Response", date)],
         currentBlocks: [],
       })

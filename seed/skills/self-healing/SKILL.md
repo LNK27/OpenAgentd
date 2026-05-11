@@ -41,7 +41,7 @@ entry on a **member** (not the lead), prefer the runtime tool over the
 read → diff → edit workflow below:
 
 ```
-team_manage(member="<name>", action="add"|"remove", kind="skill"|"tool"|"mcp", name="<value>")
+team_configure(member="<handle>", action="add"|"remove", kind="skill"|"tool"|"mcp", name="<value>")
 ```
 
 It validates the capability name against the live registry, rejects
@@ -284,7 +284,7 @@ Rules:
 MCP servers are managed by `mcp-installer` (it edits `mcp.json`). This
 skill wires the resulting tools onto a specific agent.
 
-> **Member target?** Use `team_manage(member, "add"|"remove", "mcp", "<server>")`
+> **Member target?** Use `team_configure(member="<handle>", action="add"|"remove", kind="mcp", name="<server>")`
 > — see the *Fast path* section above. The recipes below are for
 > lead-target edits and for selective `tools:` entries.
 

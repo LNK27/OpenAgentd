@@ -5,6 +5,7 @@ structured trace with timing, per-agent attribution, and truncated payloads.
 
 Useful for:
   - Debugging event ordering across lead/member activations
+  - Verifying lifecycle states: idle, working, offline, error
   - Verifying frontend handles every event type the backend emits
   - Spotting unhandled/unknown event types (default branch)
 

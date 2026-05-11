@@ -240,6 +240,7 @@ class Agent(Generic[TContext]):
         # without needing direct access to RunContext.
         if ctx.session_id is not None:
             state.metadata["session_id"] = ctx.session_id
+        state.metadata["agent_name"] = ctx.agent_name
 
         # Me seed last_prompt_tokens from checkpointer so SummarizationHook
         # fires on session resume without call-site workaround

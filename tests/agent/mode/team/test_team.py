@@ -39,7 +39,7 @@ class TestAgentTeamStartStop:
         await team.stop()
 
     async def test_start_does_not_create_background_tasks(self, basic_team):
-        """After start(), agents are available but no tasks are running."""
+        """After start(), agents are idle but no tasks are running."""
         team = basic_team
         await team.start()
 
@@ -49,14 +49,14 @@ class TestAgentTeamStartStop:
 
         await team.stop()
 
-    async def test_start_sets_agents_to_available(self, basic_team):
-        """After start(), all agents are in 'available' state."""
+    async def test_start_sets_agents_to_idle(self, basic_team):
+        """After start(), all agents are in 'idle' state."""
         team = basic_team
         await team.start()
 
-        assert team.lead.state == "available"
-        assert team.members["member_a"].state == "available"
-        assert team.members["member_b"].state == "available"
+        assert team.lead.state == "idle"
+        assert team.members["member_a"].state == "idle"
+        assert team.members["member_b"].state == "idle"
 
         await team.stop()
 
@@ -193,9 +193,9 @@ class TestAgentTeamDoneDetection:
         """_try_emit_done() doesn't emit if _has_active_turn is False."""
         team = basic_team
         team._has_active_turn = False
-        team.lead.state = "available"
+        team.lead.state = "idle"
         for m in team.members.values():
-            m.state = "available"
+            m.state = "idle"
 
         initial_calls = mock_stream_store.call_count
         await team._try_emit_done()
@@ -208,15 +208,15 @@ class TestAgentTeamDoneDetection:
         ]
         assert len(done_calls) == 0
 
-    async def test_try_emit_done_emits_when_all_available(
+    async def test_try_emit_done_emits_when_all_idle(
         self, basic_team, mock_stream_store
     ):
-        """_try_emit_done() pushes done when all available."""
+        """_try_emit_done() pushes done when all idle."""
         team = basic_team
         team._has_active_turn = True
-        team.lead.state = "available"
+        team.lead.state = "idle"
         for m in team.members.values():
-            m.state = "available"
+            m.state = "idle"
 
         await team._try_emit_done()
 
@@ -229,9 +229,9 @@ class TestAgentTeamDoneDetection:
         """_try_emit_done() doesn't emit if any member is working."""
         team = basic_team
         team._has_active_turn = True
-        team.lead.state = "available"
+        team.lead.state = "idle"
         team.members["member_a"].state = "working"
-        team.members["member_b"].state = "available"
+        team.members["member_b"].state = "idle"
 
         initial_calls = mock_stream_store.call_count
         await team._try_emit_done()
@@ -249,9 +249,9 @@ class TestAgentTeamDoneDetection:
         """_try_emit_done() emits done even when agents are in error state."""
         team = basic_team
         team._has_active_turn = True
-        team.lead.state = "available"
+        team.lead.state = "idle"
         team.members["member_a"].state = "error"
-        team.members["member_b"].state = "available"
+        team.members["member_b"].state = "idle"
 
         await team._try_emit_done()
 
@@ -262,9 +262,9 @@ class TestAgentTeamDoneDetection:
         """_try_emit_done() resets _has_active_turn after emitting."""
         team = basic_team
         team._has_active_turn = True
-        team.lead.state = "available"
+        team.lead.state = "idle"
         for m in team.members.values():
-            m.state = "available"
+            m.state = "idle"
 
         await team._try_emit_done()
         assert team._has_active_turn is False
@@ -280,12 +280,17 @@ class TestAgentTeamToolInjection:
         names = {t.name for t in tools}
         assert "team_message" in names
 
-    async def test_lead_gets_team_message_and_team_manage(self, basic_team):
-        """Lead gets team_message + team_manage (memory tools removed)."""
+    async def test_lead_gets_team_message_manage_and_configure(self, basic_team):
+        """Lead gets messaging, roster management, and configuration tools."""
         team = basic_team
         tools = team.get_injected_tools("lead")
         names = {t.name for t in tools}
-        assert names == {"team_message", "team_manage"}
+        assert names == {
+            "team_message",
+            "todo_manage",
+            "team_manage",
+            "team_configure",
+        }
         assert "remember" not in names
         assert "recall" not in names
         assert "forget" not in names
@@ -318,11 +323,12 @@ class TestAgentTeamToolInjection:
         names = {t.name for t in tools}
         assert "team_message" in names
 
-    async def test_member_gets_exactly_one_tool(self, basic_team):
-        """Members get exactly one injected tool."""
+    async def test_member_gets_message_and_todo_tools(self, basic_team):
+        """Members get messaging plus todo claiming."""
         team = basic_team
         tools = team.get_injected_tools("member_a")
-        assert len(tools) == 1
+        names = {t.name for t in tools}
+        assert names == {"team_message", "todo_manage"}
 
     async def test_member_does_not_get_old_message_tools(self, basic_team):
         """Old message_leader and send_message removed from member tools."""
@@ -353,6 +359,8 @@ class TestAgentTeamToolInjection:
         member_names = {t.name for t in team.get_injected_tools("member_a")}
         assert "team_message" in lead_names
         assert "team_message" in member_names
+        assert "todo_manage" in lead_names
+        assert "todo_manage" in member_names
 
     async def test_member_does_not_get_memory_tools(self, basic_team):
         """Members don't get memory tools — only the lead writes memory."""
@@ -362,7 +370,7 @@ class TestAgentTeamToolInjection:
         assert "remember" not in names
         assert "recall" not in names
         assert "forget" not in names
-        assert len(tools) == 1
+        assert names == {"team_message", "todo_manage"}
 
 
 class TestAgentTeamStatus:
@@ -386,14 +394,14 @@ class TestAgentTeamStatus:
     async def test_status_reflects_current_states(self, basic_team):
         team = basic_team
         team.lead.state = "working"
-        team.members["member_a"].state = "available"
+        team.members["member_a"].state = "idle"
         team.members["member_b"].state = "working"
 
         status = team.status()
         assert status["lead"]["state"] == "working"
         assert (
             next(m for m in status["members"] if m["name"] == "member_a")["state"]
-            == "available"
+            == "idle"
         )
         assert (
             next(m for m in status["members"] if m["name"] == "member_b")["state"]

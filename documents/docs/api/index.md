@@ -2,7 +2,7 @@
 title: API Reference
 description: HTTP routes, SSE event protocol, file upload, workspace listing, media proxy, team chat, and planned speech endpoints.
 status: stable
-updated: 2026-05-05
+updated: 2026-05-11
 ---
 
 # API Reference
@@ -325,7 +325,7 @@ data: {"name": "web_search", "tool_call_id": "tc_abc"}
 | `usage` | `{prompt_tokens, completion_tokens, cached_tokens?, agent?}` | End of turn |
 | `rate_limit` | `{retry_after?, attempt?, max_attempts?}` | Provider rate limit hit; if `fallback_model` is configured, agent will switch to it after exhausting primary retries |
 | `error` | `{message, metadata?: {agent, exception}}` | Unrecoverable error. In team mode, emitted when the **lead** fails (member failures are routed to the lead via mailbox — see [`agent/teams.md`](../agent/teams.md#sse-events-team-specific)). The frontend surfaces this as an error toast via `useToastStore`. |
-| `done` | `{metadata?: {cancelled?: true}}` | Turn complete — DB is now authoritative. `cancelled: true` present when interrupted. Agent streams in `error` status are **not** reset to `available` by this event — the error state persists until the next `agent_status: working`. |
+| `done` | `{metadata?: {cancelled?: true}}` | Turn complete — DB is now authoritative. `cancelled: true` present when interrupted. Agent streams in `error` or `offline` status are **not** reset to `idle` by this event — those states persist until an explicit later lifecycle event. |
 | `title_update` | `{title}` | LLM-generated session title is ready. Fired on the first turn only, concurrently with the agent run. Pub/sub only — not replayed on reconnect. |
 
 ### Team-only events
@@ -497,9 +497,8 @@ workspace and returns the current todo list.
 ```json
 {
   "todos": [
-    { "task_id": "task_1", "content": "Research the topic", "status": "completed",  "priority": "high" },
-    { "task_id": "task_2", "content": "Write the report",   "status": "in_progress","priority": "high" },
-    { "task_id": "task_3", "content": "Send summary email", "status": "pending",    "priority": "low"  }
+    { "task_id": "task_1", "content": "Research the topic", "status": "completed", "priority": "high", "dependencies": [], "assigned_to": "member#1", "claimed_by": "member#1" },
+    { "task_id": "task_2", "content": "Write the report", "status": "pending", "priority": "high", "dependencies": ["task_1"], "assigned_to": "member#2", "claimed_by": null }
   ]
 }
 ```
@@ -512,6 +511,9 @@ Response model: `TodosResponse` (Pydantic). Each `TodoItemResponse`:
 | `content` | string | Brief task description |
 | `status` | string | `pending` \| `in_progress` \| `completed` \| `cancelled` |
 | `priority` | string | `high` \| `medium` \| `low` |
+| `dependencies` | string[] | Prerequisite task IDs |
+| `assigned_to` | string \| null | Concrete agent handle assigned to the task, e.g. `executor#1` |
+| `claimed_by` | string \| null | Agent handle that claimed the task |
 
 Returns `{todos: []}` when `.todos.json` does not exist yet. `session_id` must be a valid UUID (400 on malformed).
 

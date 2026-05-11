@@ -37,6 +37,7 @@ export type CacheInvalidation =
   | { kind: 'workspace_files'; sessionId: string }
   | { kind: 'scheduler' }
   | { kind: 'todos'; sessionId: string }
+  | { kind: 'team_agents' }
 
 export interface AgentStream {
   /** Finalized blocks from previous turns (flushed on each 'done' event). */
@@ -45,7 +46,7 @@ export interface AgentStream {
   currentBlocks: ContentBlock[]
   currentText: string
   currentThinking: string
-  status: 'available' | 'working' | 'error'
+  status: 'idle' | 'working' | 'offline' | 'error'
   usage: AgentUsage
   /** Committed completionTokens from all prior turns — SSE completion_tokens is a
    *  running total within one turn, so we accumulate across turns here. */

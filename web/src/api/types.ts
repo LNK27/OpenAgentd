@@ -39,6 +39,21 @@ export interface AgentInfo {
   capabilities?: AgentCapabilities
 }
 
+export interface TeamAgentInfo extends AgentInfo {
+  is_lead: boolean
+}
+
+export interface TeamBlueprintInfo {
+  name: string
+  description: string
+  live_instances: string[]
+}
+
+export interface TeamAgentsResponse {
+  agents: TeamAgentInfo[]
+  blueprints: TeamBlueprintInfo[]
+}
+
 export interface MessageAttachment {
   filename?: string
   media_type?: string
@@ -372,6 +387,9 @@ export interface TodoItem {
   content: string
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
   priority: 'high' | 'medium' | 'low'
+  dependencies?: string[]
+  assigned_to?: string | null
+  claimed_by?: string | null
 }
 
 export interface TodosResponse {

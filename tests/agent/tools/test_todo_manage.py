@@ -18,15 +18,19 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from app.agent.sandbox import SandboxConfig, set_sandbox
 from app.agent.tools.builtin.todo import (
     AnyAction,
+    ClaimAction,
     CreateAction,
     DeleteAction,
     ReadAction,
     UpdateAction,
     _todo_manage,
+    todo_manage,
+    todo_manage_member,
 )
 
 
@@ -85,6 +89,9 @@ async def test_create_single_item(tmp_sandbox: SandboxConfig, todos_file: Path) 
     assert store["items"][0]["content"] == "Buy groceries"
     assert store["items"][0]["status"] == "pending"
     assert store["items"][0]["priority"] == "high"
+    assert store["items"][0]["dependencies"] == []
+    assert store["items"][0]["assigned_to"] is None
+    assert store["items"][0]["claimed_by"] is None
 
 
 @pytest.mark.asyncio
@@ -286,6 +293,248 @@ async def test_update_unknown_task_id_returns_error(
     store = json.loads(todos_file.read_text())
     assert len(store["items"]) == 1
     assert store["items"][0]["status"] == "pending"  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_create_with_dependencies_and_assignee(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Test dependencies and assigned_to are persisted as first-class fields."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Research",
+                status="pending",
+                priority="high",
+                assigned_to="member#1",
+            ),
+            CreateAction(
+                action="create",
+                content="Implement",
+                status="pending",
+                priority="high",
+                dependencies=["task_1"],
+                assigned_to="member#2",
+            ),
+        ],
+        _state=None,
+    )
+
+    store = json.loads(todos_file.read_text())
+    assert store["items"][1]["dependencies"] == ["task_1"]
+    assert store["items"][1]["assigned_to"] == "member#2"
+
+
+@pytest.mark.asyncio
+async def test_claim_blocked_task_keeps_pending(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """A member cannot claim work until dependencies are completed."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Research",
+                status="pending",
+                priority="high",
+                assigned_to="member#1",
+            ),
+            CreateAction(
+                action="create",
+                content="Implement",
+                status="pending",
+                priority="high",
+                dependencies=["task_1"],
+                assigned_to="member#2",
+            ),
+        ],
+        _state=None,
+    )
+    state = MockState(metadata={"agent_name": "member#2"})
+
+    result = await _todo_manage(
+        actions=[ClaimAction(action="claim", task_id="task_2")],
+        _state=state,
+    )
+
+    store = json.loads(todos_file.read_text())
+    assert store["items"][1]["status"] == "pending"
+    assert store["items"][1]["claimed_by"] is None
+    assert "[task_2] [pending]" in result
+
+
+@pytest.mark.asyncio
+async def test_claim_unblocked_assigned_task_marks_in_progress(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """A member can claim assigned work after dependencies complete."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Research",
+                status="completed",
+                priority="high",
+                assigned_to="member#1",
+            ),
+            CreateAction(
+                action="create",
+                content="Implement",
+                status="pending",
+                priority="high",
+                dependencies=["task_1"],
+                assigned_to="member#2",
+            ),
+        ],
+        _state=None,
+    )
+    state = MockState(metadata={"agent_name": "member#2"})
+
+    result = await _todo_manage(
+        actions=[ClaimAction(action="claim", task_id="task_2")],
+        _state=state,
+    )
+
+    store = json.loads(todos_file.read_text())
+    assert store["items"][1]["status"] == "in_progress"
+    assert store["items"][1]["claimed_by"] == "member#2"
+    assert "[task_2] [in_progress]" in result
+
+
+@pytest.mark.asyncio
+async def test_claim_requires_exact_handle_assignment(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """A spawned instance cannot claim work assigned to another handle."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Implement",
+                status="pending",
+                priority="high",
+                assigned_to="executor#2",
+            )
+        ],
+        _state=None,
+    )
+    state = MockState(metadata={"agent_name": "executor#1"})
+
+    await _todo_manage(
+        actions=[ClaimAction(action="claim", task_id="task_1")],
+        _state=state,
+    )
+
+    store = json.loads(todos_file.read_text())
+    assert store["items"][0]["status"] == "pending"
+    assert store["items"][0]["claimed_by"] is None
+
+
+@pytest.mark.asyncio
+async def test_lead_cannot_claim_member_assigned_task_by_starting_it(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Lead status updates must not claim work assigned to another agent."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Implement",
+                status="pending",
+                priority="high",
+                assigned_to="executor#1",
+            )
+        ],
+        _state=MockState(metadata={"agent_name": "openagentd"}),
+    )
+
+    result = await _todo_manage(
+        actions=[UpdateAction(action="update", task_id="task_1", status="in_progress")],
+        _state=MockState(metadata={"agent_name": "openagentd"}),
+    )
+
+    store = json.loads(todos_file.read_text())
+    assert store["items"][0]["status"] == "pending"
+    assert store["items"][0]["claimed_by"] is None
+    assert "[task_1] [pending]" in result
+
+
+def test_multi_assignee_is_rejected() -> None:
+    """assigned_to is a single claimable owner, not a group expression."""
+    with pytest.raises(ValidationError):
+        CreateAction(
+            action="create",
+            content="Smoke members",
+            status="pending",
+            priority="high",
+            assigned_to="executor/explorer",
+        )
+
+
+def test_blueprint_assignee_is_rejected() -> None:
+    """assigned_to must be a concrete spawned handle."""
+    with pytest.raises(ValidationError):
+        CreateAction(
+            action="create",
+            content="Smoke executor",
+            status="pending",
+            priority="high",
+            assigned_to="executor",
+        )
+
+
+@pytest.mark.asyncio
+async def test_member_tool_schema_excludes_lead_actions() -> None:
+    """Member-facing todo_manage cannot create, delete, or assign tasks."""
+    actions_schema = todo_manage_member.definition["function"]["parameters"][
+        "properties"
+    ]["actions"]
+    schema_text = json.dumps(actions_schema)
+    assert '"create"' not in schema_text
+    assert '"delete"' not in schema_text
+    assert '"assigned_to"' not in schema_text
+    assert '"dependencies"' not in schema_text
+
+
+@pytest.mark.asyncio
+async def test_lead_tool_schema_excludes_member_claim_action() -> None:
+    """Lead-facing todo_manage plans work but does not claim it."""
+    actions_schema = todo_manage.definition["function"]["parameters"]["properties"][
+        "actions"
+    ]
+    schema_text = json.dumps(actions_schema)
+    assert '"claim"' not in schema_text
+    assert '"create"' in schema_text
+    assert '"delete"' in schema_text
+
+
+@pytest.mark.asyncio
+async def test_member_update_requires_claim_or_assignment(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Members cannot update tasks owned by another agent."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Task",
+                status="pending",
+                priority="high",
+                assigned_to="member#1",
+            )
+        ],
+        _state=None,
+    )
+    state = MockState(metadata={"agent_name": "member#2"})
+
+    await todo_manage_member.arun(
+        _injected={"_state": state},
+        actions=[{"action": "update", "task_id": "task_1", "status": "completed"}],
+    )
+
+    store = json.loads(todos_file.read_text())
+    assert store["items"][0]["status"] == "pending"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

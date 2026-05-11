@@ -42,7 +42,7 @@ def _mock_agent(name: str, description: str | None = None) -> MagicMock:
 
 
 def _mock_lead(
-    name: str, description: str | None = None, state: str = "available"
+    name: str, description: str | None = None, state: str = "idle"
 ) -> MagicMock:
     """Mock that has build_protocol behaving like TeamLead."""
     member = MagicMock(spec=TeamLead)
@@ -60,7 +60,7 @@ def _mock_lead(
 
 
 def _mock_member(
-    name: str, description: str | None = None, state: str = "available"
+    name: str, description: str | None = None, state: str = "idle"
 ) -> MagicMock:
     """Mock that has build_protocol behaving like TeamMember."""
     m = MagicMock(spec=TeamMember)
@@ -346,6 +346,13 @@ class TestProtocolConstants:
         """LEAD_COMMUNICATION_RULES references team_message tool."""
         assert "team_message" in LEAD_COMMUNICATION_RULES
 
+    def test_lead_communication_rules_do_not_assume_empty_live_roster(self):
+        """Dynamic rosters may carry live handles across turns until dismissed."""
+        assert (
+            "No members are live at the start of a turn" not in LEAD_COMMUNICATION_RULES
+        )
+        assert "Members are spawned on demand" in LEAD_COMMUNICATION_RULES
+
     def test_member_communication_rules_enforces_team_message(self):
         """MEMBER_COMMUNICATION_RULES enforces team_message as ONLY communication method."""
         assert "team_message" in MEMBER_COMMUNICATION_RULES
@@ -365,6 +372,13 @@ class TestProtocolConstants:
     def test_lead_protocol_has_workflow(self):
         assert "Lead workflow" in LEAD_PROTOCOL
         assert "delegate" in LEAD_PROTOCOL.lower()
+        assert "peer handoff chain" in LEAD_PROTOCOL
+        assert "not as a message bus" in LEAD_PROTOCOL
+        assert "dependencies" in LEAD_PROTOCOL
+        assert "assigned_to" in LEAD_PROTOCOL
+        assert "explorer#1" not in LEAD_PROTOCOL
+        assert "consultant#1" not in LEAD_PROTOCOL
+        assert "executor#1" not in LEAD_PROTOCOL
 
     def test_member_protocol_no_old_params(self):
         """Member protocol does not reference old mode/stop params."""
@@ -376,6 +390,8 @@ class TestProtocolConstants:
     def test_member_protocol_has_workflow(self):
         assert "Member workflow" in MEMBER_PROTOCOL
         assert "<sleep>" in MEMBER_PROTOCOL
+        assert "todo_manage" in MEMBER_PROTOCOL
+        assert "claim" in MEMBER_PROTOCOL
 
     def test_member_protocol_no_old_tool_names(self):
         """Member protocol does not reference removed tools."""

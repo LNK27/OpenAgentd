@@ -15,7 +15,6 @@
  *   - ``SplitGrid``     — fixed n-pane grid layout (split mode).
  *   - ``AgentTabStrip`` — unified-mode tab strip.
  *   - ``TileArea``      — recursive tile tree (unified mode).
- *   - ``usePanelDnD``   — split-mode drag-to-reorder state.
  *   - ``useTeamCommands`` — Command Palette command list.
  *
  * Stream subscriptions are split into the smallest selectors that work
@@ -51,7 +50,6 @@ import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { AgentTabStrip } from './AgentTabStrip'
 import { TileArea } from './TileArea'
-import { usePanelDnD } from './usePanelDnD'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
 
@@ -104,6 +102,8 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
   const activeBlocks        = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.blocks : undefined)
   const activeCurrentBlocks = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.currentBlocks : undefined)
   const activeStatus        = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.status : undefined)
+
+  const splitAgentNames = agentNames.filter((name) => agentStreams[name]?.status !== 'offline')
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
@@ -171,10 +171,6 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-
-  // ── Split-view drag-to-reorder ─────────────────────────────────────────────
-
-  const dnd = usePanelDnD({ agentNames, leadName })
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
@@ -328,10 +324,6 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
     return () => window.removeEventListener('keydown', handler)
   }, [effectiveViewMode, openAgents, focusedAgent, focusAgent, cycleActiveAgent])
 
-  // ── Derived ────────────────────────────────────────────────────────────────
-
-  const effectivePanelOrder = dnd.panelOrder.length > 0 ? dnd.panelOrder : agentNames
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -369,12 +361,15 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
               const isActive = activeAgent === name
               const isWorking = stream?.status === 'working'
               const isError = stream?.status === 'error'
+              const isOffline = stream?.status === 'offline'
 
               // Override dot color when status diverges from idle.
               const dotClassName = isError
                 ? 'bg-(--color-error)'
                 : isWorking
                   ? 'animate-pulse bg-(--color-accent)'
+                  : isOffline
+                    ? 'bg-(--color-text-subtle) opacity-50'
                   : undefined
 
               if (isAgentRole(name)) {
@@ -403,6 +398,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
                   <span className={`h-1.5 w-1.5 rounded-full ${
                     isError ? 'bg-(--color-error)'
                     : isWorking ? 'animate-pulse bg-(--color-accent)'
+                    : isOffline ? 'bg-(--color-text-subtle) opacity-50'
                     : 'bg-(--color-success)'
                   }`} />
                   {name}
@@ -413,7 +409,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
 
             {effectiveViewMode === 'split' && (
               <span className="text-xs text-(--color-text-muted)">
-                Split · {effectivePanelOrder.length} agents · drag to reorder
+                Split · {splitAgentNames.length} agents
               </span>
             )}
 
@@ -482,18 +478,12 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
         </header>
 
         {/* Content area */}
-        {effectiveViewMode === 'split' && effectivePanelOrder.length > 0 ? (
+        {effectiveViewMode === 'split' && splitAgentNames.length > 0 ? (
           <div className="min-h-0 flex-1 p-3">
             <SplitGrid
-              panelOrder={effectivePanelOrder}
+              agentNames={splitAgentNames}
               leadName={leadName}
               agentStreams={agentStreams}
-              draggingIdx={dnd.draggingIdx}
-              dropTargetIdx={dnd.dropTargetIdx}
-              onDragStart={dnd.onDragStart}
-              onDragOver={dnd.onDragOver}
-              onDrop={dnd.onDrop}
-              onDragEnd={dnd.onDragEnd}
             />
           </div>
         ) : effectiveViewMode === 'unified' ? (

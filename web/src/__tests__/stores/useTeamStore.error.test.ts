@@ -34,7 +34,7 @@ afterEach(() => {
   useToastStore.setState({ toasts: [], push: realPush, dismiss: realDismiss });
 });
 
-function makeStream(status: "available" | "working" | "error") {
+function makeStream(status: "idle" | "working" | "error") {
   return {
     blocks: [],
     currentBlocks: [],
@@ -62,7 +62,7 @@ describe("_handleSSEEvent: done", () => {
     expect(useTeamStore.getState().agentStreams.lead.status).toBe("error");
   });
 
-  it("resets working streams to available", () => {
+  it("resets working streams to idle", () => {
     useTeamStore.setState({
       isTeamWorking: true,
       agentStreams: {
@@ -72,20 +72,20 @@ describe("_handleSSEEvent: done", () => {
 
     useTeamStore.getState()._handleSSEEvent("done", {});
 
-    expect(useTeamStore.getState().agentStreams.lead.status).toBe("available");
+    expect(useTeamStore.getState().agentStreams.lead.status).toBe("idle");
   });
 
-  it("keeps available streams available", () => {
+  it("keeps idle streams idle", () => {
     useTeamStore.setState({
       isTeamWorking: true,
       agentStreams: {
-        lead: makeStream("available"),
+        lead: makeStream("idle"),
       },
     });
 
     useTeamStore.getState()._handleSSEEvent("done", {});
 
-    expect(useTeamStore.getState().agentStreams.lead.status).toBe("available");
+    expect(useTeamStore.getState().agentStreams.lead.status).toBe("idle");
   });
 });
 

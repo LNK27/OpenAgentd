@@ -389,12 +389,14 @@ The loader expands four placeholders in both the description (used in the agent'
 
 #### Actions (discriminated union on `action` field)
 
-| Action | Required fields | Optional fields | Notes |
-|--------|----------------|-----------------|-------|
-| `create` | `content`, `status`, `priority` | — | Returns auto-assigned `task_id` (`task_1`, `task_2`, …) |
-| `update` | `task_id` | `content`, `status`, `priority` | Mutates matching item; error string if not found |
-| `delete` | `task_id` | — | Removes item permanently; error string if not found |
-| `read` | — | — | No-op on the store; result always returned at end |
+| Action | Audience | Required fields | Optional fields | Notes |
+|--------|----------|----------------|-----------------|-------|
+| `create` | Lead | `content`, `status`, `priority` | `dependencies`, `assigned_to` | Returns auto-assigned `task_id` (`task_1`, `task_2`, …) |
+| `update` | Lead | `task_id` | `content`, `status`, `priority`, `dependencies`, `assigned_to` | Mutates matching item; error string if not found |
+| `delete` | Lead | `task_id` | — | Removes item permanently; error string if not found |
+| `claim` | Member | `task_id` | — | Claims an assigned, unblocked task for the calling agent and moves it to `in_progress` |
+| `update` | Member | `task_id` | `content`, `status` | Mutates a task assigned to or claimed by the calling member |
+| `read` | Lead + member | — | — | No-op on the store; result always returned at end |
 
 #### Storage format
 
@@ -402,15 +404,15 @@ The loader expands four placeholders in both the description (used in the agent'
 {
   "counter": 3,
   "items": [
-    {"task_id": "task_1", "content": "…", "status": "completed", "priority": "high"},
-    {"task_id": "task_2", "content": "…", "status": "in_progress", "priority": "medium"}
+    {"task_id": "task_1", "content": "…", "status": "completed", "priority": "high", "dependencies": [], "assigned_to": "member#1", "claimed_by": "member#1"},
+    {"task_id": "task_2", "content": "…", "status": "pending", "priority": "medium", "dependencies": ["task_1"], "assigned_to": "member#2", "claimed_by": null}
   ]
 }
 ```
 
 Stored in `.todos.json` inside the session workspace (filename exported as `TODOS_FILENAME` from `app/agent/tools/builtin/todo.py` — both the tool and the `/team/sessions/{id}/todos` route import it). `counter` is monotonically increasing — deleting items never rewinds it. Cached in `state.metadata["_todos"]` within a turn to avoid redundant disk reads. Store is loaded once and saved once per `todo_manage` call regardless of how many actions are batched.
 
-Each item has four fields:
+Each item has these fields:
 
 | Field | Values |
 |-------|--------|
@@ -418,6 +420,11 @@ Each item has four fields:
 | `content` | Brief task description |
 | `status` | `pending` \| `in_progress` \| `completed` \| `cancelled` |
 | `priority` | `high` \| `medium` \| `low` |
+| `dependencies` | List of prerequisite task IDs that must be `completed` before claim/start |
+| `assigned_to` | Optional concrete agent handle assigned to the task, e.g. `executor#1` |
+| `claimed_by` | Optional agent handle that claimed the task |
+
+For team work, spawn members before assigning their todos and use the returned concrete handle in `assigned_to` (for example, `executor#1`, not `executor` or `executor/explorer`). For dependent team work, create downstream tasks with `dependencies=["task_1"]` and keep them `pending`. Members call `claim` before starting; claims are rejected while dependencies are incomplete, assigned to another handle, or already claimed, so blocked agents do not start early.
 
 **Frontend:** `tool_call`, `tool_start`, and `tool_end` SSE events for `todo_manage` are suppressed in the UI — no tool block is rendered in the chat. `tool_end` still invalidates `queryKeys.todos(sessionId)`, refetching `GET /api/team/sessions/{id}/todos`. History reload (`parseTeamBlocks`) also filters out `todo_manage` tool calls so they never appear on page refresh. The **Todos** popover in the chat header (`Ctrl+T`) displays the result — see [`documents/docs/web/todos.md`](../../docs/web/todos.md).
 
@@ -467,9 +474,9 @@ Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (RE
 
 `skill` is **always injected** into every agent — do not list it in `tools:`.
 
-`todo_manage`, `schedule_task`, and `note` are **always injected into the lead agent** — do not list them in `tools:`.
+`todo_manage`, `schedule_task`, and `note` are **always injected into the lead agent** — do not list them in `tools:`. In team mode, `todo_manage` is also injected into members so they can claim assigned tasks.
 
-In team mode, `team_message` is injected into every agent and `team_manage` is injected into the lead only — see [`teams.md`](teams.md#team-communication-tools).
+In team mode, `team_message` and `todo_manage` are injected into every agent; `team_manage` and `team_configure` are injected into the lead only — see [`teams.md`](teams.md#team-communication-tools).
 
 ---
 

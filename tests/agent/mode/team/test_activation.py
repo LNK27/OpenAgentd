@@ -2,7 +2,7 @@
 
 Covers:
 - _maybe_activate() spawning tasks
-- State transitions (available -> working -> available/error)
+- State transitions (idle -> working -> idle/error)
 - Spurious activation handling
 - Cancel event clearing
 - Reactivation after errors
@@ -105,8 +105,8 @@ class TestOnDemandActivation:
 
         await team.stop()
 
-    async def test_activation_returns_to_available(self, team_with_db):
-        """After activation completes, state is 'available'."""
+    async def test_activation_returns_to_idle(self, team_with_db):
+        """After activation completes, state is 'idle'."""
         team = team_with_db
         await team.start()
 
@@ -115,7 +115,7 @@ class TestOnDemandActivation:
         await team.mailbox.send(to="worker", message=msg)
         await _drain_activation(worker)
 
-        assert worker.state == "available"
+        assert worker.state == "idle"
 
         await team.stop()
 
@@ -147,9 +147,9 @@ class TestOnDemandActivation:
         """_maybe_activate is a no-op only when state == 'working'.
 
         The old guard on _active_task.done() was removed because it caused a
-        race: the previous task sets state='available' in its finally block
+        race: the previous task sets state='idle' in its finally block
         before it fully exits (still awaiting async I/O), so _maybe_activate
-        would see state='available' but task.done()==False and silently drop
+        would see state='idle' but task.done()==False and silently drop
         the new activation, leaving the incoming message in the inbox forever.
 
         Now state=='working' is the sole guard.  A running _active_task with
@@ -167,9 +167,9 @@ class TestOnDemandActivation:
         worker._maybe_activate()
         assert worker._active_task is original_task  # unchanged
 
-        # state == "available" even with a still-running task → new activation spawned
+        # state == "idle" even with a still-running task → new activation spawned
         # (this is the teardown-window fix)
-        worker.state = "available"
+        worker.state = "idle"
         worker._maybe_activate()
         assert worker._active_task is not original_task  # new task created
 
@@ -195,7 +195,7 @@ class TestOnDemandActivation:
 
         # agent.run should NOT have been called (spurious activation)
         worker.agent.run.assert_not_called()
-        assert worker.state == "available"
+        assert worker.state == "idle"
 
         await team.stop()
 
@@ -245,7 +245,7 @@ class TestReactivation:
 
         # Should have a new task
         assert worker._active_task is not first_task
-        assert worker.state == "available"
+        assert worker.state == "idle"
 
         await team.stop()
 
@@ -261,7 +261,7 @@ class TestReactivation:
         await team.mailbox.send(to="worker", message=msg1)
         await _drain_activation(worker)
 
-        assert worker.state == "available"
+        assert worker.state == "idle"
         first_task = worker._active_task
 
         # Second message
@@ -271,7 +271,7 @@ class TestReactivation:
 
         # Should have a new task
         assert worker._active_task is not first_task
-        assert worker.state == "available"
+        assert worker.state == "idle"
 
         await team.stop()
 
@@ -304,7 +304,7 @@ class TestReactivation:
             await _drain_activation(worker)
 
         # Both messages should have been processed (no loss)
-        assert worker.state == "available"
+        assert worker.state == "idle"
 
         await team.stop()
 
@@ -421,7 +421,7 @@ class TestLateInboxReactivation:
 
         # agent.run() was called twice: once for the first message, once for the late one
         assert reactivation_count == 2
-        assert worker.state == "available"
+        assert worker.state == "idle"
 
         await team.stop()
 
@@ -429,13 +429,13 @@ class TestLateInboxReactivation:
         """_maybe_activate sets state='working' before create_task returns.
 
         This prevents _try_emit_done() — called right after _maybe_activate in
-        the finally block — from seeing state='available' and firing done early.
+        the finally block — from seeing state='idle' and firing done early.
         """
         team = team_with_db
         await team.start()
 
         worker = team.members["worker"]
-        worker.state = "available"
+        worker.state = "idle"
 
         worker._maybe_activate()
 
@@ -513,7 +513,7 @@ class TestLateInboxReactivation:
         await team.stop()
 
     async def test_spurious_activation_resets_state(self, team_with_db):
-        """_run_activation with empty inbox resets state to 'available'.
+        """_run_activation with empty inbox resets state to 'idle'.
 
         _maybe_activate now pre-sets state='working' before create_task, so
         _run_activation must reset it if the inbox turns out to be empty
@@ -529,7 +529,7 @@ class TestLateInboxReactivation:
         worker.state = "working"
         await worker._run_activation()
 
-        assert worker.state == "available"
+        assert worker.state == "idle"
         worker.agent.run.assert_not_called()
 
         await team.stop()

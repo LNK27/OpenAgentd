@@ -110,6 +110,24 @@ describe("readSSE", () => {
     expect(errors[0].message).toContain("SSE parse error");
   });
 
+  it("ignores AbortError from cancelled streams", async () => {
+    const errors: Error[] = [];
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.error(new DOMException("aborted", "AbortError"));
+      },
+    });
+
+    readSSE(new Response(stream), {
+      onEvent: () => {},
+      onError: (e) => errors.push(e),
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(errors).toHaveLength(0);
+  });
+
   it("ignores id: and retry: lines", async () => {
     const events: Array<{ type: string }> = [];
 

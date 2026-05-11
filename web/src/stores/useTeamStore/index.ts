@@ -55,11 +55,15 @@ export const useTeamStore = create<TeamStore>()(
     cacheInvalidations: [],
 
     newSession: () => {
+      get()._abortController?.abort()
       set((state) => {
+        const leadName = state.leadName
         state.sessionId = null
         state.sessionTitle = null
         state.isTeamWorking = false
+        state.isConnected = false
         state.error = null
+        state._abortController = null
         state._pendingMessages = []
         state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
         // Drop any pending cache invalidations from the previous
@@ -67,13 +71,18 @@ export const useTeamStore = create<TeamStore>()(
         // and would target the wrong cache after the reset.
         state.cacheInvalidations = []
         state._pendingMessages = []
+        // A fresh chat starts with only the lead. Historical member streams can
+        // remain cached for prior sessions, but they must not stay in the live roster.
+        state.agentNames = leadName ? [leadName] : []
+        state.activeAgent = leadName ?? null
+
         // Reset each agent's blocks but keep identity (name/model)
         Object.keys(state.agentStreams).forEach((name) => {
           state.agentStreams[name].blocks = []
           state.agentStreams[name].currentBlocks = []
           state.agentStreams[name].currentText = ''
           state.agentStreams[name].currentThinking = ''
-          state.agentStreams[name].status = 'available'
+          state.agentStreams[name].status = name === leadName ? 'idle' : 'offline'
           state.agentStreams[name].lastError = null
           state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
           state.agentStreams[name]._completionBase = 0
@@ -156,6 +165,7 @@ export const useTeamStore = create<TeamStore>()(
     connectStream: () => {
       const sessionId = get().sessionId
       if (!sessionId) return new AbortController()
+      const generation = get()._sessionGeneration
 
       get()._abortController?.abort()
       const abort = new AbortController()
@@ -164,11 +174,19 @@ export const useTeamStore = create<TeamStore>()(
       teamStream(
         sessionId,
         {
-          onEvent: (type, data) => get()._handleSSEEvent(type, data),
+          onEvent: (type, data) => {
+            const current = get()
+            if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+            current._handleSSEEvent(type, data)
+          },
           onError: (err) => {
+            const current = get()
+            if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             set((draft) => { draft.error = err.message; draft.isConnected = false })
           },
           onDone: () => {
+            const current = get()
+            if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             set((draft) => { draft.isConnected = false })
           },
         },
@@ -182,14 +200,22 @@ export const useTeamStore = create<TeamStore>()(
         const status = await teamStatus()
         if (status) {
           const allAgents = [status.lead, ...status.members]
+          const liveNames = allAgents.map((a) => a.name)
           set((draft) => {
             draft.leadName = status.lead.name
-            draft.agentNames = allAgents.map((a) => a.name)
+            const historicalNames = draft.agentNames.filter((name) => !liveNames.includes(name))
+            draft.agentNames = [...liveNames, ...historicalNames]
             allAgents.forEach((agent) => {
               if (!draft.agentStreams[agent.name]) {
                 draft.agentStreams[agent.name] = createDefaultAgentStream()
               }
               draft.agentStreams[agent.name].model = agent.model
+            })
+            historicalNames.forEach((name) => {
+              const stream = draft.agentStreams[name]
+              if (stream && name !== status.lead.name && stream.status !== 'error') {
+                stream.status = 'offline'
+              }
             })
             if (!draft.activeAgent && draft.agentNames.length > 0) {
               draft.activeAgent = draft.agentNames[0]
@@ -237,7 +263,7 @@ export const useTeamStore = create<TeamStore>()(
             draft.agentStreams[leadName].currentBlocks = []
             draft.agentStreams[leadName].currentText = ''
             draft.agentStreams[leadName].currentThinking = ''
-            draft.agentStreams[leadName].status = 'available'
+            draft.agentStreams[leadName].status = 'idle'
             const leadUsage = sumUsageFromMessages(history.lead.messages)
             draft.agentStreams[leadName].usage = leadUsage
             // Seed _completionBase so next live turn accumulates correctly
@@ -246,6 +272,7 @@ export const useTeamStore = create<TeamStore>()(
 
           // Load member blocks
           history.members.forEach((member) => {
+            const existingStatus = draft.agentStreams[member.name]?.status
             if (!draft.agentStreams[member.name]) {
               draft.agentStreams[member.name] = createDefaultAgentStream()
             }
@@ -255,7 +282,8 @@ export const useTeamStore = create<TeamStore>()(
             draft.agentStreams[member.name].currentBlocks = []
             draft.agentStreams[member.name].currentText = ''
             draft.agentStreams[member.name].currentThinking = ''
-            draft.agentStreams[member.name].status = 'available'
+            draft.agentStreams[member.name].status =
+              existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
             const memberUsage = sumUsageFromMessages(member.messages)
             draft.agentStreams[member.name].usage = memberUsage
             // Seed _completionBase so next live turn accumulates correctly

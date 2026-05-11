@@ -1,7 +1,7 @@
 """Tests for _try_emit_done with mixed agent states.
 
 Covers:
-- Done emission when lead + all members are available or error
+- Done emission when lead + all members are idle or error
 - No done emission when any agent is working
 - Done flag reset after emission
 """
@@ -59,11 +59,11 @@ class TestDoneDetectionMixedStates:
     """Test _try_emit_done with various state combinations."""
 
     @pytest.mark.asyncio
-    async def test_done_emits_when_lead_available_member_error(self):
-        """Lead available + member error → done fires."""
+    async def test_done_emits_when_lead_idle_member_error(self):
+        """Lead idle + member error → done fires."""
         team = _make_team()
         team._has_active_turn = True
-        team.lead.state = "available"
+        team.lead.state = "idle"
         team.members["worker"].state = "error"
 
         pushed = []
@@ -82,12 +82,12 @@ class TestDoneDetectionMixedStates:
         assert pushed[0].event == "done"
 
     @pytest.mark.asyncio
-    async def test_done_emits_when_lead_error_member_available(self):
-        """Lead error + member available → done fires."""
+    async def test_done_emits_when_lead_error_member_idle(self):
+        """Lead error + member idle → done fires."""
         team = _make_team()
         team._has_active_turn = True
         team.lead.state = "error"
-        team.members["worker"].state = "available"
+        team.members["worker"].state = "idle"
 
         pushed = []
 
@@ -131,7 +131,7 @@ class TestDoneDetectionMixedStates:
         """Any agent working → no done."""
         team = _make_team()
         team._has_active_turn = True
-        team.lead.state = "available"
+        team.lead.state = "idle"
         team.members["worker"].state = "working"
 
         pushed = []
@@ -153,8 +153,8 @@ class TestDoneDetectionMixedStates:
         """After done fires, second call is no-op (flag already false)."""
         team = _make_team()
         team._has_active_turn = True
-        team.lead.state = "available"
-        team.members["worker"].state = "available"
+        team.lead.state = "idle"
+        team.members["worker"].state = "idle"
 
         pushed = []
 
@@ -187,8 +187,8 @@ class TestDoneDetectionMixedStates:
         """When _has_active_turn is False, done is not emitted."""
         team = _make_team()
         team._has_active_turn = False
-        team.lead.state = "available"
-        team.members["worker"].state = "available"
+        team.lead.state = "idle"
+        team.members["worker"].state = "idle"
 
         pushed = []
 
@@ -228,12 +228,12 @@ class TestDoneDetectionMixedStates:
         assert pushed[0].event == "done"
 
     @pytest.mark.asyncio
-    async def test_done_emits_when_both_available(self):
-        """Lead available + member available → done fires."""
+    async def test_done_emits_when_both_idle(self):
+        """Lead idle + member idle → done fires."""
         team = _make_team()
         team._has_active_turn = True
-        team.lead.state = "available"
-        team.members["worker"].state = "available"
+        team.lead.state = "idle"
+        team.members["worker"].state = "idle"
 
         pushed = []
 
@@ -255,8 +255,8 @@ class TestDoneDetectionMixedStates:
         """Stream store error during done emission is swallowed."""
         team = _make_team()
         team._has_active_turn = True
-        team.lead.state = "available"
-        team.members["worker"].state = "available"
+        team.lead.state = "idle"
+        team.members["worker"].state = "idle"
 
         async def fake_push(sid, event):
             raise ConnectionError("stream down")

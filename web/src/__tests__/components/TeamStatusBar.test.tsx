@@ -95,7 +95,7 @@ describe("TeamStatusBar", () => {
 
   it("renders agent name pills for each agent stream", () => {
     const agentStreams = {
-      "agent-alpha": makeStream("available"),
+      "agent-alpha": makeStream("idle"),
       "agent-beta": makeStream("working"),
     }
     render(<TeamStatusBar sessionId={null} agentStreams={agentStreams} />)
@@ -104,14 +104,14 @@ describe("TeamStatusBar", () => {
   })
 
   it("shows token count when agent has totalTokens > 0", () => {
-    const agentStreams = { "bot": makeStream("available", 1500) }
+    const agentStreams = { "bot": makeStream("idle", 1500) }
     render(<TeamStatusBar sessionId={null} agentStreams={agentStreams} />)
     // Me formatTokens(1500) = "1.5k"
     expect(screen.getByText("1.5k")).toBeTruthy()
   })
 
   it("omits token count when totalTokens is 0", () => {
-    const agentStreams = { "bot": makeStream("available", 0) }
+    const agentStreams = { "bot": makeStream("idle", 0) }
     render(<TeamStatusBar sessionId={null} agentStreams={agentStreams} />)
     const kText = screen.queryByText(/k$/)
     expect(kText).toBeNull()
@@ -143,14 +143,14 @@ describe("TeamStatusBar", () => {
     expect(redDot).toBeTruthy()
   })
 
-  it("available agent gets green dot class", () => {
+  it("idle agent gets green dot class", () => {
     const { container } = render(
       <TeamStatusBar
         sessionId={null}
-        agentStreams={{ "worker": makeStream("available") }}
+        agentStreams={{ "worker": makeStream("idle") }}
       />
     )
-    // Component uses CSS variable bg-(--color-success) for available status
+    // Component uses CSS variable bg-(--color-success) for idle status
     const greenDot = container.querySelector("[class*='bg-(--color-success)']")
     expect(greenDot).toBeTruthy()
   })
@@ -160,7 +160,7 @@ describe("TeamStatusBar", () => {
   it("renders all elements together correctly", () => {
     const agentStreams = {
       "lead-agent": makeStream("working", 500),
-      "sub-agent": makeStream("available", 0),
+      "sub-agent": makeStream("idle", 0),
     }
     render(
       <TeamStatusBar

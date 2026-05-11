@@ -2,7 +2,7 @@
 title: Multi-Agent Teams
 description: Team architecture, activation loop, mailbox coordination, and member protocols.
 status: stable
-updated: 2026-05-04
+updated: 2026-05-11
 ---
 
 # Agent Teams
@@ -104,7 +104,7 @@ message arrives in mailbox
       │  will drain it before the next LLM call → return
       └─ else:
            state = "working"    ← set synchronously before create_task so that
-           │                       _try_emit_done() never sees a stale "available"
+           │                       _try_emit_done() never sees a stale "idle"
            └─ _active_task = create_task(_run_activation())
 
 _run_activation() ← one-shot task
@@ -112,7 +112,7 @@ _run_activation() ← one-shot task
 ├─ _cancel_event.clear()
 │
 ├─ drain all queued messages (receive_nowait loop)
-│   └─ if inbox empty → state = "available"; return  ← spurious wakeup, no agent.run()
+│   └─ if inbox empty → state = "idle"; return  ← spurious wakeup, no agent.run()
 │
 ├─ emit agent_status working
 │
@@ -137,8 +137,8 @@ _run_activation() ← one-shot task
 │
 └─ finally:
     _on_turn_finally()       ← TeamMember: clear _current_task_id
-    state = "available"
-    emit agent_status available
+    state = "idle"
+    emit agent_status idle
 
     ── late-inbox check ──────────────────────────────────────────────────
     │  A message can arrive in the mailbox while agent.run() is executing
@@ -151,7 +151,7 @@ _run_activation() ← one-shot task
                                _try_emit_done() below sees "working" → will not fire done
     ── end late-inbox check ──────────────────────────────────────────────
 
-    team._try_emit_done()   ← emits "done" only if ALL agents are "available"
+    team._try_emit_done()   ← emits "done" only if ALL live agents are "idle"
 ```
 
 ### Shutdown
@@ -261,6 +261,7 @@ Injected automatically — do not list in `tools:`.
 |---------|---------|-----|
 | `make_team_message_tool(mailbox, agent_name, role)` | `[team_message]` | All team agents (lead + members) |
 | `make_team_manage_tool(team)` | `[team_manage]` | Lead only |
+| `make_team_configure_tool(team)` | `[team_configure]` | Lead only |
 
 ### `team_message` tool
 
@@ -283,7 +284,27 @@ Tool-mechanical rules (one call per audience, no name prefix, content constraint
 ### `team_manage` tool (lead-only)
 
 ```
-team_manage(member: str, action: "add"|"remove"|"list", kind: "skill"|"tool"|"mcp" | None, name: str | None) -> str
+team_manage(action: "spawn"|"dismiss", members: list[str]) -> str
+```
+
+The lead manages the live roster with one batch-capable tool.
+
+- `action="spawn"`: each entry in `members` is either a bare blueprint name (`"executor"`) or an explicit handle (`"executor#1"`). Bare names allocate the next available `#N`; explicit handles restore/reuse that exact instance history.
+- `action="dismiss"`: each entry in `members` must be an explicit live handle (`"executor#1"`). Dismiss removes the in-memory member from the roster and preserves DB history.
+- Partial success is allowed; the return string groups `Spawned`, `Dismissed`, `Already live`, `Not live`, and `Errors` entries.
+
+Examples:
+
+```python
+team_manage(action="spawn", members=["executor", "executor", "explorer"])
+team_manage(action="spawn", members=["executor#1"])  # restore exact history
+team_manage(action="dismiss", members=["executor#1", "explorer#1"])
+```
+
+### `team_configure` tool (lead-only)
+
+```
+team_configure(member: str, action: "add"|"remove"|"list", kind: "skill"|"tool"|"mcp" | None, name: str | None) -> str
 ```
 
 The lead grants or revokes a member's capabilities at runtime by rewriting that member's `.md` frontmatter. The existing drift-detection hot-reload (see [Live config — drift detection](#live-config--drift-detection-no-team-reload)) picks up the change at the start of the member's next turn — no restart, no team rebuild.
@@ -294,10 +315,10 @@ The lead grants or revokes a member's capabilities at runtime by rewriting that 
 - `add` and `remove` are idempotent — already-present / not-present cases return a message and skip the write.
 - `list` reads from disk, so it reflects pending mutations the member hasn't reloaded yet.
 
-Members do not have `team_manage` themselves. The protocol prompts in `app/agent/mode/team/member.py` enforce a lead-as-translator pattern:
+Members do not have `team_configure` themselves. The protocol prompts in `app/agent/mode/team/member.py` enforce a lead-as-translator pattern:
 
 - **Members describe needs in plain language**, not registry names — e.g. *"I need to write files to disk"*, not *"grant me `write`"*. Members may not know what tools/skills/MCP servers actually exist.
-- **The lead translates the need to the exact registry name** and calls `team_manage(add)` — *"I need shadcn examples"* → `team_manage(member="executor", action="add", kind="mcp", name="shadcn")`.
+- **The lead translates the need to the exact registry name** and calls `team_configure(add)` — *"I need shadcn examples"* → `team_configure(member="executor#1", action="add", kind="mcp", name="shadcn")`.
 - **The lead prefers grant + re-delegate over self-execute** when a member explicitly asks for a capability — keeps separation of concerns; self-execute only as a last resort.
 
 Two related protocol invariants in the same file:
@@ -305,7 +326,7 @@ Two related protocol invariants in the same file:
 - **Members must verify before claiming.** After a tool call, members must read the result and never report success on a tool error. After mutating state (file write, etc.) the protocol asks for a cheap follow-up read (`ls`, `read`) before reporting completion. Catches LLM hallucination after a failed tool call.
 - **Lead must sanity-check claims before promising "done".** When a member reports it wrote a file at path X, lead is instructed to verify with a cheap read when feasible.
 
-> **Robustness contract:** `_build_agent` in `app/agent/loader.py` warn-and-skips unknown tool / MCP names instead of raising. This makes it safe to mutate frontmatter even if the underlying registry shifts after a grant (e.g. an MCP server is later removed from `mcp.json`). The member rebuild succeeds; the missing capability is dropped and logged. `team_manage` validates up-front so typos are never persisted in the first place.
+> **Robustness contract:** `_build_agent` in `app/agent/loader.py` warn-and-skips unknown tool / MCP names instead of raising. This makes it safe to mutate frontmatter even if the underlying registry shifts after a grant (e.g. an MCP server is later removed from `mcp.json`). The member rebuild succeeds; the missing capability is dropped and logged. `team_configure` validates up-front so typos are never persisted in the first place.
 
 > **Frontmatter formatting:** the rewrite uses `yaml.safe_dump` — YAML key order and any comments inside the frontmatter are not preserved. Bodies (after the closing `---`) are preserved verbatim. Treat agent `.md` files as machine-managed config.
 
@@ -317,20 +338,20 @@ All events carry an `agent` field to identify the source.
 
 | Event | Who emits | Payload |
 |-------|-----------|---------|
-| `agent_status` | `AgentTeam._emit()` | `{agent, status: "working"\|"available"\|"error"}` |
+| `agent_status` | `AgentTeam._emit()` | `{agent, status: "idle"\|"working"\|"offline"\|"error"}` |
 | `inbox` | `TeamInboxHook.before_model()` + `_run_activation()` | `{agent, content, from_agent}` |
 | `error` | `TeamLead._on_turn_error()` | `{message, metadata: {agent, exception}}` — emitted only when the **lead** fails; member failures route through the mailbox instead |
 | `done` | `AgentTeam._try_emit_done()` | `{}` |
 | `message`, `thinking`, `tool_call`, `tool_start`, `tool_end`, `usage` | `StreamPublisherHook` | Same as single-agent, plus `agent` field |
 
-> **Note:** `agent_done` was removed. `agent_status: available` is the sole signal that an individual agent has finished its turn. The frontend uses `agent_status` for per-agent indicators and `done` for the team-wide "all idle" state.
+> **Note:** `agent_done` was removed. `agent_status: idle` is the sole signal that an individual live agent has finished its turn. Dismissed members emit/render as `offline`; `done` preserves `offline` and `error` rather than reviving them. The frontend uses `agent_status` for per-agent indicators and `done` for the team-wide "all idle" state.
 >
 > `agent_status` is stored as a latest-wins `{agent: status}` map in the stream state blob and replayed on reconnect **before** any thinking/message events. This ensures a client that refreshes mid-turn sees per-agent working indicators light up before text tokens arrive. `thinking` and `message` replay is also per-agent — see [`architecture.md`](../architecture.md) for the state schema.
 
 ### `_try_emit_done` logic
 
 ```python
-if self._has_active_turn and lead.state == "available" and all(m.state == "available" for m in members):
+if self._has_active_turn and lead.state == "idle" and all(m.state == "idle" for m in live_members):
     _has_active_turn = False
     push_event(session_id, done_event)
     mark_done(session_id)
@@ -422,7 +443,7 @@ Protocol constants (`COMMUNICATION_RULES`, `MESSAGE_FORMAT`, `LEAD_PROTOCOL`, `M
 |---------|------|---------|
 | Communication rules | plain text is user-visible and reserved for the final answer, plus one optional brief progress note after delegation; coordination via `team_message` tool | `team_message` is the ONLY communication method for results; do not use plain text output; no social messages; collaborate directly with peers via `team_message`; respond exactly `<sleep>` with no tool calls when idle |
 | Message format | `[name]: content`, `[user]: content` | `[{lead_name}]: content` (lead), `[name]: content` (peers) |
-| Workflow | receive → delegate → wait (or `<sleep>`) → synthesise | receive → work → `team_message` peers for help if needed → `team_message` results to lead or next peer → `<sleep>` |
+| Workflow | receive → plan with todos using `dependencies` and concrete `assigned_to` handles; spawn before assigning member todos; message only unblocked owners; delegate peer handoffs from the dependency graph; wait (or `<sleep>`) → synthesise | receive → claim assigned todo if provided → work when unblocked → `team_message` peers for help if needed → `team_message` results to lead or next peer → `<sleep>` |
 | Team roster | all members with descriptions | lead `[lead]` + other members (not self) |
 
 Tool-mechanical rules (one call per audience, no name prefix in content, work-output-only content) are in the `team_message` tool description itself — not in the protocol constants. The tool description is role-specific: lead gets delegation-focused wording, members get delivery-focused wording.
@@ -585,7 +606,7 @@ graph TD
     LEAD_TOOL_EXEC --> LEAD_BEFORE_MODEL
     LEAD_DECISION -->|final text only| LEAD_FINAL[Lead produces final answer]
 
-    DELEGATE --> LEAD_AVAILABLE[Lead: available]
+    DELEGATE --> LEAD_IDLE[Lead: idle]
     DELEGATE --> M1_ACTIVATE[Member A: _run_activation spawned]
     DELEGATE --> M2_ACTIVATE[Member B: _run_activation spawned]
 
@@ -607,8 +628,8 @@ graph TD
         M1_DISK --> M1_TOOL_DONE
         M1_TOOL_DONE --> M1_BEFORE_MODEL
         M1_TOOL_D -->|No| M1_REPLY[team_message to Lead mailbox]
-        M1_REPLY --> M1_AVAILABLE[available<br/>agent_status: available SSE]
-        M1_AVAILABLE --> M1_TRY_DONE[_try_emit_done<br/>not all available yet]
+        M1_REPLY --> M1_IDLE[idle<br/>agent_status: idle SSE]
+        M1_IDLE --> M1_TRY_DONE[_try_emit_done<br/>not all idle yet]
     end
 
     subgraph member_b [Member B - concurrent]
@@ -629,8 +650,8 @@ graph TD
         M2_DISK --> M2_TOOL_DONE
         M2_TOOL_DONE --> M2_BEFORE_MODEL
         M2_TOOL_D -->|No| M2_REPLY[team_message to Lead mailbox]
-        M2_REPLY --> M2_AVAILABLE[available<br/>agent_status: available SSE]
-        M2_AVAILABLE --> M2_TRY_DONE[_try_emit_done<br/>not all available yet]
+        M2_REPLY --> M2_IDLE[idle<br/>agent_status: idle SSE]
+        M2_IDLE --> M2_TRY_DONE[_try_emit_done<br/>not all idle yet]
     end
 
     M1_TRY_DONE --> LEAD_ACTIVATE2[Lead: _run_activation spawned<br/>results from A plus B]
@@ -645,8 +666,8 @@ graph TD
     LEAD_AFTER2 --> LEAD_CHECKPOINT2[Checkpointer sync]
     LEAD_CHECKPOINT2 --> LEAD_FINAL
 
-    LEAD_FINAL --> LEAD_AVAILABLE2[Lead: available]
-    LEAD_AVAILABLE2 --> CHECK{All agents available?<br/>lead plus A plus B}
+    LEAD_FINAL --> LEAD_IDLE2[Lead: idle]
+    LEAD_IDLE2 --> CHECK{All live agents idle?<br/>lead plus A plus B}
     CHECK -->|No| LEAD_ACTIVATE2
     CHECK -->|Yes| MARK_DONE[stream_store.mark_done<br/>SSE done event]
     MARK_DONE --> END((End))
@@ -670,10 +691,10 @@ graph TD
     style M1_SSE_INBOX fill:#9B59B6,color:#fff
     style M2_SSE_INBOX fill:#9B59B6,color:#fff
     style LEAD_INBOX2 fill:#9B59B6,color:#fff
-    style LEAD_AVAILABLE fill:#95A5A6,color:#fff
-    style M1_AVAILABLE fill:#95A5A6,color:#fff
-    style M2_AVAILABLE fill:#95A5A6,color:#fff
-    style LEAD_AVAILABLE2 fill:#95A5A6,color:#fff
+    style LEAD_IDLE fill:#95A5A6,color:#fff
+    style M1_IDLE fill:#95A5A6,color:#fff
+    style M2_IDLE fill:#95A5A6,color:#fff
+    style LEAD_IDLE2 fill:#95A5A6,color:#fff
     style LEAD_CHECKPOINT fill:#95A5A6,color:#fff
     style LEAD_CHECKPOINT2 fill:#95A5A6,color:#fff
     style M1_CHECKPOINT_A fill:#95A5A6,color:#fff
