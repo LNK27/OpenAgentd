@@ -15,7 +15,6 @@
  *   - ``SplitGrid``     — fixed n-pane grid layout (split mode).
  *   - ``AgentTabStrip`` — unified-mode tab strip.
  *   - ``TileArea``      — recursive tile tree (unified mode).
- *   - ``usePanelDnD``   — split-mode drag-to-reorder state.
  *   - ``useTeamCommands`` — Command Palette command list.
  *
  * Stream subscriptions are split into the smallest selectors that work
@@ -51,7 +50,6 @@ import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { AgentTabStrip } from './AgentTabStrip'
 import { TileArea } from './TileArea'
-import { usePanelDnD } from './usePanelDnD'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
 
@@ -171,10 +169,6 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-
-  // ── Split-view drag-to-reorder ─────────────────────────────────────────────
-
-  const dnd = usePanelDnD({ agentNames, leadName })
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
@@ -328,10 +322,6 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
     return () => window.removeEventListener('keydown', handler)
   }, [effectiveViewMode, openAgents, focusedAgent, focusAgent, cycleActiveAgent])
 
-  // ── Derived ────────────────────────────────────────────────────────────────
-
-  const effectivePanelOrder = dnd.panelOrder.length > 0 ? dnd.panelOrder : agentNames
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -417,7 +407,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
 
             {effectiveViewMode === 'split' && (
               <span className="text-xs text-(--color-text-muted)">
-                Split · {effectivePanelOrder.length} agents · drag to reorder
+                Split · {agentNames.length} agents
               </span>
             )}
 
@@ -486,18 +476,12 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
         </header>
 
         {/* Content area */}
-        {effectiveViewMode === 'split' && effectivePanelOrder.length > 0 ? (
+        {effectiveViewMode === 'split' && agentNames.length > 0 ? (
           <div className="min-h-0 flex-1 p-3">
             <SplitGrid
-              panelOrder={effectivePanelOrder}
+              agentNames={agentNames}
               leadName={leadName}
               agentStreams={agentStreams}
-              draggingIdx={dnd.draggingIdx}
-              dropTargetIdx={dnd.dropTargetIdx}
-              onDragStart={dnd.onDragStart}
-              onDragOver={dnd.onDragOver}
-              onDrop={dnd.onDrop}
-              onDragEnd={dnd.onDragEnd}
             />
           </div>
         ) : effectiveViewMode === 'unified' ? (

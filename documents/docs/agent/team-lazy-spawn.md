@@ -138,9 +138,10 @@ spawning a peer mid-turn.
 - **Tool object is callable, not `tool.fn`.** `Tool.__call__` dispatches
   to the wrapped function. Tests should call `tool(args)` directly; there
   is no `tool.fn` attribute.
-- **Frontend not yet updated.** `/team/agents` returns the new
-  `blueprints` block (with `live_instances`), but the existing UI still
-  renders the legacy `members` shape. Frontend update is a follow-up.
+- **Frontend roster display.** `/team/agents` exposes `blueprints` with
+  `live_instances`; the web UI lists them in the agent capabilities drawer.
+  Split view follows the live `agentNames` list, so spawned instances appear
+  automatically as their stream events arrive.
 
 ## Alternative designs considered
 

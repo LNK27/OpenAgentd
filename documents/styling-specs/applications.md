@@ -413,7 +413,9 @@ The topbar is composed from smaller primitives. Each primitive owns its appearan
 
 ## View toggle
 
-Three-state icon-only segmented control for chat view modes — `agent` (single agent focus), `split` (side-by-side panes), `unified` (tiled view).
+Three-state icon-only segmented control for chat view modes — `agent` (single agent focus), `split` (automatic panes for all current agents), `unified` (manual tiled view).
+
+`split` view is automatic: when the team roster gains a spawned agent, that agent claims the next pane. The layout grows by square capacity — one pane fills the view, two panes sit side by side, three uses one full-height pane plus two stacked panes, and four becomes a 2×2 grid.
 
 **Rules**
 
