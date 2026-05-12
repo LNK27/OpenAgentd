@@ -28,6 +28,7 @@ introduced to avoid.
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -67,6 +68,9 @@ class TeamDiff:
 # ── Module-level state ───────────────────────────────────────────────────────
 
 _team: "AgentTeam | None" = None
+_coding_teams: dict[str, "AgentTeam"] = {}
+_coding_team_last_used: dict[str, float] = {}
+_CODING_TEAM_IDLE_SECONDS = 2 * 60 * 60
 _lock = asyncio.Lock()
 
 
@@ -75,8 +79,54 @@ def _resolve_agents_dir() -> Path:
     return path if path.is_absolute() else Path.cwd() / path
 
 
+def _resolve_coding_agents_dir() -> Path:
+    return Path(settings.OPENAGENTD_CONFIG_DIR).resolve() / "agents" / "coding"
+
+
+def _resolve_workspace(workspace: str) -> Path:
+    return Path(workspace).expanduser().resolve()
+
+
+def validate_workspace(workspace: str) -> str:
+    resolved = _resolve_workspace(workspace)
+    if not resolved.is_dir():
+        raise ValueError(f"Workspace does not exist or is not a directory: {resolved}")
+    return str(resolved)
+
+
+def _coding_team_is_idle(team: "AgentTeam") -> bool:
+    return all(member.state != "working" for member in team.all_members)
+
+
+async def _cleanup_idle_coding_teams_locked(now: float) -> None:
+    expired = [
+        workspace
+        for workspace, last_used in _coding_team_last_used.items()
+        if now - last_used > _CODING_TEAM_IDLE_SECONDS
+        and (team := _coding_teams.get(workspace)) is not None
+        and _coding_team_is_idle(team)
+    ]
+    for workspace in expired:
+        team = _coding_teams.pop(workspace, None)
+        _coding_team_last_used.pop(workspace, None)
+        if team is None:
+            continue
+        try:
+            await team.stop()
+        except Exception:
+            logger.exception("coding_team_idle_stop_error workspace={}", workspace)
+        else:
+            logger.info("coding_team_idle_stopped workspace={}", workspace)
+
+
 def current_team() -> "AgentTeam | None":
     return _team
+
+
+def current_team_for_workspace(workspace: str | None) -> "AgentTeam | None":
+    if not workspace:
+        return _team
+    return _coding_teams.get(str(_resolve_workspace(workspace)))
 
 
 def set_team(team: "AgentTeam | None") -> None:
@@ -116,13 +166,45 @@ async def stop() -> None:
     """Stop the current team (if any) on server shutdown."""
     global _team
     async with _lock:
-        if _team is None:
-            return
-        try:
-            await _team.stop()
-        except Exception:
-            logger.exception("team_manager_stop_error")
-        _team = None
+        if _team is not None:
+            try:
+                await _team.stop()
+            except Exception:
+                logger.exception("team_manager_stop_error")
+            _team = None
+        for workspace, team in list(_coding_teams.items()):
+            try:
+                await team.stop()
+            except Exception:
+                logger.exception(
+                    "coding_team_manager_stop_error workspace={}", workspace
+                )
+        _coding_teams.clear()
+        _coding_team_last_used.clear()
+
+
+async def get_or_start_coding_team(workspace: str) -> "AgentTeam":
+    key = validate_workspace(workspace)
+    async with _lock:
+        now = time.monotonic()
+        await _cleanup_idle_coding_teams_locked(now)
+        existing = _coding_teams.get(key)
+        if existing is not None:
+            _coding_team_last_used[key] = now
+            return existing
+
+        agents_dir = _resolve_coding_agents_dir()
+        team = load_team_from_dir(agents_dir, mode="coding", workspace=key)
+        if team is None:
+            raise ValueError(
+                f"No coding agents found in '{agents_dir}'. "
+                "Create at least one .md file with 'role: lead'."
+            )
+        await team.start()
+        _coding_teams[key] = team
+        _coding_team_last_used[key] = now
+        logger.info("coding_team_started workspace={} lead={}", key, team.lead.name)
+        return team
 
 
 # ── Hot reload ───────────────────────────────────────────────────────────────

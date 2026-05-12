@@ -20,6 +20,8 @@ class SessionResponse(_ExcludeNoneModel):
     title: str | None = None
     agent_name: str | None = None
     scheduled_task_name: str | None = None
+    mode: str = "normal"
+    workspace: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

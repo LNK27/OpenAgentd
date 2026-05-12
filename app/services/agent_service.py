@@ -24,7 +24,12 @@ from uuid import uuid7
 
 from loguru import logger
 
-from app.core.paths import uploads_dir as _uploads_dir
+from app.core.paths import session_uploads_dir
+
+
+def _uploads_dir(session_id: str) -> Path:
+    return session_uploads_dir(session_id)
+
 
 if TYPE_CHECKING:
     from app.agent.mode.team.team import AgentTeam
@@ -348,6 +353,8 @@ async def dispatch_user_message(
     content: str,
     session_id: str | None,
     attachments: list[RawAttachment] | None = None,
+    mode: str = "normal",
+    workspace: str | None = None,
 ) -> tuple[str, int]:
     """Send a user message through the team.
 
@@ -355,7 +362,7 @@ async def dispatch_user_message(
 
     1. Resolve the session id (use the caller's or mint a fresh UUIDv7).
     2. Validate attachments against the lead's capabilities + size caps.
-    3. Persist attachments to ``{workspace_dir(sid)}/uploads``.
+    3. Persist attachments to the app-managed session uploads directory.
     4. Initialise stream store and deliver to the team.
 
     Returns ``(session_id, n_attachments)``.
@@ -376,6 +383,8 @@ async def dispatch_user_message(
         session_id=sid,
         interrupt=False,
         attachment_metas=metas if metas else None,
+        mode=mode,
+        workspace=workspace,
     )
     logger.info(
         "agent_service_dispatched session_id={} attachments={}",
@@ -390,7 +399,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
     from app.agent.schemas.chat import HumanMessage
     from app.agent.tools.builtin.todo import release_in_progress_for_actor
     from app.core.db import resolve_db_factory
-    from app.core.paths import workspace_dir
+    from app.core.paths import session_workspace_dir
     from app.services.chat_service import save_message
 
     names: list[str] = []
@@ -403,7 +412,9 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
             names.append(member.name)
             sid = session_id or getattr(team.lead, "session_id", None)
             released = (
-                release_in_progress_for_actor(workspace_dir(sid), member.name)
+                release_in_progress_for_actor(
+                    session_workspace_dir(sid, team.workspace), member.name
+                )
                 if sid
                 else []
             )

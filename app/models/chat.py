@@ -87,6 +87,12 @@ class ChatSession(SQLModel, table=True):
         max_length=100,
         sa_column=Column(sa.String(100), nullable=True),
     )
+    mode: str = Field(
+        default="normal",
+        max_length=20,
+        sa_column=Column(sa.String(20), nullable=False, server_default="normal"),
+    )
+    workspace: str | None = Field(default=None)
     created_at: datetime = Field(
         default_factory=_utcnow,
         sa_column=Column(TZDateTime(), nullable=False),

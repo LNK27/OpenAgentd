@@ -3,8 +3,9 @@ and configuration files into a fresh user's config directory.
 
 What ships
 ----------
-- ``agents/`` — one ``.md`` per agent. ``model: __PROVIDER_MODEL__`` is
-  rewritten to the provider:model the user picked in ``init``.
+- ``agents/`` — one ``.md`` per normal agent plus ``agents/coding/`` for
+  coding mode. ``model: __PROVIDER_MODEL__`` is rewritten to the
+  provider:model the user picked in ``init``.
 - ``skills/`` — one subdirectory per skill, each with at minimum a
   ``SKILL.md``.
 - Top-level config files: ``mcp.json``, ``multimodal.yaml``, ``speech.yaml``,
@@ -282,7 +283,7 @@ def _record(
 ) -> None:
     """Record a written path in the appropriate result list."""
     if rel.parts[0] == "agents":
-        agents.append(rel.name)
+        agents.append(str(Path(*rel.parts[1:])))
     elif rel.parts[0] == "skills" and len(rel.parts) >= 2:
         name = rel.parts[1]
         if name not in skills:
