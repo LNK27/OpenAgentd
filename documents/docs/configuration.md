@@ -2,7 +2,7 @@
 title: Configuration Guide
 description: Environment variables, agent setup, tools, skills, sandbox, XDG paths, hooks, running the server.
 status: stable
-updated: 2026-05-05
+updated: 2026-05-12
 ---
 
 # Configuration Guide
@@ -110,6 +110,7 @@ This writes one normal OpenAgentd lead agent at `{OPENAGENTD_CONFIG_DIR}/agents/
 | Path | Purpose |
 |------|---------|
 | `{OPENAGENTD_CONFIG_DIR}/agents/*.md` | Per-agent config + system prompt |
+| `{OPENAGENTD_CONFIG_DIR}/agents/coding/*.md` | Coding-mode team config, used from `/coding` workspaces |
 | `{OPENAGENTD_CONFIG_DIR}/dream.md` | Dream agent config (`enabled`, `model`, `schedule`, `tools`) — see [`agent/memory.md`](agent/memory.md#dream-agent-config) |
 | `{OPENAGENTD_CONFIG_DIR}/summarization.md` | Global summarization defaults (model, thresholds) |
 | `{OPENAGENTD_CONFIG_DIR}/title_generation.md` | Global title-generation defaults |
@@ -437,7 +438,9 @@ fallback_model: copilot:gpt-5-mini  # used after primary exhausts retries
 
 ## Agent files
 
-Each agent is a `.md` file in `{OPENAGENTD_CONFIG_DIR}/agents/`. The team is discovered by scanning all `.md` files in that directory — exactly one must have `role: lead`.
+Each normal agent is a `.md` file in `{OPENAGENTD_CONFIG_DIR}/agents/`. Coding mode uses `{OPENAGENTD_CONFIG_DIR}/agents/coding/`. Each directory is loaded as its own team and must contain exactly one `role: lead`.
+
+Coding workspaces may include a root `AGENTS.md`; it is injected into coding-mode system prompts when present and under the size limit.
 
 **Member changes are breaking:** removing or renaming a member `.md` file orphans their sessions. Adding a new file is safe.
 
@@ -671,6 +674,8 @@ canonical `Path` objects:
 |--------|------|-----------|
 | `workspace_dir(sid)` | `{OPENAGENTD_WORKSPACE_DIR}/{sid}` | Agent workspace — the root for filesystem tools (`read`/`ls`/`glob`/`write`/`shell`). File bytes served at `GET /api/team/{sid}/media/{path}`; flat recursive listing at `GET /api/team/{sid}/files` (powers the web UI Files drawer). |
 | `uploads_dir(sid)` | `{workspace_dir(sid)}/uploads` | User uploads (flat, UUID names). Served at `GET /api/team/{sid}/uploads/{filename}`. Lives **inside** the session workspace so the agent's filesystem tools can pass user-uploaded images to workspace-bound tools (image/video generation, etc.) as the relative path `uploads/<filename>`. |
+
+Coding sessions use the selected project directory as the sandbox workspace. Upload storage remains under `OPENAGENTD_WORKSPACE_DIR`; session rows keep the selected workspace for direct `/coding/{session_id}` restores.
 
 User-uploaded files reach the LLM through the curated multimodal rehydration
 pipeline in `app/agent/multimodal.py`. They are *also* reachable by the

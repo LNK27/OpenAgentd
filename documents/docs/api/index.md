@@ -2,7 +2,7 @@
 title: API Reference
 description: HTTP routes, SSE event protocol, file upload, workspace listing, media proxy, team chat, and planned speech endpoints.
 status: stable
-updated: 2026-05-11
+updated: 2026-05-12
 ---
 
 # API Reference
@@ -19,9 +19,13 @@ FastAPI backend running on `:4082`. All routes are served under the `/api` prefi
 | `GET` | `/api/team/{session_id}/uploads/{filename}` | File bytes — user-uploaded attachments |
 | `GET` | `/api/team/{session_id}/media/{path}` | File bytes — agent workspace output (images, etc.) |
 | `GET` | `/api/team/{session_id}/files` | `WorkspaceFilesResponse` — flat recursive listing of the agent workspace |
-| `GET` | `/api/team/agents` | `{agents: [{name, model, tools, mcp_servers, skills, is_lead, capabilities}]}` — `mcp_servers` lists configured MCP servers (incl. ones not yet ready); the UI groups tools by name prefix `mcp_<server>_<tool>`. |
+| `GET` | `/api/team/agents` | `{agents, blueprints, mode, workspace}`. Pass `?workspace=/path` for coding-mode agents. |
+| `GET` | `/api/team/workspace/validate` | `{workspace}` — validates and resolves a coding workspace path |
+| `GET` | `/api/team/workspace/browse` | `{path, parent, directories}` — browse server-local folders for coding mode |
+| `GET` | `/api/team/workspace/files/list` | `WorkspaceFilesResponse` for a selected coding workspace |
+| `GET` | `/api/team/workspace/git-diff/view` | `{workspace, is_git_repo, diff}` for the selected coding workspace |
 | `GET` | `/api/team/sessions` | `SessionPageResponse` — cursor-paginated, newest-first |
-| `GET` | `/api/team/sessions/{id}` | `SessionDetailResponse` |
+| `GET` | `/api/team/sessions/{id}` | `SessionDetailResponse` — includes `mode` and `workspace` for direct `/coding/{id}` loads |
 | `DELETE` | `/api/team/sessions/{id}` | 204 — also deletes per-session uploads + agent workspace |
 | `GET` | `/api/team/sessions/{id}/todos` | `TodosResponse` — current agent todo list for the session |
 
@@ -255,6 +259,8 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 | `message` | string \| null | — | User's typed text; required for normal send |
 | `session_id` | string \| null | — | Omit to start a new session |
 | `interrupt` | bool | `false` | Set `true` to stop all running members |
+| `mode` | `normal` \| `coding` | `normal` | Coding mode loads agents from `{OPENAGENTD_CONFIG_DIR}/agents/coding/` |
+| `workspace` | string \| null | — | Required when `mode=coding`; reused automatically when resuming a coding session |
 | `files` | UploadFile[] | — | See supported types below (normal send only) |
 
 ### Two mutually exclusive modes
@@ -263,6 +269,15 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 - `message` is required.
 - `session_id` optional — omit to create a new session.
 - Returns `{"status": "queued", "session_id": "..."}` with HTTP 202.
+
+**Coding send** (`mode=coding`):
+- `workspace` must be an existing directory.
+- One live team is kept per resolved workspace; multiple workspaces can run at the same time.
+- One active turn is allowed per workspace. A second send returns HTTP 409.
+- The workspace root's `AGENTS.md`, when present and under the size limit, is appended to the model system prompt.
+- The web UI enters coding mode at `/coding`; URLs carry a local browser workspace key (`w`) and session rows also store the resolved workspace for direct restores.
+
+`GET /api/team/workspace/browse?path=...` supports the frontend folder picker. It lists readable child directories only; omit `path` to start at the server user's home directory. The `/coding` workbench also uses workspace file listing and git diff endpoints to render an IDE-like project rail.
 
 **Interrupt** (`interrupt=true`):
 - `session_id` is required.
@@ -386,13 +401,14 @@ metadata before returning to clients. Clients fetch bytes via the
 
 ## Media proxy
 
-Two endpoints serve on-disk files back to the web UI. Both live under the
-per-session workspace (see [`app/core/paths.py`](../../../app/core/paths.py)):
+Two endpoints serve on-disk files back to the web UI. Normal sessions use the
+per-session workspace; coding sessions use their resolved project workspace for
+media/listing, while uploads still live under `OPENAGENTD_WORKSPACE_DIR`.
 
 | Endpoint | Source | Scope |
 |----------|--------|-------|
 | `GET /api/team/{session_id}/uploads/{filename}` | `{OPENAGENTD_WORKSPACE_DIR}/{session_id}/uploads/` | User-uploaded attachments (flat, UUID-named) |
-| `GET /api/team/{session_id}/media/{path}` | `{OPENAGENTD_WORKSPACE_DIR}/{session_id}/` | Agent workspace output (nested paths allowed) |
+| `GET /api/team/{session_id}/media/{path}` | session or coding workspace | Agent workspace output (nested paths allowed) |
 
 User-uploaded files reach the LLM via the curated multimodal rehydration
 pipeline in `app/agent/multimodal.py`, and are *also* reachable by the
@@ -422,9 +438,8 @@ Agents can therefore write an image to the workspace (e.g. via `write` or
 
 ## Workspace file listing
 
-`GET /api/team/{session_id}/files` returns a flat recursive listing of every
-regular file under the agent workspace (`workspace_dir(session_id)`). It powers
-the **Files** drawer in the web UI — see
+`GET /api/team/{session_id}/files` returns a flat recursive listing of regular files under the session workspace. `GET /api/team/workspace/files/list?workspace=...` does the same for a coding workspace. These power
+the **Files** drawer and `/coding` workspace rail — see
 [`documents/docs/web/workspace-files.md`](../web/workspace-files.md). File
 bytes are fetched separately through the `/media/` proxy above.
 
@@ -464,9 +479,10 @@ bytes are fetched separately through the `/media/` proxy above.
 
 **Rules:**
 
-- `session_id` must be a valid UUID (400 on malformed).
+- `session_id` must be a valid UUID for session-scoped listing (400 on malformed).
 - Missing workspace directory → `200` with `files: []`.
-- Dotfiles and dot-directories are skipped at every depth.
+- Dotfiles, dot-directories, common generated directories, and root `.gitignore`
+  matches are skipped.
 - Directories, named pipes, sockets, and symlinks whose resolved target escapes
   the workspace root are skipped.
 - Entries are sorted lexicographically; the walk stops at

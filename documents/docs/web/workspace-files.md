@@ -2,7 +2,7 @@
 title: Workspace Files Panel
 description: Right-side drawer for browsing, previewing, and downloading agent-generated files with live invalidation.
 status: stable
-updated: 2026-04-29
+updated: 2026-05-12
 ---
 
 # Workspace Files panel
@@ -21,6 +21,8 @@ The panel is the UI for `GET /api/team/{session_id}/files` — see
 [`documents/docs/api/index.md`](../api/index.md#workspace-file-listing) for
 the endpoint contract. File **listings** come from `/files`; file **bytes**
 are fetched on demand from the media proxy (`/media/{path}`).
+
+Normal sessions list the per-session workspace. `/coding` uses **Files & Diff** for the selected project: a recursive tree plus current git diff. Dot entries, common generated directories, and root `.gitignore` matches are hidden in both views.
 
 ```
 WorkspaceFilesPanel.tsx                (right drawer, w-[min(960px,95vw)])
@@ -45,12 +47,10 @@ WorkspaceFilesPanel.tsx                (right drawer, w-[min(960px,95vw)])
 | Trigger | Notes |
 |---------|-------|
 | **"Files" button** in the chat header | Next to the **Agents** button; disabled when no session is active. |
-| **`Ctrl+F`** | Keyboard shortcut registered in `useKeyboardShortcuts`. Disabled when no session is active. |
-| **Command Palette** → *Toggle Workspace Files* | Group *View*, shortcut `Ctrl+F`. |
+| **`Ctrl+F`** | Toggles the panel. In `/coding`, opens **Files & Diff** for the selected workspace. |
+| **Command Palette** | Normal: *Toggle Workspace Files*. Coding: *Open Files & Diff*. |
 
-The panel is mounted conditionally on `sessionId`, so the query only fires
-once a session exists. It is rendered persistently (`open` prop) so
-framer-motion plays both enter and exit animations.
+The right-side panels animate on enter/exit. Clicking outside **Files & Diff** closes it.
 
 ---
 
