@@ -6,7 +6,7 @@ import { getTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
-import { findCodingWorkspaceById, saveCodingWorkspace, shouldResetCodingWorkspaceSession } from '@/utils/workspace'
+import { findCodingWorkspaceById, loadLastCodingWorkspace, saveLastCodingWorkspace, shouldResetCodingWorkspaceSession, shouldRestoreLastCodingWorkspace } from '@/utils/workspace'
 
 /**
  * Layout route for /cockpit, /coding, and their session routes.
@@ -33,6 +33,17 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   })
   const workspace = workspaceFromKey ?? sessionQuery.data?.workspace ?? (mode === 'coding' && sessionId ? workspaceRef.current : null)
 
+  useEffect(() => {
+    if (mode !== 'coding' || sessionId || workspaceId) return
+    const restore = window.setTimeout(() => {
+      if (!shouldRestoreLastCodingWorkspace(mode, sessionId, workspaceId, window.location.pathname)) return
+      const lastWorkspace = loadLastCodingWorkspace()
+      if (!lastWorkspace) return
+      navigate({ to: '/coding', search: { w: lastWorkspace.id }, replace: true })
+    }, 0)
+    return () => window.clearTimeout(restore)
+  }, [mode, navigate, sessionId, workspaceId])
+
   const navigateRef = useRef(navigate)
   const sessionIdRef = useRef(sessionId)
   const modeRef = useRef(mode)
@@ -58,7 +69,7 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
         void queryClient.refetchQueries({ queryKey: queryKeys.team.sessions.infinite(), type: 'active' })
         if (modeRef.current === 'coding') {
           const workspace = workspaceRef.current
-          const entry = workspace ? saveCodingWorkspace(workspace) : null
+          const entry = workspace ? saveLastCodingWorkspace(workspace) : null
           navigateRef.current({
             to: '/coding/$sessionId',
             params: { sessionId: state.sessionId },

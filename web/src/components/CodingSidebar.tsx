@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FolderCode, Home, Loader2, PanelLeftClose, Plus, RefreshCw } from 'lucide-react'
-import { useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries'
+import { useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries/useSessionsQuery'
 import { browseWorkspaces, validateWorkspace } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { formatRelativeDate } from '@/utils/format'
-import { codingSessionSearch, loadCodingWorkspaceEntries, loadCodingWorkspaces, saveCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import { codingSessionSearch, loadCodingWorkspaceEntries, loadCodingWorkspaces, saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
@@ -58,6 +58,7 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [pendingWorkspace, setPendingWorkspace] = useState<string | null>(null)
+  const [trustWorkspace, setTrustWorkspace] = useState<string | null>(null)
 
   const loadBrowser = useCallback(async (path?: string | null) => {
     setLoading(true)
@@ -97,7 +98,7 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
   }, [pendingWorkspace, workspace])
 
   const selectWorkspace = (path: string) => {
-    const entry = saveCodingWorkspace(path)
+    const entry = saveLastCodingWorkspace(path)
     setPendingWorkspace(path)
     setWorkspaces(loadCodingWorkspaces())
     useTeamStore.getState().newSession()
@@ -108,11 +109,18 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
     if (!browserPath) return
     try {
       const result = await validateWorkspace(browserPath)
-      setDialogOpen(false)
-      selectWorkspace(result.workspace)
+      setTrustWorkspace(result.workspace)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Workspace is invalid')
     }
+  }
+
+  const confirmTrustedWorkspace = () => {
+    if (!trustWorkspace) return
+    const workspaceToOpen = trustWorkspace
+    setTrustWorkspace(null)
+    setDialogOpen(false)
+    selectWorkspace(workspaceToOpen)
   }
 
   return (
@@ -223,28 +231,48 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
         </div>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setTrustWorkspace(null) }}>
         <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Open workspace</DialogTitle>
-            <DialogDescription>Choose a server-local project folder.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <div className="rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
-              <p className="truncate font-mono text-xs text-(--color-text-muted)" title={browserPath ?? undefined}>{browserPath ?? 'Loading folders…'}</p>
-            </div>
-            <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-(--color-border) p-1">
-              {parentPath && <button type="button" className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)" onClick={() => void loadBrowser(parentPath)}>..</button>}
-              {loading && dirs.length === 0 && <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">Loading folders…</p>}
-              {!loading && dirs.length === 0 && <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">No folders here</p>}
-              {dirs.map((dir) => <button type="button" key={dir.path} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)" onClick={() => void loadBrowser(dir.path)}><FolderCode size={14} /><span className="truncate">{dir.name}</span></button>)}
-            </div>
-            {error && <p className="text-xs text-(--color-error)">{error}</p>}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button type="button" disabled={!browserPath || loading} onClick={openSelectedFolder}>Open this folder</Button>
-          </DialogFooter>
+          {trustWorkspace ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Trust this workspace?</DialogTitle>
+                <DialogDescription>
+                  Coding mode grants agents filesystem and shell access inside this exact directory.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                <p className="break-all font-mono text-xs text-(--color-text-muted)">{trustWorkspace}</p>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setTrustWorkspace(null)}>Back</Button>
+                <Button type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Open workspace</DialogTitle>
+                <DialogDescription>Choose a server-local project folder.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <div className="rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                  <p className="truncate font-mono text-xs text-(--color-text-muted)" title={browserPath ?? undefined}>{browserPath ?? 'Loading folders…'}</p>
+                </div>
+                <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-(--color-border) p-1">
+                  {parentPath && <button type="button" className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)" onClick={() => void loadBrowser(parentPath)}>..</button>}
+                  {loading && dirs.length === 0 && <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">Loading folders…</p>}
+                  {!loading && dirs.length === 0 && <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">No folders here</p>}
+                  {dirs.map((dir) => <button type="button" key={dir.path} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)" onClick={() => void loadBrowser(dir.path)}><FolderCode size={14} /><span className="truncate">{dir.name}</span></button>)}
+                </div>
+                {error && <p className="text-xs text-(--color-error)">{error}</p>}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+                <Button type="button" disabled={!browserPath || loading} onClick={openSelectedFolder}>Open this folder</Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </aside>

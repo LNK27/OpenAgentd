@@ -440,7 +440,7 @@ fallback_model: copilot:gpt-5-mini  # used after primary exhausts retries
 
 Each normal agent is a `.md` file in `{OPENAGENTD_CONFIG_DIR}/agents/`. Coding mode uses `{OPENAGENTD_CONFIG_DIR}/agents/coding/`. Each directory is loaded as its own team and must contain exactly one `role: lead`.
 
-Coding workspaces may include a root `AGENTS.md`; it is injected into coding-mode system prompts when present and under the size limit.
+Coding workspaces may include a root `AGENTS.md`; it is injected into coding-mode system prompts when present and under the size limit. The web UI asks users to trust newly selected workspace directories because agents get filesystem and shell access inside that exact root.
 
 **Member changes are breaking:** removing or renaming a member `.md` file orphans their sessions. Adding a new file is safe.
 
@@ -675,7 +675,7 @@ canonical `Path` objects:
 | `workspace_dir(sid)` | `{OPENAGENTD_WORKSPACE_DIR}/{sid}` | Agent workspace — the root for filesystem tools (`read`/`ls`/`glob`/`write`/`shell`). File bytes served at `GET /api/team/{sid}/media/{path}`; flat recursive listing at `GET /api/team/{sid}/files` (powers the web UI Files drawer). |
 | `uploads_dir(sid)` | `{workspace_dir(sid)}/uploads` | User uploads (flat, UUID names). Served at `GET /api/team/{sid}/uploads/{filename}`. Lives **inside** the session workspace so the agent's filesystem tools can pass user-uploaded images to workspace-bound tools (image/video generation, etc.) as the relative path `uploads/<filename>`. |
 
-Coding sessions use the selected project directory as the sandbox workspace. Upload storage remains under `OPENAGENTD_WORKSPACE_DIR`; session rows keep the selected workspace for direct `/coding/{session_id}` restores.
+Coding sessions use the selected project directory as the sandbox workspace. Upload storage remains under `OPENAGENTD_WORKSPACE_DIR`; session rows keep the selected workspace for direct `/coding/{session_id}` restores, while the web UI remembers the last opened workspace in local browser storage for bare `/coding`.
 
 User-uploaded files reach the LLM through the curated multimodal rehydration
 pipeline in `app/agent/multimodal.py`. They are *also* reachable by the

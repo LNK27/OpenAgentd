@@ -275,9 +275,9 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 - One live team is kept per resolved workspace; multiple workspaces can run at the same time.
 - One active turn is allowed per workspace. A second send returns HTTP 409.
 - The workspace root's `AGENTS.md`, when present and under the size limit, is appended to the model system prompt.
-- The web UI enters coding mode at `/coding`; URLs carry a local browser workspace key (`w`) and session rows also store the resolved workspace for direct restores.
+- The web UI enters coding mode at `/coding`; URLs carry a local browser workspace key (`w`), the last opened workspace is restored locally, and session rows store the resolved workspace for direct restores.
 
-`GET /api/team/workspace/browse?path=...` supports the frontend folder picker. It lists readable child directories only; omit `path` to start at the server user's home directory. The `/coding` workbench also uses workspace file listing and git diff endpoints to render an IDE-like project rail.
+`GET /api/team/workspace/browse?path=...` supports the frontend folder picker. It lists readable child directories only; omit `path` to start at the server user's home directory. The frontend requires an explicit trust confirmation before opening a newly selected directory. The `/coding` workbench also uses workspace file listing and git diff endpoints to render an IDE-like project rail.
 
 **Interrupt** (`interrupt=true`):
 - `session_id` is required.

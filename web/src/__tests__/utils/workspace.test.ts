@@ -5,8 +5,11 @@ import {
   findCodingWorkspaceId,
   loadCodingWorkspaceEntries,
   loadCodingWorkspaces,
+  loadLastCodingWorkspace,
   saveCodingWorkspace,
+  saveLastCodingWorkspace,
   shouldResetCodingWorkspaceSession,
+  shouldRestoreLastCodingWorkspace,
 } from '@/utils/workspace'
 
 const STORAGE_KEY = 'oa-coding-workspaces'
@@ -49,6 +52,21 @@ describe('coding workspace persistence', () => {
     expect(findCodingWorkspaceById('missing')).toBeNull()
   })
 
+  it('remembers the last opened coding workspace', () => {
+    saveLastCodingWorkspace('/repo/alpha')
+    const beta = saveLastCodingWorkspace('/repo/beta')
+
+    expect(loadLastCodingWorkspace()).toEqual(beta)
+    expect(loadCodingWorkspaces()).toEqual(['/repo/alpha', '/repo/beta'])
+  })
+
+  it('returns null when the last workspace id no longer points to a saved workspace', () => {
+    const saved = saveLastCodingWorkspace('/repo/project')
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([{ ...saved, id: 'other' }]))
+
+    expect(loadLastCodingWorkspace()).toBeNull()
+  })
+
   it('builds session route search from the session workspace first', () => {
     const sessionWorkspace = '/repo/session-workspace'
     const activeWorkspace = '/repo/active-workspace'
@@ -75,5 +93,17 @@ describe('coding workspace persistence', () => {
     expect(shouldResetCodingWorkspaceSession('coding', 'sid', '/repo/a', '/repo/b')).toBe(false)
     expect(shouldResetCodingWorkspaceSession('normal', undefined, '/repo/a', '/repo/b')).toBe(false)
     expect(shouldResetCodingWorkspaceSession('coding', undefined, '/repo/a', '/repo/a')).toBe(false)
+  })
+
+  it('restores the last workspace only on the bare coding route', () => {
+    expect(shouldRestoreLastCodingWorkspace('coding', undefined, null, '/coding')).toBe(true)
+    expect(shouldRestoreLastCodingWorkspace('coding', 'sid', null, '/coding')).toBe(false)
+    expect(shouldRestoreLastCodingWorkspace('coding', undefined, 'w123', '/coding')).toBe(false)
+    expect(shouldRestoreLastCodingWorkspace('normal', undefined, null, '/coding')).toBe(false)
+  })
+
+  it('does not restore while navigating away from coding mode', () => {
+    expect(shouldRestoreLastCodingWorkspace('coding', undefined, null, '/')).toBe(false)
+    expect(shouldRestoreLastCodingWorkspace('coding', undefined, null, '/cockpit')).toBe(false)
   })
 })

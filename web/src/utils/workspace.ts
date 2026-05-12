@@ -10,6 +10,7 @@ export function workspaceLabel(workspace: string): string {
 }
 
 const CODING_WORKSPACES_KEY = 'oa-coding-workspaces'
+const LAST_CODING_WORKSPACE_KEY = 'oa-last-coding-workspace'
 export const CODING_WORKSPACE_BUSY_MESSAGE = '1 session per workspace can run at a time.'
 
 export interface CodingWorkspaceEntry {
@@ -70,6 +71,26 @@ export function saveCodingWorkspace(workspace: string): CodingWorkspaceEntry {
   return entry
 }
 
+export function saveLastCodingWorkspace(workspace: string): CodingWorkspaceEntry {
+  const entry = saveCodingWorkspace(workspace)
+  try {
+    localStorage.setItem(LAST_CODING_WORKSPACE_KEY, entry.id)
+  } catch {
+    // ignore storage failures
+  }
+  return entry
+}
+
+export function loadLastCodingWorkspace(): CodingWorkspaceEntry | null {
+  try {
+    const id = localStorage.getItem(LAST_CODING_WORKSPACE_KEY)
+    if (!id) return null
+    return loadCodingWorkspaceEntries().find((entry) => entry.id === id) ?? null
+  } catch {
+    return null
+  }
+}
+
 export function findCodingWorkspaceById(id: string | null): string | null {
   if (!id) return null
   return loadCodingWorkspaceEntries().find((entry) => entry.id === id)?.path ?? null
@@ -94,4 +115,13 @@ export function shouldResetCodingWorkspaceSession(
   workspace: string | null,
 ): boolean {
   return mode === 'coding' && !sessionId && previousWorkspace !== workspace
+}
+
+export function shouldRestoreLastCodingWorkspace(
+  mode: 'normal' | 'coding',
+  sessionId: string | undefined,
+  workspaceId: string | null,
+  pathname: string,
+): boolean {
+  return mode === 'coding' && !sessionId && !workspaceId && pathname === '/coding'
 }
