@@ -52,6 +52,13 @@ def _validate_name(name: str) -> str:
     return name
 
 
+def _validate_agent_name(name: str) -> Path:
+    parts = Path(name).parts
+    if not parts:
+        raise AgentFsPathError("Agent name cannot be empty.")
+    return Path(*(_validate_name(part) for part in parts))
+
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 
 
@@ -65,7 +72,8 @@ def skills_dir() -> Path:
 
 def _agent_file(name: str) -> Path:
     root = agents_dir()
-    file = (root / f"{_validate_name(name)}.md").resolve()
+    rel = _validate_agent_name(name).with_suffix(".md")
+    file = (root / rel).resolve()
     if not file.is_relative_to(root):
         raise AgentFsPathError(f"Path escapes agents directory: '{name}'.")
     return file
@@ -127,7 +135,7 @@ def list_agents() -> list[str]:
     root = agents_dir()
     if not root.exists():
         return []
-    return sorted(p.stem for p in root.glob("*.md"))
+    return sorted(str(p.relative_to(root).with_suffix("")) for p in root.rglob("*.md"))
 
 
 def read_agent(name: str) -> AgentFileRecord:

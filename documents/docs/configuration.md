@@ -96,7 +96,7 @@ the `voice-local` extra installed.
 
 ## Agent configuration
 
-Each agent is a single `.md` file with YAML frontmatter (config) and a Markdown body (system prompt). Files live in `{OPENAGENTD_CONFIG_DIR}/agents/` by default.
+Each agent is a single `.md` file with YAML frontmatter (config) and a Markdown body (system prompt). Normal-mode files live in `{OPENAGENTD_CONFIG_DIR}/agents/`; coding-mode files live in `{OPENAGENTD_CONFIG_DIR}/agents/coding/` and are seeded by `openagentd init` for fresh installs.
 
 To import OpenClaw or Hermes prompt/context files, run:
 
@@ -119,6 +119,8 @@ This writes one normal OpenAgentd lead agent at `{OPENAGENTD_CONFIG_DIR}/agents/
 | `{OPENAGENTD_CONFIG_DIR}/mcp.json` | MCP client config — see [`agent/tools.md`](agent/tools.md#mcp-servers-appagentmcp) and [`api/index.md`](api/index.md#mcp-server-management) |
 | `{OPENAGENTD_CONFIG_DIR}/sandbox.yaml` | User-defined sandbox deny-list (glob patterns, e.g. `**/.env`). Managed via `/settings/sandbox` — see [Sandbox model and permissions](#sandbox-model-and-permissions) |
 | `{OPENAGENTD_CONFIG_DIR}/skills/` | Skill subdirectories (`{name}/SKILL.md`) |
+
+The Settings UI lists both normal agents and coding agents. Coding agents appear with names like `coding/openagentd`, but their frontmatter `name:` remains the filename stem, e.g. `openagentd`.
 
 ### Switching models
 

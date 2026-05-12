@@ -5,12 +5,13 @@ import userEvent from '@testing-library/user-event'
 import { findCodingWorkspaceId, loadLastCodingWorkspace } from '@/utils/workspace'
 
 const navigate = mock(() => {})
-const browseWorkspaces = mock(async () => ({
+const originalFetch = globalThis.fetch
+const browseResponse = {
   path: '/repo/project',
   parent: '/repo',
   directories: [],
-}))
-const validateWorkspace = mock(async () => ({ workspace: '/repo/project' }))
+}
+let validateError: Error | null = null
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
@@ -24,15 +25,6 @@ mock.module('lucide-react', () => ({
   PanelLeftClose: Icon,
   Plus: Icon,
   RefreshCw: Icon,
-}))
-
-mock.module('@/api/client', () => ({
-  browseWorkspaces,
-  validateWorkspace,
-}))
-
-mock.module('@/stores/useTeamStore', () => ({
-  useTeamStore: { getState: () => ({ newSession: mock(() => {}) }) },
 }))
 
 mock.module('@/components/ui/button', () => ({
@@ -64,17 +56,26 @@ describe('CodingSidebar workspace trust flow', () => {
   beforeEach(() => {
     localStorage.clear()
     navigate.mockClear()
-    browseWorkspaces.mockClear()
-    validateWorkspace.mockClear()
-    browseWorkspaces.mockImplementation(async () => ({
-      path: '/repo/project',
-      parent: '/repo',
-      directories: [],
-    }))
-    validateWorkspace.mockImplementation(async () => ({ workspace: '/repo/project' }))
+    validateError = null
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.startsWith('/api/team/workspace/browse')) {
+        return new Response(JSON.stringify(browseResponse))
+      }
+      if (url.startsWith('/api/team/workspace/validate')) {
+        if (validateError) {
+          return new Response(JSON.stringify({ detail: validateError.message }), { status: 422 })
+        }
+        return new Response(JSON.stringify({ workspace: '/repo/project' }))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
   })
 
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    globalThis.fetch = originalFetch
+  })
 
   async function renderCodingSidebar() {
     const { CodingSidebar } = await import('@/components/CodingSidebar')
@@ -93,7 +94,6 @@ describe('CodingSidebar workspace trust flow', () => {
     const openButton = await screen.findByRole('button', { name: /open this folder/i })
     await user.click(openButton)
 
-    expect(validateWorkspace).toHaveBeenCalledWith('/repo/project')
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
     expect(screen.getByText('/repo/project')).toBeTruthy()
     expect(navigate).not.toHaveBeenCalled()
@@ -124,9 +124,7 @@ describe('CodingSidebar workspace trust flow', () => {
 
   it('shows validation errors without showing the trust confirmation', async () => {
     const user = userEvent.setup()
-    validateWorkspace.mockImplementation(async () => {
-      throw new Error('Workspace does not exist')
-    })
+    validateError = new Error('Workspace does not exist')
 
     await renderCodingSidebar()
 

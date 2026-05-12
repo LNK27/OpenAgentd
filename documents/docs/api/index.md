@@ -52,7 +52,8 @@ Pass `next_cursor` as `?before=…` to fetch the next page. `has_more: false` me
 
 ## Agent file management
 
-Manages per-agent `.md` files under `AGENTS_DIR`. Mutations write the
+Manages per-agent `.md` files under `AGENTS_DIR`, including nested coding-mode
+agents such as `coding/openagentd`. Mutations write the
 file and validate the new on-disk state; failures roll back the file so
 disk state always matches a loadable team. The running team is **not**
 rebuilt — drifted agents pick up the new config at the start of their
@@ -78,8 +79,11 @@ Request bodies for `POST` / `PUT`:
 }
 ```
 
+For coding agents, use the path-like API name (`coding/openagentd`) while the
+frontmatter `name:` stays `openagentd`.
+
 **Validation** (422 on failure, with rollback of the on-disk file):
-- Name must match `^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$` (enforced by `app/services/agent_fs.py::_NAME_RE`).
+- Each path segment in `name` must match `^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`.
 - Frontmatter must parse against `AgentConfig` (Pydantic v2).
 - Team must have exactly one `role: lead`.
 - Every `tools[]` entry must exist in the built-in registry.
