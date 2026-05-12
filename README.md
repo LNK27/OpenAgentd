@@ -29,13 +29,15 @@
 
 **Persistent memory you can edit.** Three-tier wiki: session notes, synthesised topics, and a `USER.md` injected into every prompt. Browse and edit it from the Wiki panel.
 
-**Run a team, not just one agent.** Lead + worker setup with an async mailbox and `team_message` delegation. Watch each agent stream in its own pane — or merge into a single unified view.
+**Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch each agent stream in its own pane — or merge into a single unified view.
 
 ![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
 **Voice input, transcribed locally.** Click the mic button to record, click again to stop. The recording is transcribed on-device via Whisper and inserted into the chat input for review — nothing leaves your machine. Configure in `speech.yaml` or enable via Settings → Voice.
 
 **Schedule it and walk away.** Cron, interval, or one-shot schedules. Results appear when you come back.
+
+**Track work as a board.** `todo_manage` gives the lead and members a shared task board with assignment, claims, dependencies, priorities, and live UI updates.
 
 **See exactly what the agent is doing.** Built-in OTel dashboard — token usage, latency, trace waterfall. No third-party SaaS, all local.
 
@@ -116,8 +118,8 @@ Switch models with a single line in your agent's `.md` config file. Every provid
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
 | GitHub Copilot | `copilot:gpt-5.4-mini` | `openagentd auth copilot` |
 | OpenAI Codex | `codex:gpt-5.5` | `openagentd auth codex` |
-| 9Router (local) | `router9:cc/claude-sonnet-4-5` | `ROUTER9_BASE_URL` |
-| CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_BASE_URL` |
+| 9Router (local) | `router9:cc/claude-sonnet-4-5` | `ROUTER9_API_KEY` (optional `ROUTER9_BASE_URL`) |
+| CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional `CLIPROXY_BASE_URL`) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
 Set a `fallback_model` in your agent config for automatic failover on rate limits or 5xx errors.
@@ -135,7 +137,8 @@ Set a `fallback_model` in your agent config for automatic failover on rate limit
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` |
 | Tasks | `todo_manage` |
-| Utility | `date`, `skill`, `team_message` (teams only) |
+| Team coordination | `team_message`, `team_manage`, `team_configure` (teams only) |
+| Utility | `date`, `skill` |
 
 Add any MCP server to expose more tools without writing code.
 
@@ -143,16 +146,16 @@ Add any MCP server to expose more tools without writing code.
 
 ## Agents and teams
 
-OpenAgentd ships with four seed agents:
+OpenAgentd ships with one lead agent and three member blueprints:
 
 | Agent | Role | Specialty |
 |---|---|---|
-| **openagentd** | Lead | Coordinates the team, receives user messages, delegates |
-| **consultant** | Member | Architecture reviews, debugging, design decisions (high thinking) |
-| **executor** | Member | File creation, builds, shell commands, tangible artifacts |
-| **explorer** | Member | Web research, codebase exploration, information gathering |
+| **openagentd** | Lead | Coordinates the team, receives user messages, spawns members, delegates |
+| **consultant** | Member blueprint | Architecture reviews, debugging, design decisions (high thinking) |
+| **executor** | Member blueprint | File creation, builds, shell commands, tangible artifacts |
+| **explorer** | Member blueprint | Web research, codebase exploration, information gathering |
 
-Configure any team shape you want by editing or adding `.md` files in your config directory. Exactly one agent must have `role: lead`; the rest are members. Agents communicate via an async mailbox using the `team_message` tool — no polling, no shared state.
+Configure your team by editing `.md` files in your config directory. Exactly one agent must have `role: lead`; the rest are member blueprints. The lead uses `team_manage` to spawn/dismiss live instances (`executor#1`, `explorer#1`), `team_message` to delegate and collect results, and `team_configure` to grant or revoke a member's skills, tools, or MCP servers without restarting.
 
 ![OpenAgentd agent architecture — loop, hooks, tools, providers, memory, and team mode](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/openagentd-agent-architecture.png)
 
@@ -182,6 +185,8 @@ summarization:
 
 System prompt goes here.
 ```
+
+Member instances are created lazily from `role: member` configs. Re-spawning an explicit handle restores its history for the current lead session; dismissing an instance only removes it from the live roster.
 
 ---
 
@@ -304,6 +309,9 @@ OpenAgentd ships with [Context7](https://context7.com) pre-configured. Add any M
 | [Architecture](https://github.com/lthoangg/openagentd/blob/main/documents/docs/architecture.md) | C4 diagrams, agent loop, SSE protocol |
 | [API reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/api/index.md) | HTTP endpoints, SSE events, file handling |
 | [Agent engine](https://github.com/lthoangg/openagentd/tree/main/documents/docs/agent) | Loop, hooks, tools, teams, context, summarization |
+| [Lazy team members](https://github.com/lthoangg/openagentd/blob/main/documents/docs/agent/team-lazy-spawn.md) | Spawn/dismiss member instances, `blueprint#N` handles, history restore |
+| [Todos popover](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/todos.md) | Task board, assignments, claims, dependencies, live updates |
+| [Tool rendering](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/tool-results.md) | Tool call/result UI and custom renderers |
 | [Comparison](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent |
 | [Troubleshooting](https://github.com/lthoangg/openagentd/blob/main/documents/docs/troubleshooting.md) | Common install and runtime issues |
 | [Guidelines](https://github.com/lthoangg/openagentd/blob/main/documents/docs/guidelines.md) | Code style, testing patterns, workflow (contributors) |
