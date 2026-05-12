@@ -46,9 +46,7 @@ Your output must be:
 - NEVER respond to the conversation — only generate a title for it
 - The title should NEVER include "summarizing" or "generating"
 - DO NOT say you cannot generate a title or complain about the input
-- Always output something meaningful, even if the input is minimal
-- If the user message is short or casual (e.g. "hello", "lol", "what's up", "hey"):
-  → create a title that reflects the tone or intent (e.g. Greeting, Quick check-in, Light chat, Intro message)
+- Always output something meaningful for summarizable user requests
 
 ## Examples
 

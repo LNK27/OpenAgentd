@@ -34,6 +34,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -56,6 +57,18 @@ if TYPE_CHECKING:
 # background title task to land before completing. ``0`` skips the wait
 # entirely — the title still arrives via SSE when the task finishes.
 DEFAULT_WAIT_TIMEOUT_SECONDS = 3.0
+MIN_TITLE_WORDS = 3
+GREETING_ONLY_RE = re.compile(
+    r"^\s*(?:hi|hello|hey|yo|good\s+(?:morning|afternoon|evening))\s*[!.?]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def _should_skip_title_generation(user_text: str) -> bool:
+    text = user_text.strip()
+    if GREETING_ONLY_RE.fullmatch(text):
+        return True
+    return len(text.split()) < MIN_TITLE_WORDS
 
 
 def title_generation_config_path() -> Path:
@@ -126,6 +139,13 @@ class TitleGenerationHook(BaseAgentHook):
         if user_text.startswith("[Scheduled Task:"):
             logger.debug(
                 "title_generation_hook_skipped reason=scheduled_task session_id={}",
+                ctx.session_id,
+            )
+            return
+
+        if _should_skip_title_generation(user_text):
+            logger.debug(
+                "title_generation_hook_skipped reason=short_or_greeting session_id={}",
                 ctx.session_id,
             )
             return
