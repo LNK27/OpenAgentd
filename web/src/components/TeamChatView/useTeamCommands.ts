@@ -25,8 +25,10 @@ interface UseTeamCommandsArgs {
   cycleViewMode: () => void
   setViewMode: (m: ViewMode) => void
   setShowAgentSidebar: (fn: (v: boolean) => boolean) => void
-  setShowFilesPanel: (fn: (v: boolean) => boolean) => void
   setShowTodos: (fn: (v: boolean) => boolean) => void
+  handleWorkspaceFiles: () => void
+  handleCodingSidebarToggle: () => void
+  mode?: 'normal' | 'coding'
 
   // Session
   handleNewSession: () => void
@@ -58,8 +60,10 @@ export function useTeamCommands({
   cycleViewMode,
   setViewMode,
   setShowAgentSidebar,
-  setShowFilesPanel,
   setShowTodos,
+  handleWorkspaceFiles,
+  handleCodingSidebarToggle,
+  mode = 'normal',
   handleNewSession,
   handleDreamRun,
   agentNames,
@@ -90,8 +94,10 @@ export function useTeamCommands({
     ] : []),
     { id: 'agent-info',       group: 'View',       label: 'Agent Capabilities', description: 'Show agent tools, skills and config', shortcut: 'Ctrl+A', action: () => setShowAgentSidebar((v) => !v) },
     { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: 'Ctrl+T', action: () => setShowTodos((v) => !v) },
-    { id: 'workspace-files',  group: 'View',       label: 'Toggle Workspace Files', description: 'Browse files the agent has produced', shortcut: 'Ctrl+F', action: () => setShowFilesPanel((v) => !v) },
-    { id: 'collapse-sidebar', group: 'View',       label: 'Toggle Sidebar',    description: '', shortcut: 'Ctrl+B', action: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true })) },
+    { id: 'workspace-files',  group: 'View',       label: mode === 'coding' ? 'Open Files & Diff' : 'Toggle Workspace Files', description: mode === 'coding' ? 'Browse workspace files and git diff' : 'Browse files the agent has produced', shortcut: 'Ctrl+F', action: handleWorkspaceFiles },
+    mode === 'coding'
+      ? { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: 'Ctrl+B', action: handleCodingSidebarToggle }
+      : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: 'Ctrl+B', action: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true })) },
     { id: 'wiki',             group: 'View',       label: 'Wiki',              description: 'Browse and edit the agent wiki', shortcut: 'Ctrl+M', action: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', ctrlKey: true, bubbles: true })) },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: 'Ctrl+S', action: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true })) },
     { id: 'focus-input',      group: 'View',       label: 'Focus Chat Input',  description: 'Jump cursor to the message composer', shortcut: 'Ctrl+I', action: () => window.dispatchEvent(new CustomEvent('focus-chat-input')) },
@@ -112,6 +118,7 @@ export function useTeamCommands({
     { id: 'next-agent', group: 'Agents', label: 'Next Agent',     description: 'Tab',       action: () => viewMode === 'unified' ? focusAgent(openAgents[(openAgents.indexOf(focusedAgent ?? '') + 1) % openAgents.length]) : cycleActiveAgent('next') },
     { id: 'prev-agent', group: 'Agents', label: 'Previous Agent', description: 'Shift+Tab', action: () => viewMode === 'unified' ? focusAgent(openAgents[(openAgents.indexOf(focusedAgent ?? '') - 1 + openAgents.length) % openAgents.length]) : cycleActiveAgent('prev') },
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
+    ...(mode === 'normal' ? [{ id: 'go-coding', group: 'Navigation', label: 'Go to Coding Mode', description: 'Open the coding workbench', action: () => navigate({ to: '/coding' }) }] : []),
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents & skills', action: () => navigate({ to: '/settings/agents' }) },
     { id: 'settings-agents', group: 'Settings', label: 'Manage Agents', description: 'Edit agent .md files',  action: () => navigate({ to: '/settings/agents' }) },
     { id: 'settings-new-agent', group: 'Settings', label: 'New Agent',  description: 'Create a new agent',    action: () => navigate({ to: '/settings/agents/new' }) },

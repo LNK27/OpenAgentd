@@ -18,6 +18,7 @@
 export interface SSECallbacks {
   onEvent: (type: string, data: unknown) => void
   onError?: (err: Error) => void
+  onParseError?: (err: Error) => void
   onDone?: () => void
 }
 
@@ -43,7 +44,7 @@ export function readSSE(response: Response, callbacks: SSECallbacks): void {
       const type = currentEvent || (parsed.type as string) || 'unknown'
       callbacks.onEvent(type, parsed)
     } catch {
-      callbacks.onError?.(new Error(`SSE parse error: ${currentData}`))
+      callbacks.onParseError?.(new Error(`SSE parse error: ${currentData}`))
     }
     currentEvent = ''
     currentData = ''

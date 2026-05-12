@@ -484,6 +484,7 @@ interface AgentCapabilitiesProps {
   /** For team mode: ordered agent names (lead first). Empty = single-agent. */
   agentNames?: string[]
   agentStreams?: Record<string, AgentStream>
+  workspace?: string | null
   onClose: () => void
 }
 
@@ -491,9 +492,10 @@ export function AgentCapabilities({
   open,
   agentNames = [],
   agentStreams = {},
+  workspace = null,
   onClose,
 }: AgentCapabilitiesProps) {
-  const { data, isLoading, refetch } = useTeamAgentsQuery()
+  const { data, isLoading, refetch } = useTeamAgentsQuery(workspace)
 
   // Refresh on open
   useEffect(() => {

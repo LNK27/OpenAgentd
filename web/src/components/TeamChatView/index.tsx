@@ -27,6 +27,8 @@ import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 import { useNavigate } from '@tanstack/react-router'
 import { AgentCapabilities } from '../AgentCapabilities'
 import { AgentView } from '../AgentView'
+import { CodingSidebar } from '../CodingSidebar'
+import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
 import { Sidebar } from '../Sidebar'
 import { CommandPalette } from '../CommandPalette'
 import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
@@ -39,9 +41,10 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTileLayout } from '@/hooks/useTileLayout'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
-import { Users, FolderOpen, Menu } from 'lucide-react'
+import { Users, FolderOpen, Menu, FolderCode } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { AgentChip } from '@/components/ui/agent-chip'
+import { Button } from '@/components/ui/button'
 import { isAgentRole } from '@/lib/agent-roles'
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { type InputBarHandle, type SlashCommand } from '../InputBar'
@@ -52,12 +55,15 @@ import { AgentTabStrip } from './AgentTabStrip'
 import { TileArea } from './TileArea'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
+import { saveCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 
 interface TeamChatViewProps {
   sessionId?: string
+  mode?: 'normal' | 'coding'
+  workspace?: string | null
 }
 
-export function TeamChatView({ sessionId }: TeamChatViewProps) {
+export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: TeamChatViewProps) {
   const navigate = useNavigate()
   const isMobile = useIsMobile()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -65,6 +71,9 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
   const mainColumnRef = useRef<HTMLDivElement>(null)
   const [showAgentSidebar, setShowAgentSidebar] = useState(false)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
+  const [codingPanel, setCodingPanel] = useState<null | 'files' | 'diff'>(null)
+  const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(false)
+  const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('agent')
@@ -109,7 +118,9 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
   const todos = todosData?.todos ?? []
 
   // Lead capabilities — used to drive composer affordances (slash menu).
-  const { data: teamAgentsData } = useTeamAgentsQuery()
+  const agentWorkspace = mode === 'coding' ? workspace : null
+  const hasCodingWorkspace = mode !== 'coding' || Boolean(workspace)
+  const { data: teamAgentsData, isLoading: teamAgentsLoading } = useTeamAgentsQuery(agentWorkspace, hasCodingWorkspace)
   const leadCapabilities: AgentCapabilitiesType | undefined = teamAgentsData?.agents
     ?.find((a) => a.is_lead)?.capabilities
 
@@ -138,7 +149,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
   // ── Init / reconnect ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    loadTeamStatus()
+    if (hasCodingWorkspace) loadTeamStatus(agentWorkspace)
     if (!sessionId) return
     const store = useTeamStore.getState()
     if (store.sessionId === sessionId && store.isConnected) return
@@ -170,7 +181,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
       abortRef.current?.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId])
+  }, [sessionId, agentWorkspace, hasCodingWorkspace])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
@@ -178,9 +189,36 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
     abortRef.current?.abort()
     abortRef.current = null
     newSession()
-    navigate({ to: '/cockpit' })
+    if (mode === 'coding' && workspace) {
+      const entry = saveCodingWorkspace(workspace)
+      navigate({ to: '/coding', search: { w: entry.id } })
+    } else {
+      navigate({ to: mode === 'coding' ? '/coding' : '/cockpit' })
+    }
     requestAnimationFrame(() => inputRef.current?.focus())
-  }, [newSession, navigate])
+  }, [mode, workspace, newSession, navigate])
+
+  const handleWorkspaceFiles = useCallback(() => {
+    if (mode === 'coding') {
+      if (workspace) {
+        setCodingPanel((value) => value === null ? 'files' : null)
+      } else {
+        setCodingSidebarCollapsed(false)
+        setOpenWorkspaceDialogKey((value) => value + 1)
+      }
+      return
+    }
+    if (sessionIdState) setShowFilesPanel((value) => !value)
+  }, [mode, workspace, sessionIdState])
+
+  const handleCodingSidebarToggle = useCallback(() => {
+    setCodingSidebarCollapsed((value) => !value)
+  }, [])
+
+  const handleOpenWorkspaceDialog = useCallback(() => {
+    setCodingSidebarCollapsed(false)
+    setOpenWorkspaceDialogKey((value) => value + 1)
+  }, [])
 
   const handleDreamRun = useCallback(() => {
     dreamMutation.mutate(undefined, {
@@ -271,8 +309,10 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
     cycleViewMode,
     setViewMode,
     setShowAgentSidebar,
-    setShowFilesPanel,
     setShowTodos,
+    handleWorkspaceFiles,
+    handleCodingSidebarToggle,
+    mode,
     handleNewSession,
     handleDreamRun,
     agentNames,
@@ -296,9 +336,10 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
     k: effectiveViewMode === 'unified' ? handleSplitRight : undefined,
     w: effectiveViewMode === 'unified' ? handleClosePane  : undefined,
     a: () => setShowAgentSidebar((v) => !v),
-    f: () => { if (sessionIdState) setShowFilesPanel((v) => !v) },
+    f: handleWorkspaceFiles,
     t: () => { if (sessionIdState) setShowTodos((v) => !v) },
     p: isMobile ? undefined : () => setShowPalette((v) => !v),
+    b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
     // Ctrl+I — focus the chat input (dispatched via CustomEvent so future
     // callers don't need a ref to the input).
     'i': () => window.dispatchEvent(new CustomEvent('focus-chat-input')),
@@ -331,20 +372,47 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
     <div className="flex h-dvh bg-(--bg-page)">
       {/* On mobile the Sidebar is position:fixed (overlay drawer), so it takes
           no space in this flex row — the main column is always full-width. */}
-      <Sidebar
-        currentSessionId={sessionIdState || undefined}
-        onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
-        onNewChat={handleNewSession}
-        mobileOpen={mobileSidebarOpen}
-        onMobileClose={() => setMobileSidebarOpen(false)}
-      />
+      {mode === 'coding' ? (
+        !codingSidebarCollapsed && (
+          <CodingSidebar
+            currentSessionId={sessionIdState || undefined}
+            workspace={workspace}
+            onCollapse={() => setCodingSidebarCollapsed(true)}
+            openWorkspaceDialogKey={openWorkspaceDialogKey}
+          />
+        )
+      ) : (
+        <Sidebar
+          currentSessionId={sessionIdState || undefined}
+          onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
+          onNewChat={handleNewSession}
+          mobileOpen={mobileSidebarOpen}
+          onMobileClose={() => setMobileSidebarOpen(false)}
+        />
+      )}
 
       <div ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
         {/* Header */}
         <header className="flex items-center gap-1 border-b border-(--color-border) bg-(--bg-page) px-2 py-0 md:gap-0 md:px-4">
 
           {/* Mobile: hamburger to open sidebar drawer */}
-          {isMobile && (
+          {mode === 'coding' && codingSidebarCollapsed ? (
+            <div className="mr-3 flex min-w-0 shrink-0 items-center gap-2">
+              <button
+                onClick={() => setCodingSidebarCollapsed(false)}
+                aria-label="Expand coding sidebar"
+                title="Expand coding sidebar (Ctrl+B)"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              >
+                <Menu size={16} aria-hidden="true" />
+              </button>
+              {workspace && (
+                <span className="max-w-40 truncate font-mono text-xs font-medium text-(--color-text-muted)" title={workspace}>
+                  {workspaceLabel(workspace)}
+                </span>
+              )}
+            </div>
+          ) : isMobile && (
             <button
               onClick={() => setMobileSidebarOpen(true)}
               aria-label="Open navigation"
@@ -459,14 +527,22 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
                 sessionId={sessionIdState}
               />
             }
-            filesAction={{
-              Icon: FolderOpen,
-              label: 'Files',
-              onClick: () => setShowFilesPanel((v) => !v),
-              disabled: !sessionIdState,
-              title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
-              ariaLabel: 'Workspace files',
-            }}
+            filesAction={mode === 'coding'
+              ? workspace ? {
+                  Icon: FolderOpen,
+                  label: 'Files & Diff',
+                  onClick: () => setCodingPanel('files'),
+                  title: 'Workspace files and git diff',
+                  ariaLabel: 'Workspace files and git diff',
+                } : undefined
+              : {
+                  Icon: FolderOpen,
+                  label: 'Files',
+                  onClick: () => setShowFilesPanel((v) => !v),
+                  disabled: !sessionIdState,
+                  title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
+                  ariaLabel: 'Workspace files',
+                }}
             agentsAction={{
               Icon: Users,
               label: 'Agents',
@@ -492,6 +568,29 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
             agentStreams={agentStreams}
             leadName={leadName}
           />
+        ) : mode === 'coding' && workspace && teamAgentsLoading ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
+            <div>
+              <h2 className="text-sm font-medium text-(--color-text)">Opening coding workspace…</h2>
+              <p className="mt-1 text-xs text-(--color-text-muted)">Preparing agents for {workspace}</p>
+            </div>
+          </div>
+        ) : mode === 'coding' && !workspace ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-(--bg-key) text-(--color-accent)">
+              <FolderCode size={24} />
+            </div>
+            <div>
+              <h2 className="text-base font-medium text-(--color-text)">No workspace attached</h2>
+              <p className="mt-1 max-w-sm text-sm text-(--color-text-muted)">
+                Choose a local project folder from the sidebar to start a coding session.
+              </p>
+            </div>
+            <Button type="button" onClick={handleOpenWorkspaceDialog}>
+              Open workspace
+            </Button>
+          </div>
         ) : activeAgent && agentStreams[activeAgent] ? (
           <AgentView
             blocks={activeBlocks ?? agentStreams[activeAgent].blocks}
@@ -510,19 +609,23 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
         <FloatingInputBar
           ref={inputRef}
           boundsRef={mainColumnRef}
-          onSubmit={(content, files) => sendMessage(content, files)}
+          onSubmit={(content, files) => sendMessage(content, files, { mode, workspace })}
           onStop={() => useTeamStore.getState().stopTeam()}
           onSlashCommand={handleSlashCommand}
           slashCommands={slashCommands}
           isStreaming={isTeamWorking}
-          disabled={false}
+          disabled={mode === 'coding' && !workspace}
           autoFocus={!sessionId}
           placeholder={
             dreamMutation.isPending
               ? 'Dream is running…'
               : isTeamWorking
                 ? 'Team working… type to interrupt'
-                : 'Message the team…'
+                : mode === 'coding' && workspace
+                  ? `Coding in ${workspace}`
+                  : mode === 'coding'
+                    ? 'Choose a workspace to start coding…'
+                    : 'Message the team…'
           }
           capabilities={leadCapabilities}
           voiceEnabled={voiceEnabled}
@@ -533,13 +636,23 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
         open={showAgentSidebar}
         agentNames={agentNames}
         agentStreams={agentStreams}
+        workspace={agentWorkspace}
         onClose={() => setShowAgentSidebar(false)}
       />
       <WorkspaceFilesPanel
-        open={showFilesPanel}
+        open={mode !== 'coding' && showFilesPanel}
         sessionId={sessionIdState}
         onClose={() => setShowFilesPanel(false)}
       />
+      {mode === 'coding' && workspace && (
+        <CodingWorkspacePanel
+          key={codingPanel ?? 'closed'}
+          workspace={workspace}
+          open={codingPanel !== null}
+          initialTab={codingPanel ?? 'files'}
+          onClose={() => setCodingPanel(null)}
+        />
+      )}
       {!isMobile && showPalette && (
         <CommandPalette commands={commands} onClose={() => setShowPalette(false)} />
       )}

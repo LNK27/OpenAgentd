@@ -81,10 +81,10 @@ export interface TeamStoreState {
 }
 
 export interface TeamStoreActions {
-  sendMessage: (content: string, files?: File[]) => Promise<void>
+  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null }) => Promise<void>
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
-  loadTeamStatus: () => Promise<void>
+  loadTeamStatus: (workspace?: string | null) => Promise<void>
   loadSession: (sessionId: string) => Promise<void>
   setActiveAgent: (name: string) => void
   cycleActiveAgent: (dir: 'next' | 'prev') => void
