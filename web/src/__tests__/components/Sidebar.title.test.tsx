@@ -1,4 +1,5 @@
 import { describe, it, expect } from "bun:test"
+import { normalizeWorkspaceInput, workspaceLabel } from "@/utils/workspace"
 
 /**
  * Sidebar Title Animation Tests
@@ -187,5 +188,23 @@ describe("Sidebar: title animation logic", () => {
     expect(inactiveSessions).toHaveLength(2)
     expect(inactiveSessions[0].title).toBe("Chat 2")
     expect(inactiveSessions[1].title).toBe("Chat 3")
+  })
+})
+
+describe("Sidebar: workspace input", () => {
+  it("trims workspace paths before routing", () => {
+    expect(normalizeWorkspaceInput("  /Users/name/project  ")).toBe("/Users/name/project")
+  })
+
+  it("rejects blank workspace paths", () => {
+    expect(normalizeWorkspaceInput("   ")).toBeNull()
+  })
+
+  it("shows the workspace basename as its label", () => {
+    expect(workspaceLabel("/Users/name/project")).toBe("project")
+  })
+
+  it("trims trailing path separators before labelling", () => {
+    expect(workspaceLabel("/Users/name/project/")).toBe("project")
   })
 })
