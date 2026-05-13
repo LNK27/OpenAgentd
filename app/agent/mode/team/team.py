@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
-import sqlalchemy as sa
 from loguru import logger
 from sqlmodel import col, select
 
@@ -750,11 +749,8 @@ class AgentTeam:
                     )
                     legacy = legacy_q.first()
                     if legacy is not None:
-                        await db.exec(
-                            sa.update(ChatSession)
-                            .where(col(ChatSession.id) == legacy.id)
-                            .values(agent_name=handle)
-                        )
+                        legacy.agent_name = handle
+                        db.add(legacy)
                         await db.commit()
                         logger.info(
                             "team_member_legacy_adopted blueprint={} handle={} "
