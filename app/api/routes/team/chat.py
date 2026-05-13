@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import AsyncGenerator
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamMemberBase
+from app.agent.mode.team.team import CodingWorkspaceBusyError
 from app.agent.tools.builtin.skill import discover_skills
 from app.api.deps import ChatFormDep, DbSession, TeamDep
 from app.api.routes.team._helpers import (
@@ -24,6 +26,7 @@ from app.api.schemas.sessions import (
     SessionResponse,
 )
 from app.api.schemas.team import TeamHistoryMember, TeamHistoryResponse
+from app.models.chat import ChatSession
 from app.services import (
     agent_service,
     memory_stream_store as stream_store,
@@ -75,12 +78,20 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
     }
 
 
+def _validate_workspace_or_422(workspace: str) -> str:
+    try:
+        return team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
 @router.post("/chat", status_code=202)
 async def team_chat(
     team: TeamDep,
+    db: DbSession,
     body: ChatFormDep,
     files: list[UploadFile] = File(default=[]),
 ) -> dict:
@@ -97,11 +108,44 @@ async def team_chat(
     Returns the session_id. Subscribe to GET /team/stream/{session_id} to
     receive the SSE event stream (supports reconnect + replay).
     """
-    team_obj = _require_team(team)
-
     message = body.message
     session_id = body.session_id
     interrupt = body.interrupt
+    mode = body.mode
+    workspace = body.workspace
+    existing: ChatSession | None = None
+
+    if session_id:
+        async with db.begin():
+            existing = await db.get(ChatSession, UUID(session_id))
+
+    if existing and existing.mode == "coding" and existing.workspace:
+        persisted_workspace = _validate_workspace_or_422(existing.workspace)
+        if mode == "coding" and workspace is not None:
+            requested_workspace = _validate_workspace_or_422(workspace)
+            if requested_workspace != persisted_workspace:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Session belongs to a different coding workspace: "
+                        f"{persisted_workspace}"
+                    ),
+                )
+        mode = "coding"
+        workspace = persisted_workspace
+        try:
+            team_obj = await team_manager.get_or_start_coding_team(workspace)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif mode == "coding":
+        assert workspace is not None
+        workspace = _validate_workspace_or_422(workspace)
+        try:
+            team_obj = await team_manager.get_or_start_coding_team(workspace)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        team_obj = _require_team(team)
 
     # ── Interrupt (mutually exclusive with message) ─────────────────────────
     if interrupt:
@@ -126,9 +170,13 @@ async def team_chat(
             content=message,
             session_id=session_id,
             attachments=attachments,
+            mode=mode,
+            workspace=workspace,
         )
     except AttachmentError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    except CodingWorkspaceBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     logger.info(
         "team_chat_received session_id={} attachments={}",
@@ -166,7 +214,10 @@ async def team_stream(session_id: str, request: Request):
 
 
 @router.get("/agents")
-async def list_team_agents(team: TeamDep) -> dict:
+async def list_team_agents(
+    team: TeamDep,
+    workspace: str | None = Query(None, description="Coding workspace directory."),
+) -> dict:
     """Return info on the lead, all live member instances, and spawnable blueprints.
 
     Refreshes drifted-but-idle agents from disk before serializing so the
@@ -191,7 +242,13 @@ async def list_team_agents(team: TeamDep) -> dict:
           ]
         }
     """
-    team_obj = _require_team(team)
+    if workspace:
+        try:
+            team_obj = await team_manager.get_or_start_coding_team(workspace)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        team_obj = _require_team(team)
     team_manager.refresh_idle_agents(team_obj)
     all_members: list[TeamMemberBase] = [team_obj.lead, *team_obj.members.values()]
     blueprints = [
@@ -207,6 +264,51 @@ async def list_team_agents(team: TeamDep) -> dict:
             _serialize_agent(m.agent, is_lead=(m is team_obj.lead)) for m in all_members
         ],
         "blueprints": blueprints,
+        "mode": team_obj.mode,
+        "workspace": team_obj.workspace,
+    }
+
+
+@router.get("/workspace/validate")
+async def validate_coding_workspace(
+    workspace: str = Query(..., description="Coding workspace directory."),
+) -> dict:
+    try:
+        resolved = team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"workspace": resolved}
+
+
+@router.get("/workspace/browse")
+async def browse_coding_workspace(
+    path: str | None = Query(None, description="Directory to list."),
+) -> dict:
+    root = Path(path).expanduser().resolve() if path else Path.home().resolve()
+    if not root.is_dir():
+        raise HTTPException(status_code=422, detail=f"Not a directory: {root}")
+
+    directories: list[dict[str, str]] = []
+    try:
+        entries = sorted(root.iterdir(), key=lambda entry: entry.name.lower())
+    except OSError as exc:
+        raise HTTPException(
+            status_code=403, detail=f"Cannot read directory: {root}"
+        ) from exc
+
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        try:
+            if entry.is_dir():
+                directories.append({"name": entry.name, "path": str(entry.resolve())})
+        except OSError:
+            continue
+
+    return {
+        "path": str(root),
+        "parent": str(root.parent) if root.parent != root else None,
+        "directories": directories,
     }
 
 
@@ -241,6 +343,22 @@ async def list_team_sessions(
     )
 
 
+@router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
+async def get_team_session_detail(
+    session_id: UUID, db: DbSession
+) -> SessionDetailResponse:
+    """Return one team lead session with its messages."""
+    history = await get_team_history(db, session_id, offset=0, limit=1000)
+    if history is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    lead_resp = SessionResponse.model_validate(history.lead_session)
+    return SessionDetailResponse(
+        **lead_resp.model_dump(),
+        messages=[_message_response(m) for m in history.lead_messages],
+    )
+
+
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete_team_session(session_id: UUID, db: DbSession) -> None:
     """Delete a team session, all its messages, and uploaded files."""
@@ -258,11 +376,16 @@ async def team_history(
     limit: int = Query(200, ge=1, le=1000),
 ) -> TeamHistoryResponse:
     """Return full turn history: lead messages + all member messages (paginated)."""
-    _require_team(team)
-
     history = await get_team_history(db, session_id, offset=offset, limit=limit)
     if history is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
+    if history.lead_session.mode == "coding" and history.lead_session.workspace:
+        try:
+            await team_manager.get_or_start_coding_team(history.lead_session.workspace)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        _require_team(team)
 
     lead_resp = SessionResponse.model_validate(history.lead_session)
     lead_detail = SessionDetailResponse(

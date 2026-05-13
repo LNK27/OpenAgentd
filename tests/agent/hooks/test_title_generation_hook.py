@@ -99,6 +99,24 @@ class TestBeforeAgentEarlyReturns:
 
         assert hook._task is None
 
+    async def test_greeting_only_does_nothing(self):
+        hook = make_hook()
+        ctx = make_ctx()
+        state = make_state(messages=[HumanMessage(content="Good morning!")])
+
+        await hook.before_agent(ctx, state)
+
+        assert hook._task is None
+
+    async def test_short_message_does_nothing(self):
+        hook = make_hook()
+        ctx = make_ctx()
+        state = make_state(messages=[HumanMessage(content="fix tests")])
+
+        await hook.before_agent(ctx, state)
+
+        assert hook._task is None
+
 
 # ---------------------------------------------------------------------------
 # before_agent — spawns task
@@ -159,7 +177,7 @@ class TestBeforeAgentSpawnsTask:
         ctx = make_ctx()
         state = make_state(
             messages=[
-                HumanMessage(content="Good question"),
+                HumanMessage(content="Good question here"),
                 HumanMessage(content=""),
             ]
         )
@@ -171,7 +189,7 @@ class TestBeforeAgentSpawnsTask:
             await hook.before_agent(ctx, state)
             await hook._task
 
-            assert mock_gen.call_args.kwargs["user_message"] == "Good question"
+            assert mock_gen.call_args.kwargs["user_message"] == "Good question here"
 
 
 # ---------------------------------------------------------------------------

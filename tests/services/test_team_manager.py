@@ -109,6 +109,26 @@ async def test_stop_when_no_team_is_noop():
 
 
 @pytest.mark.asyncio
+async def test_stop_clears_coding_teams_without_normal_team(tmp_path, monkeypatch):
+    from app.core.config import settings
+
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path / "config"))
+    fake_team = _make_team("coding-lead")
+    monkeypatch.setattr(
+        "app.services.team_manager.load_team_from_dir",
+        lambda *args, **kwargs: fake_team,
+    )
+
+    await team_manager.get_or_start_coding_team(str(workspace))
+    await team_manager.stop()
+
+    fake_team.stop.assert_awaited_once()
+    assert team_manager.current_team_for_workspace(str(workspace)) is None
+
+
+@pytest.mark.asyncio
 async def test_stop_swallows_exception_from_team_stop(monkeypatch):
     """stop() logs the exception but still clears the team reference."""
     fake_team = _make_team()
@@ -214,3 +234,32 @@ async def test_reload_leaves_old_team_on_validation_failure(monkeypatch):
     # Old team must still be running
     assert team_manager.current_team() is old_team
     old_team.stop.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_or_start_coding_team_uses_agents_dir_coding_agents(
+    tmp_path, monkeypatch
+):
+    from app.core.config import settings
+
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    agents_dir = tmp_path / "custom-agents"
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(agents_dir))
+    fake_team = _make_team("coding-lead")
+
+    seen: dict[str, object] = {}
+
+    def fake_load(path, **kwargs):
+        seen["path"] = path
+        seen.update(kwargs)
+        return fake_team
+
+    monkeypatch.setattr("app.services.team_manager.load_team_from_dir", fake_load)
+
+    result = await team_manager.get_or_start_coding_team(str(workspace))
+
+    assert result is fake_team
+    assert seen["path"] == agents_dir / "coding"
+    assert seen["mode"] == "coding"
+    assert seen["workspace"] == str(workspace.resolve())

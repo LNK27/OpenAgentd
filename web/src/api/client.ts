@@ -7,11 +7,15 @@
  */
 
 import { readSSE, type SSECallbacks } from './sse'
+import { CODING_WORKSPACE_BUSY_DETAIL, CODING_WORKSPACE_BUSY_MESSAGE } from '@/utils/workspace'
 import type {
   SessionDetailResponse,
   SessionPageResponse,
   TeamHistoryResponse,
   TeamAgentsResponse,
+  WorkspaceValidationResponse,
+  WorkspaceBrowseResponse,
+  WorkspaceGitDiffResponse,
   TeamStatusResponse,
   WikiTree,
   WikiFile,
@@ -23,6 +27,7 @@ import type {
   SkillDetail,
   SkillDeleteResponse,
   WorkspaceFilesResponse,
+  CodingWorkspaceFilesResponse,
   ScheduledTaskResponse,
   ScheduledTaskCreate,
   ScheduledTaskListResponse,
@@ -37,7 +42,9 @@ export async function postTeamChat(
   message?: string | null,
   sessionId?: string | null,
   interrupt = false,
-  files?: File[]
+  files?: File[],
+  mode = 'normal',
+  workspace?: string | null,
 ): Promise<{ status: string; session_id: string }> {
   const formData = new FormData()
   if (message) {
@@ -49,6 +56,12 @@ export async function postTeamChat(
   if (interrupt) {
     formData.append('interrupt', 'true')
   }
+  if (mode !== 'normal') {
+    formData.append('mode', mode)
+  }
+  if (workspace) {
+    formData.append('workspace', workspace)
+  }
   if (files && files.length > 0) {
     for (const file of files) {
       formData.append('files', file)
@@ -59,7 +72,13 @@ export async function postTeamChat(
     method: 'POST',
     body: formData,
   })
-  if (!res.ok) throw new Error(`POST /team/chat failed: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    if (res.status === 409 && mode === 'coding' && body?.detail === CODING_WORKSPACE_BUSY_DETAIL) {
+      throw new Error(CODING_WORKSPACE_BUSY_MESSAGE)
+    }
+    throw new Error(body?.detail || `POST /team/chat failed: ${res.status}`)
+  }
   return res.json()
 }
 
@@ -72,9 +91,48 @@ export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: 
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
 }
 
-export async function listTeamAgents(): Promise<TeamAgentsResponse> {
-  const res = await fetch(`${API}/team/agents`)
+export async function listTeamAgents(workspace?: string | null): Promise<TeamAgentsResponse> {
+  const params = new URLSearchParams()
+  if (workspace) params.set('workspace', workspace)
+  const query = params.toString()
+  const res = await fetch(`${API}/team/agents${query ? `?${query}` : ''}`)
   if (!res.ok) throw new Error(`listTeamAgents failed: ${res.status}`)
+  return res.json()
+}
+
+export async function validateWorkspace(workspace: string): Promise<WorkspaceValidationResponse> {
+  const params = new URLSearchParams({ workspace })
+  const res = await fetch(`${API}/team/workspace/validate?${params}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.detail || `validateWorkspace failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function browseWorkspaces(path?: string | null): Promise<WorkspaceBrowseResponse> {
+  const params = new URLSearchParams()
+  if (path) params.set('path', path)
+  const query = params.toString()
+  const res = await fetch(`${API}/team/workspace/browse${query ? `?${query}` : ''}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.detail || `browseWorkspaces failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function listCodingWorkspaceFiles(workspace: string): Promise<CodingWorkspaceFilesResponse> {
+  const params = new URLSearchParams({ workspace })
+  const res = await fetch(`${API}/team/workspace/files/list?${params}`)
+  if (!res.ok) throw new Error(`listCodingWorkspaceFiles failed: ${res.status}`)
+  return res.json()
+}
+
+export async function getCodingWorkspaceGitDiff(workspace: string): Promise<WorkspaceGitDiffResponse> {
+  const params = new URLSearchParams({ workspace })
+  const res = await fetch(`${API}/team/workspace/git-diff/view?${params}`)
+  if (!res.ok) throw new Error(`getCodingWorkspaceGitDiff failed: ${res.status}`)
   return res.json()
 }
 
@@ -249,8 +307,11 @@ export async function getTraceDetail(
 // ── Compat: team status via /team/agents ─────────────────────────────────────
 // HomePage uses this to determine if team mode is available
 
-export async function teamStatus(): Promise<TeamStatusResponse | null> {
-  const res = await fetch(`${API}/team/agents`)
+export async function teamStatus(workspace?: string | null): Promise<TeamStatusResponse | null> {
+  const params = new URLSearchParams()
+  if (workspace) params.set('workspace', workspace)
+  const query = params.toString()
+  const res = await fetch(`${API}/team/agents${query ? `?${query}` : ''}`)
   if (res.status === 404) return null
   if (!res.ok) return null
   const data = await res.json()

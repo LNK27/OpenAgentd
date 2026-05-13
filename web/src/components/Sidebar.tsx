@@ -89,6 +89,7 @@ export function Sidebar({
 
   // Flatten pages into a single list of sessions
   const allSessions = sessions.data?.pages.flatMap((p) => p.data) ?? []
+  const normalSessions = allSessions.filter((s) => s.mode !== 'coding')
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
@@ -324,12 +325,12 @@ export function Sidebar({
                     {sessions.isError && (
                       <p className="px-3 py-4 text-center text-xs text-(--color-error)">Failed to load sessions</p>
                     )}
-                    {sessions.isSuccess && allSessions.length === 0 && (
+                    {sessions.isSuccess && normalSessions.length === 0 && (
                       <p className="px-3 py-4 text-center text-xs text-(--color-text-subtle)">No sessions yet</p>
                     )}
-                    {sessions.isSuccess && allSessions.length > 0 && (
+                    {sessions.isSuccess && normalSessions.length > 0 && (
                       <div className="space-y-0.5">
-                        {groupByDate(allSessions).map(({ label, sessions: group }) => (
+                        {groupByDate(normalSessions).map(({ label, sessions: group }) => (
                           <div key={label}>
                             <p className="px-2 pb-0.5 pt-2 text-xs text-(--color-text-subtle) first:pt-1">{label}</p>
                             {group.map((session) => (
@@ -362,7 +363,7 @@ export function Sidebar({
             {/* Collapsed icon-only session dots — desktop only */}
             {showIconOnly && (
               <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
-                {sessions.isSuccess && allSessions.slice(0, 8).map((session) => {
+                {sessions.isSuccess && normalSessions.slice(0, 8).map((session) => {
                   const isActive = session.id === currentSessionId
                   return (
                     <button
@@ -394,10 +395,10 @@ export function Sidebar({
        {/* Wiki Panel */}
        <WikiPanel open={wikiOpen} onClose={() => setWikiOpen(false)} />
 
-       {/* Scheduler Panel */}
-       <SchedulerPanel open={schedulerOpen} onClose={() => setSchedulerOpen(false)} />
+        {/* Scheduler Panel */}
+        <SchedulerPanel open={schedulerOpen} onClose={() => setSchedulerOpen(false)} />
 
-       {/* Delete confirmation dialog */}
+        {/* Delete confirmation dialog */}
        <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
          <DialogContent showCloseButton={false}>
            <DialogHeader>

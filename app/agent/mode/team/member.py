@@ -36,6 +36,7 @@ from app.agent.hooks.base import BaseAgentHook
 from app.agent.hooks.dynamic_prompt import inject_current_date
 from app.agent.hooks.memory_flush import build_memory_flush_hook
 from app.agent.hooks.wiki_injection import default_wiki_injection_hook
+from app.agent.hooks.workspace_instructions import WorkspaceInstructionsHook
 from app.agent.hooks.otel import OpenTelemetryHook
 from app.agent.hooks.stream_publisher import StreamPublisherHook
 from app.agent.hooks.summarization import build_summarization_hook
@@ -45,7 +46,7 @@ from app.agent.mode.team.hooks.team_prompt import AgentTeamProtocolHook
 from app.agent.hooks.tool_result_offload import ToolResultOffloadHook
 from app.agent.plugins.role import reset_role, set_role
 from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
-from app.core.paths import workspace_dir
+from app.core.paths import session_workspace_dir
 from app.agent.permission import (
     AutoAllowPermissionService,
     set_permission_service,
@@ -245,6 +246,8 @@ class TeamMemberBase(abc.ABC):
     async def _ensure_db_session(
         self,
         title: str | None = None,
+        mode: str = "normal",
+        workspace: str | None = None,
     ) -> None:
         """Ensure a DB chat session row exists for self.session_id."""
         db_factory = resolve_db_factory(self.db_factory)
@@ -257,6 +260,8 @@ class TeamMemberBase(abc.ABC):
                         id=session_uuid,
                         title=title or f"Team {self._role_label}: {self.name}",
                         agent_name=self.name,
+                        mode=mode,
+                        workspace=workspace,
                     )
                     db.add(row)
                     await db.commit()
@@ -627,6 +632,8 @@ class TeamMemberBase(abc.ABC):
             publisher_hook,
             otel_hook,
         ]
+        if self._team.mode == "coding":
+            hooks.append(WorkspaceInstructionsHook(self._team.workspace))
 
         # Title generation — lead only (members don't need session titles).
         # Returns None with a warning when the feature is disabled or
@@ -672,8 +679,8 @@ class TeamMemberBase(abc.ABC):
 
         config = RunConfig(session_id=self.session_id)
 
-        # Scope filesystem tools to per-team workspace
-        workspace = str(workspace_dir(lead_session_id))
+        # Coding mode uses the exact project workspace for every team member.
+        workspace = str(session_workspace_dir(lead_session_id, self._team.workspace))
         session_sandbox = SandboxConfig(workspace=workspace)
         token = set_sandbox(session_sandbox)
 
@@ -834,10 +841,10 @@ class TeamMember(TeamMemberBase):
         assert self._mailbox is not None
 
         from app.agent.tools.builtin.todo import release_in_progress_for_actor
-        from app.core.paths import workspace_dir
+        from app.core.paths import session_workspace_dir
 
         released = release_in_progress_for_actor(
-            workspace_dir(self._team.lead.session_id),
+            session_workspace_dir(self._team.lead.session_id, self._team.workspace),
             self.name,
         )
         suffix = (

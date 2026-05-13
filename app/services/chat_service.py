@@ -501,10 +501,12 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
     Returns:
         ``True`` if the session existed and was deleted, ``False`` if not found.
     """
+    delete_workspace = False
     async with db.begin():
         session = await db.get(ChatSession, session_id)
         if not session:
             return False
+        delete_workspace = session.workspace is None
         messages = (
             await db.exec(
                 select(SessionMessage).where(
@@ -523,7 +525,7 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
         logger.info("uploads_dir_deleted session_id={}", session_id)
 
     workspace = workspace_dir(sid_str)
-    if workspace.exists():
+    if delete_workspace and workspace.exists():
         await asyncio.to_thread(shutil.rmtree, workspace, ignore_errors=True)
         logger.info("workspace_dir_deleted session_id={}", session_id)
 

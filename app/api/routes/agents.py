@@ -7,6 +7,7 @@ file back.  Running agents pick up new config on their next turn.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -60,7 +61,7 @@ def _parse_summary(name: str, content: str) -> AgentSummary:
             error=str(exc),
         )
     return AgentSummary(
-        name=cfg.name,
+        name=name,
         role=cfg.role,
         description=cfg.description,
         model=cfg.model,
@@ -89,7 +90,7 @@ def _parse_content(name: str, content: str) -> AgentConfig:
     if not isinstance(raw_meta, dict):
         raise ValueError("Frontmatter must be a YAML mapping.")
     body = m.group(2).strip()
-    raw_meta.setdefault("name", name)
+    raw_meta.setdefault("name", _frontmatter_name_for_path(name))
     raw_meta["system_prompt"] = body or "You are a helpful assistant."
     try:
         return AgentConfig.model_validate(raw_meta)
@@ -102,11 +103,23 @@ def _parse_content(name: str, content: str) -> AgentConfig:
 
 def _require_frontmatter_name(name: str, content: str) -> None:
     cfg = _parse_content(name, content)
-    if cfg.name != name:
+    expected_name = _frontmatter_name_for_path(name)
+    if cfg.name != expected_name:
         raise HTTPException(
             status_code=422,
             detail=(f"Frontmatter name '{cfg.name}' does not match URL name '{name}'."),
         )
+
+
+def _frontmatter_name_for_path(name: str) -> str:
+    return Path(name).name
+
+
+def _validation_dir_for_name(name: str) -> Path:
+    rel_parent = Path(name).parent
+    if str(rel_parent) == ".":
+        return agent_fs.agents_dir()
+    return agent_fs.agents_dir() / rel_parent
 
 
 async def _validate_or_restore(
@@ -118,13 +131,17 @@ async def _validate_or_restore(
     restore the previous text.
     """
     from app.agent.loader import load_team_from_dir
-    from app.core.config import settings as _settings
 
     try:
-        candidate = load_team_from_dir(_settings.AGENTS_DIR)
+        validation_dir = (
+            agent_fs.agents_dir()
+            if rollback_name is None
+            else _validation_dir_for_name(rollback_name)
+        )
+        candidate = load_team_from_dir(validation_dir)
         if candidate is None:
             raise ValueError(
-                f"No agents would remain in '{_settings.AGENTS_DIR}'. "
+                f"No agents would remain in '{validation_dir}'. "
                 "At least one .md file with 'role: lead' is required."
             )
     except ValueError as exc:
@@ -217,6 +234,7 @@ async def get_registry() -> RegistryResponse:
 
 
 @router.get("/{name}")
+@router.get("/{name:path}")
 async def get_agent(name: str) -> AgentDetail:
     try:
         record = agent_fs.read_agent(name)
@@ -248,12 +266,13 @@ async def create_agent(body: AgentWriteRequest) -> AgentDetail:
         cfg = _parse_content(body.name, body.content)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if cfg.name != body.name:
+    expected_name = _frontmatter_name_for_path(body.name)
+    if cfg.name != expected_name:
         raise HTTPException(
             status_code=422,
             detail=(
                 f"Frontmatter name '{cfg.name}' must match the request name "
-                f"'{body.name}'."
+                f"'{expected_name}'."
             ),
         )
 
@@ -275,6 +294,7 @@ async def create_agent(body: AgentWriteRequest) -> AgentDetail:
 
 
 @router.put("/{name}")
+@router.put("/{name:path}")
 async def update_agent(name: str, body: AgentWriteRequest) -> AgentDetail:
     if body.name != name:
         raise HTTPException(
@@ -311,6 +331,7 @@ async def update_agent(name: str, body: AgentWriteRequest) -> AgentDetail:
 
 
 @router.delete("/{name}")
+@router.delete("/{name:path}")
 async def delete_agent(name: str) -> AgentDeleteResponse:
     """422 if removal would leave the team without a lead."""
     try:

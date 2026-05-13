@@ -46,6 +46,15 @@ def test_write_and_read_agent(fs_dirs):
     assert "hi" in read.content
 
 
+def test_write_and_read_nested_agent(fs_dirs):
+    agents_dir, _ = fs_dirs
+    record = agent_fs.write_agent(
+        "coding/openagentd", "---\nname: openagentd\n---\nhi\n", create=True
+    )
+    assert Path(record.path) == agents_dir / "coding" / "openagentd.md"
+    assert agent_fs.read_agent("coding/openagentd").name == "coding/openagentd"
+
+
 def test_write_agent_create_conflict(fs_dirs):
     agent_fs.write_agent("alpha", "x", create=True)
     with pytest.raises(AgentFsConflictError):
@@ -76,9 +85,9 @@ def test_read_agent_not_found(fs_dirs):
     [
         "",
         "../evil",
-        "a/b",
         "a\\b",
         ".hidden",
+        "a/.hidden",
         "x y",
         "a" * 70,
     ],
@@ -93,6 +102,12 @@ def test_list_agents_sorted(fs_dirs):
     agent_fs.write_agent("alpha", "x", create=True)
     agent_fs.write_agent("gamma", "x", create=True)
     assert agent_fs.list_agents() == ["alpha", "beta", "gamma"]
+
+
+def test_list_agents_includes_nested_files(fs_dirs):
+    agent_fs.write_agent("openagentd", "x", create=True)
+    agent_fs.write_agent("coding/openagentd", "x", create=True)
+    assert agent_fs.list_agents() == ["coding/openagentd", "openagentd"]
 
 
 # ── Skills ───────────────────────────────────────────────────────────────────

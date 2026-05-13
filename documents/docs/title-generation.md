@@ -20,8 +20,8 @@ updated: 2026-04-24
 1. User sends their first message to a new session.
 2. Session is created immediately with `title = message[:100]` as a fallback.
 3. `TitleGenerationHook.before_agent()` detects first turn (no `AssistantMessage`
-   in `state.messages`) and spawns
-   `asyncio.create_task(generate_and_save_title(...))`.
+   in `state.messages`). It skips scheduled-task messages, greeting-only inputs,
+   and messages shorter than three words; otherwise it spawns title generation.
 4. `title_service` calls `provider.chat()` with the prompt from
    `.openagentd/config/title_generation.md` plus the user's message (capped at
    500 chars), asking for a 3–6 word title.
@@ -107,12 +107,17 @@ if hook is not None:
 generated. The hook finds the last `HumanMessage` in state and uses its
 content.
 
-### Scheduled-task sessions are skipped
+### Skipped inputs
 
 Sessions created by the scheduler carry a `[Scheduled Task: <name>]` prefix
 in the user message (injected by `TaskScheduler._fire_task` before calling
 `dispatch_user_message`). `before_agent` detects this prefix and returns
 early — no title LLM call is made and no `title_update` SSE event is emitted.
+
+Greeting-only messages such as `hi`, `hello`, `hey`, and `good morning` are
+also skipped, as are messages shorter than three words. These sessions keep the
+initial fallback title and avoid spending a title-model call on unsummarizable
+input.
 
 The reason the check is message-based rather than DB-based: `scheduled_task_name`
 is stamped on `ChatSession` *after* `dispatch_user_message` returns, so it is

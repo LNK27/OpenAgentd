@@ -119,6 +119,23 @@ async def test_list_existing(fs_dirs, client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_list_includes_coding_agents(fs_dirs, client: AsyncClient):
+    agents_dir, _ = fs_dirs
+    _seed_files(agents_dir)
+    coding_dir = agents_dir / "coding"
+    coding_dir.mkdir()
+    (coding_dir / "openagentd.md").write_text(
+        LEAD_MD.replace("name: lead", "name: openagentd")
+    )
+
+    res = await client.get("/api/agents")
+
+    assert res.status_code == 200
+    names = [row["name"] for row in res.json()["agents"]]
+    assert names == ["coding/openagentd", "lead"]
+
+
+@pytest.mark.asyncio
 async def test_list_surfaces_invalid_file(fs_dirs, client: AsyncClient):
     agents_dir, _ = fs_dirs
     (agents_dir / "bad.md").write_text("no frontmatter here")
@@ -158,6 +175,23 @@ async def test_get_single_agent(fs_dirs, client: AsyncClient):
     assert body["content"].startswith("---")
     assert body["config"]["role"] == "lead"
     assert body["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_coding_agent(fs_dirs, client: AsyncClient):
+    agents_dir, _ = fs_dirs
+    coding_dir = agents_dir / "coding"
+    coding_dir.mkdir()
+    (coding_dir / "openagentd.md").write_text(
+        LEAD_MD.replace("name: lead", "name: openagentd")
+    )
+
+    res = await client.get("/api/agents/coding%2Fopenagentd")
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["name"] == "coding/openagentd"
+    assert body["config"]["name"] == "openagentd"
 
 
 @pytest.mark.asyncio
@@ -264,6 +298,25 @@ async def test_update_agent_validates_and_persists(fs_dirs, client: AsyncClient)
     assert "The updated lead." in body["content"]
     # Body description was rewritten on disk.
     assert "The updated lead." in (agents_dir / "lead.md").read_text()
+
+
+@pytest.mark.asyncio
+async def test_update_coding_agent_validates_coding_team(fs_dirs, client: AsyncClient):
+    agents_dir, _ = fs_dirs
+    _seed_files(agents_dir)
+    coding_dir = agents_dir / "coding"
+    coding_dir.mkdir()
+    content = LEAD_MD.replace("name: lead", "name: openagentd")
+    (coding_dir / "openagentd.md").write_text(content)
+
+    new_content = content.replace("The lead.", "The coding lead.")
+    res = await client.put(
+        "/api/agents/coding%2Fopenagentd",
+        json={"name": "coding/openagentd", "content": new_content},
+    )
+
+    assert res.status_code == 200, res.text
+    assert "The coding lead." in (coding_dir / "openagentd.md").read_text()
 
 
 @pytest.mark.asyncio

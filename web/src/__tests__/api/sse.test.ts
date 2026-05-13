@@ -92,22 +92,29 @@ describe("readSSE", () => {
     expect(errors[0].message).toContain("No response body");
   });
 
-  it("calls onError for invalid JSON in data line", async () => {
+  it("calls onParseError for invalid JSON in data line", async () => {
     const errors: Error[] = [];
+    const fatalErrors: Error[] = [];
 
-    const text = "event: message\ndata: not-json\n\n";
+    const text =
+      "event: message\ndata: not-json\n\n" +
+      "event: done\ndata: {}\n\n";
     const res = fakeResponse(text);
+    const events: Array<{ type: string }> = [];
 
     await new Promise<void>((resolve) => {
       readSSE(res, {
-        onEvent: () => {},
-        onError: (e) => errors.push(e),
+        onEvent: (type) => events.push({ type }),
+        onParseError: (e) => errors.push(e),
+        onError: (e) => fatalErrors.push(e),
         onDone: () => resolve(),
       });
     });
 
-    expect(errors.length).toBeGreaterThan(0);
+    expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("SSE parse error");
+    expect(fatalErrors).toHaveLength(0);
+    expect(events).toEqual([{ type: "done" }]);
   });
 
   it("ignores AbortError from cancelled streams", async () => {

@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 
-import { Activity, AlertCircle, Gauge, Settings, Wifi } from 'lucide-react'
+import { Activity, AlertCircle, Code2, Gauge, Settings, Wifi } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
 
@@ -15,6 +15,10 @@ export function HomePage() {
   const hasTeam = team.isSuccess && team.data !== null
   const loading = health.isLoading || team.isLoading
   const error = health.isError
+
+  const openCodingMode = () => {
+    navigate({ to: '/coding' })
+  }
 
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-(--bg-page) px-4">
@@ -57,6 +61,14 @@ export function HomePage() {
             disabled={!backendOk || !hasTeam}
             loading={loading && !error}
             onClick={() => navigate({ to: '/cockpit' })}
+          />
+          <ModeCard
+            icon={Code2}
+            title="Coding"
+            description="Use a project workspace"
+            disabled={!backendOk}
+            loading={loading && !error}
+            onClick={openCodingMode}
           />
            <ModeCard
              icon={Activity}

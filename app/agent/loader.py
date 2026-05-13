@@ -500,6 +500,8 @@ def load_team_from_dir(
     provider_factory: ProviderFactory | None = None,
     extra_tools: dict[str, Tool] | None = None,
     db_factory: DbFactory | None = None,
+    mode: str = "normal",
+    workspace: str | None = None,
 ) -> "AgentTeam | None":
     """Load an AgentTeam from a directory of per-agent ``.md`` files.
 
@@ -611,6 +613,8 @@ def load_team_from_dir(
         provider_factory=provider_factory,
         extra_tools=extra_tools,
         db_factory=db_factory,
+        mode=mode,
+        workspace=workspace,
     )
     logger.info(
         "team_loaded lead={} blueprints={}",

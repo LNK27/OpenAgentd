@@ -31,6 +31,10 @@ class ChatForm(BaseModel):
         False,
         description="Interrupt the running agent. Mutually exclusive with message.",
     )
+    mode: str = Field("normal", description="Chat mode: normal or coding.")
+    workspace: str | None = Field(
+        None, description="Workspace directory for coding mode."
+    )
 
     @classmethod
     def as_form(
@@ -38,9 +42,17 @@ class ChatForm(BaseModel):
         message: str | None = Form(None),
         session_id: str | None = Form(None),
         interrupt: bool = Form(False),
+        mode: str = Form("normal"),
+        workspace: str | None = Form(None),
     ) -> "ChatForm":
         try:
-            return cls(message=message, session_id=session_id, interrupt=interrupt)
+            return cls(
+                message=message,
+                session_id=session_id,
+                interrupt=interrupt,
+                mode=mode,
+                workspace=workspace,
+            )
         except ValidationError as exc:
             raise HTTPException(
                 status_code=422, detail=_validation_detail(exc)
@@ -56,4 +68,8 @@ class ChatForm(BaseModel):
             raise ValueError("message is required when interrupt=false.")
         if self.message is not None and len(self.message.strip()) == 0:
             raise ValueError("message must not be blank.")
+        if self.mode not in {"normal", "coding"}:
+            raise ValueError("mode must be 'normal' or 'coding'.")
+        if self.mode == "coding" and not self.workspace:
+            raise ValueError("workspace is required when mode='coding'.")
         return self

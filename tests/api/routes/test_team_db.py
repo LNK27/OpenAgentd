@@ -193,6 +193,42 @@ class TestDeleteTeamSessionWithData:
         resp = client.get(f"/api/team/{lead_id}/history")
         assert resp.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_delete_coding_session_keeps_workspace_dir(
+        self, app_with_team, tmp_path, monkeypatch
+    ):
+        import app.core.db as _db
+        from app.core.config import settings
+        from app.core.paths import uploads_dir, workspace_dir
+
+        monkeypatch.setattr(
+            settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "runs")
+        )
+        lead_id = uuid.uuid7()
+        app_workspace = workspace_dir(str(lead_id))
+        upload_root = uploads_dir(str(lead_id))
+        upload_root.mkdir(parents=True)
+        (upload_root / "attachment.txt").write_text("upload", encoding="utf-8")
+        (app_workspace / "keep.txt").write_text("keep", encoding="utf-8")
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                db.add(
+                    ChatSession(
+                        id=lead_id,
+                        agent_name="lead",
+                        mode="coding",
+                        workspace=str(tmp_path / "project"),
+                    )
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.delete(f"/api/team/sessions/{lead_id}")
+
+        assert resp.status_code == 204
+        assert app_workspace.exists()
+        assert (app_workspace / "keep.txt").read_text(encoding="utf-8") == "keep"
+        assert not upload_root.exists()
+
 
 # ---------------------------------------------------------------------------
 # GET /team/{session_id}/history (lines 281-340)

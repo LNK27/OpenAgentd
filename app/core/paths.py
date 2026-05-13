@@ -33,6 +33,13 @@ def workspace_dir(session_id: str) -> Path:
     return Path(settings.OPENAGENTD_WORKSPACE_DIR) / session_id
 
 
+def session_workspace_dir(session_id: str, workspace: str | None = None) -> Path:
+    """Return the session workspace or exact coding workspace."""
+    if workspace:
+        return Path(workspace).resolve()
+    return workspace_dir(session_id)
+
+
 def uploads_dir(session_id: str) -> Path:
     """Return the per-session directory for user-uploaded attachments.
 
@@ -40,3 +47,13 @@ def uploads_dir(session_id: str) -> Path:
     can reach it as ``uploads/<filename>``.
     """
     return workspace_dir(session_id) / "uploads"
+
+
+def session_uploads_dir(session_id: str) -> Path:
+    """Return app-managed uploads storage for the session.
+
+    Coding mode still uses the exact project directory as the sandbox root,
+    but uploads remain under ``OPENAGENTD_WORKSPACE_DIR`` so production/dev
+    storage follows the same APP_ENV-derived roots as normal sessions.
+    """
+    return uploads_dir(session_id)

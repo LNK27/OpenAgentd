@@ -52,6 +52,31 @@ export interface TeamBlueprintInfo {
 export interface TeamAgentsResponse {
   agents: TeamAgentInfo[]
   blueprints: TeamBlueprintInfo[]
+  mode?: string
+  workspace?: string | null
+}
+
+export interface WorkspaceValidationResponse {
+  workspace: string
+}
+
+export interface WorkspaceBrowseResponse {
+  path: string
+  parent: string | null
+  directories: Array<{ name: string; path: string }>
+}
+
+export interface WorkspaceGitDiffResponse {
+  workspace: string
+  is_git_repo: boolean
+  diff: string
+  truncated?: boolean
+}
+
+export interface CodingWorkspaceFilesResponse {
+  workspace: string
+  files: WorkspaceFileInfo[]
+  truncated: boolean
 }
 
 export interface MessageAttachment {
@@ -98,6 +123,8 @@ export interface SessionResponse {
   created_at: string | null
   updated_at: string | null
   scheduled_task_name?: string | null
+  mode?: string
+  workspace?: string | null
 }
 
 export interface SessionDetailResponse extends SessionResponse {

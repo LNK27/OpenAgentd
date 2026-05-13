@@ -1,7 +1,7 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { Root, NotFound } from './routes/__root'
 import { HomePage } from './routes/index'
-import { TeamLayout } from './routes/cockpit'
+import { CodingLayout, TeamLayout } from './routes/cockpit'
 import { SettingsLayout } from './routes/settings'
 import { SettingsHubPage } from './routes/settings.index'
 import { AgentsListPage } from './routes/settings.agents'
@@ -44,6 +44,23 @@ const teamIndexRoute = createRoute({
 })
 const teamSessionRoute = createRoute({
   getParentRoute: () => teamLayoutRoute,
+  path: '$sessionId',
+  component: () => null,
+})
+
+// /coding layout — coding mode without query-string mode state
+const codingLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/coding',
+  component: CodingLayout,
+})
+const codingIndexRoute = createRoute({
+  getParentRoute: () => codingLayoutRoute,
+  path: '/',
+  component: () => null,
+})
+const codingSessionRoute = createRoute({
+  getParentRoute: () => codingLayoutRoute,
   path: '$sessionId',
   component: () => null,
 })
@@ -149,6 +166,7 @@ const schedulerRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   teamLayoutRoute.addChildren([teamIndexRoute, teamSessionRoute]),
+  codingLayoutRoute.addChildren([codingIndexRoute, codingSessionRoute]),
   settingsLayoutRoute.addChildren([
     settingsIndexRoute,
     settingsAgentsRoute,

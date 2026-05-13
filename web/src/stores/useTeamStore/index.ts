@@ -95,7 +95,7 @@ export const useTeamStore = create<TeamStore>()(
       })
     },
 
-    sendMessage: async (content: string, files?: File[]) => {
+    sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null }) => {
       const { leadName, agentStreams } = get()
       const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
@@ -135,7 +135,14 @@ export const useTeamStore = create<TeamStore>()(
       })
 
       try {
-        const result = await postTeamChat(content, get().sessionId, false, files)
+        const result = await postTeamChat(
+          content,
+          get().sessionId,
+          false,
+          files,
+          options?.mode ?? 'normal',
+          options?.workspace ?? null,
+        )
         set((draft) => {
           draft.sessionId = result.session_id
         })
@@ -184,9 +191,16 @@ export const useTeamStore = create<TeamStore>()(
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             current._handleSSEEvent(type, data)
           },
+          onParseError: (err) => {
+            console.warn(err.message)
+          },
           onError: (err) => {
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+            if (!current.isTeamWorking) {
+              set((draft) => { draft.isConnected = false })
+              return
+            }
             set((draft) => { draft.error = err.message; draft.isConnected = false })
           },
           onDone: () => {
@@ -200,9 +214,9 @@ export const useTeamStore = create<TeamStore>()(
       return abort
     },
 
-    loadTeamStatus: async () => {
+    loadTeamStatus: async (workspace?: string | null) => {
       try {
-        const status = await teamStatus()
+        const status = await teamStatus(workspace)
         if (status) {
           const allAgents = get().sessionId ? [status.lead, ...status.members] : [status.lead]
           const liveNames = allAgents.map((a) => a.name)

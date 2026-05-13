@@ -515,7 +515,7 @@ describe("sendMessage: queue behaviour", () => {
 
 describe("connectStream", () => {
   it("calls teamStream with the current sessionId", () => {
-    useTeamStore.setState({ sessionId: "stream-sid" })
+    useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true })
     useTeamStore.getState().connectStream()
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
     expect(mockTeamStream.mock.calls[0][0]).toBe("stream-sid")
@@ -561,7 +561,7 @@ describe("connectStream", () => {
         cbs.onError?.(new Error("stream error"))
       }
     )
-    useTeamStore.setState({ sessionId: "stream-sid" })
+    useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true })
     useTeamStore.getState().connectStream()
 
     expect(useTeamStore.getState().error).toBe("stream error")

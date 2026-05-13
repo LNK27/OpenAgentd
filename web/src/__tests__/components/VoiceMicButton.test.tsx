@@ -4,16 +4,17 @@ import userEvent from '@testing-library/user-event'
 import { create } from 'zustand'
 import { VoiceMicButton } from '@/components/VoiceMicButton'
 
-afterEach(cleanup)
+const originalFetch = globalThis.fetch
+
+afterEach(() => {
+  cleanup()
+  globalThis.fetch = originalFetch
+})
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-// postTranscribe is called by the component — mock the module.
-const mockPostTranscribe = mock(async () => ({ text: 'hello world' } as { text: string }))
-
-mock.module('@/api/client', () => ({
-  postTranscribe: mockPostTranscribe,
-}))
+type TranscribeMode = 'success' | 'empty' | 'pending' | 'error'
+let transcribeMode: TranscribeMode = 'success'
 
 type Toast = { tone: string; title: string; description?: string }
 type ToastWithId = Toast & { id: string }
@@ -75,12 +76,19 @@ function makeStreamStub() {
 
 beforeEach(() => {
   pushedToasts.length = 0
-  mockPostTranscribe.mockReset()
   mockPush.mockReset()
   useToastStoreMock.setState({ toasts: [] })
-
-  // Reset to successful default
-  mockPostTranscribe.mockImplementation(async () => ({ text: 'hello world' }))
+  transcribeMode = 'success'
+  globalThis.fetch = mock(async (input: unknown) => {
+    if (!String(input).startsWith('/api/speech/transcribe')) {
+      return new Response(null, { status: 404 })
+    }
+    if (transcribeMode === 'pending') return new Promise<Response>(() => {})
+    if (transcribeMode === 'error') {
+      return new Response(JSON.stringify({ detail: 'Server error' }), { status: 500 })
+    }
+    return new Response(JSON.stringify({ text: transcribeMode === 'empty' ? '' : 'hello world' }))
+  }) as typeof fetch
 
   // Install MediaRecorder + getUserMedia stubs
   ;(global as Record<string, unknown>).MediaRecorder = MockMediaRecorder
@@ -189,7 +197,7 @@ describe('VoiceMicButton — transcript insertion', () => {
   })
 
   it('shows transcribing state while postTranscribe is pending', async () => {
-    mockPostTranscribe.mockImplementation(() => new Promise(() => {}))
+    transcribeMode = 'pending'
 
     const user = userEvent.setup()
     render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)
@@ -217,7 +225,7 @@ describe('VoiceMicButton — transcript insertion', () => {
   })
 
   it('does not call onTranscript when transcription returns empty text', async () => {
-    mockPostTranscribe.mockImplementation(async () => ({ text: '' }))
+    transcribeMode = 'empty'
 
     const user = userEvent.setup()
     let called = false
@@ -236,9 +244,7 @@ describe('VoiceMicButton — transcript insertion', () => {
 
 describe('VoiceMicButton — error handling', () => {
   it('shows toast on transcription failure and returns to idle', async () => {
-    mockPostTranscribe.mockImplementation(async () => {
-      throw new Error('Server error')
-    })
+    transcribeMode = 'error'
 
     const user = userEvent.setup()
     render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)

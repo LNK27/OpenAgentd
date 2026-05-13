@@ -6,6 +6,10 @@ import asyncio
 import uuid
 from unittest.mock import MagicMock
 
+import pytest
+
+from app.agent.mode.team.team import CodingWorkspaceBusyError
+
 
 class TestAgentTeamConstruction:
     """Test AgentTeam initialization."""
@@ -129,6 +133,32 @@ class TestAgentTeamUserMessage:
         assert not team.members["member_b"]._cancel_event.is_set()
 
         await team.stop()
+
+    async def test_coding_workspace_rejects_second_active_turn(
+        self, basic_team, tmp_path
+    ):
+        team = basic_team
+        team.mode = "coding"
+        team.workspace = str(tmp_path)
+        team._active_turn_count = 1
+        team._has_active_turn = True
+
+        with pytest.raises(CodingWorkspaceBusyError):
+            await team.handle_user_message("Hi", session_id=str(uuid.uuid7()))
+
+    async def test_coding_workspace_releases_turn_slot_on_done(self, basic_team):
+        team = basic_team
+        team.mode = "coding"
+        team._active_turn_count = 1
+        team._has_active_turn = True
+        team.lead.state = "idle"
+        for member in team.members.values():
+            member.state = "idle"
+
+        await team._try_emit_done()
+
+        assert team._active_turn_count == 0
+        assert team._has_active_turn is False
 
     async def test_handle_user_message_sets_active_turn_flag(self, basic_team):
         team = basic_team
