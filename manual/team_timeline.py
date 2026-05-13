@@ -14,29 +14,23 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.config import settings
+from app.core.db import async_session_factory
 from app.models.chat import ChatSession, SessionMessage
 
 
-def _db_url() -> str:
-    """Resolve the DB URL from settings.
-
-    Uses ``settings.DATABASE_URL`` so the script follows the same XDG-based
-    layout as the running server (``OPENAGENTD_DATA_DIR/openagentd.db``).
-    """
-    return settings.DATABASE_URL.get_secret_value()
-
-
 async def run(session_id: str, *, full: bool = False) -> None:
-    engine = create_async_engine(_db_url())
+    """Print the chronological timeline across lead + member sessions.
+
+    Uses the shared ``async_session_factory`` so the script honours the same
+    XDG-based DB layout, pool sizing, and pragmas as the running server —
+    no separate engine, no leaked connections.
+    """
     trunc = None if full else 100
     sid = UUID(session_id)
 
-    async with AsyncSession(engine) as s:
+    async with async_session_factory() as s:
         # Resolve lead + all sub-sessions
         result = await s.exec(
             select(ChatSession).where(

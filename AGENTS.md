@@ -30,7 +30,7 @@ uv run pytest --no-cov -q         # fast tests
 
 # Frontend
 cd web && bun dev                 # :5173, proxies /api → :8000
-cd web && bun run lint && bun run typecheck && bun test src/__tests__
+cd web && bun run lint && bun run typecheck && bun run test
 ```
 
 Full command reference: [`documents/docs/guidelines.md`](documents/docs/guidelines.md).
@@ -47,7 +47,7 @@ Full style guide: [`documents/docs/guidelines.md`](documents/docs/guidelines.md)
 
 ```bash
 uv run ruff check app/ tests/ && uv run ty check app/ && uv run pytest --no-cov -q
-cd web && bun run lint && bun test src/__tests__     # if frontend changed
+cd web && bun run lint && bun run test              # if frontend changed
 ```
 
 ## Documentation map

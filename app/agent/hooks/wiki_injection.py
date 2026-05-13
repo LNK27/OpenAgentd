@@ -4,8 +4,8 @@ Every LLM call receives ``wiki/USER.md`` in full (always — identity + preferen
 Topic injection is no longer automatic; the agent uses the ``wiki_search`` tool
 to look up topics explicitly.
 
-BM25 scoring helpers (_score_topics, _tokenize, etc.) are kept here because
-the ``wiki_search`` tool imports them.
+The BM25-style scoring helpers (``_score_topics``, ``_tokenize``) live in this
+module because the ``wiki_search`` tool imports them.
 """
 
 from __future__ import annotations
@@ -25,50 +25,6 @@ if TYPE_CHECKING:
         RunContext,
     )
 
-# ── Tuning constants (kept for wiki_search tool) ─────────────────────────────
-
-#: Common one-word stopwords excluded from the trivial token count.
-_STOPWORDS: frozenset[str] = frozenset(
-    {
-        "hi",
-        "hey",
-        "hello",
-        "ok",
-        "okay",
-        "yes",
-        "no",
-        "yep",
-        "nope",
-        "sure",
-        "thanks",
-        "thank",
-        "thx",
-        "ty",
-        "np",
-        "please",
-        "plz",
-        "got",
-        "noted",
-        "ack",
-        "good",
-        "great",
-        "nice",
-        "cool",
-        "fine",
-        "bye",
-        "cya",
-        "later",
-        "hmm",
-        "hm",
-        "uh",
-        "um",
-        "ah",
-        "oh",
-    }
-)
-
-#: Minimum meaningful tokens for a query to be considered non-trivial.
-_TRIVIAL_MIN_TOKENS = 3
 
 # ── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -107,13 +63,6 @@ class WikiInjectionHook(BaseAgentHook):
 
 
 # ── BM25-style relevance scoring (used by wiki_search tool) ──────────────────
-
-
-def _is_trivial_query(query: str) -> bool:
-    """Return True when *query* has too few meaningful tokens to warrant BM25 scoring."""
-    tokens = _tokenize(query)
-    meaningful = [t for t in tokens if t not in _STOPWORDS]
-    return len(meaningful) < _TRIVIAL_MIN_TOKENS
 
 
 def _tokenize(text: str) -> list[str]:
@@ -156,16 +105,6 @@ def _score_topics(query: str, topics: list) -> list[tuple]:
     return results
 
 
-def _extract_query(request: "ModelRequest") -> str:
-    """Return the last user message content from the request, or empty string."""
-    from app.agent.schemas.chat import HumanMessage
-
-    for msg in reversed(request.messages):
-        if isinstance(msg, HumanMessage) and msg.content:
-            return (msg.content or "")[:500]
-    return ""
-
-
 # Module-level instance for convenience.
 default_wiki_injection_hook = WikiInjectionHook()
 
@@ -173,8 +112,6 @@ default_wiki_injection_hook = WikiInjectionHook()
 __all__ = [
     "WikiInjectionHook",
     "default_wiki_injection_hook",
-    "_is_trivial_query",
     "_score_topics",
     "_tokenize",
-    "_extract_query",
 ]

@@ -3,18 +3,23 @@
  *
  * The wiki lives under ``{OPENAGENTD_WIKI_DIR}``:
  *
- *   system/   — USER.md (single file, always injected into the system prompt)
- *   notes/    — session dumps written by the agent; deletable but not editable
+ *   USER.md   — stable user facts (always injected into the system prompt)
+ *   INDEX.md  — dream-maintained table of contents (editable)
+ *   notes/    — agent notes (one file per day, append-only); deletable but not editable
  *   topics/   — dream-synthesised topic knowledge; fully editable
+ *
+ * `WikiTree.system` is a logical bucket holding USER.md and INDEX.md — there
+ * is no `system/` directory on disk.
  *
  * The panel lets the user browse the tree, open a file, and save or delete it.
  * Notes are read-only in the editor (agent-written) but can be deleted.
  * The agent also edits these files through filesystem tools during conversation;
  * invalidation is handled by the team store when any write/edit/rm tool_end
- * targets a ``wiki/`` path.
+ * targets a ``wiki/`` path, and by ``useTriggerDreamMutation`` after a dream
+ * run completes.
  */
 
-import { useState, useRef } from 'react'
+import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Save, Trash2, FileText, Folder, Loader2, ArrowLeft } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -291,7 +296,10 @@ function WikiEditor({
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [dirty, setDirty] = useState(false)
-  const [charCount, setCharCount] = useState<number>(0)
+  // `charCount` tracks live edits only — when null, we derive the display
+  // count from `file.content.length` so an empty buffer correctly shows 0
+  // (instead of incorrectly falling back to the original file length).
+  const [charCount, setCharCount] = useState<number | null>(null)
 
   // notes/ are read-only (agent-written); everything else (USER.md, INDEX.md, topics/) is editable
   const isReadOnly = path.startsWith('notes/')
@@ -335,7 +343,7 @@ function WikiEditor({
     )
   }
 
-  const displayChars = charCount || file.content.length
+  const displayChars = charCount ?? file.content.length
 
   return (
     <div className="flex h-full flex-col">

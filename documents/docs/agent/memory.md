@@ -2,7 +2,7 @@
 title: Wiki Memory
 description: Three-tier memory system — raw sessions (DB) → agent notes (wiki/notes/) → consolidated knowledge (wiki topics). Maintained by the dream agent.
 status: stable
-updated: 2026-04-30
+updated: 2026-05-13
 ---
 
 # Wiki Memory
@@ -55,10 +55,22 @@ Three tiers:
 
 `app/services/dream.py` — reads unprocessed sessions and note files, runs the dream agent with a fresh instance per item, writes to `topics/`, `USER.md`, `INDEX.md`. Tracks processed items in `dream_log` / `dream_notes_log`.
 
-- Sessions with no messages are auto-skipped (marked processed, no batch slot consumed).
+- Sessions with no messages are auto-skipped (marked processed, no batch slot consumed). The drain is capped at `max(100, batch_size * 100)` per run so a backlog of thousands of empties does not produce a commit storm.
+- Renaming the dream agent via `dream.md` (`name:` field) automatically updates the filter — dream still cannot feed itself.
 - The dream agent's sandbox workspace is set to `wiki_root()` so `ls(".")`, `read("USER.md")` etc. resolve correctly without a `wiki/` prefix.
+- Sessions and notes are **interleaved** (session, note, session, …) up to `batch_size` so a backlog of one type never starves the other.
+- Each item is wrapped in `asyncio.wait_for(..., timeout=timeout_seconds)` (default `300s`). On timeout or any LLM error the item is **not** marked processed and will be retried on the next run.
+- Transcripts are capped at `DEFAULT_MAX_PROMPT_CHARS = 60_000` with middle elision; per-message cap is `4_000` chars.
+- A module-level `asyncio.Lock` serialises concurrent runs so manual `/api/dream/run` cannot race the scheduler and violate the `dream_log.session_id` UNIQUE constraint.
+- `dream.md` is parsed once per run; the agent is loaded once and reused across all items in the batch via the `_sandbox_ctx` ContextVar (reset in a `finally` block).
+- **`wiki/notes/` is append-only and dream MUST NOT modify or delete files in it.** This is enforced by the system prompt — dream is given `read`, `write`, `edit`, `rm`, `ls`, `wiki_search` but is instructed to use `edit`/`rm`/`write` only against `USER.md`, `INDEX.md`, and `topics/`.
 
-`app/services/dream_scheduler.py` — cron scheduler. `reload()` takes effect without restart.
+`app/services/dream_scheduler.py` — cron scheduler.
+
+- `start()` is idempotent — a second call while running is a no-op (no leaked task).
+- `reload()` (called from `PUT /api/dream/config`) takes effect without restart. If a fire is in progress it **does not** block on it: the old loop is orphaned (held in a module-level set so CPython's weak-ref task GC doesn't collect it mid-synthesis) and a fresh scheduler task takes over immediately.
+- `stop()` cancels the loop **and** awaits the in-flight `_fire()` so callers can rely on a clean shutdown — the shield protects synthesis from mid-run cancellation, so `stop()` can take up to `timeout_seconds * batch_size` to return when a fire is active.
+- `start`/`stop`/`reload` are serialised through `_lifecycle_lock` so concurrent `PUT /api/dream/config` requests cannot both spawn fresh scheduler tasks.
 
 ---
 
@@ -96,7 +108,16 @@ updated: YYYY-MM-DD
 
 `.openagentd/config/dream.md` — the dream agent's working directory is `wiki_root()`. Use bare paths (`USER.md`, `topics/slug.md`) not `wiki/USER.md`.
 
-`read`, `write`, `ls`, `wiki_search` are always injected. `batch_size` (default `1`) controls items per `run_dream()` call. Configure via `/settings/dream` or edit the file directly; `PUT /api/dream/config` reloads the scheduler live.
+`read`, `write`, `edit`, `rm`, `ls`, `wiki_search` are always injected (the `_REQUIRED_TOOLS` set in `app/services/dream.py`) regardless of what `tools:` lists in the frontmatter. Dream-specific frontmatter fields:
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `enabled` | `false` | Master switch — when `false`, items are marked processed without synthesis. |
+| `schedule` | `0 2 * * *` | Cron expression for the scheduler. |
+| `batch_size` | `1` | Items per `run_dream()` call (sessions and notes interleaved). |
+| `timeout_seconds` | `300` | Per-item LLM timeout. Items that exceed it are not marked processed and retry next run. |
+
+Configure via `/settings/dream` or edit the file directly; `PUT /api/dream/config` reloads the scheduler live.
 
 ---
 
@@ -112,11 +133,14 @@ Every LLM call
 Agent needs past context
   → calls wiki_search → BM25 over topics/
 
-Dream runs (cron or manual)
+Dream runs (cron or manual, serialised by _run_lock)
   → empty sessions auto-skipped (no batch slot consumed)
-  → fresh dream agent per item, sandbox = wiki_root()
-  → writes topics/, USER.md, INDEX.md
-  → marks processed in dream_log / dream_notes_log
+  → sessions + notes interleaved up to batch_size
+  → one dream agent loaded for the whole batch, sandbox = wiki_root()
+  → per-item asyncio.wait_for(timeout_seconds)
+  → writes topics/, USER.md, INDEX.md (never wiki/notes/)
+  → marks processed in dream_log / dream_notes_log (per-item commit)
+  → on timeout or error → no mark → retries next run
 ```
 
 ---
