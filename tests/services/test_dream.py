@@ -1627,6 +1627,25 @@ def test_parse_dream_md_rejects_model_without_provider_prefix(tmp_path: Path):
         parse_dream_md(path)
 
 
+@pytest.mark.parametrize("bad_timeout", [0, -1, -300])
+def test_parse_dream_md_rejects_non_positive_timeout(tmp_path: Path, bad_timeout: int):
+    """``timeout_seconds`` must be ``>= 1`` — ``asyncio.wait_for(..., timeout=0)``
+    raises :exc:`TimeoutError` immediately, so a 0/negative value would fail
+    every single dream run silently from the scheduler's perspective.
+
+    Fail-fast at parse time with a clear error instead.
+    """
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    path.write_text(
+        f"---\nname: dream\ntimeout_seconds: {bad_timeout}\n---\nbody\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="timeout_seconds must be >= 1"):
+        parse_dream_md(path)
+
+
 def test_parse_dream_md_missing_frontmatter_raises(tmp_path: Path):
     """No ``---`` block → ValueError with a hint about the expected format."""
     from app.services.dream import parse_dream_md

@@ -87,7 +87,19 @@ class DreamAgentConfig(BaseModel):
     timeout_seconds: int = DEFAULT_LLM_TIMEOUT_SECONDS
     """Per-item LLM timeout. Hard cap so a stuck provider can't wedge dream
     forever (and block scheduler reload / shutdown).
+
+    Must be ``>= 1`` — ``asyncio.wait_for(..., timeout=0)`` raises
+    :exc:`TimeoutError` immediately, which would fail every run.
     """
+
+    @model_validator(mode="after")
+    def _validate_timeout(self) -> "DreamAgentConfig":
+        if self.timeout_seconds < 1:
+            raise ValueError(
+                f"Dream timeout_seconds must be >= 1 second, got "
+                f"{self.timeout_seconds}. Set a positive value in dream.md."
+            )
+        return self
 
     @model_validator(mode="after")
     def _inject_required_tools(self) -> "DreamAgentConfig":
@@ -178,11 +190,13 @@ DREAM_AGENT_NAME = "dream"
 async def get_unprocessed_sessions(
     db: AsyncSession, *, dream_agent_name: str = DREAM_AGENT_NAME
 ) -> list[ChatSession]:
-    """Return sessions not yet in dream_log, excluding empty sessions and
-    sessions belonging to the dream agent itself.
+    """Return sessions not yet in ``dream_log``, excluding only sessions that
+    belong to the dream agent itself.
 
-    This is a **pure read** — empty-session log rows are written by
-    :func:`run_dream` so transaction boundaries stay correct.
+    Empty sessions **are** included in the result — :func:`run_dream`
+    inspects each one via :func:`_session_has_messages` and writes the
+    "empty" log row inside its own per-item transaction, so this function
+    stays a **pure read** and transaction boundaries remain correct.
 
     ``dream_agent_name`` defaults to ``"dream"`` but is overridden by
     :func:`_run_dream_locked` with the active ``dream_cfg.name`` so renaming
