@@ -7,8 +7,8 @@ Storage layout::
       INDEX.md         # dream-maintained table of contents
       topics/          # durable knowledge base
         {slug}.md
-      notes/           # session notes + dumps
-        {date}-{session_id}.md
+      notes/           # agent notes, one file per day (append-only)
+        {date}.md
 
 This module is the single source of truth for path validation, frontmatter
 parsing, and tree assembly for the wiki system.

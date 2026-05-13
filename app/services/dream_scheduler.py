@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from croniter import croniter
 from loguru import logger
 
-from app.core.config import settings
+# Shared with ``dream.py`` so a future env-var override stays in one place.
+from app.services.dream import _dream_config_path
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
@@ -23,8 +23,11 @@ if TYPE_CHECKING:
     from app.core.db import DbFactory
 
 
-def _dream_config_path() -> Path:
-    return Path(settings.OPENAGENTD_CONFIG_DIR) / "dream.md"
+# Strong-ref holder for orphaned scheduler loop / fire tasks during reload.
+# CPython only weak-refs ``asyncio.Task`` objects, so without this set a
+# rapid GC could collect a still-running fire mid-synthesis.  Tasks remove
+# themselves via ``add_done_callback(_orphan_tasks.discard)``.
+_orphan_tasks: set[asyncio.Task] = set()
 
 
 class DreamScheduler:
@@ -33,10 +36,35 @@ class DreamScheduler:
     def __init__(self, db_factory: "DbFactory") -> None:
         self._db_factory = db_factory
         self._task: asyncio.Task | None = None
+        # Tracks the in-flight ``_fire()`` (if any) so ``reload()`` can detect
+        # whether cancelling the loop task would block on a long-running dream
+        # synthesis.  When that's the case we *don't* await the loop — we
+        # just orphan it and let the shielded fire complete in the background
+        # while a fresh scheduler task takes over.
+        self._fire_task: asyncio.Task | None = None
+        # Serialises ``start`` / ``stop`` / ``reload`` so two concurrent
+        # ``PUT /api/dream/config`` requests can't both pass the suspension
+        # point at ``await old_loop`` and each spawn a fresh scheduler task,
+        # leaking the first one (race S3).
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start(self) -> None:
-        """Start the background scheduler task if dream.md is enabled."""
+        """Start the background scheduler task if dream.md is enabled.
+
+        Idempotent: a second call while already running is a no-op.  Without
+        this guard a buggy caller could overwrite ``self._task`` and leak
+        the previously running scheduler task.
+        """
+        async with self._lifecycle_lock:
+            await self._start_unlocked()
+
+    async def _start_unlocked(self) -> None:
+        """Internal start that assumes ``_lifecycle_lock`` is held."""
         from app.services.dream import parse_dream_md
+
+        if self._task is not None and not self._task.done():
+            logger.debug("dream_scheduler_start_skip already_running=true")
+            return
 
         path = _dream_config_path()
         if not path.exists():
@@ -44,7 +72,9 @@ class DreamScheduler:
             return
 
         try:
-            cfg = parse_dream_md(path)
+            # Offload YAML parsing to a thread so server startup doesn't
+            # block the event loop on a slow filesystem.
+            cfg = await asyncio.to_thread(parse_dream_md, path)
         except ValueError as exc:
             logger.warning("dream_scheduler_config_error error={}", exc)
             return
@@ -63,40 +93,103 @@ class DreamScheduler:
         )
 
     async def stop(self) -> None:
-        """Stop the scheduler, cancelling any pending sleep but not a running fire."""
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+        """Stop the scheduler, cancelling any pending sleep but not a running fire.
+
+        If a ``_fire()`` is in progress, this still blocks until it completes
+        because the loop's shield protects the fire from cancellation — that
+        is the documented contract.  Use ``reload()`` for the non-blocking
+        path.
+
+        Implementation note: cancelling ``self._task`` only unblocks the
+        loop's ``await asyncio.shield(fire_task)``; the shielded fire
+        survives and continues in the background.  To honour the docstring
+        we must also await the fire task itself before returning.
+        """
+        async with self._lifecycle_lock:
+            loop_task = self._task
+            fire_task = self._fire_task
+            if loop_task is not None and not loop_task.done():
+                loop_task.cancel()
+                try:
+                    await loop_task
+                except asyncio.CancelledError:
+                    pass
+            if fire_task is not None and not fire_task.done():
+                # Shield protects the fire from our cancellation; wait for
+                # the synthesis to finish so callers can rely on a clean
+                # post-stop state.  Swallow any error — _fire() already
+                # logged it with logger.exception.
+                try:
+                    await fire_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            if loop_task is not None or fire_task is not None:
+                logger.info("dream_scheduler_stopped")
             self._task = None
-            logger.info("dream_scheduler_stopped")
+            self._fire_task = None
 
     async def reload(self) -> None:
         """Reload the scheduler from the current dream.md without interrupting
-        an in-progress dream run.
+        an in-progress dream run **and** without blocking on it.
 
-        If the scheduler loop is currently sleeping between fires, the sleep is
-        cancelled immediately and the loop exits cleanly.  If a fire() is
-        actively running (i.e. the dream agent is synthesising), we wait for it
-        to complete before stopping and restarting — so no run is cut short.
+        Behaviour:
+
+        - If the loop is sleeping → cancel + await briefly (returns instantly).
+        - If a ``_fire()`` is currently running → cancel the loop task but
+          DO NOT await it.  The shielded fire continues to completion in the
+          background; a fresh scheduler task takes over immediately.  The
+          orphan loop exits cleanly once its shielded fire returns (it sees
+          ``cancelled=True`` and re-raises ``CancelledError``).
+
+        Serialised by ``_lifecycle_lock`` so concurrent
+        ``PUT /api/dream/config`` requests can't both create fresh scheduler
+        tasks and leak the loser.
 
         Called by ``PUT /api/dream/config`` so schedule / enabled changes take
-        effect immediately without a server restart.
+        effect immediately without a server restart and without the HTTP
+        request hanging for ``timeout_seconds * batch_size`` minutes.
         """
-        if self._task is not None and not self._task.done():
-            # Signal the loop to stop after the current fire (if any) completes.
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
-            logger.info("dream_scheduler_stopped_for_reload")
+        async with self._lifecycle_lock:
+            # Snapshot + detach references so the loop's ``finally`` clause
+            # can't see a half-nilled state (S2): clear ``self._fire_task``
+            # only AFTER we've decided what to do with it.
+            old_loop = self._task
+            old_fire = self._fire_task
+            fire_in_progress = old_fire is not None and not old_fire.done()
 
-        await self.start()
-        logger.info("dream_scheduler_reloaded")
+            if old_loop is not None and not old_loop.done():
+                old_loop.cancel()
+                if not fire_in_progress:
+                    # Safe to await — the loop is sleeping and will exit
+                    # immediately after cancellation propagates.
+                    try:
+                        await old_loop
+                    except asyncio.CancelledError:
+                        pass
+                    logger.info("dream_scheduler_stopped_for_reload")
+                else:
+                    # A fire is running.  Orphan the old loop; it will tear
+                    # itself down once the shielded fire completes.  We must
+                    # NOT await it here because that would block for up to
+                    # ``timeout_seconds * batch_size`` minutes — defeating
+                    # the point of a live reload.  Stash the orphan in a
+                    # module-level set so it isn't garbage-collected before
+                    # completion (CPython holds tasks via weak refs).
+                    _orphan_tasks.add(old_loop)
+                    old_loop.add_done_callback(_orphan_tasks.discard)
+                    if old_fire is not None:
+                        _orphan_tasks.add(old_fire)
+                        old_fire.add_done_callback(_orphan_tasks.discard)
+                    logger.info(
+                        "dream_scheduler_reload_during_fire orphaned_old_loop=true"
+                    )
+
+            # Now detach (after orphaning so the old loop's finally doesn't
+            # race with us on ``self._fire_task``).
+            self._task = None
+            self._fire_task = None
+            await self._start_unlocked()
+            logger.info("dream_scheduler_reloaded")
 
     async def run_now(self, db: "AsyncSession") -> dict:
         """Run dream immediately (for /api/dream/run)."""
@@ -131,20 +224,40 @@ class DreamScheduler:
 
             # Fire is shielded: cancellation arriving here waits until the
             # dream run finishes, then re-raises so the loop exits.
+            # ``_fire_task`` is exposed on self so ``reload()`` can detect
+            # whether a fire is in progress and orphan us non-blockingly.
             cancelled = False
+            fire_task = asyncio.create_task(self._fire(), name="dream-scheduler-fire")
+            # Keep a local reference too — ``reload()`` may nil ``self._fire_task``
+            # while we're awaiting the shield, so we cannot rely on
+            # ``self._fire_task`` still being this task in the finally block (S2).
+            self._fire_task = fire_task
             try:
-                await asyncio.shield(self._fire())
+                await asyncio.shield(fire_task)
             except asyncio.CancelledError:
                 cancelled = True
             except Exception as exc:
                 logger.error("dream_scheduler_loop_error error={}", exc)
                 await asyncio.sleep(60)
+            finally:
+                # Only clear ``self._fire_task`` if it's still pointing at
+                # *our* task — ``reload()`` may have already detached it
+                # and orphaned us.
+                if self._fire_task is fire_task and fire_task.done():
+                    self._fire_task = None
 
             if cancelled:
                 raise asyncio.CancelledError
 
     async def _fire(self) -> None:
-        """Execute one dream run."""
+        """Execute one dream run.
+
+        Exceptions are caught + logged with full traceback (via
+        ``logger.exception``) so a buggy ``run_dream`` doesn't silently
+        keep firing every minute hiding the root cause.  ``CancelledError``
+        is NOT caught — it propagates to ``_loop``'s ``shield`` and unwinds
+        the scheduler cleanly.
+        """
         logger.info("dream_scheduler_firing")
         try:
             async with self._db_factory() as db:
@@ -152,5 +265,7 @@ class DreamScheduler:
 
                 result = await run_dream(db)
                 logger.info("dream_scheduler_fired result={}", result)
-        except Exception as exc:
-            logger.error("dream_scheduler_fire_failed error={}", exc)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("dream_scheduler_fire_failed")
