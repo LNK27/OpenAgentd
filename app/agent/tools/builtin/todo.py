@@ -9,7 +9,7 @@ Accepts a list of actions executed in order in a single call:
 
 Storage
 -------
-Items are written to ``.todos.json`` inside the sandbox workspace:
+Items are written to the current sandbox metadata directory:
 
 .. code-block:: json
 
@@ -45,8 +45,8 @@ from app.agent.tools.registry import InjectedArg, Tool
 # Constants
 # ---------------------------------------------------------------------------
 
-#: Filename for the per-workspace todo store.  Public so the
-#: ``/team/sessions/{id}/todos`` endpoint can locate the same file.
+#: Filename for the todo store.  Public so the ``/team/sessions/{id}/todos``
+#: endpoint can locate the same file under the session metadata directory.
 TODOS_FILENAME = ".todos.json"
 
 # ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ ActionModel = (
 
 def _todos_path() -> Any:
     sandbox = get_sandbox()
-    return sandbox.workspace_root / TODOS_FILENAME
+    return sandbox.metadata_path(TODOS_FILENAME)
 
 
 def _load_store() -> dict:
@@ -167,12 +167,18 @@ def _load_store() -> dict:
 
 def _save_store(store: dict) -> None:
     path = _todos_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def release_in_progress_for_actor(workspace_root: Path, actor: str) -> list[str]:
+def release_in_progress_for_actor(
+    workspace_root: Path, actor: str, session_id: str | None = None
+) -> list[str]:
     """Release an actor's unfinished todos for reassignment."""
-    path = workspace_root / TODOS_FILENAME
+    path = workspace_root / ".openagentd"
+    if session_id:
+        path = path / "sessions" / session_id
+    path = path / TODOS_FILENAME
     if not path.exists():
         return []
     try:
@@ -196,6 +202,7 @@ def release_in_progress_for_actor(workspace_root: Path, actor: str) -> list[str]
         if isinstance(item.get("task_id"), str):
             released.append(item["task_id"])
     if released:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8"
         )
