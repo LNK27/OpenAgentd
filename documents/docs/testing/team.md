@@ -120,15 +120,15 @@ INFO | team_chat_received session_id=... interrupt=False lead=orchestrator
 INFO | team_member_activated name=orchestrator messages=1
 INFO | tool_start agent=orchestrator tool=create_tasks
 INFO | tool_start agent=orchestrator tool=send_message
-INFO | team_member_available name=orchestrator
+INFO | team_member_idle name=orchestrator
 INFO | team_member_activated name=explorer messages=1
 INFO | team_member_early_exit agent=explorer ...    # message_leader(stop=true)
-INFO | team_member_available name=explorer
+INFO | team_member_idle name=explorer
 INFO | team_member_activated name=executor messages=1
 INFO | team_member_early_exit agent=executor ...
-INFO | team_member_available name=executor
+INFO | team_member_idle name=executor
 INFO | team_member_activated name=orchestrator messages=2     # drains both replies
-INFO | team_member_available name=orchestrator
+INFO | team_member_idle name=orchestrator
 INFO | team_turn_done name=task-force
 ```
 
@@ -235,12 +235,12 @@ event: message          data: {"agent": "orchestrator", "text": "Refocusing on A
 ```
 INFO | team_interrupted name=task-force resetting_tasks=True
 INFO | agent_streaming_interrupted agent=explorer
-INFO | team_member_available name=explorer
+INFO | team_member_idle name=explorer
 INFO | team_member_activated name=orchestrator messages=...
 ```
 
 **Key checks:**
-- [ ] Working agents stop (agent_idle events appear for interrupted members)
+- [ ] Working agents stop (`agent_status: idle` events appear for interrupted members)
 - [ ] Non-completed tasks reset to pending (check logs for requeue if applicable)
 - [ ] Lead wakes with the new "[user]: Stop. Focus only on Africa." message
 - [ ] Lead re-plans and re-delegates with the narrowed scope
@@ -275,7 +275,7 @@ This tests the fallback when a member's LLM produces a final text response witho
 
 Hard to trigger reliably. If it happens naturally, check logs for:
 ```
-INFO | team_member_available name=explorer
+INFO | team_member_idle name=explorer
 ```
 And the lead should receive: `[explorer]: [done — no explicit reply]`
 

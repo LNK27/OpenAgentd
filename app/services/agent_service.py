@@ -455,7 +455,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
                     member.name,
                     exc,
                 )
-            await team.dismiss(handle)
+            member._cancel_event.set()
 
     dismissed = set(names)
     cancelled = [

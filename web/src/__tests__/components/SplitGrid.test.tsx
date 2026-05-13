@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import type { AgentStream } from "@/stores/useTeamStore"
 
 afterEach(cleanup)
@@ -118,5 +118,27 @@ describe("SplitGrid automatic layout", () => {
     expect(columns).toHaveLength(1)
     expect(columns[0][0]).toContain("lead")
     expect(screen.queryByText("executor#1")).toBeNull()
+  })
+
+  it("keeps dismissed members briefly for exit animation", async () => {
+    const { SplitGrid } = await import("@/components/TeamChatView/SplitGrid")
+    const initialStreams = makeStreams(["lead", "executor#1"])
+    const { rerender } = render(
+      <SplitGrid agentNames={["lead", "executor#1"]} leadName="lead" agentStreams={initialStreams} />,
+    )
+
+    rerender(
+      <SplitGrid
+        agentNames={["lead", "executor#1"]}
+        leadName="lead"
+        agentStreams={{
+          ...initialStreams,
+          "executor#1": makeStream({ status: "offline" }),
+        }}
+      />,
+    )
+
+    expect(screen.getByText("executor#1")).toBeDefined()
+    await waitFor(() => expect(screen.queryByText("executor#1")).toBeNull())
   })
 })

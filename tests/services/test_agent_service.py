@@ -352,10 +352,13 @@ async def test_interrupt_team_cancels_working_members():
 
 
 @pytest.mark.asyncio
-async def test_interrupt_team_dismisses_working_live_members():
+async def test_interrupt_team_cancels_working_live_members_without_dismissing():
+    cancel_event = MagicMock()
+
     working = MagicMock()
     working.state = "working"
     working.name = "executor#1"
+    working._cancel_event = cancel_event
 
     idle = MagicMock()
     idle.state = "idle"
@@ -379,7 +382,8 @@ async def test_interrupt_team_dismisses_working_live_members():
             "from_agent": "executor#1",
         },
     )
-    team.dismiss.assert_awaited_once_with("executor#1")
+    cancel_event.set.assert_called_once()
+    team.dismiss.assert_not_awaited()
 
 
 @pytest.mark.asyncio

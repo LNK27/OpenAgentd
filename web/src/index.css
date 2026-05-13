@@ -477,6 +477,15 @@
   animation: tool-row-enter var(--motion-base) var(--ease-spring-soft);
 }
 
+/* Split pane — spawned/dismissed agents should feel attached to the grid. */
+@keyframes split-pane-enter {
+  from { transform: translateY(10px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0) scale(1);       opacity: 1; }
+}
+.split-pane-enter {
+  animation: split-pane-enter var(--motion-base) var(--ease-spring-soft);
+}
+
 /* Done pulse — server confirmed persistence (opacity only, no color flash). */
 @keyframes done-pulse {
   from { opacity: 0.6; }

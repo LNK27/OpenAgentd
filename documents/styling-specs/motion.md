@@ -159,6 +159,12 @@ Text label accompanies dots: `Thinking`, `Reading`, `Searching`, etc. — progre
 }
 ```
 
+### Split pane enter / exit
+
+**Meaning**: the live team roster changed. A spawned member joined the split grid, or a dismissed member left it.
+
+**Spec**: enter from below with slight scale (`translateY(10px) scale(0.98) → 0/1`), opacity `0 → 1`, duration `var(--motion-base)`, easing `var(--ease-spring-soft)`. Exit reverses through opacity/scale over `var(--motion-fast)` to keep dismissal readable without delaying interaction.
+
 ### Handoff (team mode)
 
 **Meaning**: a message was routed from one team member to another — visible causality in multi-agent orchestration.

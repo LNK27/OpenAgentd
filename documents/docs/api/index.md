@@ -545,7 +545,7 @@ Returns `{todos: []}` when the session todo file does not exist yet. `session_id
 - `session_id` comes from the POST response body — no `session` SSE event is emitted.
 - After `done` fires, DB is authoritative. Reload the session from `GET /api/team/sessions/{id}`.
 - After a `done` event with `meta.cancelled === true`, reload from DB — partial output has been checkpointed.
-- `POST /api/team/chat` with `interrupt=true` cancels all working members.
+- `POST /api/team/chat` with `interrupt=true` cancels working members; they remain live and return to `idle`.
 - `GET /api/team/{session_id}/history` queries DB via `parent_session_id` FK — not live team state. Safe for historical sessions.
 
 ---
