@@ -293,6 +293,8 @@ The lead manages the live roster with one batch-capable tool.
 - `action="dismiss"`: each entry in `members` must be an explicit live handle (`"executor#1"`). Dismiss removes the in-memory member from the roster and preserves DB history.
 - Partial success is allowed; the return string groups `Spawned`, `Dismissed`, `Already live`, `Not live`, and `Errors` entries.
 
+Spawned members keep their blueprint prompt, but team protocol injects the concrete runtime identity (`You are executor#N`) on every model call. Config hot-reload preserves that handle so parallel instances do not collapse back to the blueprint name.
+
 Examples:
 
 ```python

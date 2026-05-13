@@ -66,6 +66,7 @@ def _write_md(
     role: str = "member",
     description: str | None = None,
     skills: list[str] | None = None,
+    body: str | None = None,
 ) -> Path:
     meta: dict = {"name": name, "role": role}
     if description is not None:
@@ -73,7 +74,9 @@ def _write_md(
     if skills is not None:
         meta["skills"] = skills
     yaml_block = yaml.safe_dump(meta, sort_keys=False).strip()
-    path.write_text(f"---\n{yaml_block}\n---\nYou are {name}.\n", encoding="utf-8")
+    path.write_text(
+        f"---\n{yaml_block}\n---\n{body or f'You are {name}.'}\n", encoding="utf-8"
+    )
     return path
 
 
@@ -115,6 +118,7 @@ def _build_dynamic_team(
             role="member",
             description=meta.get("description", name),
             skills=meta.get("skills"),
+            body=meta.get("body"),
         )
 
     team = load_team_from_dir(tmp_path, provider_factory=_make_test_provider)
@@ -192,6 +196,47 @@ class TestSpawn:
             assert m2.name == "executor#2"
             assert m3.name == "executor#3"
             assert set(team.members) == {"executor#1", "executor#2", "executor#3"}
+        finally:
+            await team.stop()
+
+    async def test_spawned_instances_get_runtime_identity_prompt(self, tmp_path):
+        team = _build_dynamic_team(
+            tmp_path,
+            {"executor": {"body": "You are `executor`, the reusable blueprint."}},
+        )
+        await team.start()
+        try:
+            m1 = await team.spawn("executor")
+            m2 = await team.spawn("executor")
+
+            prompt1 = m1.build_protocol(m1.agent.system_prompt, team)
+            prompt2 = m2.build_protocol(m2.agent.system_prompt, team)
+
+            assert "You are `executor#1`" in prompt1
+            assert "You are `executor#2`" in prompt2
+            assert "do not use the blueprint name" in prompt1
+            assert "do not use the blueprint name" in prompt2
+            assert prompt1.rfind("You are `executor#1`") > prompt1.find(
+                "You are `executor`"
+            )
+            assert "**executor#1**" not in prompt1
+            assert "**executor#2**" in prompt1
+        finally:
+            await team.stop()
+
+    async def test_restored_explicit_instance_keeps_handle_specific_identity(
+        self, tmp_path
+    ):
+        team = _build_dynamic_team(tmp_path, {"executor": None})
+        await team.start()
+        try:
+            member = await team.spawn("executor", instance_id=10)
+            prompt = member.build_protocol(member.agent.system_prompt, team)
+
+            assert member.name == "executor#10"
+            assert member.agent.name == "executor#10"
+            assert "You are `executor#10`" in prompt
+            assert "You are `executor#1`" not in prompt
         finally:
             await team.stop()
 

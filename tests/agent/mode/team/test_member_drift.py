@@ -93,6 +93,34 @@ def test_refresh_replaces_agent_in_place(
     assert member.session_id == original_session
 
 
+def test_refresh_preserves_spawned_instance_handle(
+    _settings_dirs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.agent.loader as _loader
+
+    monkeypatch.setattr(
+        _loader,
+        "build_provider",
+        _provider_factory(),
+    )
+
+    member = _build_member(
+        _settings_dirs, {"name": "executor", "model": "openai:v1", "tools": []}
+    )
+    member.name = "executor#2"
+
+    md = _settings_dirs / "agents" / "executor.md"
+    _write_agent(md, {"name": "executor", "model": "openai:v2"}, body="Updated.")
+    _bump_mtime(md)
+    member._config_dirty = True
+
+    member._refresh_agent_from_disk()
+
+    assert member.agent.name == "executor#2"
+    assert member.name == "executor#2"
+    assert "Updated." in member.agent.system_prompt
+
+
 def test_refresh_keeps_agent_on_parse_failure(_settings_dirs: Path) -> None:
     member = _build_member(
         _settings_dirs, {"name": "worker", "model": "openai:v1", "tools": []}

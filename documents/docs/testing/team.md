@@ -27,6 +27,13 @@ curl -X POST http://localhost:8000/team/chat \
   -d '{"message": "Hello, what can you do?"}'
 ```
 
+For current smoke scripts, prefer `manual/` helpers. See `manual/AGENTS.md` for details.
+
+```sh
+uv run python -m manual.team_spawn --message "Spawn ten executor agents and ask each to reply with its exact handle"
+uv run python -m manual.team_timeline <SESSION_ID> --full
+```
+
 ---
 
 ## Startup checks (Terminal A)
