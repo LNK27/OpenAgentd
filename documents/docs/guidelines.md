@@ -55,7 +55,7 @@ uv run pytest tests/path/to/test.py::TestClass::test_name  # single test
 cd web
 bun run lint                         # eslint
 bun run typecheck                    # tsc --noEmit
-bun test src/__tests__               # unit tests
+bun run test                         # unit tests (uses --isolate; required for clean module state)
 bun run build                        # production build (dist/)
 ```
 
@@ -248,7 +248,7 @@ If no tasks assigned: `message_leader(content="No tasks assigned", stop=true)` i
 
 1. **Understand** — read the relevant docs and existing code patterns.
 2. **Lint before committing** — `uv run ruff check app/ tests/` (backend), `bun run lint` (web).
-3. **Tests must pass** — `uv run pytest --no-cov -q` + `bun test src/__tests__`.
+3. **Tests must pass** — `uv run pytest --no-cov -q` + `cd web && bun run test`.
 4. **Atomic commits** — one logical change per commit, conventional commit format.
 
 ---
