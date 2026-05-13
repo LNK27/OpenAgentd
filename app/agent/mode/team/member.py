@@ -386,6 +386,10 @@ class TeamMemberBase(abc.ABC):
             self._config_dirty = False
             return
 
+        # File-backed blueprints use the base role name (e.g. ``executor``),
+        # but live spawned instances must keep their concrete handle.
+        new_agent.name = self.name
+
         # Re-inject teammates section (same logic as load_team_from_dir).
         if self._team is not None:
             roster_lines = []
@@ -874,6 +878,11 @@ class TeamMember(TeamMemberBase):
         """Assemble member protocol + roster into system prompt."""
         lead_name = team.lead.name
         sections: list[str] = [
+            (
+                "## Runtime identity\n"
+                f"You are `{self.name}`. Use this exact handle when identifying "
+                "yourself or reporting back; do not use the blueprint name."
+            ),
             MEMBER_COMMUNICATION_RULES,
             MEMBER_MESSAGE_FORMAT.format(lead_name=lead_name),
             MEMBER_PROTOCOL.format(lead_name=lead_name),
