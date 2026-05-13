@@ -6,21 +6,31 @@ subtask: false
 
 ## Steps
 
-1. Read `app/version.txt`, propose a patch bump, and ask if minor/major is preferred.
+1. Version target:
 
-2. Check worktree. Stop if dirty.
+- Read `app/version.txt`.
+- Propose patch bump.
+- Ask if minor/major preferred.
+
+2. Worktree check:
+
+- Stop if dirty.
 
 ```bash
 git status --short
 ```
 
-3. Ask and wait:
+3. Confirm release:
 
 > Ready to release **`<version>`**. Proceed? **(yes / no)**
 
-4. On a PR branch, update `app/version.txt`, `pyproject.toml`, `web/package.json`, and `uv.lock`.
+4. Version PR:
 
-If the PR only bumps release metadata, use `chore: bump version to <version>` for the commit and PR title. If the PR also contains user-facing features, fixes, or behavior changes, use a title that describes those changes and append the version range, e.g. `Fix frontend update restart (v0.3.3 -> v0.3.4)`.
+- Use PR branch.
+- Update `app/version.txt`, `pyproject.toml`, `web/package.json`, `uv.lock`.
+- Metadata-only title: `chore: bump version to <version>`.
+- User-facing change title: describe change, append range.
+- Example: `Fix frontend update restart (v0.3.3 -> v0.3.4)`.
 
 ```bash
 uv sync
@@ -32,56 +42,67 @@ git push -u origin <branch>
 gh pr create --title "<release PR title>" --base main
 ```
 
-Wait for CI and merge the PR.
+- Wait for CI.
+- Merge PR.
 
-5. After merge, generate release notes.
+5. Release notes:
+
+- Generate after merge.
 
 ```bash
 PREV_TAG=$(git describe --tags --abbrev=0 HEAD^)
 git log ${PREV_TAG}..HEAD --oneline --no-merges
 ```
 
-Write tight, user-facing notes. Aim for **under ~150 words total**. Rules:
+- Tight, user-facing notes.
+- Aim under ~150 words total.
+- Skip version-bump commits.
+- Treat commit subjects as raw material.
+- Paraphrase; do not transcribe.
+- Lead with user-visible behavior change.
+- Avoid internals unless required to explain a fix.
+- One short paragraph per section.
+- No bullet lists unless enumerating distinct items.
 
-- Skip version-bump commits. Treat commit subjects as raw material — paraphrase, do not transcribe.
-- Lead with the user-visible behavior change, not internals (no module names, no test counts, no implementation details unless required to explain a fix).
-- One short paragraph per section. No bullet lists unless genuinely enumerating multiple distinct items.
+Sections:
 
-Sections (use only the ones that apply, in this order):
+- `## Breaking Changes`: only if migration required.
+- `## What's changed`: main narrative, one paragraph, user-noticeable changes.
+- `## Upgrade`: only if users need action; be specific.
+- `## Install`: always include fixed block:
 
-1. `## Breaking Changes` — only if migration is required.
-2. `## What's changed` — the main narrative. One paragraph. State what users will notice.
-3. `## Upgrade` — only when users need to do something. Be specific (e.g. "delete and recreate tasks of type X").
-4. `## Install` — always include this fixed block:
+  ````
+  ```
+  uv tool install openagentd
+  # or
+  pip install openagentd
+  ```
 
-   ````
-   ```
-   uv tool install openagentd
-   # or
-   pip install openagentd
-   ```
+  `brew install openagentd` installs the base package only; optional extras (e.g. `openagentd[voice-local]`) must be installed via `uv` or `pip`:
 
-   `brew install openagentd` installs the base package only; optional extras (e.g. `openagentd[voice-local]`) must be installed via `uv` or `pip`:
+  ```
+  uv tool install "openagentd[voice-local]"
+  # or
+  pip install "openagentd[voice-local]"
+  ```
+  ````
 
-   ```
-   uv tool install "openagentd[voice-local]"
-   # or
-   pip install "openagentd[voice-local]"
-   ```
-   ````
+- End with `**Full changelog:** https://github.com/lthoangg/openagentd/compare/<prev>...<next>`.
+- Avoid `## Tests` section.
+- Avoid internal file paths.
+- Avoid marketing language.
+- Avoid restating section headings.
 
-5. End with `**Full changelog:** https://github.com/lthoangg/openagentd/compare/<prev>...<next>`.
-
-Avoid: a `## Tests` section, internal file paths, marketing language ("we're excited to..."), and restating what the section heading already says.
-
-6. Trigger release.
+6. Trigger release:
 
 ```bash
 gh workflow run release.yml --field confirm=release
 gh run list --workflow=release.yml --limit=3
 ```
 
-7. Replace GitHub release notes:
+7. GitHub release notes:
+
+- Replace generated notes.
 
 ```bash
 gh release edit v<version> --repo lthoangg/openagentd --notes "<release notes>"
