@@ -11,11 +11,9 @@
  *   4 → 2×2
  *   5..9 → three columns, stacked as needed
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AgentPane } from '../AgentPane'
 import type { AgentStream } from '@/stores/useTeamStore'
-
-const EXIT_ANIMATION_MS = 180
 
 interface SplitGridProps {
   agentNames: string[]
@@ -26,10 +24,10 @@ interface SplitGridProps {
 export function SplitGrid({
   agentNames, leadName, agentStreams,
 }: SplitGridProps) {
-  const visibleAgentNames = useMemo(() => agentNames.filter((name) => {
+  const visibleAgentNames = agentNames.filter((name) => {
     const stream = agentStreams[name]
     return stream && stream.status !== 'offline'
-  }), [agentNames, agentStreams])
+  })
   const visibleKey = visibleAgentNames.join('\u0000')
   const [renderedAgentNames, setRenderedAgentNames] = useState(visibleAgentNames)
   const [exitingAgentNames, setExitingAgentNames] = useState<string[]>([])
@@ -37,23 +35,20 @@ export function SplitGrid({
   useEffect(() => {
     const syncTimer = window.setTimeout(() => {
       setRenderedAgentNames((prev) => {
-        const visibleSet = new Set(visibleAgentNames)
-        const leaving = prev.filter((name) => !visibleSet.has(name) && agentStreams[name])
-        const next = [...visibleAgentNames, ...leaving]
+        const nextVisibleAgentNames = visibleKey ? visibleKey.split('\u0000') : []
+        const visibleSet = new Set(nextVisibleAgentNames)
+        const leaving = prev.filter((name) => !visibleSet.has(name))
+        const next = [...nextVisibleAgentNames, ...leaving]
 
         if (leaving.length > 0) {
           setExitingAgentNames((current) => Array.from(new Set([...current, ...leaving])))
-          window.setTimeout(() => {
-            setRenderedAgentNames((current) => current.filter((name) => !leaving.includes(name)))
-            setExitingAgentNames((current) => current.filter((name) => !leaving.includes(name)))
-          }, EXIT_ANIMATION_MS)
         }
 
         return next.length === prev.length && next.every((name, idx) => name === prev[idx]) ? prev : next
       })
     }, 0)
     return () => window.clearTimeout(syncTimer)
-  }, [visibleKey, visibleAgentNames, agentStreams])
+  }, [visibleKey])
 
   if (renderedAgentNames.length === 0) return null
 
@@ -64,7 +59,13 @@ export function SplitGrid({
     return (
       <div
         key={name}
-        className={`split-pane-enter min-h-0 flex-1 transition-all duration-200 ease-out ${isExiting ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
+        className={`split-pane-enter min-h-0 flex-1 transition-all duration-(--motion-fast) ease-out ${isExiting ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
+        onTransitionEnd={(event) => {
+          if (event.currentTarget !== event.target) return
+          if (!isExiting) return
+          setRenderedAgentNames((current) => current.filter((currentName) => currentName !== name))
+          setExitingAgentNames((current) => current.filter((currentName) => currentName !== name))
+        }}
       >
         <AgentPane
           name={name}

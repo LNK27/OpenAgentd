@@ -331,12 +331,9 @@ async def test_dispatch_with_attachments_prefers_provided_session_id(tmp_path):
 
 @pytest.mark.asyncio
 async def test_interrupt_team_cancels_working_members():
-    cancel_event = MagicMock()
-
     working = MagicMock()
     working.state = "working"
     working.name = "worker-a"
-    working._cancel_event = cancel_event
 
     idle = MagicMock()
     idle.state = "idle"
@@ -348,17 +345,14 @@ async def test_interrupt_team_cancels_working_members():
 
     names = await interrupt_team(team, session_id="sess-1")
     assert names == ["worker-a"]
-    cancel_event.set.assert_called_once()
+    working.interrupt.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_interrupt_team_cancels_working_live_members_without_dismissing():
-    cancel_event = MagicMock()
-
     working = MagicMock()
     working.state = "working"
     working.name = "executor#1"
-    working._cancel_event = cancel_event
 
     idle = MagicMock()
     idle.state = "idle"
@@ -382,7 +376,7 @@ async def test_interrupt_team_cancels_working_live_members_without_dismissing():
             "from_agent": "executor#1",
         },
     )
-    cancel_event.set.assert_called_once()
+    working.interrupt.assert_called_once()
     team.dismiss.assert_not_awaited()
 
 

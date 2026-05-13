@@ -170,7 +170,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     // dispatched, so replay + live events accumulate cleanly.
     let cancelled = false
     ;(async () => {
-      await loadSession(sessionId)
+      await loadSession(sessionId, agentWorkspace)
       if (cancelled) return
       const controller = connectStream()
       if (controller) abortRef.current = controller

@@ -455,14 +455,14 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
                     member.name,
                     exc,
                 )
-            member._cancel_event.set()
+            member.interrupt()
 
     dismissed = set(names)
     cancelled = [
         m for m in team.all_members if m.state == "working" and m.name not in dismissed
     ]
     for member in cancelled:
-        member._cancel_event.set()
+        member.interrupt()
     names.extend(m.name for m in cancelled)
     logger.info("team_interrupt session_id={} cancelled={}", session_id, names)
     return names
