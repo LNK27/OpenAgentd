@@ -118,7 +118,7 @@ Every chat turn is backed by an in-memory state blob + asyncio fan-out queues (o
 
 `memory_stream_store._turns[session_id]` holds a `_TurnState` instance that accumulates per-agent content, thinking, tool calls, statuses, and subscriber queues (see `app/services/memory_stream_store.py:36`).
 
-`content` and `thinking` are **per-agent buckets** — replay re-emits each bucket with the correct `agent` field so mid-turn refreshes in a team session route tokens to the right agent's stream. `agent_statuses` is a latest-wins map so reconnecting clients immediately know which agents are `working` / `available` / `error`.
+`content` and `thinking` are **per-agent buckets** — replay re-emits each bucket with the correct `agent` field so mid-turn refreshes in a team session route tokens to the right agent's stream. `agent_statuses` is a latest-wins map so reconnecting clients immediately know which agents are `idle` / `working` / `offline` / `error`.
 
 The state blob holds **only unpersisted live content**. After `checkpointer.sync()` writes assistant/tool rows to the DB, `stream_store.commit_agent_content(session_id, agent)` drops `content[agent]`, `thinking[agent]`, and every `tool_calls` entry whose `agent` field matches — otherwise a refresh between sync and the team-wide `mark_done()` would render the same block twice. Inbox messages are **not** stored in the blob — `_persist_inbox` writes the `HumanMessage` row before emitting the `inbox` SSE event, so replay is DB-backed.
 
@@ -158,7 +158,7 @@ The `type` field inside the JSON body mirrors the SSE `event:` line. Both must b
 | `rate_limit` | server→client | `retry_after`, `attempt`, `max_attempts` |
 | `error` | server→client | `message` |
 | `done` | server→client | — |
-| `agent_status` | server→client | `agent`, `status` (`working`\|`available`\|`error`) — team only |
+| `agent_status` | server→client | `agent`, `status` (`idle`\|`working`\|`offline`\|`error`) — team only |
 | `permission_asked` | server→client | `request_id`, `session_id`, `tool`, `patterns` — agent requesting approval before executing a tool |
 | `permission_replied` | server→client | `request_id`, `session_id`, `reply` (`once`\|`always`\|`reject`) — permission request resolved |
 

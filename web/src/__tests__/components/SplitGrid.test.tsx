@@ -119,4 +119,25 @@ describe("SplitGrid automatic layout", () => {
     expect(columns[0][0]).toContain("lead")
     expect(screen.queryByText("executor#1")).toBeNull()
   })
+
+  it("keeps dismissed members briefly for exit animation", async () => {
+    const { SplitGrid } = await import("@/components/TeamChatView/SplitGrid")
+    const initialStreams = makeStreams(["lead", "executor#1"])
+    const { rerender } = render(
+      <SplitGrid agentNames={["lead", "executor#1"]} leadName="lead" agentStreams={initialStreams} />,
+    )
+
+    rerender(
+      <SplitGrid
+        agentNames={["lead", "executor#1"]}
+        leadName="lead"
+        agentStreams={{
+          ...initialStreams,
+          "executor#1": makeStream({ status: "offline" }),
+        }}
+      />,
+    )
+
+    expect(screen.getByText("executor#1")).toBeDefined()
+  })
 })

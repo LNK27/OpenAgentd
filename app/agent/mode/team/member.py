@@ -292,6 +292,10 @@ class TeamMemberBase(abc.ABC):
         self.state = "idle"
         logger.info("team_member_stopped name={}", self.name)
 
+    def interrupt(self) -> None:
+        """Request cancellation of the current activation without deregistering."""
+        self._cancel_event.set()
+
     # ------------------------------------------------------------------
     # On-demand activation
     # ------------------------------------------------------------------

@@ -60,6 +60,7 @@ export interface TeamStoreState {
   activeAgent: string | null
   leadName: string | null
   agentNames: string[]
+  liveAgentNames: string[] | null
   sidebarOpen: boolean
   sessionId: string | null
   sessionTitle: string | null
@@ -85,7 +86,7 @@ export interface TeamStoreActions {
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
   loadTeamStatus: (workspace?: string | null) => Promise<void>
-  loadSession: (sessionId: string) => Promise<void>
+  loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   setActiveAgent: (name: string) => void
   cycleActiveAgent: (dir: 'next' | 'prev') => void
   toggleSidebar: () => void

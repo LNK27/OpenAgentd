@@ -95,22 +95,22 @@ event: tool_end         data: {"agent": "orchestrator", "name": "create_tasks"}
 event: tool_start       data: {"agent": "orchestrator", "name": "send_message", ...}
 event: tool_end         data: {"agent": "orchestrator", "name": "send_message"}
 event: message          data: {"agent": "orchestrator", "text": "Delegating..."}
-event: agent_status     data: {"agent": "orchestrator", "status": "available"}
+event: agent_status     data: {"agent": "orchestrator", "status": "idle"}
 
 event: agent_status     data: {"agent": "explorer", "status": "working"}
 event: tool_start       data: {"agent": "explorer", "name": "claim_task", ...}
 event: tool_start       data: {"agent": "explorer", "name": "web_search", ...}
 event: message          data: {"agent": "explorer", "text": "..."}
-event: agent_status     data: {"agent": "explorer", "status": "available"}
+event: agent_status     data: {"agent": "explorer", "status": "idle"}
 
 event: agent_status     data: {"agent": "executor", "status": "working"}
 event: tool_start       data: {"agent": "executor", "name": "claim_task", ...}
 event: message          data: {"agent": "executor", "text": "..."}
-event: agent_status     data: {"agent": "executor", "status": "available"}
+event: agent_status     data: {"agent": "executor", "status": "idle"}
 
 event: agent_status     data: {"agent": "orchestrator", "status": "working"}     # lead wakes on member replies
 event: message          data: {"agent": "orchestrator", "text": "Here is the summary..."}
-event: agent_status     data: {"agent": "orchestrator", "status": "available"}
+event: agent_status     data: {"agent": "orchestrator", "status": "idle"}
 event: done             data: {}
 ```
 
@@ -120,15 +120,15 @@ INFO | team_chat_received session_id=... interrupt=False lead=orchestrator
 INFO | team_member_activated name=orchestrator messages=1
 INFO | tool_start agent=orchestrator tool=create_tasks
 INFO | tool_start agent=orchestrator tool=send_message
-INFO | team_member_available name=orchestrator
+INFO | team_member_idle name=orchestrator
 INFO | team_member_activated name=explorer messages=1
 INFO | team_member_early_exit agent=explorer ...    # message_leader(stop=true)
-INFO | team_member_available name=explorer
+INFO | team_member_idle name=explorer
 INFO | team_member_activated name=executor messages=1
 INFO | team_member_early_exit agent=executor ...
-INFO | team_member_available name=executor
+INFO | team_member_idle name=executor
 INFO | team_member_activated name=orchestrator messages=2     # drains both replies
-INFO | team_member_available name=orchestrator
+INFO | team_member_idle name=orchestrator
 INFO | team_turn_done name=task-force
 ```
 
@@ -138,7 +138,7 @@ INFO | team_turn_done name=task-force
 - [ ] Both members wake and work in parallel
 - [ ] Members call `message_leader(stop=true)` — look for `team_member_early_exit`
 - [ ] Lead wakes a second time, drains member replies, produces final synthesis
-- [ ] `done` event fires exactly once, after all agents become available
+- [ ] `done` event fires exactly once, after all live agents become idle
 - [ ] No spurious `done` events before members finish
 
 **Pass:** Full round-trip completes. Lead synthesises member outputs into final answer.
@@ -154,7 +154,7 @@ After Test 2 completes, verify the board:
 curl http://localhost:8000/team/status
 ```
 
-All agents should be `available`. There is no board API yet, but check server logs for:
+All live agents should be `idle`. There is no board API yet, but check server logs for:
 ```
 INFO | tool_done ... tool=create_tasks result="Created 2 task(s): task_1, task_2"
 INFO | tool_done ... tool=claim_task result="Claimed task task_1."
@@ -225,8 +225,8 @@ curl -X POST http://localhost:8000/team/chat \
 **Expected SSE events:**
 ```
 ... ongoing member events ...
-event: agent_status     data: {"agent": "explorer", "status": "available"}     # cancel kicks in
-event: agent_status     data: {"agent": "executor", "status": "available"}
+event: agent_status     data: {"agent": "explorer", "status": "idle"}     # cancel kicks in
+event: agent_status     data: {"agent": "executor", "status": "idle"}
 event: agent_status     data: {"agent": "orchestrator", "status": "working"}      # lead activates with new instruction
 event: message          data: {"agent": "orchestrator", "text": "Refocusing on Africa..."}
 ```
@@ -235,12 +235,12 @@ event: message          data: {"agent": "orchestrator", "text": "Refocusing on A
 ```
 INFO | team_interrupted name=task-force resetting_tasks=True
 INFO | agent_streaming_interrupted agent=explorer
-INFO | team_member_available name=explorer
+INFO | team_member_idle name=explorer
 INFO | team_member_activated name=orchestrator messages=...
 ```
 
 **Key checks:**
-- [ ] Working agents stop (agent_idle events appear for interrupted members)
+- [ ] Working agents stop (`agent_status: idle` events appear for interrupted members)
 - [ ] Non-completed tasks reset to pending (check logs for requeue if applicable)
 - [ ] Lead wakes with the new "[user]: Stop. Focus only on Africa." message
 - [ ] Lead re-plans and re-delegates with the narrowed scope
@@ -275,7 +275,7 @@ This tests the fallback when a member's LLM produces a final text response witho
 
 Hard to trigger reliably. If it happens naturally, check logs for:
 ```
-INFO | team_member_available name=explorer
+INFO | team_member_idle name=explorer
 ```
 And the lead should receive: `[explorer]: [done — no explicit reply]`
 

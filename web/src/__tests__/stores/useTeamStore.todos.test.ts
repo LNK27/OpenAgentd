@@ -57,6 +57,7 @@ describe("useTeamStore — todo_manage suppression and event emission", () => {
       activeAgent: null,
       leadName: null,
       agentNames: [],
+      liveAgentNames: null,
       sidebarOpen: false,
       sessionId: "sess-123",
       sessionTitle: null,

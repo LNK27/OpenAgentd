@@ -8,6 +8,7 @@ const INITIAL = {
   activeAgent: null,
   leadName: null,
   agentNames: [],
+  liveAgentNames: null,
   sidebarOpen: false,
   sessionId: null,
   isTeamWorking: false,

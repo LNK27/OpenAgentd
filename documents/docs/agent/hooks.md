@@ -116,9 +116,9 @@ Used by **team members** — the unified SSE event publishing hook for the in-me
 - `on_rate_limit` → pushes `rate_limit` event.
 - `after_agent` → pushes `usage` with `metadata.turn_total=True` (when `>1` model calls made), resets counters.
 
-`agent_done` is **not** emitted here — `after_agent` fires every time `agent.run()` exits, including on `<sleep>` mid-turn re-activations. The `agent_status: available` event (emitted from `_run_activation`'s finally block) is the correct per-agent completion signal; `done` (team-wide) is emitted by `_try_emit_done()`.
+`agent_done` is **not** emitted here — `after_agent` fires every time `agent.run()` exits, including on `<sleep>` mid-turn re-activations. The `agent_status: idle` event (emitted from `_run_activation`'s finally block) is the correct per-agent completion signal; `done` (team-wide) is emitted by `_try_emit_done()`.
 
-`mark_done` is **not** called here — `AgentTeam._try_emit_done()` calls it once after all members become available.
+`mark_done` is **not** called here — `AgentTeam._try_emit_done()` calls it once after all live members become idle.
 
 **FIFO tool_call_id:** Uses `ToolIdResolver` — handles providers that send wrong `index` values for parallel tool calls.
 

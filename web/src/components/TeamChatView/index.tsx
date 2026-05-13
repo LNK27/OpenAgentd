@@ -76,7 +76,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('agent')
+  const [viewMode, setViewMode] = useState<ViewMode>('split')
 
   // On mobile, always force agent view — split/unified require a wide screen.
   // Also close any desktop-only panels when shrinking to mobile.
@@ -170,7 +170,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     // dispatched, so replay + live events accumulate cleanly.
     let cancelled = false
     ;(async () => {
-      await loadSession(sessionId)
+      await loadSession(sessionId, agentWorkspace)
       if (cancelled) return
       const controller = connectStream()
       if (controller) abortRef.current = controller

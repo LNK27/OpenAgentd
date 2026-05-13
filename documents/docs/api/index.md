@@ -351,9 +351,8 @@ data: {"name": "web_search", "tool_call_id": "tc_abc"}
 
 | Event | Payload | When |
 |-------|---------|------|
-| `agent_status` | `{agent, status: "working"\|"available"\|"error", metadata?: {message}}` | Agent state change. On `error`, `metadata.message` carries the human-readable reason; resets to `working` on the next turn. |
+| `agent_status` | `{agent, status: "idle"\|"working"\|"offline"\|"error", metadata?: {message}}` | Agent lifecycle state. `offline` means the member is no longer live; clients should hide it from live panes. On `error`, `metadata.message` carries the human-readable reason. |
 | `inbox` | `{agent, content, from_agent}` | Agent received inter-agent message |
-| `agent_done` | `{metadata: {agent}}` | Per-agent turn complete |
 | `permission_asked` | `{request_id, session_id, tool, patterns}` | Agent requesting approval before executing a tool |
 | `permission_replied` | `{request_id, session_id, reply}` | Permission request resolved (`once`\|`always`\|`reject`) |
 
@@ -371,7 +370,7 @@ Clients should handle all three phases idempotently — reconnect replays the fu
 
 ### Reconnect-safe events
 
-The following event types are stored in the in-memory state blob and replayed on reconnect: `thinking`, `tool_call`, `tool_start`, `tool_end`, `message`, `inbox`, and `agent_status`. Events like `rate_limit` and `session` are pub/sub-only (live delivery). `agent_done` no longer exists — per-agent completion is signalled by `agent_status: available`.
+The following event types are stored in the in-memory state blob and replayed on reconnect: `thinking`, `tool_call`, `tool_start`, `tool_end`, `message`, `inbox`, and `agent_status`. Events like `rate_limit` and `session` are pub/sub-only (live delivery). `agent_done` no longer exists — per-agent completion is signalled by `agent_status: idle`.
 
 `thinking` and `message` are replayed **per agent** — the state blob stores `content` and `thinking` as `{agent_name: accumulated_text}` dicts so each agent's stream is re-emitted with the correct `agent` field after a mid-turn reconnect. `agent_status` is stored as a latest-wins `{agent_name: status}` map and replayed **before** any thinking/message events so the frontend's "working" indicator flips on before text starts arriving.
 
@@ -546,7 +545,7 @@ Returns `{todos: []}` when the session todo file does not exist yet. `session_id
 - `session_id` comes from the POST response body — no `session` SSE event is emitted.
 - After `done` fires, DB is authoritative. Reload the session from `GET /api/team/sessions/{id}`.
 - After a `done` event with `meta.cancelled === true`, reload from DB — partial output has been checkpointed.
-- `POST /api/team/chat` with `interrupt=true` cancels all working members.
+- `POST /api/team/chat` with `interrupt=true` cancels working members; they remain live and return to `idle`.
 - `GET /api/team/{session_id}/history` queries DB via `parent_session_id` FK — not live team state. Safe for historical sessions.
 
 ---

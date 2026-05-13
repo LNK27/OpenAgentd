@@ -140,9 +140,9 @@ spawning a peer mid-turn.
   is no `tool.fn` attribute.
 - **Frontend roster display.** `/team/agents` exposes `blueprints` with
   `live_instances`; the web UI lists them in the agent capabilities drawer.
-  Split view follows the live `agentNames` list, so spawned instances appear
-  automatically as their stream events arrive. Historical members missing from
-  the live roster remain visible but render as `offline`.
+  Split view follows agent status: spawned/live members appear automatically,
+  and dismissed members close when they become `offline`. Historical members
+  missing from the live roster stay `offline` after session reload.
 
 ## Alternative designs considered
 
