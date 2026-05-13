@@ -25,11 +25,13 @@
 
 **Agents that can actually do things.** Read and write files, run shell commands, search the web, generate images and video, manage todos, schedule tasks. Add more via a skill `.md` or any MCP server.
 
-**A workspace the agent shares with you.** Every file the agent touches shows up in a side panel — browse, preview, download.
+**A workspace the agent shares with you.** Every file the agent touches shows up in a side panel — browse, preview, download. In `/coding`, open a server-local project folder and review the live file tree plus current git diff from the same drawer.
 
 **Persistent memory you can edit.** Three-tier wiki: session notes, synthesised topics, and a `USER.md` injected into every prompt. Browse and edit it from the Wiki panel.
 
 **Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch each agent stream in its own pane — or merge into a single unified view.
+
+**Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/executor`, `coding/explorer`, `coding/consultant`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works.
 
 ![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
@@ -156,6 +158,8 @@ OpenAgentd ships with one lead agent and three member blueprints:
 | **explorer** | Member blueprint | Web research, codebase exploration, information gathering |
 
 Configure your team by editing `.md` files in your config directory. Exactly one agent must have `role: lead`; the rest are member blueprints. The lead uses `team_manage` to spawn/dismiss live instances (`executor#1`, `explorer#1`), `team_message` to delegate and collect results, and `team_configure` to grant or revoke a member's skills, tools, or MCP servers without restarting.
+
+Fresh installs also seed a separate coding team under `agents/coding/`. Open `/coding` to select a server-local project folder and start workspace-aware sessions; Settings shows those agents as `coding/openagentd`, `coding/executor`, `coding/explorer`, and `coding/consultant`.
 
 ![OpenAgentd agent architecture — loop, hooks, tools, providers, memory, and team mode](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/openagentd-agent-architecture.png)
 
@@ -310,6 +314,7 @@ OpenAgentd ships with [Context7](https://context7.com) pre-configured. Add any M
 | [API reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/api/index.md) | HTTP endpoints, SSE events, file handling |
 | [Agent engine](https://github.com/lthoangg/openagentd/tree/main/documents/docs/agent) | Loop, hooks, tools, teams, context, summarization |
 | [Lazy team members](https://github.com/lthoangg/openagentd/blob/main/documents/docs/agent/team-lazy-spawn.md) | Spawn/dismiss member instances, `blueprint#N` handles, history restore |
+| [Workspace Files](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/workspace-files.md) | Session files, coding Files & Diff, previews, downloads |
 | [Todos popover](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/todos.md) | Task board, assignments, claims, dependencies, live updates |
 | [Tool rendering](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/tool-results.md) | Tool call/result UI and custom renderers |
 | [Comparison](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent |
