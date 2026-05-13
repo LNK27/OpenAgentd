@@ -237,15 +237,15 @@ async def test_reload_leaves_old_team_on_validation_failure(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_or_start_coding_team_uses_config_coding_agents(
+async def test_get_or_start_coding_team_uses_agents_dir_coding_agents(
     tmp_path, monkeypatch
 ):
     from app.core.config import settings
 
     workspace = tmp_path / "project"
     workspace.mkdir()
-    config_dir = tmp_path / "config"
-    monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(config_dir))
+    agents_dir = tmp_path / "custom-agents"
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(agents_dir))
     fake_team = _make_team("coding-lead")
 
     seen: dict[str, object] = {}
@@ -260,6 +260,6 @@ async def test_get_or_start_coding_team_uses_config_coding_agents(
     result = await team_manager.get_or_start_coding_team(str(workspace))
 
     assert result is fake_team
-    assert seen["path"] == config_dir / "agents" / "coding"
+    assert seen["path"] == agents_dir / "coding"
     assert seen["mode"] == "coding"
     assert seen["workspace"] == str(workspace.resolve())

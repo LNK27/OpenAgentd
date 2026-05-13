@@ -7,7 +7,7 @@
  */
 
 import { readSSE, type SSECallbacks } from './sse'
-import { CODING_WORKSPACE_BUSY_MESSAGE } from '@/utils/workspace'
+import { CODING_WORKSPACE_BUSY_DETAIL, CODING_WORKSPACE_BUSY_MESSAGE } from '@/utils/workspace'
 import type {
   SessionDetailResponse,
   SessionPageResponse,
@@ -27,6 +27,7 @@ import type {
   SkillDetail,
   SkillDeleteResponse,
   WorkspaceFilesResponse,
+  CodingWorkspaceFilesResponse,
   ScheduledTaskResponse,
   ScheduledTaskCreate,
   ScheduledTaskListResponse,
@@ -72,10 +73,10 @@ export async function postTeamChat(
     body: formData,
   })
   if (!res.ok) {
-    if (res.status === 409 && mode === 'coding') {
+    const body = await res.json().catch(() => null)
+    if (res.status === 409 && mode === 'coding' && body?.detail === CODING_WORKSPACE_BUSY_DETAIL) {
       throw new Error(CODING_WORKSPACE_BUSY_MESSAGE)
     }
-    const body = await res.json().catch(() => null)
     throw new Error(body?.detail || `POST /team/chat failed: ${res.status}`)
   }
   return res.json()
@@ -121,7 +122,7 @@ export async function browseWorkspaces(path?: string | null): Promise<WorkspaceB
   return res.json()
 }
 
-export async function listCodingWorkspaceFiles(workspace: string): Promise<WorkspaceFilesResponse> {
+export async function listCodingWorkspaceFiles(workspace: string): Promise<CodingWorkspaceFilesResponse> {
   const params = new URLSearchParams({ workspace })
   const res = await fetch(`${API}/team/workspace/files/list?${params}`)
   if (!res.ok) throw new Error(`listCodingWorkspaceFiles failed: ${res.status}`)

@@ -45,6 +45,14 @@ class WorkspaceFilesResponse(BaseModel):
     truncated: bool = False  # True when the walk hit the max-files cap
 
 
+class CodingWorkspaceFilesResponse(BaseModel):
+    """Flat recursive listing of a coding workspace."""
+
+    workspace: str
+    files: list[WorkspaceFileInfo]
+    truncated: bool = False
+
+
 # ── Todos ────────────────────────────────────────────────────────────────────
 
 

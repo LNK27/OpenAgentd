@@ -70,6 +70,13 @@ export interface WorkspaceGitDiffResponse {
   workspace: string
   is_git_repo: boolean
   diff: string
+  truncated?: boolean
+}
+
+export interface CodingWorkspaceFilesResponse {
+  workspace: string
+  files: WorkspaceFileInfo[]
+  truncated: boolean
 }
 
 export interface MessageAttachment {

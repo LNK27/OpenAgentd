@@ -94,11 +94,13 @@ export function CodingWorkspacePanel({
   const files = useQuery({
     queryKey: ['coding-workspace-files', workspace],
     queryFn: () => listCodingWorkspaceFiles(workspace),
+    enabled: open,
     staleTime: 5_000,
   })
   const diff = useQuery({
     queryKey: ['coding-workspace-diff', workspace],
     queryFn: () => getCodingWorkspaceGitDiff(workspace),
+    enabled: open,
     staleTime: 5_000,
   })
   const tree = buildTree(files.data?.files ?? [])
@@ -167,7 +169,10 @@ export function CodingWorkspacePanel({
         ) : !diff.data.diff ? (
           <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No uncommitted diff</p>
         ) : (
-          <pre className="whitespace-pre-wrap break-words rounded bg-(--bg-page) p-2 font-mono text-[11px] leading-relaxed text-(--color-text-2)">{diff.data.diff}</pre>
+          <>
+            {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Diff truncated for display.</p>}
+            <pre className="whitespace-pre-wrap break-words rounded bg-(--bg-page) p-2 font-mono text-[11px] leading-relaxed text-(--color-text-2)">{diff.data.diff}</pre>
+          </>
         )}
       </div>
       <button

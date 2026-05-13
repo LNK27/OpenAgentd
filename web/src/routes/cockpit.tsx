@@ -6,7 +6,7 @@ import { getTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
-import { findCodingWorkspaceById, loadLastCodingWorkspace, saveLastCodingWorkspace, shouldResetCodingWorkspaceSession, shouldRestoreLastCodingWorkspace } from '@/utils/workspace'
+import { findCodingWorkspaceById, loadLastCodingWorkspace, saveLastCodingWorkspace, shouldResetCodingWorkspaceSession, shouldRestoreLastCodingWorkspace, workspaceFromSessionDetail } from '@/utils/workspace'
 
 /**
  * Layout route for /cockpit, /coding, and their session routes.
@@ -31,7 +31,7 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
     enabled: mode === 'coding' && Boolean(sessionId) && !workspaceFromKey,
     staleTime: 30_000,
   })
-  const workspace = workspaceFromKey ?? sessionQuery.data?.workspace ?? (mode === 'coding' && sessionId ? workspaceRef.current : null)
+  const workspace = workspaceFromSessionDetail(mode, sessionId, workspaceFromKey, sessionQuery.data?.workspace)
 
   useEffect(() => {
     if (mode !== 'coding' || sessionId || workspaceId) return

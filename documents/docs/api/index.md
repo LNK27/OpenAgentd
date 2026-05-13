@@ -22,11 +22,11 @@ FastAPI backend running on `:4082`. All routes are served under the `/api` prefi
 | `GET` | `/api/team/agents` | `{agents, blueprints, mode, workspace}`. Pass `?workspace=/path` for coding-mode agents. |
 | `GET` | `/api/team/workspace/validate` | `{workspace}` — validates and resolves a coding workspace path |
 | `GET` | `/api/team/workspace/browse` | `{path, parent, directories}` — browse server-local folders for coding mode |
-| `GET` | `/api/team/workspace/files/list` | `WorkspaceFilesResponse` for a selected coding workspace |
-| `GET` | `/api/team/workspace/git-diff/view` | `{workspace, is_git_repo, diff}` for the selected coding workspace |
+| `GET` | `/api/team/workspace/files/list` | `{workspace, files, truncated}` for a selected coding workspace |
+| `GET` | `/api/team/workspace/git-diff/view` | `{workspace, is_git_repo, diff, truncated}` for the selected coding workspace |
 | `GET` | `/api/team/sessions` | `SessionPageResponse` — cursor-paginated, newest-first |
 | `GET` | `/api/team/sessions/{id}` | `SessionDetailResponse` — includes `mode` and `workspace` for direct `/coding/{id}` loads |
-| `DELETE` | `/api/team/sessions/{id}` | 204 — also deletes per-session uploads + agent workspace |
+| `DELETE` | `/api/team/sessions/{id}` | 204 — deletes the session row and uploads; coding workspace directories are kept |
 | `GET` | `/api/team/sessions/{id}/todos` | `TodosResponse` — current agent todo list for the session |
 
 ### GET /api/team/sessions — cursor pagination
@@ -442,7 +442,7 @@ Agents can therefore write an image to the workspace (e.g. via `write` or
 
 ## Workspace file listing
 
-`GET /api/team/{session_id}/files` returns a flat recursive listing of regular files under the session workspace. `GET /api/team/workspace/files/list?workspace=...` does the same for a coding workspace. These power
+`GET /api/team/{session_id}/files` returns a flat recursive listing of regular files under the session workspace. `GET /api/team/workspace/files/list?workspace=...` does the same for a coding workspace and returns `workspace` instead of `session_id`. These power
 the **Files** drawer and `/coding` workspace rail — see
 [`documents/docs/web/workspace-files.md`](../web/workspace-files.md). File
 bytes are fetched separately through the `/media/` proxy above.

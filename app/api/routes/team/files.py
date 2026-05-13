@@ -28,7 +28,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.api.schemas.team import WorkspaceFileInfo, WorkspaceFilesResponse
+from app.api.schemas.team import (
+    CodingWorkspaceFilesResponse,
+    WorkspaceFileInfo,
+    WorkspaceFilesResponse,
+)
 from app.core.db import async_session_factory
 from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
 from app.models.chat import ChatSession
@@ -145,6 +149,7 @@ async def get_workspace_media(session_id: str, file_path: str) -> FileResponse:
 #     response.  Beyond the cap we truncate and flag it.
 
 _MAX_FILES_LISTED = 500
+_MAX_GIT_DIFF_CHARS = 512 * 1024
 _SKIPPED_DIR_NAMES = frozenset(
     {"node_modules", "dist", "build", ".venv", "venv", "__pycache__"}
 )
@@ -274,13 +279,18 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
     )
 
 
-@router.get("/workspace/files/list", response_model=WorkspaceFilesResponse)
-async def list_coding_workspace_files(workspace: str) -> WorkspaceFilesResponse:
+@router.get("/workspace/files/list", response_model=CodingWorkspaceFilesResponse)
+async def list_coding_workspace_files(workspace: str) -> CodingWorkspaceFilesResponse:
     try:
         resolved = team_manager.validate_workspace(workspace)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _list_workspace_files(Path(resolved), "workspace")
+    listing = _list_workspace_files(Path(resolved), "workspace")
+    return CodingWorkspaceFilesResponse(
+        workspace=resolved,
+        files=listing.files,
+        truncated=listing.truncated,
+    )
 
 
 @router.get("/workspace/git-diff/view")
@@ -310,4 +320,11 @@ async def get_coding_workspace_git_diff(workspace: str) -> dict:
         raise HTTPException(
             status_code=500, detail=result.stderr.strip() or "git diff failed"
         )
-    return {"workspace": resolved, "is_git_repo": True, "diff": result.stdout}
+    truncated = len(result.stdout) > _MAX_GIT_DIFF_CHARS
+    diff = result.stdout[:_MAX_GIT_DIFF_CHARS]
+    return {
+        "workspace": resolved,
+        "is_git_repo": True,
+        "diff": diff,
+        "truncated": truncated,
+    }

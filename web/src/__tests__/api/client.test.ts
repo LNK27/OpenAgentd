@@ -10,7 +10,7 @@ afterEach(() => {
 
 describe('postTeamChat', () => {
   it('shows a specific coding workspace concurrency error on 409', async () => {
-    globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'busy' }), { status: 409 }))) as typeof fetch
+    globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'Coding workspace already has an active turn.' }), { status: 409 }))) as typeof fetch
 
     await expect(postTeamChat('hello', null, false, undefined, 'coding', '/repo/app')).rejects.toThrow(
       CODING_WORKSPACE_BUSY_MESSAGE,
@@ -21,6 +21,14 @@ describe('postTeamChat', () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'conflict' }), { status: 409 }))) as typeof fetch
 
     await expect(postTeamChat('hello')).rejects.toThrow('conflict')
+  })
+
+  it('uses backend detail for coding 409 errors that are not busy-turn conflicts', async () => {
+    globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'Session belongs to a different coding workspace' }), { status: 409 }))) as typeof fetch
+
+    await expect(postTeamChat('hello', null, false, undefined, 'coding', '/repo/app')).rejects.toThrow(
+      'Session belongs to a different coding workspace',
+    )
   })
 
   it('sends coding mode and workspace with the chat form', async () => {

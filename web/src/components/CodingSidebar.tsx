@@ -25,10 +25,12 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
   const codingSessions = allSessions.filter((session) => session.mode === 'coding' && session.workspace)
   const [workspaces, setWorkspaces] = useState<string[]>(() => loadCodingWorkspaces())
   const savedWorkspaceCreatedAt = new Map(loadCodingWorkspaceEntries().map((entry) => [entry.path, Date.parse(entry.createdAt)]))
+  const savedWorkspaceTime = (path: string) => {
+    const value = savedWorkspaceCreatedAt.get(path) ?? Number.MAX_SAFE_INTEGER
+    return Number.isNaN(value) ? Number.MAX_SAFE_INTEGER : value
+  }
   const savedWorkspaces = [...workspaces].sort((a, b) => {
-    const aTime = savedWorkspaceCreatedAt.get(a) ?? Number.MAX_SAFE_INTEGER
-    const bTime = savedWorkspaceCreatedAt.get(b) ?? Number.MAX_SAFE_INTEGER
-    return aTime - bTime
+    return savedWorkspaceTime(a) - savedWorkspaceTime(b)
   })
   const sessionWorkspaces = Array.from(
     codingSessions.reduce((items, session) => {

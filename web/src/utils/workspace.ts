@@ -11,7 +11,8 @@ export function workspaceLabel(workspace: string): string {
 
 const CODING_WORKSPACES_KEY = 'oa-coding-workspaces'
 const LAST_CODING_WORKSPACE_KEY = 'oa-last-coding-workspace'
-export const CODING_WORKSPACE_BUSY_MESSAGE = '1 session per workspace can run at a time.'
+export const CODING_WORKSPACE_BUSY_MESSAGE = 'One active request per workspace can run at a time.'
+export const CODING_WORKSPACE_BUSY_DETAIL = 'Coding workspace already has an active turn.'
 
 export interface CodingWorkspaceEntry {
   id: string
@@ -124,4 +125,16 @@ export function shouldRestoreLastCodingWorkspace(
   pathname: string,
 ): boolean {
   return mode === 'coding' && !sessionId && !workspaceId && pathname === '/coding'
+}
+
+export function workspaceFromSessionDetail(
+  mode: 'normal' | 'coding',
+  sessionId: string | undefined,
+  workspaceFromKey: string | null,
+  sessionWorkspace: string | null | undefined,
+): string | null {
+  if (mode !== 'coding') return null
+  if (workspaceFromKey) return workspaceFromKey
+  if (sessionId) return sessionWorkspace ?? null
+  return null
 }

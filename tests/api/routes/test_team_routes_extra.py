@@ -311,7 +311,9 @@ class TestTeamAgentsRouteExtra:
         )
 
         assert resp.status_code == 200
-        assert {entry["path"] for entry in resp.json()["files"]} == {"src/app.py"}
+        body = resp.json()
+        assert body["workspace"] == str(tmp_path.resolve())
+        assert {entry["path"] for entry in body["files"]} == {"src/app.py"}
 
     def test_workspace_git_diff_non_repo(self, app_without_team, tmp_path):
         client = TestClient(app_without_team)
@@ -322,6 +324,32 @@ class TestTeamAgentsRouteExtra:
 
         assert resp.status_code == 200
         assert resp.json()["is_git_repo"] is False
+
+    def test_workspace_git_diff_is_truncated(
+        self, app_without_team, tmp_path, monkeypatch
+    ):
+        (tmp_path / ".git").mkdir()
+        monkeypatch.setattr(
+            "app.api.routes.team.files._MAX_GIT_DIFF_CHARS",
+            10,
+        )
+        monkeypatch.setattr(
+            "app.api.routes.team.files.subprocess.run",
+            lambda *args, **kwargs: SimpleNamespace(
+                returncode=0,
+                stdout="x" * 20,
+                stderr="",
+            ),
+        )
+        client = TestClient(app_without_team)
+
+        resp = client.get(
+            "/api/team/workspace/git-diff/view", params={"workspace": str(tmp_path)}
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["diff"] == "x" * 10
+        assert resp.json()["truncated"] is True
 
 
 # ---------------------------------------------------------------------------

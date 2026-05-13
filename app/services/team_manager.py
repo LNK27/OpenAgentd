@@ -80,7 +80,7 @@ def _resolve_agents_dir() -> Path:
 
 
 def _resolve_coding_agents_dir() -> Path:
-    return Path(settings.OPENAGENTD_CONFIG_DIR).resolve() / "agents" / "coding"
+    return _resolve_agents_dir() / "coding"
 
 
 def _resolve_workspace(workspace: str) -> Path:
@@ -98,7 +98,7 @@ def _coding_team_is_idle(team: "AgentTeam") -> bool:
     return all(member.state != "working" for member in team.all_members)
 
 
-async def _cleanup_idle_coding_teams_locked(now: float) -> None:
+def _pop_idle_coding_teams_locked(now: float) -> list[tuple[str, "AgentTeam"]]:
     expired = [
         workspace
         for workspace, last_used in _coding_team_last_used.items()
@@ -106,11 +106,17 @@ async def _cleanup_idle_coding_teams_locked(now: float) -> None:
         and (team := _coding_teams.get(workspace)) is not None
         and _coding_team_is_idle(team)
     ]
+    popped: list[tuple[str, "AgentTeam"]] = []
     for workspace in expired:
         team = _coding_teams.pop(workspace, None)
         _coding_team_last_used.pop(workspace, None)
-        if team is None:
-            continue
+        if team is not None:
+            popped.append((workspace, team))
+    return popped
+
+
+async def _stop_coding_teams(teams: list[tuple[str, "AgentTeam"]]) -> None:
+    for workspace, team in teams:
         try:
             await team.stop()
         except Exception:
@@ -187,24 +193,26 @@ async def get_or_start_coding_team(workspace: str) -> "AgentTeam":
     key = validate_workspace(workspace)
     async with _lock:
         now = time.monotonic()
-        await _cleanup_idle_coding_teams_locked(now)
+        expired = _pop_idle_coding_teams_locked(now)
         existing = _coding_teams.get(key)
         if existing is not None:
             _coding_team_last_used[key] = now
-            return existing
+            team = existing
+        else:
+            agents_dir = _resolve_coding_agents_dir()
+            team = load_team_from_dir(agents_dir, mode="coding", workspace=key)
+            if team is None:
+                raise ValueError(
+                    f"No coding agents found in '{agents_dir}'. "
+                    "Create at least one .md file with 'role: lead'."
+                )
+            await team.start()
+            _coding_teams[key] = team
+            _coding_team_last_used[key] = now
+            logger.info("coding_team_started workspace={} lead={}", key, team.lead.name)
 
-        agents_dir = _resolve_coding_agents_dir()
-        team = load_team_from_dir(agents_dir, mode="coding", workspace=key)
-        if team is None:
-            raise ValueError(
-                f"No coding agents found in '{agents_dir}'. "
-                "Create at least one .md file with 'role: lead'."
-            )
-        await team.start()
-        _coding_teams[key] = team
-        _coding_team_last_used[key] = now
-        logger.info("coding_team_started workspace={} lead={}", key, team.lead.name)
-        return team
+    await _stop_coding_teams(expired)
+    return team
 
 
 # ── Hot reload ───────────────────────────────────────────────────────────────
