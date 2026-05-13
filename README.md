@@ -29,7 +29,7 @@
 
 **Persistent memory you can edit.** Three-tier wiki: session notes, synthesised topics, and a `USER.md` injected into every prompt. Browse and edit it from the Wiki panel.
 
-**Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch each agent stream in its own pane — or merge into a single unified view.
+**Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view — or switch to a single unified view.
 
 **Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/executor`, `coding/explorer`, `coding/consultant`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works.
 
