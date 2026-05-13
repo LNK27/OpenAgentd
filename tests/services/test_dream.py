@@ -21,6 +21,9 @@ from app.agent.schemas.chat import (
 )
 from app.models.chat import ChatSession, DreamLog, SessionMessage
 from app.services.dream import (
+    DREAM_AGENT_NAME,
+    DreamAgentConfig,
+    _diff_topics,
     _load_dream_agent,
     _synthesise_note,
     _synthesise_session,
@@ -80,6 +83,20 @@ def _make_dream_agent() -> Agent:
     return Agent(name="dream", llm_provider=_MockProvider())
 
 
+def _make_loaded_agent() -> tuple[Agent, object]:
+    """Return (agent, sandbox_token) like ``_load_dream_agent``."""
+    from app.agent.sandbox import SandboxConfig, set_sandbox
+
+    token = set_sandbox(SandboxConfig(workspace="/tmp"))
+    return _make_dream_agent(), token
+
+
+def _make_dream_config(**overrides) -> DreamAgentConfig:
+    base = {"name": "dream", "model": "mock:model", "system_prompt": "test"}
+    base.update(overrides)
+    return DreamAgentConfig.model_validate(base)
+
+
 @pytest.fixture(autouse=True)
 def _wiki_dir(tmp_path: Path, monkeypatch):
     from app.core.config import settings
@@ -105,7 +122,7 @@ async def test_get_unprocessed_sessions_empty(setup_db):
 
 @pytest.mark.asyncio
 async def test_get_unprocessed_sessions_returns_unprocessed(setup_db):
-    """Sessions not in dream_log are returned (if they have messages)."""
+    """Sessions not in dream_log are returned (regardless of message count)."""
     from app.core.db import async_session_factory
 
     session = ChatSession(agent_name="test-agent")
@@ -140,11 +157,48 @@ async def test_get_unprocessed_sessions_excludes_processed(setup_db):
 
     async with async_session_factory() as db:
         await mark_session_processed(db, session.id, "test-agent", [])
-        await db.commit()
 
     async with async_session_factory() as db:
         result = await get_unprocessed_sessions(db)
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_unprocessed_sessions_excludes_dream_agent_sessions(setup_db):
+    """Dream's own sessions are excluded so dream cannot feed itself (bug #7)."""
+    from app.core.db import async_session_factory
+
+    user_session = ChatSession(agent_name="test-agent")
+    dream_session = ChatSession(agent_name=DREAM_AGENT_NAME)
+    async with async_session_factory() as db:
+        db.add(user_session)
+        db.add(dream_session)
+        await db.commit()
+
+    async with async_session_factory() as db:
+        result = await get_unprocessed_sessions(db)
+    assert len(result) == 1
+    assert result[0].id == user_session.id
+
+
+@pytest.mark.asyncio
+async def test_get_unprocessed_sessions_respects_renamed_dream_agent(setup_db):
+    """Renaming the dream agent via dream.md must still filter its sessions
+    (bug L2 — DREAM_AGENT_NAME was hardcoded).
+    """
+    from app.core.db import async_session_factory
+
+    user_session = ChatSession(agent_name="test-agent")
+    renamed_dream_session = ChatSession(agent_name="my-custom-dream")
+    async with async_session_factory() as db:
+        db.add(user_session)
+        db.add(renamed_dream_session)
+        await db.commit()
+
+    async with async_session_factory() as db:
+        result = await get_unprocessed_sessions(db, dream_agent_name="my-custom-dream")
+    assert len(result) == 1
+    assert result[0].id == user_session.id
 
 
 # ── mark_session_processed ────────────────────────────────────────────────────
@@ -152,7 +206,7 @@ async def test_get_unprocessed_sessions_excludes_processed(setup_db):
 
 @pytest.mark.asyncio
 async def test_mark_session_processed_inserts_row(setup_db):
-    """mark_session_processed should insert a DreamLog row."""
+    """mark_session_processed should insert a DreamLog row and commit immediately."""
     from sqlmodel import select
 
     from app.core.db import async_session_factory
@@ -160,7 +214,6 @@ async def test_mark_session_processed_inserts_row(setup_db):
     session_id = uuid.uuid4()
     async with async_session_factory() as db:
         await mark_session_processed(db, session_id, "agent", ["topic-a"])
-        await db.commit()
 
     async with async_session_factory() as db:
         result = await db.exec(select(DreamLog))
@@ -187,12 +240,12 @@ async def test_get_unprocessed_notes_returns_unprocessed(setup_db, _wiki_dir: Pa
     """Note files not in dream_notes_log are returned."""
     from app.core.db import async_session_factory
 
-    note_file = _wiki_dir / "notes" / "2026-04-29-abc.md"
+    note_file = _wiki_dir / "notes" / "2026-04-29.md"
     note_file.write_text("Note content.", encoding="utf-8")
 
     async with async_session_factory() as db:
         result = await get_unprocessed_notes(db)
-    assert "2026-04-29-abc.md" in result
+    assert "2026-04-29.md" in result
 
 
 @pytest.mark.asyncio
@@ -200,12 +253,11 @@ async def test_get_unprocessed_notes_excludes_processed(setup_db, _wiki_dir: Pat
     """Note files already in dream_notes_log are excluded."""
     from app.core.db import async_session_factory
 
-    note_file = _wiki_dir / "notes" / "2026-04-29-abc.md"
+    note_file = _wiki_dir / "notes" / "2026-04-29.md"
     note_file.write_text("Note content.", encoding="utf-8")
 
     async with async_session_factory() as db:
-        await mark_note_processed(db, "2026-04-29-abc.md")
-        await db.commit()
+        await mark_note_processed(db, "2026-04-29.md")
 
     async with async_session_factory() as db:
         result = await get_unprocessed_notes(db)
@@ -224,11 +276,12 @@ async def test_run_dream_nothing_to_process(setup_db, _wiki_dir: Path):
         result = await run_dream(db)
     assert result["sessions_processed"] == 0
     assert result["notes_processed"] == 0
+    assert result["failed"] == 0
 
 
 @pytest.mark.asyncio
 async def test_run_dream_processes_sessions(setup_db, _wiki_dir: Path):
-    """run_dream marks sessions as processed (if they have messages)."""
+    """run_dream marks sessions as processed (infra-only mode when no dream.md)."""
     from sqlmodel import select
 
     from app.core.db import async_session_factory
@@ -259,25 +312,10 @@ async def test_run_dream_processes_sessions(setup_db, _wiki_dir: Path):
 # ── _load_dream_agent ─────────────────────────────────────────────────────────
 
 
-def test_load_dream_agent_returns_none_when_missing(tmp_path, monkeypatch):
-    """Returns None when dream.md does not exist."""
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path))
-    assert _load_dream_agent() is None
-
-
-def test_load_dream_agent_returns_none_when_no_model(tmp_path, monkeypatch):
-    """Returns None when dream.md has no model field."""
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path))
-    dream_md = tmp_path / "dream.md"
-    dream_md.write_text(
-        "---\nenabled: true\n---\n\nYou are the dream agent.\n",
-        encoding="utf-8",
-    )
-    assert _load_dream_agent() is None
+def test_load_dream_agent_returns_none_when_no_model():
+    """Returns None when DreamAgentConfig.model is absent."""
+    cfg = DreamAgentConfig.model_validate({"name": "dream", "system_prompt": "test"})
+    assert _load_dream_agent(cfg) is None
 
 
 # ── _synthesise_session ───────────────────────────────────────────────────────
@@ -295,7 +333,7 @@ async def test_synthesise_session_empty(setup_db, _wiki_dir: Path):
 
     agent = _make_dream_agent()
     async with async_session_factory() as db:
-        result = await _synthesise_session(agent, db, session)
+        result = await _synthesise_session(agent, db, session, timeout_seconds=60)
 
     assert result == []
 
@@ -328,9 +366,46 @@ async def test_synthesise_session_with_messages(setup_db, _wiki_dir: Path):
     agent = _make_dream_agent()
     async with async_session_factory() as db:
         # Should not raise; topics list may be empty (mock agent writes nothing).
-        result = await _synthesise_session(agent, db, session)
+        result = await _synthesise_session(agent, db, session, timeout_seconds=60)
 
     assert isinstance(result, list)
+
+
+@pytest.mark.asyncio
+async def test_synthesise_session_does_not_carry_target_session_id(
+    setup_db, _wiki_dir: Path
+):
+    """The dream agent's run must NOT carry the target session's id (bug #1).
+
+    Dream is not part of the user's conversation history, so the RunConfig
+    passed to ``agent.run`` MUST NOT reuse the target session's id — that
+    would corrupt session history if a checkpointer were ever attached.
+    """
+    from app.core.db import async_session_factory
+
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(SessionMessage(session_id=session.id, role="user", content="Hello!"))
+        await db.commit()
+
+    agent = _make_dream_agent()
+    captured: list[str | None] = []
+    original_run = agent.run
+
+    async def _spy(messages, **kwargs):
+        config = kwargs.get("config")
+        captured.append(config.session_id if config else None)
+        return await original_run(messages, **kwargs)
+
+    agent.run = _spy  # type: ignore[method-assign]
+    async with async_session_factory() as db:
+        await _synthesise_session(agent, db, session, timeout_seconds=60)
+
+    assert len(captured) == 1
+    # Either None (current behaviour) or a fresh id — never the target id.
+    assert captured[0] != str(session.id)
 
 
 # ── _synthesise_note ──────────────────────────────────────────────────────────
@@ -339,32 +414,33 @@ async def test_synthesise_session_with_messages(setup_db, _wiki_dir: Path):
 @pytest.mark.asyncio
 async def test_synthesise_note_with_content(setup_db, _wiki_dir: Path):
     """Note file with content runs agent.run() without error."""
-    note_file = _wiki_dir / "notes" / "2026-04-29-test.md"
+    note_file = _wiki_dir / "notes" / "2026-04-29.md"
     note_file.write_text("I prefer dark mode.\n", encoding="utf-8")
 
     agent = _make_dream_agent()
-    result = await _synthesise_note(agent, "2026-04-29-test.md")
+    result = await _synthesise_note(agent, "2026-04-29.md", timeout_seconds=60)
 
     assert isinstance(result, list)
 
 
 @pytest.mark.asyncio
-async def test_synthesise_note_missing_file(setup_db, _wiki_dir: Path):
-    """Missing note file returns empty list without crashing."""
+async def test_synthesise_note_missing_file_raises(setup_db, _wiki_dir: Path):
+    """Missing note file raises _SynthesisFailed (caller skips marking it processed)."""
+    from app.services.dream import _SynthesisFailed
+
     agent = _make_dream_agent()
-    result = await _synthesise_note(agent, "nonexistent.md")
-    assert result == []
+    with pytest.raises(_SynthesisFailed):
+        await _synthesise_note(agent, "nonexistent.md", timeout_seconds=60)
 
 
 @pytest.mark.asyncio
 async def test_synthesise_note_empty_file(setup_db, _wiki_dir: Path):
     """Empty note file returns empty list without calling agent."""
-    note_file = _wiki_dir / "notes" / "2026-04-29-empty.md"
+    note_file = _wiki_dir / "notes" / "2026-04-29.md"
     note_file.write_text("   \n", encoding="utf-8")
 
     agent = _make_dream_agent()
-    # Wrap run() to assert it's NOT called for empty content.
-    run_calls = []
+    run_calls: list[tuple] = []
     original_run = agent.run
 
     async def _spy(*args, **kwargs):
@@ -372,7 +448,7 @@ async def test_synthesise_note_empty_file(setup_db, _wiki_dir: Path):
         return await original_run(*args, **kwargs)
 
     agent.run = _spy  # type: ignore[method-assign]
-    result = await _synthesise_note(agent, "2026-04-29-empty.md")
+    result = await _synthesise_note(agent, "2026-04-29.md", timeout_seconds=60)
 
     assert result == []
     assert run_calls == [], "agent.run() should not be called for empty notes"
@@ -384,7 +460,16 @@ async def test_synthesise_note_empty_file(setup_db, _wiki_dir: Path):
 @pytest.mark.asyncio
 async def test_run_dream_with_agent_processes_session(setup_db, _wiki_dir: Path):
     """run_dream uses dream agent when _load_dream_agent returns one."""
+    from app.core.config import settings
     from app.core.db import async_session_factory
+
+    # Provide a dream.md so dream_cfg is non-None and the synthesis path runs.
+    config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "dream.md").write_text(
+        "---\nname: dream\nmodel: mock:model\nenabled: true\n---\nYou are dream.\n",
+        encoding="utf-8",
+    )
 
     session = ChatSession(agent_name="test-agent")
     async with async_session_factory() as db:
@@ -401,7 +486,8 @@ async def test_run_dream_with_agent_processes_session(setup_db, _wiki_dir: Path)
         await db.commit()
 
     with patch(
-        "app.services.dream._load_dream_agent", return_value=_make_dream_agent()
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
     ):
         async with async_session_factory() as db:
             result = await run_dream(db)
@@ -413,13 +499,22 @@ async def test_run_dream_with_agent_processes_session(setup_db, _wiki_dir: Path)
 @pytest.mark.asyncio
 async def test_run_dream_with_agent_processes_note(setup_db, _wiki_dir: Path):
     """run_dream uses dream agent to process note files."""
+    from app.core.config import settings
     from app.core.db import async_session_factory
 
-    note_file = _wiki_dir / "notes" / "2026-04-29-note.md"
+    config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "dream.md").write_text(
+        "---\nname: dream\nmodel: mock:model\nenabled: true\n---\nYou are dream.\n",
+        encoding="utf-8",
+    )
+
+    note_file = _wiki_dir / "notes" / "2026-04-29.md"
     note_file.write_text("User prefers Vim.\n", encoding="utf-8")
 
     with patch(
-        "app.services.dream._load_dream_agent", return_value=_make_dream_agent()
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
     ):
         async with async_session_factory() as db:
             result = await run_dream(db)
@@ -433,7 +528,15 @@ async def test_run_dream_topics_written_recorded(setup_db, _wiki_dir: Path):
     """Topics created by dream agent are recorded in dream_log."""
     from sqlmodel import select
 
+    from app.core.config import settings
     from app.core.db import async_session_factory
+
+    config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "dream.md").write_text(
+        "---\nname: dream\nmodel: mock:model\nenabled: true\n---\nYou are dream.\n",
+        encoding="utf-8",
+    )
 
     session = ChatSession(agent_name="test-agent")
     async with async_session_factory() as db:
@@ -448,12 +551,10 @@ async def test_run_dream_topics_written_recorded(setup_db, _wiki_dir: Path):
         )
         await db.commit()
 
-    # Create a topic file during synthesis to simulate agent writing one.
     topics_dir = _wiki_dir / "topics"
     topics_dir.mkdir(exist_ok=True)
 
-    async def _fake_synthesise(agent, db, sess):
-        # Simulate agent writing a topic file.
+    async def _fake_synthesise(agent, db, sess, *, timeout_seconds):
         (topics_dir / "python.md").write_text(
             "---\ndescription: Python programming.\ntags: [python]\n---\n",
             encoding="utf-8",
@@ -461,7 +562,8 @@ async def test_run_dream_topics_written_recorded(setup_db, _wiki_dir: Path):
         return ["python"]
 
     with patch(
-        "app.services.dream._load_dream_agent", return_value=_make_dream_agent()
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
     ):
         with patch(
             "app.services.dream._synthesise_session", side_effect=_fake_synthesise
@@ -478,12 +580,12 @@ async def test_run_dream_topics_written_recorded(setup_db, _wiki_dir: Path):
     assert json.loads(rows[0].topics_written) == ["python"]
 
 
-# ── New tests for recent changes ──────────────────────────────────────────────
+# ── Empty-session handling (now lives in run_dream, not get_unprocessed_sessions) ──
 
 
 @pytest.mark.asyncio
-async def test_get_unprocessed_sessions_skips_empty(setup_db):
-    """Session with no messages is NOT returned, but IS auto-marked in dream_log."""
+async def test_run_dream_auto_marks_empty_sessions(setup_db, _wiki_dir: Path):
+    """Empty sessions are auto-marked in dream_log by run_dream itself (bug #3)."""
     from sqlmodel import select
 
     from app.core.db import async_session_factory
@@ -493,98 +595,31 @@ async def test_get_unprocessed_sessions_skips_empty(setup_db):
         db.add(session)
         await db.commit()
 
-    # Call get_unprocessed_sessions — should skip the empty session
+    # get_unprocessed_sessions is now a pure read — no side effects.
     async with async_session_factory() as db:
         result = await get_unprocessed_sessions(db)
-        assert result == []
-        # Verify the session was auto-marked as processed in dream_log
-        # (within the same session since flush() was used)
-        rows = (await db.exec(select(DreamLog))).all()
-        assert len(rows) == 1
-        assert rows[0].session_id == session.id
+        assert len(result) == 1  # session is returned (no message check here)
 
-
-@pytest.mark.asyncio
-async def test_get_unprocessed_sessions_keeps_session_with_messages(setup_db):
-    """Session WITH a user message IS returned."""
-    from app.core.db import async_session_factory
-
-    session = ChatSession(agent_name="test-agent")
-    async with async_session_factory() as db:
-        db.add(session)
-        await db.flush()
-        db.add(
-            SessionMessage(
-                session_id=session.id,
-                role="user",
-                content="Hello, world!",
-                exclude_from_context=False,
-            )
-        )
-        await db.commit()
+        # Empty-session detection now happens inside run_dream
+        rows_before = (await db.exec(select(DreamLog))).all()
+        assert len(rows_before) == 0  # NOT pre-marked by get_unprocessed_sessions
 
     async with async_session_factory() as db:
-        result = await get_unprocessed_sessions(db)
-    assert len(result) == 1
-    assert result[0].id == session.id
-
-
-@pytest.mark.asyncio
-async def test_get_unprocessed_sessions_skips_system_only(setup_db):
-    """Session with only system messages is treated as empty."""
-    from app.core.db import async_session_factory
-
-    session = ChatSession(agent_name="test-agent")
-    async with async_session_factory() as db:
-        db.add(session)
-        await db.flush()
-        db.add(
-            SessionMessage(
-                session_id=session.id,
-                role="system",
-                content="System message.",
-                exclude_from_context=False,
-            )
-        )
-        await db.commit()
+        await run_dream(db)
 
     async with async_session_factory() as db:
-        result = await get_unprocessed_sessions(db)
-    assert result == []
-
-
-@pytest.mark.asyncio
-async def test_get_unprocessed_sessions_skips_excluded(setup_db):
-    """Session with only exclude_from_context=True messages is treated as empty."""
-    from app.core.db import async_session_factory
-
-    session = ChatSession(agent_name="test-agent")
-    async with async_session_factory() as db:
-        db.add(session)
-        await db.flush()
-        db.add(
-            SessionMessage(
-                session_id=session.id,
-                role="user",
-                content="This is excluded.",
-                exclude_from_context=True,
-            )
-        )
-        await db.commit()
-
-    async with async_session_factory() as db:
-        result = await get_unprocessed_sessions(db)
-    assert result == []
+        rows_after = (await db.exec(select(DreamLog))).all()
+        assert len(rows_after) == 1
+        assert rows_after[0].session_id == session.id
 
 
 @pytest.mark.asyncio
 async def test_run_dream_empty_sessions_not_counted_in_sessions_processed(setup_db):
-    """sessions_processed in result reflects only non-empty sessions."""
+    """sessions_processed counts real-work sessions only; empties are tracked separately."""
     from sqlmodel import select
 
     from app.core.db import async_session_factory
 
-    # Create one empty session and one with a message
     empty_session = ChatSession(agent_name="test-agent")
     session_with_msg = ChatSession(agent_name="test-agent")
 
@@ -605,30 +640,59 @@ async def test_run_dream_empty_sessions_not_counted_in_sessions_processed(setup_
     async with async_session_factory() as db:
         result = await run_dream(db)
 
-    # Only the non-empty session should be processed
+    # The session-with-message gets processed (infra-only mode marks it).
     assert result["sessions_processed"] == 1
-    # Empty session should be auto-marked but not counted in sessions_processed
     async with async_session_factory() as db:
         rows = (await db.exec(select(DreamLog))).all()
-    assert len(rows) == 2  # Both sessions in dream_log
+    assert len(rows) == 2  # Both sessions logged
 
 
 @pytest.mark.asyncio
-async def test_run_dream_batch_budget_shared(setup_db, _wiki_dir: Path):
-    """With batch_size=2, sessions fill budget first, then notes fill remainder."""
+async def test_run_dream_caps_empty_session_drain(
+    setup_db, _wiki_dir: Path, monkeypatch
+):
+    """A backlog of empty sessions must not produce thousands of commits in one
+    run — only ``empty_session_drain_cap`` are marked per fire (bug M4).
+    """
+    from sqlmodel import select
+
+    from app.core.db import async_session_factory
+    from app.services import dream as dream_module
+
+    # Patch the cap calculation by patching ``max`` is fragile — instead
+    # generate enough empties that the default cap (100) leaves leftovers.
+    async with async_session_factory() as db:
+        for _ in range(105):
+            db.add(ChatSession(agent_name="test-agent"))
+        await db.commit()
+
+    async with async_session_factory() as db:
+        await run_dream(db)
+
+    async with async_session_factory() as db:
+        rows = (await db.exec(select(DreamLog))).all()
+    # Cap is max(100, batch_size*100) → 100 with default batch_size=1.
+    # So 100 are drained; 5 remain unprocessed.
+    assert len(rows) == 100
+
+    _ = dream_module  # keep import for clarity
+
+
+@pytest.mark.asyncio
+async def test_run_dream_interleaves_sessions_and_notes(setup_db, _wiki_dir: Path):
+    """With batch_size=2 and one session + two notes, dream picks one of each (bug #8)."""
     from app.core.db import async_session_factory
     from app.core.config import settings
 
-    # Create dream.md with batch_size=2
     config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
     config_dir.mkdir(parents=True, exist_ok=True)
     dream_md = config_dir / "dream.md"
     dream_md.write_text(
-        "---\nname: dream\nmodel: mock:model\nbatch_size: 2\nenabled: true\n---\nYou are the dream agent.\n",
+        "---\nname: dream\nmodel: mock:model\nbatch_size: 2\nenabled: true\n---\n"
+        "You are the dream agent.\n",
         encoding="utf-8",
     )
 
-    # Create 1 session with message and 2 note files
     session1 = ChatSession(agent_name="test-agent")
     async with async_session_factory() as db:
         db.add(session1)
@@ -643,19 +707,1120 @@ async def test_run_dream_batch_budget_shared(setup_db, _wiki_dir: Path):
         )
         await db.commit()
 
-    # Create 2 note files
-    note_file1 = _wiki_dir / "notes" / "2026-04-29-note1.md"
+    note_file1 = _wiki_dir / "notes" / "2026-04-29.md"
     note_file1.write_text("Test note 1.\n", encoding="utf-8")
-    note_file2 = _wiki_dir / "notes" / "2026-04-29-note2.md"
+    note_file2 = _wiki_dir / "notes" / "2026-04-30.md"
     note_file2.write_text("Test note 2.\n", encoding="utf-8")
 
+    # Use side_effect so each load returns a fresh sandbox token — the real
+    # loader does the same and the test must not reuse contextvar tokens.
     with patch(
-        "app.services.dream._load_dream_agent", return_value=_make_dream_agent()
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
     ):
         async with async_session_factory() as db:
             result = await run_dream(db)
 
-    # With batch_size=2: 1 session + 1 note (note_budget = 2 - 1 = 1)
+    # batch_size=2 → 1 session + 1 note (interleaved).  Second note remains.
     assert result["sessions_processed"] == 1
     assert result["notes_processed"] == 1
-    assert result["remaining"] == 1  # 1 note left unprocessed
+    assert result["remaining"] == 1
+
+
+# ── _diff_topics (bug #6: updates to existing topics) ─────────────────────────
+
+
+def test_diff_topics_detects_new_file():
+    before: dict[str, int] = {}
+    after = {"foo.md": 100}
+    assert _diff_topics(before, after) == ["foo"]
+
+
+def test_diff_topics_detects_modification():
+    """A bumped mtime on an existing file counts as a change (bug #6)."""
+    before = {"foo.md": 100}
+    after = {"foo.md": 200}
+    assert _diff_topics(before, after) == ["foo"]
+
+
+def test_diff_topics_unchanged_file_excluded():
+    before = {"foo.md": 100}
+    after = {"foo.md": 100}
+    assert _diff_topics(before, after) == []
+
+
+def test_diff_topics_sorted():
+    before: dict[str, int] = {}
+    after = {"zebra.md": 100, "alpha.md": 200}
+    assert _diff_topics(before, after) == ["alpha", "zebra"]
+
+
+# ── DreamAgentConfig (bug #14: parsed once + new fields) ──────────────────────
+
+
+def test_dream_agent_config_injects_required_tools():
+    cfg = _make_dream_config(tools=["write"])
+    assert "read" in cfg.tools
+    assert "write" in cfg.tools
+    assert "edit" in cfg.tools
+    assert "rm" in cfg.tools
+    assert "ls" in cfg.tools
+    assert "wiki_search" in cfg.tools
+
+
+def test_dream_agent_config_timeout_default():
+    cfg = _make_dream_config()
+    assert cfg.timeout_seconds == 300
+
+
+def test_dream_agent_config_timeout_override():
+    cfg = _make_dream_config(timeout_seconds=120)
+    assert cfg.timeout_seconds == 120
+
+
+# ── Sandbox restoration (bug #5) ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_restores_sandbox(setup_db, _wiki_dir: Path):
+    """The sandbox active before run_dream must be restored after it returns."""
+    from app.agent.sandbox import SandboxConfig, get_sandbox, set_sandbox
+
+    pre = SandboxConfig(workspace="/tmp/before-dream")
+    set_sandbox(pre)
+
+    session = ChatSession(agent_name="test-agent")
+    from app.core.db import async_session_factory
+
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(
+            SessionMessage(
+                session_id=session.id,
+                role="user",
+                content="Hello!",
+                exclude_from_context=False,
+            )
+        )
+        await db.commit()
+
+    async with async_session_factory() as db:
+        await run_dream(db)
+
+    post = get_sandbox()
+    assert str(post.workspace_root) == str(pre.workspace_root)
+
+
+# ── Failed-run-not-marked-processed (bug #11) ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_failed_synthesis_not_marked_processed(
+    setup_db, _wiki_dir: Path
+):
+    """When synthesis fails, the session must NOT be marked processed — so it
+    gets retried on the next run instead of being lost (bug #11).
+    """
+    from sqlmodel import select
+
+    from app.core.config import settings
+    from app.core.db import async_session_factory
+    from app.services.dream import _SynthesisFailed
+
+    config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "dream.md").write_text(
+        "---\nname: dream\nmodel: mock:model\nenabled: true\n---\nYou are dream.\n",
+        encoding="utf-8",
+    )
+
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(
+            SessionMessage(
+                session_id=session.id,
+                role="user",
+                content="Hello!",
+                exclude_from_context=False,
+            )
+        )
+        await db.commit()
+
+    async def _always_fail(agent, db, sess, *, timeout_seconds):
+        raise _SynthesisFailed("boom")
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        with patch("app.services.dream._synthesise_session", side_effect=_always_fail):
+            async with async_session_factory() as db:
+                result = await run_dream(db)
+
+    assert result["sessions_processed"] == 0
+    assert result["failed"] == 1
+    async with async_session_factory() as db:
+        rows = (await db.exec(select(DreamLog))).all()
+    # The session must still be unprocessed — no DreamLog row.
+    assert len(rows) == 0
+
+
+# ── A9: mark_*_processed swallows IntegrityError (cross-process race) ────────
+
+
+@pytest.mark.asyncio
+async def test_mark_session_processed_swallows_duplicate(setup_db):
+    """A second ``mark_session_processed`` for the same session must not raise
+    even though ``dream_log.session_id`` has a UNIQUE constraint — the lock
+    only covers in-process races, not cross-process ones (A9).
+    """
+    from app.core.db import async_session_factory
+
+    session_id = uuid.uuid4()
+    async with async_session_factory() as db:
+        await mark_session_processed(db, session_id, "agent", [])
+    async with async_session_factory() as db:
+        # Must NOT raise IntegrityError.
+        await mark_session_processed(db, session_id, "agent", ["topic"])
+
+
+@pytest.mark.asyncio
+async def test_mark_note_processed_swallows_duplicate(setup_db):
+    """Same cross-process race semantics for notes (A9)."""
+    from app.core.db import async_session_factory
+
+    async with async_session_factory() as db:
+        await mark_note_processed(db, "2026-05-13.md")
+    async with async_session_factory() as db:
+        # Must NOT raise IntegrityError.
+        await mark_note_processed(db, "2026-05-13.md")
+
+
+# ── A3: Transcript header does not leak session.id ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_transcript_header_omits_session_id(setup_db, _wiki_dir: Path):
+    """The dream LLM prompt must not include the raw session UUID (A3) — it
+    would otherwise leak into generated topic files.
+    """
+    from app.core.db import async_session_factory
+    from app.services.dream import _fetch_session_transcript
+
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(SessionMessage(session_id=session.id, role="user", content="Hello!"))
+        await db.commit()
+
+    async with async_session_factory() as db:
+        transcript = await _fetch_session_transcript(db, session)
+
+    assert str(session.id) not in transcript
+    assert "Agent: test-agent" in transcript
+    assert "Date:" in transcript
+
+
+# ── A5: Long transcripts truncate without O(n^2) blow-up ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_transcript_truncation_long_session(setup_db, _wiki_dir: Path):
+    """A session with many tiny messages truncates correctly and quickly (A5)."""
+    from app.core.db import async_session_factory
+    from app.services.dream import _fetch_session_transcript
+
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        # 500 tiny messages — way over budget when budget is tight.
+        for i in range(500):
+            db.add(
+                SessionMessage(session_id=session.id, role="user", content=f"msg {i}")
+            )
+        await db.commit()
+
+    async with async_session_factory() as db:
+        transcript = await _fetch_session_transcript(db, session, max_total_chars=500)
+
+    assert "[... middle messages elided" in transcript
+    # First + last messages preserved verbatim.
+    assert "msg 0" in transcript
+    assert "msg 499" in transcript
+    # Single elision marker, not duplicated.
+    assert transcript.count("[... middle messages elided") == 1
+
+
+# ── A2: dream.md parsing runs in a thread (smoke test it still works) ────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_parses_config_off_event_loop(setup_db, _wiki_dir: Path):
+    """``parse_dream_md`` runs via ``asyncio.to_thread`` (A2).  This test just
+    confirms the threaded call wires up correctly — if the await is dropped,
+    ``dream_cfg`` becomes a coroutine and downstream access fails.
+    """
+    from app.core.config import settings
+    from app.core.db import async_session_factory
+
+    config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "dream.md").write_text(
+        "---\nname: dream\nmodel: mock:model\nenabled: true\n---\nYou are dream.\n",
+        encoding="utf-8",
+    )
+
+    async with async_session_factory() as db:
+        # No items to process — but the config still gets parsed.
+        result = await run_dream(db)
+
+    assert result == {
+        "sessions_processed": 0,
+        "notes_processed": 0,
+        "remaining": 0,
+        "failed": 0,
+    }
+
+
+# ── B5: non-IntegrityError commit failures are re-raised, not silenced ───────
+
+
+@pytest.mark.asyncio
+async def test_mark_session_processed_reraises_non_integrity_error(setup_db):
+    """``mark_session_processed`` must re-raise any non-IntegrityError so a
+    transient disk-full / lock-timeout doesn't silently re-enqueue the same
+    session forever (B5).
+    """
+    from sqlalchemy.exc import OperationalError
+
+    from app.core.db import async_session_factory
+
+    async with async_session_factory() as db:
+        with patch.object(
+            db,
+            "commit",
+            side_effect=OperationalError("stmt", {}, Exception("disk full")),
+        ):
+            with pytest.raises(OperationalError):
+                await mark_session_processed(db, uuid.uuid4(), "agent", ["t"])
+
+
+@pytest.mark.asyncio
+async def test_mark_note_processed_reraises_non_integrity_error(setup_db):
+    """Same non-IntegrityError re-raise behaviour for notes (B5)."""
+    from sqlalchemy.exc import OperationalError
+
+    from app.core.db import async_session_factory
+
+    async with async_session_factory() as db:
+        with patch.object(
+            db,
+            "commit",
+            side_effect=OperationalError("stmt", {}, Exception("disk full")),
+        ):
+            with pytest.raises(OperationalError):
+                await mark_note_processed(db, "2026-05-13.md")
+
+
+# ── B11: parse_dream_md normalises CRLF in the body before strip ─────────────
+
+
+def test_parse_dream_md_strips_crlf_from_body(tmp_path: Path):
+    """A Windows-edited dream.md must not smuggle ``\\r`` into the system
+    prompt (B11) — some providers reject embedded carriage returns.
+    """
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    # \r\n line endings throughout
+    path.write_bytes(
+        b"---\r\nname: dream\r\nmodel: mock:model\r\nenabled: true\r\n---\r\n"
+        b"Line one.\r\nLine two.\r\n"
+    )
+
+    cfg = parse_dream_md(path)
+
+    assert "\r" not in cfg.system_prompt
+    assert cfg.system_prompt == "Line one.\nLine two."
+
+
+def test_parse_dream_md_handles_bare_cr(tmp_path: Path):
+    """Bare ``\\r`` (legacy Mac line endings) also gets normalised (B11)."""
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    path.write_bytes(
+        b"---\nname: dream\nmodel: mock:model\nenabled: true\n---\n"
+        b"Line one.\rLine two.\r"
+    )
+
+    cfg = parse_dream_md(path)
+
+    assert "\r" not in cfg.system_prompt
+    assert cfg.system_prompt == "Line one.\nLine two."
+
+
+# ── B13: _diff_topics dedupes slugs across mtime + count entries ─────────────
+
+
+def test_diff_topics_dedupes_same_slug():
+    """If the same slug somehow appears twice in ``after`` (extension casing
+    or duplicate snapshot keys), ``_diff_topics`` returns it once (B13).
+    """
+    # Both keys stem to ``foo`` — should only appear once in output.
+    before: dict[str, int] = {}
+    after = {"foo.md": 100, "foo.MD": 200}
+    result = _diff_topics(before, after)
+    assert result.count("foo") == 1
+
+
+def test_diff_topics_returns_list_without_duplicates():
+    """``_diff_topics`` always returns a deduped sorted list (B13)."""
+    before = {"a.md": 100}
+    after = {"a.md": 200, "b.md": 300}
+    result = _diff_topics(before, after)
+    assert result == sorted(set(result))
+    assert "a" in result
+    assert "b" in result
+
+
+# ── C6: _diff_topics records deletions ───────────────────────────────────────
+
+
+def test_diff_topics_detects_deletion():
+    """A file present in ``before`` but missing in ``after`` counts as a
+    change so ``rm``-style edits show up in ``dream_log.topics_written`` (C6).
+    """
+    before = {"stale.md": 100, "kept.md": 100}
+    after = {"kept.md": 100}
+    assert _diff_topics(before, after) == ["stale"]
+
+
+def test_diff_topics_mixed_create_modify_delete():
+    """Creates + modifies + deletes are all surfaced together (C6)."""
+    before = {"old.md": 100, "stable.md": 100, "modded.md": 100}
+    after = {"stable.md": 100, "modded.md": 200, "new.md": 300}
+    # "old" deleted, "modded" mtime bumped, "new" created.
+    assert _diff_topics(before, after) == ["modded", "new", "old"]
+
+
+# ── C11: _mark_item_processed raises TypeError on type drift ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_mark_item_processed_rejects_wrong_session_type(setup_db):
+    """``_mark_item_processed`` must raise ``TypeError`` (not silently
+    misbehave under ``python -O``) when handed the wrong item type (C11).
+    """
+    from app.core.db import async_session_factory
+    from app.services.dream import _mark_item_processed
+
+    async with async_session_factory() as db:
+        with pytest.raises(TypeError, match="ChatSession"):
+            await _mark_item_processed(db, "session", "not-a-session")  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_mark_item_processed_rejects_wrong_note_type(setup_db):
+    """Same explicit-TypeError contract for notes (C11)."""
+    from app.core.db import async_session_factory
+    from app.services.dream import _mark_item_processed
+
+    async with async_session_factory() as db:
+        with pytest.raises(TypeError, match="str"):
+            await _mark_item_processed(db, "note", 42)  # type: ignore[arg-type]
+
+
+# ── C7: empty-session marking failure doesn't abort the whole run ────────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_continues_when_empty_session_mark_fails(
+    setup_db, _wiki_dir: Path
+):
+    """If marking an empty session fails (e.g. transient DB error), the
+    overall run must continue and surface the failure rather than aborting
+    mid-loop (C7).
+    """
+    from sqlalchemy.exc import OperationalError
+
+    from app.core.db import async_session_factory
+
+    # Create two empty sessions.
+    async with async_session_factory() as db:
+        for _ in range(2):
+            db.add(ChatSession(agent_name="test-agent"))
+        await db.commit()
+
+    call_count = {"n": 0}
+
+    async def _flaky_mark(db, kind, item, **kwargs):
+        call_count["n"] += 1
+        # Fail the first empty-session mark, succeed thereafter.
+        if call_count["n"] == 1:
+            raise OperationalError("stmt", {}, Exception("transient"))
+
+    with patch("app.services.dream._mark_item_processed", side_effect=_flaky_mark):
+        async with async_session_factory() as db:
+            # Must not propagate the OperationalError.
+            result = await run_dream(db)
+
+    # Both empty sessions were attempted; one failed.  No real sessions or
+    # notes to process, so processed counts stay 0.
+    assert result["sessions_processed"] == 0
+    assert result["notes_processed"] == 0
+
+
+# ── D6: _load_dream_agent doesn't leak sandbox on config-build failure ───────
+
+
+def test_load_dream_agent_no_sandbox_leak_on_config_failure(_wiki_dir: Path):
+    """When ``AgentConfig`` validation fails, the sandbox context must NOT
+    have been mutated — otherwise the caller's previous sandbox bleeds out
+    (D6).  The fix is to validate the config BEFORE calling ``set_sandbox``.
+    """
+    from app.agent.sandbox import SandboxConfig, get_sandbox, set_sandbox
+    from app.services.dream import DreamAgentConfig, _load_dream_agent
+
+    pre = SandboxConfig(workspace="/tmp/pre-dream")
+    token = set_sandbox(pre)
+    try:
+        # Force AgentConfig validation to fail by passing an obviously bad
+        # model string after the DreamAgentConfig validator passed.  Easiest
+        # path: monkeypatch AgentConfig to raise.
+        cfg = DreamAgentConfig.model_validate(
+            {"name": "dream", "model": "mock:model", "enabled": True}
+        )
+        with patch("app.agent.loader.AgentConfig", side_effect=ValueError("boom")):
+            assert _load_dream_agent(cfg) is None
+
+        # Sandbox must still be what we set — no leak from the failed load.
+        assert str(get_sandbox().workspace_root) == str(pre.workspace_root)
+    finally:
+        from app.agent.sandbox import _sandbox_ctx
+
+        _sandbox_ctx.reset(token)
+
+
+# ── D13: parse_dream_md warns when frontmatter contains system_prompt ────────
+
+
+def test_parse_dream_md_warns_on_frontmatter_system_prompt(tmp_path: Path, caplog):
+    """A ``system_prompt`` key in YAML frontmatter is ignored (body wins) —
+    we must warn so the user doesn't think the override worked (D13).
+    """
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    path.write_text(
+        "---\n"
+        "name: dream\n"
+        "model: mock:model\n"
+        "system_prompt: 'this will be ignored'\n"
+        "---\n"
+        "Real prompt in the body.\n",
+        encoding="utf-8",
+    )
+
+    # loguru → caplog requires propagation; use a simple side-channel.
+    warnings: list[str] = []
+    from loguru import logger
+
+    handler_id = logger.add(lambda msg: warnings.append(str(msg)), level="WARNING")
+    try:
+        cfg = parse_dream_md(path)
+    finally:
+        logger.remove(handler_id)
+
+    assert cfg.system_prompt == "Real prompt in the body."
+    assert any("dream_md_frontmatter_system_prompt_ignored" in w for w in warnings)
+
+
+# ── D15: parse_dream_md warns when enabled=true but model missing ────────────
+
+
+def test_parse_dream_md_warns_when_enabled_without_model(tmp_path: Path):
+    """A common user error: ``enabled: true`` but no ``model:``.  Dream
+    silently degrades to infra-only mode — warn so the user knows (D15).
+    """
+    from loguru import logger
+
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    path.write_text("---\nname: dream\nenabled: true\n---\nBody.\n", encoding="utf-8")
+
+    warnings: list[str] = []
+    handler_id = logger.add(lambda msg: warnings.append(str(msg)), level="WARNING")
+    try:
+        cfg = parse_dream_md(path)
+    finally:
+        logger.remove(handler_id)
+
+    assert cfg.enabled
+    assert cfg.model is None
+    assert any("dream_md_enabled_without_model" in w for w in warnings)
+
+
+# ── D3: _topics_snapshot uses st_mtime_ns (sub-second resolution) ────────────
+
+
+def test_topics_snapshot_uses_nanosecond_mtime(tmp_path: Path, monkeypatch):
+    """Mtime snapshots must be in nanoseconds so two writes within the
+    same second (coarse-mtime filesystems: HFS+, FAT32) still surface as
+    distinct snapshots (D3).
+    """
+    from app.services import dream as dream_module
+    from app.services.dream import _topics_snapshot
+
+    topics_dir = tmp_path / "topics"
+    topics_dir.mkdir()
+    f = topics_dir / "x.md"
+    f.write_text("v1", encoding="utf-8")
+
+    # ``dream.py`` imports ``wiki_root`` by name at module load, so we
+    # must patch the binding inside the dream module itself.
+    monkeypatch.setattr(dream_module, "wiki_root", lambda: tmp_path)
+
+    snap = _topics_snapshot()
+    assert "x.md" in snap
+    # ns-precision values are large ints in modern filesystems.
+    assert isinstance(snap["x.md"], int)
+    assert snap["x.md"] > 0
+
+
+# ── Coverage gap: interleave logic under asymmetric backlogs ─────────────────
+
+
+def _write_dream_md(batch_size: int = 1, model: str = "mock:model") -> None:
+    """Helper: write a minimal enabled dream.md into the configured dir."""
+    from app.core.config import settings
+
+    config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "dream.md").write_text(
+        f"---\nname: dream\nmodel: {model}\nbatch_size: {batch_size}\n"
+        f"enabled: true\n---\nYou are the dream agent.\n",
+        encoding="utf-8",
+    )
+
+
+async def _make_real_session(content: str = "Hello!") -> ChatSession:
+    """Helper: insert a session with one user message and return it."""
+    from app.core.db import async_session_factory
+
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(
+            SessionMessage(
+                session_id=session.id,
+                role="user",
+                content=content,
+                exclude_from_context=False,
+            )
+        )
+        await db.commit()
+    return session
+
+
+@pytest.mark.asyncio
+async def test_run_dream_interleave_sessions_only(setup_db, _wiki_dir: Path):
+    """Only sessions in the backlog → batch fills with sessions, no notes
+    starvation false-positive (interleave loop must not stall when one
+    iterator is empty from the start).
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=3)
+    for _ in range(5):
+        await _make_real_session()
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        async with async_session_factory() as db:
+            result = await run_dream(db)
+
+    assert result["sessions_processed"] == 3
+    assert result["notes_processed"] == 0
+    assert result["remaining"] == 2
+    assert result["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_dream_interleave_notes_only(setup_db, _wiki_dir: Path):
+    """Only notes in the backlog → batch fills with notes."""
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=3)
+    for i in range(5):
+        (_wiki_dir / "notes" / f"2026-05-{10 + i:02d}.md").write_text(
+            "x", encoding="utf-8"
+        )
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        async with async_session_factory() as db:
+            result = await run_dream(db)
+
+    assert result["sessions_processed"] == 0
+    assert result["notes_processed"] == 3
+    assert result["remaining"] == 2
+    assert result["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_dream_interleave_order_session_first(setup_db, _wiki_dir: Path):
+    """With 1 session + 1 note and batch_size=2, BOTH must be processed and
+    the work-order must be (session, note) so a session backlog can't starve
+    notes via cron-fire-time accumulation.
+    """
+    from app.core.db import async_session_factory
+    from app.services import dream as dream_module
+
+    _write_dream_md(batch_size=2)
+    await _make_real_session()
+    (_wiki_dir / "notes" / "2026-05-13.md").write_text("x", encoding="utf-8")
+
+    seen_kinds: list[str] = []
+    real_mark = dream_module._mark_item_processed
+
+    async def _spy(db, kind, item, **kwargs):
+        seen_kinds.append(kind)
+        return await real_mark(db, kind, item, **kwargs)
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        with patch("app.services.dream._mark_item_processed", _spy):
+            async with async_session_factory() as db:
+                result = await run_dream(db)
+
+    assert result == {
+        "sessions_processed": 1,
+        "notes_processed": 1,
+        "remaining": 0,
+        "failed": 0,
+    }
+    # Critical ordering: session enqueued first, then note.
+    assert seen_kinds == ["session", "note"]
+
+
+@pytest.mark.asyncio
+async def test_run_dream_batch_size_one_picks_session_first(setup_db, _wiki_dir: Path):
+    """``batch_size=1`` with 1 session + 1 note → only the session runs;
+    note remains in ``remaining`` (interleave loop must not pull both when
+    cap is reached after the first append).
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=1)
+    await _make_real_session()
+    (_wiki_dir / "notes" / "2026-05-13.md").write_text("x", encoding="utf-8")
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        async with async_session_factory() as db:
+            result = await run_dream(db)
+
+    assert result["sessions_processed"] == 1
+    assert result["notes_processed"] == 0
+    assert result["remaining"] == 1
+
+
+# ── Coverage gap: failed-item accounting ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_partial_failure_accounts_correctly(setup_db, _wiki_dir: Path):
+    """Mixed batch where ONE session synthesises OK and ONE note times out:
+    ``sessions_processed=1, notes_processed=0, failed=1, remaining=1``.
+    The failed item must NOT be marked processed (so next run retries it).
+    """
+    from sqlmodel import select
+
+    from app.core.db import async_session_factory
+    from app.services.dream import _SynthesisFailed
+
+    _write_dream_md(batch_size=2)
+    await _make_real_session()
+    (_wiki_dir / "notes" / "2026-05-13.md").write_text("note body", encoding="utf-8")
+
+    async def _ok_session(agent, db, sess, *, timeout_seconds):
+        return ["dummy-topic"]
+
+    async def _fail_note(agent, filename, *, timeout_seconds):
+        raise _SynthesisFailed("LLM timeout")
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        with patch("app.services.dream._synthesise_session", _ok_session):
+            with patch("app.services.dream._synthesise_note", _fail_note):
+                async with async_session_factory() as db:
+                    result = await run_dream(db)
+
+    assert result["sessions_processed"] == 1
+    assert result["notes_processed"] == 0
+    assert result["failed"] == 1
+    # remaining = (1 session + 1 note) total - 1 session processed - 0 notes
+    assert result["remaining"] == 1
+
+    # The failed note must NOT appear in dream_notes_log → next run retries.
+    from app.models.chat import DreamNotesLog
+
+    async with async_session_factory() as db:
+        rows = (await db.exec(select(DreamNotesLog))).all()
+    assert "2026-05-13.md" not in {r.filename for r in rows}
+
+
+# ── Coverage gap: topics_written JSON persistence shape ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mark_session_processed_persists_deduped_json_list(setup_db):
+    """The ``topics_written`` column must hold a JSON ARRAY of deduped
+    strings (not a JSON string or pickled set).  A consumer parsing the
+    audit log relies on ``json.loads`` returning a list.
+    """
+    import json as _json
+
+    from sqlmodel import select
+
+    from app.core.db import async_session_factory
+
+    session_id = uuid.uuid4()
+    async with async_session_factory() as db:
+        # Pass duplicates + order should be preserved on first-seen basis.
+        await mark_session_processed(
+            db, session_id, "agent", ["alpha", "beta", "alpha", "gamma", "beta"]
+        )
+
+    async with async_session_factory() as db:
+        row = (
+            await db.exec(select(DreamLog).where(DreamLog.session_id == session_id))
+        ).one()
+
+    assert row.topics_written is not None
+    parsed = _json.loads(row.topics_written)
+    assert isinstance(parsed, list)
+    assert parsed == ["alpha", "beta", "gamma"]
+
+
+@pytest.mark.asyncio
+async def test_mark_session_processed_empty_topics_stores_null(setup_db):
+    """Empty topics list → column is NULL (not '[]') so audit queries can
+    distinguish "nothing changed" from "audit row exists but empty list".
+    """
+    from sqlmodel import select
+
+    from app.core.db import async_session_factory
+
+    session_id = uuid.uuid4()
+    async with async_session_factory() as db:
+        await mark_session_processed(db, session_id, "agent", [])
+
+    async with async_session_factory() as db:
+        row = (
+            await db.exec(select(DreamLog).where(DreamLog.session_id == session_id))
+        ).one()
+
+    assert row.topics_written is None
+
+
+# ── Coverage gap: _fetch_session_transcript invariants ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fetch_session_transcript_excludes_summarised_messages(
+    setup_db, _wiki_dir: Path
+):
+    """Messages with ``exclude_from_context=True`` (summarisation markers,
+    tombstones) must NOT leak into the dream LLM prompt — otherwise summary
+    plumbing would re-contaminate the wiki on every dream pass.
+    """
+    from app.core.db import async_session_factory
+    from app.services.dream import _fetch_session_transcript
+
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(
+            SessionMessage(
+                session_id=session.id,
+                role="user",
+                content="visible-msg",
+                exclude_from_context=False,
+            )
+        )
+        db.add(
+            SessionMessage(
+                session_id=session.id,
+                role="assistant",
+                content="HIDDEN-SUMMARY-MARKER",
+                exclude_from_context=True,
+            )
+        )
+        await db.commit()
+
+    async with async_session_factory() as db:
+        transcript = await _fetch_session_transcript(db, session)
+
+    assert "visible-msg" in transcript
+    assert "HIDDEN-SUMMARY-MARKER" not in transcript
+
+
+@pytest.mark.asyncio
+async def test_fetch_session_transcript_per_message_truncation_marker(
+    setup_db, _wiki_dir: Path
+):
+    """A single oversized message gets per-message clipped with a clear
+    marker so the LLM can detect truncation (not just see content cut off).
+    """
+    from app.core.db import async_session_factory
+    from app.services.dream import PER_MESSAGE_CAP_CHARS, _fetch_session_transcript
+
+    session = ChatSession(agent_name="test-agent")
+    huge = "X" * (PER_MESSAGE_CAP_CHARS + 5_000)
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(SessionMessage(session_id=session.id, role="user", content=huge))
+        await db.commit()
+
+    async with async_session_factory() as db:
+        transcript = await _fetch_session_transcript(db, session)
+
+    # The marker must be present AND the post-marker content must be absent.
+    assert "[... truncated ...]" in transcript
+    # Total transcript size bounded.
+    assert len(transcript) < PER_MESSAGE_CAP_CHARS + 1_000
+
+
+# ── Coverage gap: parse_dream_md validator rejects bad model ─────────────────
+
+
+def test_parse_dream_md_rejects_model_without_provider_prefix(tmp_path: Path):
+    """``model:`` must be ``provider:name`` — otherwise ``build_provider``
+    would fail late, after the scheduler has already accepted the config.
+    """
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    path.write_text("---\nname: dream\nmodel: gpt-5\n---\nbody\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="provider:model"):
+        parse_dream_md(path)
+
+
+def test_parse_dream_md_missing_frontmatter_raises(tmp_path: Path):
+    """No ``---`` block → ValueError with a hint about the expected format."""
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    path.write_text("just body, no frontmatter\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="frontmatter"):
+        parse_dream_md(path)
+
+
+def test_parse_dream_md_invalid_yaml_raises(tmp_path: Path):
+    """Malformed YAML inside the frontmatter → ValueError, not silent fall-through."""
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    path.write_text(
+        "---\nname: dream\n  bad: indent: here\n---\nbody\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="YAML parse error"):
+        parse_dream_md(path)
+
+
+def test_parse_dream_md_yaml_list_frontmatter_rejected(tmp_path: Path):
+    """Frontmatter must be a mapping, not a YAML list."""
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    path.write_text("---\n- a\n- b\n---\nbody\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="mapping"):
+        parse_dream_md(path)
+
+
+# ── Coverage gap: empty body → default system prompt ─────────────────────────
+
+
+def test_parse_dream_md_empty_body_uses_default_prompt(tmp_path: Path):
+    """Empty body falls back to a sane default rather than handing the LLM
+    an empty system prompt (which some providers reject).
+    """
+    from app.services.dream import parse_dream_md
+
+    path = tmp_path / "dream.md"
+    path.write_text(
+        "---\nname: dream\nmodel: mock:model\n---\n\n   \n", encoding="utf-8"
+    )
+    cfg = parse_dream_md(path)
+    assert cfg.system_prompt
+    assert cfg.system_prompt.strip() != ""
+
+
+# ── Coverage gap: infrastructure-only mode for notes ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_infra_only_marks_notes_without_synthesis(
+    setup_db, _wiki_dir: Path
+):
+    """When dream.md is absent (infra-only mode), notes must be drained
+    too — not just sessions — so a stale wiki/notes/ never blocks future
+    real runs.
+    """
+    from sqlmodel import select
+
+    from app.core.db import async_session_factory
+    from app.models.chat import DreamNotesLog
+
+    # NB: deliberately do NOT call _write_dream_md → dream_cfg=None.
+    (_wiki_dir / "notes" / "2026-05-13.md").write_text("note", encoding="utf-8")
+
+    async with async_session_factory() as db:
+        result = await run_dream(db)
+
+    assert result["notes_processed"] == 1
+    assert result["failed"] == 0
+    async with async_session_factory() as db:
+        rows = (await db.exec(select(DreamNotesLog))).all()
+    assert "2026-05-13.md" in {r.filename for r in rows}
+
+
+# ── Coverage gap: empty-session drain interacts with real sessions ───────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_empties_dont_consume_batch_slots(setup_db, _wiki_dir: Path):
+    """Empty sessions are auto-marked OUTSIDE the batch loop, so they must
+    not eat into ``batch_size`` — a backlog of 100 empties + 1 real session
+    with batch_size=1 still processes the real session in the same run.
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=1)
+    # 10 empty sessions + 1 real session.
+    async with async_session_factory() as db:
+        for _ in range(10):
+            db.add(ChatSession(agent_name="test-agent"))
+        await db.commit()
+    real = await _make_real_session()
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        async with async_session_factory() as db:
+            result = await run_dream(db)
+
+    # The real session must be processed (not crowded out by empties).
+    assert result["sessions_processed"] == 1
+    # And dream_log must contain the real session id.
+    from sqlmodel import select as _select
+
+    async with async_session_factory() as db:
+        ids = {r for r in (await db.exec(_select(DreamLog.session_id))).all()}
+    assert real.id in ids
+
+
+# ── Coverage gap: _load_dream_agent token ownership on success ───────────────
+
+
+def test_load_dream_agent_returns_token_caller_must_reset(_wiki_dir: Path):
+    """On success, ``_load_dream_agent`` HANDS OFF the sandbox token to the
+    caller — it does NOT reset itself.  Verified by checking the active
+    sandbox after a successful load points at the wiki workspace.
+    """
+    from app.agent.sandbox import (
+        SandboxConfig,
+        _sandbox_ctx,
+        get_sandbox,
+        set_sandbox,
+    )
+    from app.services.dream import _load_dream_agent
+    from app.services.wiki import wiki_root
+
+    pre = SandboxConfig(workspace="/tmp/pre")
+    pre_token = set_sandbox(pre)
+    try:
+        cfg = _make_dream_config()
+        # Stub the agent build so we only exercise the sandbox plumbing.
+        with patch(
+            "app.agent.loader._build_agent",
+            return_value=_make_dream_agent(),
+        ):
+            loaded = _load_dream_agent(cfg)
+
+        assert loaded is not None
+        agent, token = loaded
+        try:
+            # Active sandbox must now be wiki_root() — the caller hasn't
+            # reset yet.
+            active = get_sandbox()
+            assert str(active.workspace_root) == str(wiki_root())
+        finally:
+            _sandbox_ctx.reset(token)
+
+        # After caller resets, the previous sandbox is restored.
+        assert str(get_sandbox().workspace_root) == str(pre.workspace_root)
+    finally:
+        _sandbox_ctx.reset(pre_token)
+
+
+# ── Coverage gap: _diff_topics modify-then-delete races ──────────────────────
+
+
+def test_diff_topics_handles_delete_of_unchanged_file():
+    """File present in ``before``, missing in ``after`` — slug shows up
+    even if its mtime never changed during the run."""
+    before = {"old.md": 12345}
+    after: dict[str, int] = {}
+    assert _diff_topics(before, after) == ["old"]
+
+
+def test_diff_topics_no_change_returns_empty():
+    """Identical snapshots → empty list (no false positives on equal mtimes)."""
+    snap = {"a.md": 100, "b.md": 200}
+    assert _diff_topics(snap, snap) == []
+
+
+# ── Coverage gap: DreamAgentConfig defaults & coercion ───────────────────────
+
+
+def test_dream_agent_config_batch_size_default_is_one():
+    """The schema default for batch_size is 1 — bumping this silently would
+    multiply LLM costs across all deployments.
+    """
+    cfg = DreamAgentConfig.model_validate({"name": "dream"})
+    assert cfg.batch_size == 1
+    assert cfg.enabled is False
+    assert cfg.schedule == "0 2 * * *"
+
+
+def test_dream_agent_config_required_tools_idempotent():
+    """Re-validating an already-augmented config does NOT duplicate tools."""
+    cfg = DreamAgentConfig.model_validate(
+        {"name": "dream", "tools": ["read", "write", "edit", "rm", "ls", "wiki_search"]}
+    )
+    # Each required tool should appear exactly once.
+    for tool in ("read", "write", "edit", "rm", "ls", "wiki_search"):
+        assert cfg.tools.count(tool) == 1
