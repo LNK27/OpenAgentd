@@ -120,10 +120,10 @@ describe("SplitGrid automatic layout", () => {
     expect(screen.queryByText("executor#1")).toBeNull()
   })
 
-  it("keeps dismissed members briefly for exit animation", async () => {
+  it("lets remaining agents reclaim dismissed member space", async () => {
     const { SplitGrid } = await import("@/components/TeamChatView/SplitGrid")
     const initialStreams = makeStreams(["lead", "executor#1"])
-    const { rerender } = render(
+    const { container, rerender } = render(
       <SplitGrid agentNames={["lead", "executor#1"]} leadName="lead" agentStreams={initialStreams} />,
     )
 
@@ -138,6 +138,54 @@ describe("SplitGrid automatic layout", () => {
       />,
     )
 
-    expect(screen.getByText("executor#1")).toBeDefined()
+    const columns = columnTexts(container.firstElementChild as HTMLElement | null)
+    expect(columns).toHaveLength(1)
+    expect(columns[0][0]).toContain("lead")
+    expect(screen.queryByText("executor#1")).toBeNull()
+  })
+
+  it("reflows larger grids immediately when a middle pane goes offline", async () => {
+    const { SplitGrid } = await import("@/components/TeamChatView/SplitGrid")
+    const names = ["lead", "executor#1", "executor#2", "reviewer#1", "reviewer#2"]
+    const initialStreams = makeStreams(names)
+    const { container, rerender } = render(
+      <SplitGrid agentNames={names} leadName="lead" agentStreams={initialStreams} />,
+    )
+
+    expect(columnTexts(container.firstElementChild as HTMLElement | null)).toEqual([
+      ["lead"],
+      ["executor#1", "executor#2"],
+      ["reviewer#1", "reviewer#2"],
+    ])
+
+    rerender(
+      <SplitGrid
+        agentNames={names}
+        leadName="lead"
+        agentStreams={{
+          ...initialStreams,
+          "executor#1": makeStream({ status: "offline" }),
+        }}
+      />,
+    )
+
+    expect(columnTexts(container.firstElementChild as HTMLElement | null)).toEqual([
+      ["lead", "executor#2"],
+      ["reviewer#1", "reviewer#2"],
+    ])
+    expect(screen.queryByText("executor#1")).toBeNull()
+  })
+
+  it("renders nothing when every known stream is offline", async () => {
+    const streams = {
+      lead: makeStream({ status: "offline" }),
+      "executor#1": makeStream({ status: "offline" }),
+    }
+
+    const { root } = await renderGrid(["lead", "executor#1"], streams)
+
+    expect(root).toBeNull()
+    expect(screen.queryByText("lead")).toBeNull()
+    expect(screen.queryByText("executor#1")).toBeNull()
   })
 })

@@ -358,6 +358,8 @@ data: {"name": "web_search", "tool_call_id": "tc_abc"}
 
 All team events carry an `agent` field for demultiplexing.
 
+Split-view clients should compute pane layout from currently visible, non-`offline` agents so remaining panes reclaim space immediately after dismissal.
+
 ### 3-phase tool lifecycle
 
 ```
