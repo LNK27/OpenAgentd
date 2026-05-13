@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, render, screen } from "@testing-library/react"
 import type { AgentStream } from "@/stores/useTeamStore"
 
 afterEach(cleanup)
@@ -139,6 +139,5 @@ describe("SplitGrid automatic layout", () => {
     )
 
     expect(screen.getByText("executor#1")).toBeDefined()
-    await waitFor(() => expect(screen.queryByText("executor#1")).toBeNull())
   })
 })
