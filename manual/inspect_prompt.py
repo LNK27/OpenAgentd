@@ -2,18 +2,18 @@
 
 Produces the exact things sent to the provider on every request:
   1. system_prompt        — base prompt + skills section + date injection
-  2. system_prompt_final  — same, after MemoryInjectionHook has prepended the
-                            pinned memory block + memory index (what the LLM
-                             actually sees). Requires the configured memory dir
-                             to exist on disk (``.openagentd/data/memory/`` in dev,
-                             ``~/.local/share/openagentd/memory/`` in production).
+  2. system_prompt_final  — same, after ``WikiInjectionHook`` has appended
+                            ``wiki/USER.md`` (what the LLM actually sees).
+                            Requires the configured wiki dir to exist on disk
+                            (``.openagentd/wiki/`` in dev,
+                            ``~/.local/share/openagentd-wiki/`` in production).
   3. tools                — JSON array of tool definitions (as sent in the API body)
 
 Output is a single JSON object:
   {
     "system_prompt": "...",
     "system_prompt_final": "...",
-    "memory_block": "...",
+    "wiki_user_block": "...",
     "tools": [...],
     "stats": { ... }
   }
@@ -29,8 +29,8 @@ Usage:
   uv run python -m manual.inspect_prompt --date 2026-04-12
   uv run python -m manual.inspect_prompt --out .openagentd/chat/payload.json
   uv run python -m manual.inspect_prompt --stats-only
-  uv run python -m manual.inspect_prompt --no-memory            # skip hook injection
-  uv run python -m manual.inspect_prompt --memory-only          # print just the memory block
+  uv run python -m manual.inspect_prompt --no-wiki              # skip WikiInjectionHook
+  uv run python -m manual.inspect_prompt --wiki-only            # print just USER.md block
   uv run python -m manual.inspect_prompt --final-only           # print just the final prompt
 """
 
@@ -106,29 +106,30 @@ def _inject_date(prompt: str, date_str: str) -> str:
     return f"{prompt}\n\nCurrent date (UTC): {date_str}"
 
 
-def _build_memory_block() -> str:
-    """Invoke MemoryInjectionHook's block builder — exactly what the hook injects.
+def _build_wiki_user_block() -> str:
+    """Invoke WikiInjectionHook's read path — exactly what the hook injects.
 
-    Returns an empty string when the memory root does not exist, mirroring the
-    hook's real behaviour.
-
-    An empty query is passed because there is no user message available at
-    prompt-inspection time; topic scoring will use no BM25 bias, so all topics
-    remain in the residual index (the correct conservative fallback).
+    Returns an empty string when ``wiki/USER.md`` does not exist (or fails to
+    read), mirroring the hook's real behaviour.  Topic content is *not*
+    injected — the runtime hook also stopped doing that; agents call the
+    ``wiki_search`` tool explicitly when they need topic context.
     """
-    from app.agent.hooks.memory_injection import MemoryInjectionHook
+    from app.agent.hooks.wiki_injection import WikiInjectionHook
 
-    hook = MemoryInjectionHook()
-    return hook._build_memory_block("")
+    hook = WikiInjectionHook()
+    user_block = hook._read_user_md()
+    if not user_block:
+        return ""
+    return "## About the user\n\n" + user_block
 
 
-def _apply_memory_injection(system_prompt: str, memory_block: str) -> str:
-    """Replicate MemoryInjectionHook.wrap_model_call's prompt merge."""
-    if not memory_block:
+def _apply_wiki_injection(system_prompt: str, wiki_user_block: str) -> str:
+    """Replicate WikiInjectionHook.wrap_model_call's prompt merge."""
+    if not wiki_user_block:
         return system_prompt
     if system_prompt:
-        return f"{system_prompt}\n\n{memory_block}"
-    return memory_block
+        return f"{system_prompt}\n\n{wiki_user_block}"
+    return wiki_user_block
 
 
 # ── Stats ─────────────────────────────────────────────────────────────────────
@@ -142,14 +143,14 @@ def _estimate_tokens(text: str) -> int:
 def _print_stats(
     system_prompt: str,
     system_prompt_final: str,
-    memory_block: str,
+    wiki_user_block: str,
     tools_json: str,
     agent: str,
     model: str,
 ) -> None:
     sp_chars = len(system_prompt)
     final_chars = len(system_prompt_final)
-    mem_chars = len(memory_block)
+    wiki_chars = len(wiki_user_block)
     t_chars = len(tools_json)
     total = final_chars + t_chars
     print(f"\nAgent: {agent}  model: {model}", file=sys.stderr)
@@ -158,7 +159,7 @@ def _print_stats(
         file=sys.stderr,
     )
     print(
-        f"  memory block        : {mem_chars:>7,} chars  (~{_estimate_tokens(memory_block):,} tokens)",
+        f"  wiki USER.md block  : {wiki_chars:>7,} chars  (~{_estimate_tokens(wiki_user_block):,} tokens)",
         file=sys.stderr,
     )
     print(
@@ -220,14 +221,18 @@ def main() -> None:
         help="Print char/token estimates only — no JSON output",
     )
     p.add_argument(
-        "--no-memory",
+        "--no-wiki",
+        "--no-memory",  # legacy alias
+        dest="no_wiki",
         action="store_true",
-        help="Skip MemoryInjectionHook — show base prompt only (no memory block)",
+        help="Skip WikiInjectionHook — show base prompt only (no USER.md block)",
     )
     p.add_argument(
-        "--memory-only",
+        "--wiki-only",
+        "--memory-only",  # legacy alias
+        dest="wiki_only",
         action="store_true",
-        help="Print just the injected memory block (plain text) and exit",
+        help="Print just the injected wiki USER.md block (plain text) and exit",
     )
     p.add_argument(
         "--final-only",
@@ -296,26 +301,26 @@ def main() -> None:
         date_str = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
         system_prompt = _inject_date(system_prompt, date_str)
 
-    # 3. Memory injection (MemoryInjectionHook.wrap_model_call)
-    if args.no_memory:
-        memory_block = ""
+    # 3. Wiki USER.md injection (WikiInjectionHook.wrap_model_call)
+    if args.no_wiki:
+        wiki_user_block = ""
     else:
         try:
-            memory_block = _build_memory_block()
+            wiki_user_block = _build_wiki_user_block()
         except Exception as exc:
-            print(f"Warning: memory injection failed: {exc}", file=sys.stderr)
-            memory_block = ""
-    system_prompt_final = _apply_memory_injection(system_prompt, memory_block)
+            print(f"Warning: wiki USER.md injection failed: {exc}", file=sys.stderr)
+            wiki_user_block = ""
+    system_prompt_final = _apply_wiki_injection(system_prompt, wiki_user_block)
 
     # Early exits for focused inspection
-    if args.memory_only:
-        if not memory_block:
+    if args.wiki_only:
+        if not wiki_user_block:
             print(
-                "(no memory block — memory root missing or --no-memory set)",
+                "(no wiki USER.md block — wiki/USER.md missing or --no-wiki set)",
                 file=sys.stderr,
             )
             sys.exit(1)
-        print(memory_block)
+        print(wiki_user_block)
         return
     if args.final_only:
         print(system_prompt_final)
@@ -327,12 +332,12 @@ def main() -> None:
 
     payload = {
         "system_prompt": system_prompt,
-        "memory_block": memory_block,
+        "wiki_user_block": wiki_user_block,
         "system_prompt_final": system_prompt_final,
         "tools": tool_defs,
         "stats": {
             "system_prompt_chars": len(system_prompt),
-            "memory_block_chars": len(memory_block),
+            "wiki_user_block_chars": len(wiki_user_block),
             "system_prompt_final_chars": len(system_prompt_final),
             "tools_json_chars": len(tools_json),
             "total_chars": len(system_prompt_final) + len(tools_json),
@@ -340,7 +345,7 @@ def main() -> None:
             "agent": agent_cfg.name,
             "model": agent_cfg.model,
             "role": agent_cfg.role,
-            "memory_injected": bool(memory_block),
+            "wiki_user_injected": bool(wiki_user_block),
         },
     }
     output = json.dumps(payload, indent=2, ensure_ascii=False)
@@ -357,7 +362,7 @@ def main() -> None:
     _print_stats(
         system_prompt,
         system_prompt_final,
-        memory_block,
+        wiki_user_block,
         tools_json,
         agent_cfg.name,
         agent_cfg.model or "(none)",

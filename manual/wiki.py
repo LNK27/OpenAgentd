@@ -1,8 +1,9 @@
 """Inspect and edit wiki files.
 
-Reads files directly from OPENAGENTD_WIKI_DIR — no server required for
-tree/read/write commands. The delete command calls DELETE /api/wiki/file
-(server required).
+All commands read and write directly from ``OPENAGENTD_WIKI_DIR`` via
+``app.services.wiki`` — no server required. The ``--unprocessed`` flag
+for ``tree`` is the only command that touches the DB (it queries
+``dream_notes_log`` to filter notes not yet consolidated by dream).
 
 Usage:
   uv run python -m manual.wiki tree                       # show full wiki tree
@@ -10,7 +11,7 @@ Usage:
   uv run python -m manual.wiki read USER.md               # print file contents
   uv run python -m manual.wiki read topics/auth.md
   uv run python -m manual.wiki write topics/test.md       # write from stdin
-  uv run python -m manual.wiki delete topics/test.md      # delete via API (server required)
+  uv run python -m manual.wiki delete topics/test.md      # delete via local services
 """
 
 from __future__ import annotations
@@ -36,15 +37,11 @@ def cmd_tree(*, unprocessed: bool) -> None:
     if unprocessed:
         import asyncio
 
-        from sqlalchemy.ext.asyncio import create_async_engine
-        from sqlmodel.ext.asyncio.session import AsyncSession
-
-        from app.core.config import settings
+        from app.core.db import async_session_factory
         from app.services.dream import get_unprocessed_notes
 
         async def _get_unprocessed() -> set[str]:
-            engine = create_async_engine(settings.DATABASE_URL.get_secret_value())
-            async with AsyncSession(engine) as db:
+            async with async_session_factory() as db:
                 return set(await get_unprocessed_notes(db))
 
         unprocessed_set = asyncio.run(_get_unprocessed())
