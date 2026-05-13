@@ -43,6 +43,7 @@ export const useTeamStore = create<TeamStore>()(
     activeAgent: null,
     leadName: null,
     agentNames: [],
+    liveAgentNames: null,
     sidebarOpen: false,
     sessionId: null,
     sessionTitle: null,
@@ -74,6 +75,7 @@ export const useTeamStore = create<TeamStore>()(
         // A fresh chat starts with only the lead. Historical member streams can
         // remain cached for prior sessions, but they must not stay in the live roster.
         state.agentNames = leadName ? [leadName] : []
+        state.liveAgentNames = leadName ? [leadName] : null
         state.activeAgent = leadName ?? null
 
         // Reset the lead and drop member streams. A fresh chat gets a fresh
@@ -222,6 +224,7 @@ export const useTeamStore = create<TeamStore>()(
           const liveNames = allAgents.map((a) => a.name)
           set((draft) => {
             draft.leadName = status.lead.name
+            draft.liveAgentNames = liveNames
             const historicalNames = draft.agentNames.filter((name) => !liveNames.includes(name))
             draft.agentNames = [...liveNames, ...historicalNames]
             allAgents.forEach((agent) => {
@@ -292,6 +295,7 @@ export const useTeamStore = create<TeamStore>()(
           // Load member blocks
           history.members.forEach((member) => {
             const existingStatus = draft.agentStreams[member.name]?.status
+            const isLiveMember = draft.liveAgentNames === null || draft.liveAgentNames.includes(member.name)
             if (!draft.agentStreams[member.name]) {
               draft.agentStreams[member.name] = createDefaultAgentStream()
             }
@@ -302,7 +306,9 @@ export const useTeamStore = create<TeamStore>()(
             draft.agentStreams[member.name].currentText = ''
             draft.agentStreams[member.name].currentThinking = ''
             draft.agentStreams[member.name].status =
-              existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
+              !isLiveMember
+                ? 'offline'
+                : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
             const memberUsage = sumUsageFromMessages(member.messages)
             draft.agentStreams[member.name].usage = memberUsage
             // Seed _completionBase so next live turn accumulates correctly

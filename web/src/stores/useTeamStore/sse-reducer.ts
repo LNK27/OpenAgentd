@@ -237,14 +237,18 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           if (status === 'working') {
             draft.agentStreams[agent].status = 'working'
             draft.isTeamWorking = true
+            if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
           } else if (status === 'idle') {
             draft.agentStreams[agent].status = 'idle'
+            if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
           } else if (status === 'offline') {
             draft.agentStreams[agent].status = 'offline'
+            if (draft.liveAgentNames) draft.liveAgentNames = draft.liveAgentNames.filter((name) => name !== agent)
           } else if (status === 'error') {
             draft.agentStreams[agent].status = 'error'
             draft.agentStreams[agent].lastError =
               (d.metadata as Record<string, unknown>)?.message as string ?? null
+            if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
           }
           // Recompute global flag — keeps header/composer in sync when a single
           // agent goes idle even before the whole team emits `done`. `done` still

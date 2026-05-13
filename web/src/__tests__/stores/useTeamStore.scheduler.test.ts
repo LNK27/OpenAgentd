@@ -46,6 +46,7 @@ describe("useTeamStore — scheduler invalidation", () => {
       activeAgent: null,
       leadName: null,
       agentNames: [],
+      liveAgentNames: null,
       sidebarOpen: false,
       sessionId: null,
       sessionTitle: null,

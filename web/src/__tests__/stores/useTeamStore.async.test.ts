@@ -74,6 +74,7 @@ const INITIAL_STATE = {
   activeAgent: null,
   leadName: null,
   agentNames: [],
+  liveAgentNames: null,
   sidebarOpen: false,
   sessionId: null,
   isTeamWorking: false,
@@ -627,6 +628,12 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
   })
 
+  it("tracks live agents from the status response", async () => {
+    useTeamStore.setState({ sessionId: "team-sid" })
+    await useTeamStore.getState().loadTeamStatus()
+    expect(useTeamStore.getState().liveAgentNames).toEqual(["lead", "worker"])
+  })
+
   it("marks historical members offline when they are absent from the live roster", async () => {
     useTeamStore.setState({
       agentNames: ["lead", "worker"],
@@ -705,6 +712,33 @@ describe("loadTeamStatus", () => {
     useTeamStore.setState({
       agentStreams: {
         worker: makeStream({ status: "offline" }),
+      },
+    })
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [],
+        },
+        members: [{ name: "worker", session_id: "w-sess", messages: [] }],
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
+  })
+
+  it("keeps historical members absent from the live roster offline when history reloads", async () => {
+    useTeamStore.setState({
+      liveAgentNames: ["lead"],
+      agentStreams: {
+        worker: makeStream({ status: "idle" }),
       },
     })
     mockTeamHistory.mockImplementation(() =>

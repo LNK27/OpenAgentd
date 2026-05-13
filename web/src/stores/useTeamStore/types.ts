@@ -60,6 +60,7 @@ export interface TeamStoreState {
   activeAgent: string | null
   leadName: string | null
   agentNames: string[]
+  liveAgentNames: string[] | null
   sidebarOpen: boolean
   sessionId: string | null
   sessionTitle: string | null
