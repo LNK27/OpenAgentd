@@ -520,7 +520,7 @@ LOG_LEVEL=WARNING
 
 # Or environment variable
 export LOG_LEVEL=DEBUG
-openagentd --dev
+openagentd
 ```
 
 ### 5. Adding Custom Session Logging

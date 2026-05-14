@@ -9,12 +9,6 @@ from pathlib import Path
 from app.cli.paths import _ROOT
 
 
-def _check_dir(path: Path, label: str) -> None:
-    if not path.is_dir():
-        print(f"error: {label} directory not found: {path}", file=sys.stderr)
-        sys.exit(1)
-
-
 def _resolve_uvicorn() -> list[str]:
     """Pick the right uvicorn invocation for the current install.
 
@@ -41,8 +35,8 @@ def _resolve_uvicorn() -> list[str]:
     return [sys.executable, "-m", "uvicorn"]
 
 
-def _server_cmd(*, host: str, port: int, dev: bool) -> list[str]:
-    cmd = [
+def _server_cmd(*, host: str, port: int) -> list[str]:
+    return [
         *_resolve_uvicorn(),
         "app.server:app",
         "--host",
@@ -50,13 +44,6 @@ def _server_cmd(*, host: str, port: int, dev: bool) -> list[str]:
         "--port",
         str(port),
     ]
-    if dev:
-        # Watch ``app/`` only.  Coupling reloads to the on-disk config tree
-        # (agent .md files, skill SKILL.md files, mcp.json, multimodal.yaml)
-        # caused noisy restarts whenever the agent itself wrote there, so
-        # those edits now require a manual restart in dev — same as prod.
-        cmd += ["--reload", "--reload-dir", "app"]
-    return cmd
 
 
 def _has_bundled_web() -> bool:

@@ -96,7 +96,7 @@ cp .env.example .env              # add your API key(s)
 uv sync                           # install Python deps
 bun install --cwd web             # install frontend deps
 
-openagentd --dev                      # backend + Vite hot-reload
+make dev                              # backend (uvicorn :8000) + frontend (Vite :5173) with hot-reload
 # API: http://localhost:8000   Web UI: http://localhost:5173
 ```
 

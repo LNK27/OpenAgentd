@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
-import { InputBar, type InputBarHandle, type SlashCommand } from './InputBar'
+import { InputBar, type FileRef, type InputBarHandle, type SlashCommand } from './InputBar'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -84,6 +84,7 @@ interface FloatingInputBarProps {
   onStop?: () => void
   onSlashCommand?: (id: string) => void
   slashCommands?: SlashCommand[]
+  fileRefs?: FileRef[]
   isStreaming?: boolean
   disabled?: boolean
   placeholder?: string

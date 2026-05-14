@@ -41,6 +41,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTileLayout } from '@/hooks/useTileLayout'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
+import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { Users, FolderOpen, Menu, FolderCode } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { AgentChip } from '@/components/ui/agent-chip'
@@ -127,6 +128,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   // Voice input — enabled flag from /api/speech/config.
   const { data: speechConfig } = useSpeechConfigQuery()
   const voiceEnabled = speechConfig?.enabled ?? false
+
+  // Workspace file/folder list for the InputBar's @-mention picker. Fetched
+  // lazily — the query is keyed on workspace/session so coding and normal
+  // modes don't share cache entries.
+  const { refs: fileRefs } = useFileRefsQuery({
+    mode,
+    sessionId: sessionIdState,
+    workspace,
+    enabled: mode === 'coding' ? Boolean(workspace) : Boolean(sessionIdState),
+  })
 
   // Sum tokens — four primitive selectors, no new object returned (avoids infinite loop).
   const totalPrompt     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.promptTokens, 0))
@@ -613,6 +624,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           onStop={() => useTeamStore.getState().stopTeam()}
           onSlashCommand={handleSlashCommand}
           slashCommands={slashCommands}
+          fileRefs={fileRefs}
           isStreaming={isTeamWorking}
           disabled={mode === 'coding' && !workspace}
           autoFocus={!sessionId}

@@ -148,7 +148,7 @@ def migrate_hermes_agent(
 
 def cmd_migrate(args: argparse.Namespace) -> None:
     config_dir = (
-        Path(args.config_dir).expanduser() if args.config_dir else _config_dir(args.dev)
+        Path(args.config_dir).expanduser() if args.config_dir else _config_dir()
     )
     source_dir = (
         Path(args.from_dir) if args.from_dir else _default_source_dir(args.source)

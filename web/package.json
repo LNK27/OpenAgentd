@@ -1,7 +1,7 @@
 {
   "name": "openagentd-web",
   "private": true,
-  "version": "0.5.8",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -24,6 +24,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.38.0",
+    "fuzzysort": "^3.1.0",
     "immer": "^11.1.4",
     "katex": "^0.16.45",
     "lucide-react": "^1.7.0",

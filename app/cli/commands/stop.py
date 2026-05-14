@@ -12,7 +12,7 @@ from app.cli.ui import _green, _yellow
 
 
 def cmd_stop(_args: argparse.Namespace) -> None:
-    pids, dev = _find_pids()
+    pids = _find_pids()
     alive = [p for p in pids if _pid_alive(p)]
     if not alive:
         print(f"  {_yellow('not running')}")
@@ -32,5 +32,5 @@ def cmd_stop(_args: argparse.Namespace) -> None:
                     pass
             break
         time.sleep(0.2)
-    _clear_pids(dev)
+    _clear_pids()
     print(f"  {_green('stopped')}")

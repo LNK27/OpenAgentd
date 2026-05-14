@@ -30,7 +30,6 @@ Behaviour matrix
 
 from __future__ import annotations
 
-import argparse
 import os
 import sys
 from pathlib import Path
@@ -56,19 +55,18 @@ _PROVIDER_KEYS: tuple[str, ...] = (
 )
 
 
-def is_initialised(*, dev: bool) -> bool:
+def is_initialised() -> bool:
     """Return ``True`` if the install looks ready to start the server."""
-    return _has_credentials(dev=dev) and _has_agents(dev=dev)
+    return _has_credentials() and _has_agents()
 
 
-def ensure_initialised(args: argparse.Namespace) -> None:
+def ensure_initialised() -> None:
     """Run interactive ``cmd_init`` if the install isn't ready.
 
     Exits the process with code 1 in non-interactive contexts so that
     scripts get a clear error instead of a silently broken server.
     """
-    dev: bool = bool(getattr(args, "dev", False))
-    if is_initialised(dev=dev):
+    if is_initialised():
         return
 
     print()
@@ -85,23 +83,24 @@ def ensure_initialised(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Lazy import so plain ``--help`` / ``status`` don't pay the cost.
+    import argparse
+
     from app.cli.commands.init import cmd_init
 
-    init_args = argparse.Namespace(dev=dev)
-    cmd_init(init_args)
+    cmd_init(argparse.Namespace())
 
 
 # ── Internals ────────────────────────────────────────────────────────────────
 
 
-def _has_credentials(*, dev: bool) -> bool:
+def _has_credentials() -> bool:
     """A credential exists if any provider env var is set OR an .env file
     that looks populated lives where settings will load it from.
     """
     if any(os.environ.get(k) for k in _PROVIDER_KEYS):
         return True
 
-    env_file = _env_file(dev=dev)
+    env_file = _env_file()
     if env_file.is_file():
         # Treat any non-comment, non-blank line as evidence the user has
         # configured something — we don't try to validate keys here.
@@ -112,18 +111,14 @@ def _has_credentials(*, dev: bool) -> bool:
     return False
 
 
-def _has_agents(*, dev: bool) -> bool:
+def _has_agents() -> bool:
     """At least one ``.md`` file must live in ``{OPENAGENTD_CONFIG_DIR}/agents/``."""
-    agents_dir = _config_dir(dev) / "agents"
+    agents_dir = _config_dir() / "agents"
     if not agents_dir.is_dir():
         return False
     return any(agents_dir.glob("*.md"))
 
 
-def _env_file(*, dev: bool) -> Path:
-    """Path to the ``.env`` we expect ``openagentd init`` to have written.
-
-    Mirrors the logic in ``cmd_init``: dev mode writes to the project
-    root; production writes inside the XDG config dir.
-    """
-    return Path(".env") if dev else _config_dir(dev) / ".env"
+def _env_file() -> Path:
+    """Path to the ``.env`` we expect ``openagentd init`` to have written."""
+    return _config_dir() / ".env"

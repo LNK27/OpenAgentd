@@ -3,7 +3,15 @@ import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
+import { findActiveMention, rankFileRefs, type FileRef } from './InputBar.mentions'
+import { MentionOverlay } from './InputBar.overlay'
 import type { AgentCapabilities } from '@/api/types'
+
+// Re-export the public type so callers can import ``FileRef`` from this module
+// alongside the component. (The helper ``findActiveMention`` is imported from
+// './InputBar.mentions' directly to keep this file free of non-component
+// runtime exports — react-refresh requirement.)
+export type { FileRef } from './InputBar.mentions'
 
 // ── Slash commands ──────────────────────────────────────────────────────────
 
@@ -18,6 +26,12 @@ interface InputBarProps {
   onStop?: () => void
   onSlashCommand?: (id: string) => void
   slashCommands?: SlashCommand[]
+  /**
+   * Workspace files/folders the user can reference with `@`. When the list is
+   * empty (or omitted) the picker stays dormant — the `@` character behaves as
+   * plain text.
+   */
+  fileRefs?: FileRef[]
   isStreaming?: boolean
   disabled?: boolean
   placeholder?: string
@@ -89,6 +103,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   onStop,
   onSlashCommand,
   slashCommands = [],
+  fileRefs = [],
   isStreaming = false,
   disabled,
   placeholder = 'Message OpenAgentd…',
@@ -107,9 +122,36 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const [value, setValue] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [slashMenuIndex, setSlashMenuIndex] = useState(0)
+  const [mentionMenuIndex, setMentionMenuIndex] = useState(0)
+  // The active @-mention window (positions in ``value``) — null when no
+  // mention is being edited at the caret. Recomputed on every keystroke
+  // and on caret-only moves (arrow keys, clicks) via ``syncMention``.
+  const [mentionRange, setMentionRange] = useState<
+    { start: number; end: number; query: string } | null
+  >(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
+
+  // Refresh the active mention window from the current caret position. Called
+  // whenever the caret might have moved without the value changing (arrow keys,
+  // click, focus from history nav). Cheap; just a left-scan from the caret.
+  const syncMention = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const caret = el.selectionStart ?? el.value.length
+    const next = findActiveMention(el.value, caret)
+    setMentionRange((prev) => {
+      if (!prev && !next) return prev
+      if (
+        prev && next &&
+        prev.start === next.start &&
+        prev.end === next.end &&
+        prev.query === next.query
+      ) return prev
+      return next
+    })
+  }, [])
 
   // Create blob URLs for files — memoized to avoid recreating on every render
   const blobUrls = useMemo(() => {
@@ -180,6 +222,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     focus: () => textareaRef.current?.focus(),
     setValue: (text: string) => {
       setValue(text)
+      // Programmatic value replacement invalidates any open mention picker —
+      // its ``start``/``end`` indices refer to the old text.
+      setMentionRange(null)
       // Trigger height recalculation after injecting text programmatically
       requestAnimationFrame(resize)
     },
@@ -215,6 +260,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     onSubmit(trimmed, files.length > 0 ? files : undefined)
     setValue('')
     setFiles([])
+    // Clear the mention picker too — it tracks positions inside the value
+    // we just wiped. Without this, a picker that was open at submit time
+    // would render above the now-empty textarea on the next paint.
+    setMentionRange(null)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -346,7 +395,95 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     onSlashCommand?.(cmd.id)
   }, [onSlashCommand])
 
+  // ── @-mention filtering ────────────────────────────────────────────────────
+
+  const MENTION_MAX_RESULTS = 20
+
+  const filteredMentions = useMemo(() => {
+    if (!mentionRange || fileRefs.length === 0) return [] as FileRef[]
+    return rankFileRefs(fileRefs, mentionRange.query, MENTION_MAX_RESULTS)
+  }, [mentionRange, fileRefs])
+
+  const mentionMenuOpen = mentionRange !== null && filteredMentions.length > 0
+  const clampedMentionIndex = filteredMentions.length > 0
+    ? mentionMenuIndex % filteredMentions.length
+    : 0
+
+  // Refs for each rendered option so the highlighted one can be scrolled
+  // into view when the user arrow-keys past the visible window. The array is
+  // truncated to the current option count inside the effect (not during
+  // render) so unmounted-but-still-recorded nulls don't accumulate.
+  const mentionOptionRefs = useRef<(HTMLButtonElement | null)[]>([])
+  useEffect(() => {
+    mentionOptionRefs.current.length = filteredMentions.length
+    if (!mentionMenuOpen) return
+    const el = mentionOptionRefs.current[clampedMentionIndex]
+    // ``block: 'nearest'`` only scrolls when the item is actually outside the
+    // viewport, so it's a no-op for items already visible — no jitter on the
+    // initial render or when the user arrows within the visible band.
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [clampedMentionIndex, mentionMenuOpen, filteredMentions])
+
+  /** Replace the active @-token with the selected reference plus a trailing space. */
+  const insertMention = useCallback((ref: FileRef) => {
+    if (!mentionRange) return
+    const el = textareaRef.current
+    const display = ref.type === 'directory' ? `${ref.path}/` : ref.path
+    const insertion = `@${display} `
+    const before = value.slice(0, mentionRange.start)
+    const after = value.slice(mentionRange.end)
+    const next = before + insertion + after
+    setValue(next)
+    setMentionRange(null)
+    setMentionMenuIndex(0)
+    // Move the caret to just after the inserted token + trailing space. The
+    // textarea state lags by one render so we defer with rAF.
+    if (el) {
+      const caret = before.length + insertion.length
+      requestAnimationFrame(() => {
+        el.focus()
+        el.setSelectionRange(caret, caret)
+        resize()
+      })
+    }
+  }, [mentionRange, value, resize])
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // IME composition guard: when a user is mid-composition (CJK, etc.) the
+    // browser fires ``keydown`` with ``isComposing`` true for keys that drive
+    // the IME (Enter commits the candidate, Arrow keys navigate it). We must
+    // not hijack those — let the IME consume them. ``keyCode === 229`` is the
+    // legacy fallback for browsers that don't surface ``isComposing`` on the
+    // React synthetic event.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
+    // Mention menu navigation takes priority over slash navigation: a
+    // composed message can contain both `/cmd` (only valid at start) and
+    // `@foo` (anywhere), and the mention is the active one whenever the
+    // caret is sitting inside an `@`-token.
+    if (mentionMenuOpen && filteredMentions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionMenuIndex((i) => (i + 1) % filteredMentions.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionMenuIndex((i) => (i - 1 + filteredMentions.length) % filteredMentions.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        insertMention(filteredMentions[clampedMentionIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMentionRange(null)
+        return
+      }
+    }
+
     // Slash menu navigation
     if (slashMenuOpen && filteredSlashCommands.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -380,6 +517,12 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setValue(e.target.value)
     setSlashMenuIndex(0)
+    setMentionMenuIndex(0)
+    // ``selectionStart`` is already at the post-change caret position by the
+    // time React fires onChange.
+    const caret = e.target.selectionStart ?? e.target.value.length
+    const next = findActiveMention(e.target.value, caret)
+    setMentionRange(next)
     resize()
   }
 
@@ -510,16 +653,38 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         minimized ? 'pointer-events-none opacity-0' : 'opacity-100'
       }`}
     >
+      {/* Position context for the chip overlay. ``relative`` + ``w-full``
+          keep the overlay's bounding box equal to the textarea's, so
+          chips line up pixel-for-pixel with the text glyphs above them.
+          Intentionally not nesting the textarea's props one level deeper —
+          keeps the diff against the prior version minimal. */}
+      <div className="relative w-full">
+      <MentionOverlay
+        value={value}
+        activeRange={mentionRange}
+        textareaRef={textareaRef}
+      />
       <textarea
         ref={setTextareaRef}
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        // Caret-only moves (arrow keys, Home/End) don't fire onChange but
+        // they can land the caret inside an existing `@token`. ``onSelect``
+        // is the React-supported event that fires on selection / caret
+        // moves and works in jsdom (used by our tests), so it's the
+        // right hook for keeping the picker in sync.
+        onSelect={syncMention}
+        onClick={syncMention}
         onPaste={handlePaste}
         onFocus={onFocus}
         onBlur={() => {
           const canMinimize = value.trim().length === 0 && files.length === 0
           onBlur?.(canMinimize)
+          // Close the picker on blur — clicks on its items use ``onMouseDown``
+          // with ``preventDefault`` (see below) so they fire before the
+          // textarea blurs and the menu still gets to commit its choice.
+          setMentionRange(null)
         }}
         disabled={disabled || minimized}
         placeholder={
@@ -538,6 +703,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         style={{ maxHeight: '144px' }}
         aria-label="Message input"
       />
+      </div>
     </div>
   )
 
@@ -560,6 +726,43 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
               >
                 <span className="font-mono text-xs text-(--color-accent)">/{cmd.id}</span>
                 <span className="text-(--color-text-2)">{cmd.description}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* @-mention picker — same visual treatment as the slash menu, but
+            scrollable since the workspace can contain hundreds of files. The
+            list is capped to MENTION_MAX_RESULTS so the popover stays compact;
+            the user narrows the list by typing. */}
+        {!minimized && mentionMenuOpen && (
+          <div
+            role="listbox"
+            aria-label="Reference workspace file"
+            className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md"
+          >
+            {filteredMentions.map((ref, idx) => (
+              <button
+                key={`${ref.type}:${ref.path}`}
+                ref={(node) => { mentionOptionRefs.current[idx] = node }}
+                role="option"
+                aria-selected={idx === clampedMentionIndex}
+                // ``onMouseDown`` + ``preventDefault`` runs before the
+                // textarea's ``onBlur`` clears the picker, so the click
+                // actually reaches our handler.
+                onMouseDown={(e) => { e.preventDefault(); insertMention(ref) }}
+                className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
+                  idx === clampedMentionIndex
+                    ? 'bg-(--bg-key) text-(--color-text)'
+                    : 'text-(--color-text-muted) hover:bg-(--bg-key)'
+                }`}
+              >
+                <span className="shrink-0 text-xs text-(--color-text-subtle)">
+                  {ref.type === 'directory' ? 'dir' : 'file'}
+                </span>
+                <span className="truncate font-mono text-xs text-(--color-text)">
+                  {ref.path}{ref.type === 'directory' ? '/' : ''}
+                </span>
               </button>
             ))}
           </div>
