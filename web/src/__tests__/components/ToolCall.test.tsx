@@ -229,10 +229,12 @@ describe("ToolCall — forget display", () => {
 })
 
 describe("ToolCall — recall display", () => {
-  it("shows tool name when no args", () => {
+  it("shows friendly pending header when no args", () => {
+    // Pending header keeps the start phase visible across the
+    // tool_call → tool_start gap (which is typically <50ms).
     render(<ToolCall name="recall" done={false} />)
-    expect(screen.getByText("recall")).toBeTruthy()
-    expect(screen.queryByText("Checking memory…")).toBeNull()
+    expect(screen.getByText("Checking memory…")).toBeTruthy()
+    expect(screen.queryByText("recall")).toBeNull()
   })
 
   it("shows conversational header with args", () => {
