@@ -9,8 +9,12 @@ subtask: false
 1. Version target:
 
 - Read `app/version.txt`.
-- Propose patch bump.
-- Ask if minor/major preferred.
+- Determine the bump from the actual diff content, not the branch name:
+  - **Feature or new capability**: bump minor, e.g. `0.1.0` -> `0.2.0`.
+  - **Bug fix, maintenance, docs, tests, or internal-only change**: bump patch, e.g. `0.1.0` -> `0.1.1`.
+  - **Patch-only releases stay patch-only**: continue incrementing the patch number, e.g. `0.1.5` -> `0.1.6`; do not bump minor just because there have been several patches.
+  - **Breaking change**: ask whether a major bump is intended.
+- Propose the calculated version and confirm with the user before applying it.
 - Branch prefix (`feat/`, `fix/`, `chore/`) is not signal — judge from diff content.
 
 2. Worktree check:

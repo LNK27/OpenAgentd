@@ -1,4 +1,4 @@
-"""Smoke-test team roster isolation and stop dismissal behavior.
+"""Smoke-test team roster isolation and stop (interrupt) behavior.
 
 Flow:
   1. Start a fresh team session with a prompt that should not spawn members.
@@ -6,9 +6,16 @@ Flow:
   2. If a blueprint exists, start another fresh session that asks the lead to
      spawn one member and give it a long task.
   3. As soon as a non-lead member reports ``agent_status=working``, POST an
-     interrupt-only request and verify that member reports ``offline``.
-  4. Verify any claimed in-progress todo for that member was released back to
-     ``pending`` and unassigned.
+     interrupt-only request and verify that the member returns to ``idle``
+     (NOT ``offline``). Since commit ``6ad0205 "fix: keep stopped members
+     live"`` interrupt no longer dismisses live members — only explicit
+     ``team_manage(action="dismiss")`` removes a member from the live
+     roster and emits ``offline``. The member must remain in
+     ``/team/agents`` so it is available for follow-up work.
+  4. Verify the lead inbox received a ``Stopped before completing assigned
+     work`` notice attributed to the interrupted member.
+  5. Verify any claimed in-progress todo for that member was released back
+     to ``pending`` and unassigned.
 
 Usage:
   uv run python -m manual.team_roster_lifecycle
@@ -145,7 +152,7 @@ def verify_fresh_session_roster(client: httpx.Client, base: str, wait: int) -> b
     return True
 
 
-def verify_stop_dismisses_member(client: httpx.Client, base: str, wait: int) -> bool:
+def verify_stop_keeps_member_live(client: httpx.Client, base: str, wait: int) -> bool:
     snapshot = fetch_agents(client, base)
     lead = lead_name(snapshot)
     blueprints = blueprint_names(snapshot)
@@ -154,7 +161,9 @@ def verify_stop_dismisses_member(client: httpx.Client, base: str, wait: int) -> 
         return True
 
     blueprint = blueprints[0]
-    print(f"\n[2] stop should move running member to offline (blueprint={blueprint})")
+    print(
+        f"\n[2] stop should interrupt running member to idle (blueprint={blueprint})"
+    )
     sid = post_message(
         client,
         base,
@@ -168,7 +177,7 @@ def verify_stop_dismisses_member(client: httpx.Client, base: str, wait: int) -> 
 
     interrupted = False
     working_agent: str | None = None
-    offline_seen = False
+    idle_after_interrupt = False
     start = time.monotonic()
 
     for event in iter_sse(client, base, sid, wait=wait):
@@ -182,9 +191,20 @@ def verify_stop_dismisses_member(client: httpx.Client, base: str, wait: int) -> 
             post_interrupt(client, base, sid)
             interrupted = True
             print(f"  interrupt posted for {agent}")
-        if working_agent and agent == working_agent and status == "offline":
-            offline_seen = True
-            break
+            continue
+        # After interrupt, the working member must return to idle (NOT
+        # offline). Only explicit team_manage(action="dismiss") emits
+        # offline — see commit 6ad0205 "fix: keep stopped members live".
+        if interrupted and working_agent and agent == working_agent:
+            if status == "idle":
+                idle_after_interrupt = True
+                break
+            if status == "offline":
+                print(
+                    f"  FAIL: {agent} emitted offline after stop; "
+                    "interrupt should NOT dismiss live members."
+                )
+                return False
         if time.monotonic() - start > wait:
             break
 
@@ -192,11 +212,14 @@ def verify_stop_dismisses_member(client: httpx.Client, base: str, wait: int) -> 
     if not interrupted:
         print("  FAIL: no running member was observed before timeout")
         return False
-    if not offline_seen:
-        print(f"  FAIL: {working_agent} did not emit offline after stop")
+    if not idle_after_interrupt:
+        print(f"  FAIL: {working_agent} did not return to idle after stop")
         return False
-    if working_agent in members:
-        print(f"  FAIL: {working_agent} is still live in /team/agents: {members}")
+    if working_agent not in members:
+        print(
+            f"  FAIL: {working_agent} was dismissed from /team/agents after stop; "
+            f"interrupt must keep the member live. live={members}"
+        )
         return False
     history = fetch_history(client, base, sid)
     lead_messages = history.get("lead", {}).get("messages", [])
@@ -230,7 +253,10 @@ def verify_stop_dismisses_member(client: httpx.Client, base: str, wait: int) -> 
             print(f"  FAIL: todos still tied to stopped member: {unreleased}")
             return False
         print("  PASS: stopped member todos released to pending/unassigned")
-    print(f"  PASS: {working_agent} moved offline and left live roster")
+    print(
+        f"  PASS: {working_agent} returned to idle, remained live, "
+        "stop notice delivered"
+    )
     return True
 
 
@@ -248,7 +274,7 @@ def main() -> None:
 
         ok = True
         ok = verify_fresh_session_roster(client, args.base, args.wait) and ok
-        ok = verify_stop_dismisses_member(client, args.base, args.wait) and ok
+        ok = verify_stop_keeps_member_live(client, args.base, args.wait) and ok
         if not ok:
             raise SystemExit(1)
 

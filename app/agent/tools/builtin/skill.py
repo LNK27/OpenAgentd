@@ -86,15 +86,52 @@ def discover_skills(
     """Discover all available skills and their metadata.
 
     Returns a dict mapping skill name → metadata dict.
-    Uses cached version for default skills dir (avoids filesystem walk per request).
+
+    Uses an mtime-keyed cache so the next call after a skill is added,
+    removed, or its ``SKILL.md`` edited returns the fresh listing without
+    requiring an explicit invalidation. The cache key is
+    ``(directory, max(dir_mtime_ns, max(SKILL.md mtime_ns)))`` — the
+    directory mtime catches add/remove, the file mtimes catch in-place
+    edits (which don't bump the parent dir mtime on most filesystems).
     """
     directory = skills_dir or _SKILLS_DIR
-    return _discover_skills_cached(str(directory))
+    if not directory.is_dir():
+        return {}
+    return _discover_skills_cached(str(directory), _skills_dir_signature(directory))
 
 
-@lru_cache(maxsize=4)
-def _discover_skills_cached(directory_str: str) -> dict[str, dict]:
-    """Me cache by dir path — files no change at runtime."""
+def _skills_dir_signature(directory: Path) -> int:
+    """Cheap fingerprint that changes whenever any SKILL.md in the tree changes.
+
+    ~1ms for a typical user's <20 skills.  Returns the max of the directory's
+    own mtime_ns and every ``{name}/SKILL.md`` mtime_ns we can stat — so
+    in-place edits, additions, and removals all change the signature.
+    """
+    try:
+        max_mtime = directory.stat().st_mtime_ns
+    except OSError:
+        return 0
+    for subdir in directory.iterdir():
+        if not subdir.is_dir():
+            continue
+        skill_file = subdir / "SKILL.md"
+        try:
+            mtime = skill_file.stat().st_mtime_ns
+        except OSError:
+            continue
+        if mtime > max_mtime:
+            max_mtime = mtime
+    return max_mtime
+
+
+@lru_cache(maxsize=16)
+def _discover_skills_cached(directory_str: str, signature: int) -> dict[str, dict]:
+    """Cache keyed by ``(dir, mtime signature)``.
+
+    The signature changes on any add/remove/edit inside ``directory``, so
+    subsequent calls automatically pick up filesystem mutations.  Stale
+    cache entries from prior signatures are evicted by the LRU bound.
+    """
     return _discover_skills_uncached(Path(directory_str))
 
 

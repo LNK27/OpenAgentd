@@ -10,6 +10,7 @@ from loguru import logger
 from pydantic import Field
 
 from app.agent.sandbox import get_sandbox
+from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
 
 
@@ -36,18 +37,21 @@ async def _remove_path(
     if resolved.is_file() or resolved.is_symlink():
         resolved.unlink()
         logger.info("file_removed path={}", resolved)
+        notify_fs_change(resolved)
         return f"Removed file: {rel}"
 
     # Me path is directory
     if recursive:
         await asyncio.to_thread(shutil.rmtree, resolved)
         logger.info("dir_removed path={} recursive=true", resolved)
+        notify_fs_change(resolved)
         return f"Removed directory: {rel}"
 
     # Me try remove empty dir
     try:
         resolved.rmdir()
         logger.info("dir_removed path={} recursive=false", resolved)
+        notify_fs_change(resolved)
         return f"Removed directory: {rel}"
     except OSError as exc:
         raise OSError(
