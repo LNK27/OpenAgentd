@@ -64,7 +64,12 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
 
   const { header, headerTitle, formattedArgs, language, suppressResult } =
     getToolDisplay(name, args)
-  const visibleHeader = isPending ? null : header
+  // Pending-state header comes from getToolDisplay's no-args branch
+  // (e.g. ``recall`` → "Checking memory…", ``team_message`` →
+  // "Preparing message…"). Tools without a custom pending header return
+  // ``header: null`` from that branch and fall back to the raw tool name
+  // below, preserving the previous behaviour for every other tool.
+  const visibleHeader = header
   const shownResult = suppressResult ? undefined : result
 
   const handleCopyArgs = async (e: React.MouseEvent) => {

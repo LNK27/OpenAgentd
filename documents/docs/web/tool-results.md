@@ -2,7 +2,7 @@
 title: Tool Call & Result Rendering
 description: Aside-style tool cards with status dots, per-tool headers, expandable args/result panels, custom renderers.
 status: stable
-updated: 2026-05-11
+updated: 2026-05-14
 ---
 
 # Tool Call & Result Rendering
@@ -53,7 +53,7 @@ The collapsed header is a single flex row:
   | `pending` | `args === undefined` | `bg-(--color-text-muted)` |
   | `running` | args set, `done === false` | `bg-(--color-accent)` + pulse + glow shadow |
   | `done` | `done === true` | `bg-(--color-success)` |
-- **Header content** — either a per-tool `ReactNode` (built by `getToolDisplay()`) rendered inside a `truncate` span, or the raw tool name rendered as a `<code>` element when no custom header exists.
+- **Header content** — either a per-tool `ReactNode` (built by `getToolDisplay()`) rendered inside a `truncate` span, or the raw tool name rendered as a `<code>` element when no custom header exists. `getToolDisplay()` is called for every lifecycle phase — tools that want a friendly **pending-state** header (visible during the `tool_call → tool_start` gap, typically <50 ms) return one from the `if (!args)` branch; today `recall` (`Checking memory…`) and `team_message` (`Preparing message…`) opt in, every other tool falls back to the raw name.
 - **`pending` text** (optional) — appears at the right when the call has no args yet.
 
 The whole row is a `<button>` so the entire strip is the click target — no separate "click here to expand" affordance.
@@ -117,7 +117,7 @@ Verbs are **deterministic** (no randomised phrase pools). Only argument values s
 | `recall` | `Checking memory…` | `category: key` filter, or hidden if empty | `arguments` |
 | `skill` | `Loading skill: `*[skill_name]* (or `Loading skill…`) | hidden | — |
 | `bg` | Action-based — e.g. `Listing background processes…`, `Checking process `*[pid]*`…`, `Reading output of process `*[pid]*`…`, `Stopping process `*[pid]*`…`, `Managing background process…` | hidden | — |
-| `team_message` | Messaging *[recipients]* (joined by `, `, truncated at 60 chars) | message `content` only (no JSON wrapper) | `arguments` |
+| `team_message` | `Preparing message…` (pending, no args yet) → Messaging *[recipients]* (joined by `, `, truncated at 60 chars) | message `content` only (no JSON wrapper) | `arguments` |
 | `team_manage` | `Spawning` *[members]* or `Dismissing` *[members]* | spawn shows one member per line; dismiss hides args because the header is sufficient | `arguments` when shown |
 | `team_configure` | Capability action summary, e.g. `Granting` *[tool: write]* `to` *[executor#1]* | readable `member`, `action`, and `capability` lines (no raw JSON wrapper) | `arguments` |
 | `generate_image` | Painting *[filename]* (normalised: any trailing extension stripped, `.png` appended to match the backend `_sanitise_filename`), or `Painting an image…` when filename is absent | `prompt` string only (`images: …` line prepended in edit mode) | `arguments` |
@@ -232,4 +232,5 @@ The args copy button copies `formattedArgs` — the extracted, human-readable va
    - `null` → hide the args section entirely (use this when the header already carries all the useful info and no args panel would add value).
    - A short human-readable string (e.g. just the query, just the filename) → shown as-is.
    - `language: 'bash'` → also render the string as a bash code block with a `$ ` prefix.
-5. Add tests in `web/src/__tests__/components/ToolCall.test.tsx`. Use the `getHeader(fullText)` + `expectItalicArg(header, arg)` helpers so assertions survive the `<span>verb <em>arg</em></span>` split.
+5. **Optional — opt into a pending-state header.** Tools where the `tool_call → tool_start` gap (typically <50 ms) would otherwise flash as the raw tool name can add a branch inside the `if (!args)` early return at the top of `getToolDisplay()`, mirroring `recall` and `team_message`. Without this branch the tool falls back to the raw name — fine for tools whose name already reads well (`shell`, `read`).
+6. Add tests in `web/src/__tests__/components/ToolCall.test.tsx`. Use the `getHeader(fullText)` + `expectItalicArg(header, arg)` helpers so assertions survive the `<span>verb <em>arg</em></span>` split.

@@ -107,12 +107,17 @@ describe("ToolCall — team_message header", () => {
     expect(screen.queryByText("team_message")).toBeNull()
   })
 
-  it("shows 'team_message' as tool name when args is undefined (pending state)", () => {
+  it("shows friendly 'Preparing message…' header when args is undefined (pending state)", () => {
+    // Without a custom pending header the tool_call → tool_start gap
+    // flashes <50ms and the start phase looks invisible. The friendly
+    // header makes the lifecycle visible end-to-end.
     render(<ToolCall name="team_message" done={false} />)
-    expect(screen.getByText("team_message")).toBeTruthy()
+    expect(screen.getByText("Preparing message…")).toBeTruthy()
+    // Raw tool name must NOT leak through in the pending state.
+    expect(screen.queryByText("team_message")).toBeNull()
   })
 
-  it("shows no pending badge when args is undefined (start state is name-only)", () => {
+  it("shows no pending badge when args is undefined (start state is dot-only)", () => {
     render(<ToolCall name="team_message" done={false} />)
     // Lifecycle refactor removed the legacy "pending" text badge; the
     // start state is communicated by the muted status dot only.

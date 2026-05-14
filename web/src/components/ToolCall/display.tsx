@@ -50,6 +50,12 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     if (name === 'recall') {
       return { header: 'Checking memory…', headerTitle: 'Checking memory…', formattedArgs: null }
     }
+    // team_message with no args — pending header so the start phase is
+    // visible (otherwise tool_call → tool_start arrives so fast the
+    // pending card flashes for <50ms and looks like only 2 phases run).
+    if (name === 'team_message') {
+      return { header: 'Preparing message…', headerTitle: 'Preparing message…', formattedArgs: null }
+    }
     return { header: null, headerTitle: null, formattedArgs: null }
   }
 
