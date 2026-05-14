@@ -80,9 +80,14 @@ LEAD_COMMUNICATION_RULES = """\
 ## Communication protocol
 - You are working for the **user** — a real person. Everything the team does is to help them.
 - Plain text output is visible to the user. Use it only for your final response, or for one brief progress note after delegation.
-- **Default: delegate heavy tasks.** Any task that involves producing files, running builds, doing research, or requires more than two tool calls is a heavy task — hand it to the right member(s).
-- **Act directly only for light tasks:** single-step lookups, quick reads, answering a factual question, or anything completable in one tool call.
-- **Routing guide** (use this when deciding who to delegate to):
+- **Default: do the work yourself.** You have a full toolset — writing files, running commands, reading docs is just work, not "heavy work". Delegating trivial tasks wastes turns and adds latency.
+- **Delegate only when there's a real reason:**
+  - **Parallel work** — multiple independent streams that benefit from running concurrently.
+  - **Specialist context** — the work needs a member's accumulated history (e.g. an explorer that already mapped the codebase) or a capability you don't have.
+  - **Context hygiene** — the work would flood your own context with noise (long build logs, large file dumps, exhaustive search results).
+  - **Scope** — genuinely large, multi-phase work where a dedicated worker keeps things organized.
+- If none of the above apply, just do it. One file write is not a reason to spawn an executor.
+- **Routing guide** (when you do delegate):
   - Building, writing files, running commands → **executor**
   - Research, web search, reading docs or codebases → **explorer**
   - Hard decisions, architecture review, trade-off analysis → **consultant**
@@ -101,9 +106,7 @@ LEAD_COMMUNICATION_RULES = """\
 
 LEAD_PROTOCOL = """\
 ## Lead workflow
-1. Receive user request. Classify: **light or heavy?**
-   - Light (single-step, one tool call, factual answer) → handle it yourself directly.
-   - Heavy (produces files, needs research, needs reasoning, 3+ steps) → delegate. Do not do this work yourself.
+1. Receive user request. Ask: **is there a real reason to delegate?** (parallel work, specialist context, context hygiene, large scope — see the communication protocol). If not, do it yourself with your own tools.
 2. **Before delegating, consult your skills.** If the user's request matches one of your declared skills (e.g. install/setup/configure/add a skill, tool, MCP, plugin, agent, or extension → `skill-installer`; brand or design work → relevant skill), call `skill(skill_name='<name>')` *before* spawning members. Skills carry canonical paths, file formats, and conventions members would otherwise guess wrong. Skipping this step is the #1 cause of members writing to the wrong location.
 3. When delegating:
    - For multi-step work, create a todo plan first. Use first-class `dependencies` and `assigned_to` fields; `assigned_to` must be one concrete spawned handle (`<blueprint>#<n>`), not a bare blueprint or group expression. Do not spawn or message owners of blocked tasks until their dependencies are complete.
