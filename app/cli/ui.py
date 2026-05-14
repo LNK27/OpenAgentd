@@ -53,38 +53,28 @@ _WORDMARK = (
 )
 
 
-def _print_banner(*, host: str, port: int, web_port: int | None, dev: bool) -> None:
+def _print_banner(*, host: str, port: int) -> None:
     """Print the startup banner.
 
     Two layouts depending on TTY:
 
-    - **TTY**: ASCII wordmark + version/mode + URL. The URL is the only
+    - **TTY**: ASCII wordmark + version + URL. The URL is the only
       thing the user clicks, so it gets the only line of weight.
     - **non-TTY** (piped, CI, log files): plain text — drop the wordmark
       and the colours so log scrapers stay clean.
-
-    In dev mode where ``web_port`` differs from ``port``, the URL line
-    points at the Vite dev server (the API URL is implied / well-known).
     """
-    mode = "dev" if dev else "production"
-    url_port = web_port if (web_port and web_port != port) else port
-    url = f"http://{host}:{url_port}"
-    suffix = " (Vite dev)" if (web_port and web_port != port) else ""
-
-    # In production the web UI and API share one port; label it "Open:" so
-    # users know to open it in a browser.  Dev mode points at Vite (:5173).
-    label = "Open" if not dev else "Web "
+    url = f"http://{host}:{port}"
 
     print()
     if _IS_TTY:
         for line in _WORDMARK.splitlines():
             print(f"  {_cyan(line)}")
         print()
-        print(f"  {_dim(f'v{VERSION}')}  {_dim(mode)}")
-        print(f"  {_dim(label + ':')}  {_bold(url)}{_dim(suffix)}")
+        print(f"  {_dim(f'v{VERSION}')}")
+        print(f"  {_dim('Open:')}  {_bold(url)}")
     else:
-        print(f"  OpenAgentd v{VERSION}  {mode}")
-        print(f"  {label}: {url}{suffix}")
+        print(f"  OpenAgentd v{VERSION}")
+        print(f"  Open: {url}")
     print()
 
 

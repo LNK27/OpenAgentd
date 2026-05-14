@@ -26,8 +26,8 @@ Bun is only needed for development. Production installs (`pip install` / Docker)
 
 ## Server starts but the web UI shows a blank page
 
-- If running from source without `make build-web`, use `openagentd --dev` which starts the Vite dev server separately.
-- If using `openagentd` (production mode), run `make build-web` first to bundle the frontend.
+- If running from source without `make build-web`, use `make dev` instead — it starts uvicorn (:8000) and the Vite dev server (:5173) together with hot-reload.
+- If using `openagentd`, run `make build-web` first to bundle the frontend into the package.
 
 ## `GOOGLE_API_KEY not set` or similar provider errors
 

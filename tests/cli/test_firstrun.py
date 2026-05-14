@@ -14,7 +14,6 @@ patch target is ``app.cli.firstrun._config_dir``.
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 from unittest.mock import patch
 
@@ -27,10 +26,6 @@ from app.cli import firstrun
 def tmp_config(tmp_path: Path) -> Path:
     """Empty config dir that ``firstrun`` will probe for ``agents/``."""
     return tmp_path
-
-
-def _ns(**kw: object) -> argparse.Namespace:
-    return argparse.Namespace(**{"dev": False, **kw})
 
 
 # ── is_initialised ───────────────────────────────────────────────────────────
@@ -49,7 +44,7 @@ def test_is_initialised_true_when_env_var_and_agents_present(
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
     with patch("app.cli.firstrun._config_dir", return_value=tmp_config):
-        assert firstrun.is_initialised(dev=False) is True
+        assert firstrun.is_initialised() is True
 
 
 def test_is_initialised_false_when_no_credentials_and_no_env_file(
@@ -63,7 +58,7 @@ def test_is_initialised_false_when_no_credentials_and_no_env_file(
         monkeypatch.delenv(key, raising=False)
 
     with patch("app.cli.firstrun._config_dir", return_value=tmp_config):
-        assert firstrun.is_initialised(dev=False) is False
+        assert firstrun.is_initialised() is False
 
 
 def test_is_initialised_false_when_credentials_but_no_agents(
@@ -77,7 +72,7 @@ def test_is_initialised_false_when_credentials_but_no_agents(
     monkeypatch.setenv("GOOGLE_API_KEY", "abc")
 
     with patch("app.cli.firstrun._config_dir", return_value=tmp_config):
-        assert firstrun.is_initialised(dev=False) is False
+        assert firstrun.is_initialised() is False
 
 
 def test_env_file_with_only_comments_does_not_count_as_credential(
@@ -92,7 +87,7 @@ def test_env_file_with_only_comments_does_not_count_as_credential(
         monkeypatch.delenv(key, raising=False)
 
     with patch("app.cli.firstrun._config_dir", return_value=tmp_config):
-        assert firstrun.is_initialised(dev=False) is False
+        assert firstrun.is_initialised() is False
 
 
 def test_env_file_with_real_value_counts_as_credential(
@@ -106,7 +101,7 @@ def test_env_file_with_real_value_counts_as_credential(
         monkeypatch.delenv(key, raising=False)
 
     with patch("app.cli.firstrun._config_dir", return_value=tmp_config):
-        assert firstrun.is_initialised(dev=False) is True
+        assert firstrun.is_initialised() is True
 
 
 # ── ensure_initialised ───────────────────────────────────────────────────────
@@ -122,7 +117,7 @@ def test_ensure_initialised_no_op_when_ready(
     with patch("app.cli.firstrun._config_dir", return_value=tmp_config):
         # Should NOT call cmd_init and should NOT exit.
         with patch("app.cli.commands.init.cmd_init") as mock_init:
-            firstrun.ensure_initialised(_ns(dev=False))
+            firstrun.ensure_initialised()
             mock_init.assert_not_called()
 
 
@@ -140,7 +135,7 @@ def test_ensure_initialised_exits_when_not_a_tty(
         patch("app.cli.firstrun.sys.stdin.isatty", return_value=False),
         pytest.raises(SystemExit) as exc,
     ):
-        firstrun.ensure_initialised(_ns(dev=False))
+        firstrun.ensure_initialised()
 
     assert exc.value.code == 1
     out = capsys.readouterr().out
@@ -159,8 +154,6 @@ def test_ensure_initialised_runs_init_when_tty(
         patch("app.cli.firstrun.sys.stdin.isatty", return_value=True),
         patch("app.cli.commands.init.cmd_init") as mock_init,
     ):
-        firstrun.ensure_initialised(_ns(dev=True))
+        firstrun.ensure_initialised()
 
     mock_init.assert_called_once()
-    init_ns = mock_init.call_args.args[0]
-    assert init_ns.dev is True

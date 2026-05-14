@@ -1,9 +1,4 @@
-"""PID file helpers: write/read/find running openagentd processes.
-
-Production and development modes use distinct PID files (``_pid_file(dev)``),
-so both can coexist on the same machine.  ``_find_pids`` probes production
-first and falls back to dev — matching the order a user typically runs.
-"""
+"""PID file helpers: write/read/find running openagentd processes."""
 
 from __future__ import annotations
 
@@ -12,14 +7,14 @@ import os
 from app.cli.paths import _pid_file
 
 
-def _write_pids(pids: list[int], dev: bool) -> None:
-    pid_file = _pid_file(dev)
+def _write_pids(pids: list[int]) -> None:
+    pid_file = _pid_file()
     pid_file.parent.mkdir(parents=True, exist_ok=True)
     pid_file.write_text("\n".join(str(p) for p in pids))
 
 
-def _read_pids(dev: bool) -> list[int]:
-    pid_file = _pid_file(dev)
+def _read_pids() -> list[int]:
+    pid_file = _pid_file()
     if not pid_file.exists():
         return []
     try:
@@ -36,14 +31,13 @@ def _pid_alive(pid: int) -> bool:
         return False
 
 
-def _find_pids() -> tuple[list[int], bool]:
-    """Find running PIDs checking prod location first, then dev."""
-    for dev in (False, True):
-        pids = _read_pids(dev)
-        if pids and any(_pid_alive(p) for p in pids):
-            return pids, dev
-    return [], False
+def _find_pids() -> list[int]:
+    """Find running PIDs, filtered to those still alive."""
+    pids = _read_pids()
+    if pids and any(_pid_alive(p) for p in pids):
+        return pids
+    return []
 
 
-def _clear_pids(dev: bool) -> None:
-    _pid_file(dev).unlink(missing_ok=True)
+def _clear_pids() -> None:
+    _pid_file().unlink(missing_ok=True)

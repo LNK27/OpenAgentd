@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: run dev test coverage migrate clean help up down build-web build dist
+.PHONY: all up down run dev test coverage migrate revision build-web build dist clean help
 
 # Default target
 all: test
@@ -11,11 +11,15 @@ up: ## Start Docker services
 down: ## Stop Docker services
 	docker compose down
 
-run: ## Start the API server (dev workflow — uvicorn default :8000)
+run: ## Start the API server only (no reload, no frontend; :8000)
 	uv run uvicorn app.server:app
 
-dev: ## Start the API server with auto-reload (:8000)
-	uv run uvicorn app.server:app --reload --reload-dir app
+dev: ## Start backend (:8000 + reload) and frontend (Vite :5173) together
+	@command -v bun >/dev/null 2>&1 || { echo "error: 'bun' not found — install from https://bun.sh"; exit 1; }
+	@trap 'kill 0' INT TERM EXIT; \
+	(uv run uvicorn app.server:app --reload --reload-dir app 2>&1 | sed 's/^/[api] /') & \
+	(cd web && bun dev 2>&1 | sed 's/^/[web] /') & \
+	wait
 
 test: ## Run tests
 	uv run pytest -q

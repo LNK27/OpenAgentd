@@ -2,8 +2,7 @@
 
 Usage
 -----
-  openagentd               Start server + web UI in the background (production)
-  openagentd --dev         Start server + web UI in the foreground with hot-reload
+  openagentd               Start server + web UI in the background
   openagentd init          First-time setup: write .env and seed config files
   openagentd migrate       Import agent config from another local agent tool
   openagentd auth          Authenticate with an OAuth-based provider (e.g. copilot)

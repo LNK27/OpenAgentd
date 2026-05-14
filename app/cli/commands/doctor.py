@@ -71,9 +71,7 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
         _fail(f"Python {ver_str}  (need >= 3.14)")
 
     # ── 2. LLM provider API keys ────────────────────────────────────────────
-    app_env = os.environ.get("APP_ENV", "production")
-    dev_mode = app_env != "production"
-    config_dir = _config_dir(dev_mode)
+    config_dir = _config_dir()
 
     configured_provider = _read_lead_provider(config_dir / "agents")
     found_keys: list[str] = [k for k in _LLM_API_KEY_VARS if os.environ.get(k)]
@@ -112,7 +110,7 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
                 )
 
     # ── 4. Database file ────────────────────────────────────────────────────
-    data_dir = _data_dir(dev_mode)  # dev_mode resolved in check 2
+    data_dir = _data_dir()
     db_path = data_dir / "openagentd.db"
     display_db = str(db_path).replace(str(Path.home()), "~")
     if db_path.exists():

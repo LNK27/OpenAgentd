@@ -18,8 +18,7 @@ openagentd is an on-machine AI assistant: FastAPI backend, React web UI, multi-a
 ```bash
 uv sync                              # install / sync dependencies
 
-openagentd                               # start server + web UI in background (production)
-openagentd --dev                         # start in foreground with hot-reload (development)
+openagentd                               # start server + web UI in the background
 openagentd stop                          # stop background processes
 openagentd status                        # check if running
 openagentd logs                          # tail the server log (alias: openagentd logs -n 100)

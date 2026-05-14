@@ -749,9 +749,7 @@ See [`documents/architecture.md`](architecture.md) for the Checkpointer protocol
 ```bash
 uv sync                  # install dependencies
 
-openagentd                   # start server + web UI (production, background)
-openagentd --dev             # start with hot-reload (foreground); watches app/ only
-                         #   config edits (agents/, skills/, mcp.json) need a manual restart
+openagentd                   # start server + web UI in the background
 openagentd stop              # stop background processes
 openagentd status            # check if running
 openagentd logs              # tail the server log
@@ -759,10 +757,12 @@ openagentd doctor            # check system health
 openagentd update            # update to the latest version
 ```
 
-Database migrations run automatically on startup in production mode.
+Database migrations run automatically on startup.
+
+For frontend + backend development with hot-reload, use `make dev` from a source checkout — it starts uvicorn (`:8000` with `--reload`) and the Vite dev server (`:5173`) together.
 
 Updates can also be checked from **Settings → Updates** in the installed web app. Installing from the UI runs the update in the background and restarts OpenAgentd when available.
 
 The API is available at `http://localhost:4082/api`.
 Interactive docs: `http://localhost:4082/docs`.
-Web UI: `http://localhost:4082` (production) or `http://localhost:5173` (development with `--dev`).
+Web UI: `http://localhost:4082`.

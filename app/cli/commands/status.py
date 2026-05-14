@@ -10,10 +10,10 @@ from app.cli.ui import _dim, _green, _yellow
 
 
 def cmd_status(_args: argparse.Namespace) -> None:
-    pids, dev = _find_pids()
+    pids = _find_pids()
     alive = [p for p in pids if _pid_alive(p)]
     if alive:
         print(f"  {_green('running')}  pids: {', '.join(str(p) for p in alive)}")
-        print(f"  {_dim('Logs:')} {_server_log(dev)}")
+        print(f"  {_dim('Logs:')} {_server_log()}")
     else:
         print(f"  {_yellow('stopped')}")

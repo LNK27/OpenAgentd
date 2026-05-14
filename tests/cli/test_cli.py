@@ -46,44 +46,29 @@ from app.cli import (
 
 
 class TestXdgDirs:
-    def test_state_env_var_overrides_all(self, tmp_path, monkeypatch):
+    def test_state_env_var_overrides(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
-        assert _state_dir(dev=False) == tmp_path
-        assert _state_dir(dev=True) == tmp_path
+        assert _state_dir() == tmp_path
 
-    def test_data_env_var_overrides_all(self, tmp_path, monkeypatch):
+    def test_data_env_var_overrides(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_DATA_DIR", str(tmp_path))
-        assert _data_dir(dev=False) == tmp_path
-        assert _data_dir(dev=True) == tmp_path
+        assert _data_dir() == tmp_path
 
-    def test_config_env_var_overrides_all(self, tmp_path, monkeypatch):
+    def test_config_env_var_overrides(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_CONFIG_DIR", str(tmp_path))
-        assert _config_dir(dev=False) == tmp_path
-        assert _config_dir(dev=True) == tmp_path
+        assert _config_dir() == tmp_path
 
-    def test_dev_mode_state_is_project_local(self, monkeypatch):
+    def test_state_default_is_xdg_state(self, monkeypatch):
         monkeypatch.delenv("OPENAGENTD_STATE_DIR", raising=False)
-        assert _state_dir(dev=True) == Path(".openagentd") / "state"
+        assert _state_dir() == Path.home() / ".local" / "state" / "openagentd"
 
-    def test_dev_mode_data_is_project_local(self, monkeypatch):
+    def test_data_default_is_xdg_data(self, monkeypatch):
         monkeypatch.delenv("OPENAGENTD_DATA_DIR", raising=False)
-        assert _data_dir(dev=True) == Path(".openagentd") / "data"
+        assert _data_dir() == Path.home() / ".local" / "share" / "openagentd"
 
-    def test_dev_mode_config_is_project_local(self, monkeypatch):
+    def test_config_default_is_xdg_config(self, monkeypatch):
         monkeypatch.delenv("OPENAGENTD_CONFIG_DIR", raising=False)
-        assert _config_dir(dev=True) == Path(".openagentd") / "config"
-
-    def test_prod_mode_state_is_xdg_state(self, monkeypatch):
-        monkeypatch.delenv("OPENAGENTD_STATE_DIR", raising=False)
-        assert _state_dir(dev=False) == Path.home() / ".local" / "state" / "openagentd"
-
-    def test_prod_mode_data_is_xdg_data(self, monkeypatch):
-        monkeypatch.delenv("OPENAGENTD_DATA_DIR", raising=False)
-        assert _data_dir(dev=False) == Path.home() / ".local" / "share" / "openagentd"
-
-    def test_prod_mode_config_is_xdg_config(self, monkeypatch):
-        monkeypatch.delenv("OPENAGENTD_CONFIG_DIR", raising=False)
-        assert _config_dir(dev=False) == Path.home() / ".config" / "openagentd"
+        assert _config_dir() == Path.home() / ".config" / "openagentd"
 
 
 # ---------------------------------------------------------------------------
@@ -94,31 +79,31 @@ class TestXdgDirs:
 class TestPidFileIO:
     def test_write_and_read_pids(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
-        _write_pids([1234, 5678], dev=False)
-        assert _read_pids(dev=False) == [1234, 5678]
+        _write_pids([1234, 5678])
+        assert _read_pids() == [1234, 5678]
 
     def test_read_pids_missing_file_returns_empty(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
-        assert _read_pids(dev=False) == []
+        assert _read_pids() == []
 
     def test_read_pids_corrupt_file_returns_empty(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
-        _write_pids([999], dev=False)
+        _write_pids([999])
         # Corrupt the file with non-integer content
-        _pid_file(dev=False).write_text("not-a-pid\n")
-        assert _read_pids(dev=False) == []
+        _pid_file().write_text("not-a-pid\n")
+        assert _read_pids() == []
 
     def test_read_pids_ignores_blank_lines(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
-        _pid_file(dev=False).parent.mkdir(parents=True, exist_ok=True)
-        _pid_file(dev=False).write_text("111\n\n222\n")
-        assert _read_pids(dev=False) == [111, 222]
+        _pid_file().parent.mkdir(parents=True, exist_ok=True)
+        _pid_file().write_text("111\n\n222\n")
+        assert _read_pids() == [111, 222]
 
     def test_write_pids_creates_parent_dirs(self, tmp_path, monkeypatch):
         target = tmp_path / "deep" / "nested"
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(target))
-        _write_pids([42], dev=False)
-        assert _pid_file(dev=False).exists()
+        _write_pids([42])
+        assert _pid_file().exists()
 
 
 # ---------------------------------------------------------------------------
@@ -144,21 +129,18 @@ class TestPidAlive:
 class TestFindPids:
     def test_find_pids_returns_empty_when_no_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
-        pids, dev = _find_pids()
-        assert pids == []
+        assert _find_pids() == []
 
     def test_find_pids_returns_alive_pids(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
         own = os.getpid()
-        _write_pids([own], dev=False)
-        pids, dev = _find_pids()
-        assert own in pids
+        _write_pids([own])
+        assert own in _find_pids()
 
     def test_find_pids_skips_dead_pids(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
-        _write_pids([9_999_999], dev=False)
-        pids, _ = _find_pids()
-        assert pids == []
+        _write_pids([9_999_999])
+        assert _find_pids() == []
 
 
 # ---------------------------------------------------------------------------
@@ -177,24 +159,15 @@ class TestBuildParser:
         args = parser.parse_args(["start"])
         assert args.func is cli.cmd_start
 
-    def test_dev_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["--dev"])
-        assert args.dev is True
-
     def test_host_default(self):
         args = build_parser().parse_args([])
         assert args.host == "127.0.0.1"
 
     def test_port_default(self):
-        # ``--port`` parses as ``None`` (sentinel) so cmd_start can pick
-        # 8000 in --dev or 4082 otherwise. See app/cli/commands/start.py.
+        # ``--port`` parses as ``None`` (sentinel) so cmd_start applies the
+        # 4082 default. See app/cli/commands/start.py.
         args = build_parser().parse_args([])
         assert args.port is None
-
-    def test_web_port_default(self):
-        args = build_parser().parse_args([])
-        assert args.web_port == 5173
 
     def test_custom_host_and_port(self):
         args = build_parser().parse_args(["--host", "0.0.0.0", "--port", "9000"])
@@ -272,7 +245,7 @@ class TestCmdStatus:
     def test_running_shows_pids(self, capsys, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
         own = os.getpid()
-        _write_pids([own], dev=False)
+        _write_pids([own])
 
         args = build_parser().parse_args(["status"])
         cmd_status(args)
@@ -304,7 +277,7 @@ class TestCmdStop:
     def test_stop_sends_sigterm(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
         own = os.getpid()
-        _write_pids([own], dev=False)
+        _write_pids([own])
 
         killed: list[tuple[int, int]] = []
 
@@ -333,7 +306,7 @@ class TestCmdStop:
         """If process doesn't die within deadline, SIGKILL is sent."""
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
         own = os.getpid()
-        _write_pids([own], dev=False)
+        _write_pids([own])
 
         killed: list[tuple[int, int]] = []
 
@@ -383,10 +356,7 @@ class TestCmdLogs:
 
         with (
             patch.object(logs_mod.os, "execvp", fake_execvp),
-            patch(
-                "app.cli.commands.logs._server_log",
-                side_effect=lambda dev: log if not dev else tmp_path / "no.log",
-            ),
+            patch("app.cli.commands.logs._server_log", return_value=log),
         ):
             args = build_parser().parse_args(["logs", "-n", "100"])
             with pytest.raises(SystemExit):
@@ -523,30 +493,18 @@ class TestCmdDoctor:
 
 class TestResolvePort:
     """``--port`` parses as ``None`` so we can tell user-supplied apart
-    from default. Resolution flips the default between dev (8000, to
-    match Vite's ``/api → :8000`` proxy) and prod (4082, the bundled
-    single-process default). An explicit port always wins.
+    from the 4082 default. An explicit port always wins.
     """
 
-    def test_dev_default_is_8000(self):
+    def test_default_is_4082(self):
         from app.cli.commands.start import _resolve_port
 
-        assert _resolve_port(None, dev=True) == 8000
+        assert _resolve_port(None) == 4082
 
-    def test_prod_default_is_4082(self):
+    def test_explicit_port_wins(self):
         from app.cli.commands.start import _resolve_port
 
-        assert _resolve_port(None, dev=False) == 4082
-
-    def test_explicit_port_wins_in_dev(self):
-        from app.cli.commands.start import _resolve_port
-
-        assert _resolve_port(9000, dev=True) == 9000
-
-    def test_explicit_port_wins_in_prod(self):
-        from app.cli.commands.start import _resolve_port
-
-        assert _resolve_port(9000, dev=False) == 9000
+        assert _resolve_port(9000) == 9000
 
 
 # ---------------------------------------------------------------------------
@@ -555,52 +513,23 @@ class TestResolvePort:
 
 
 class TestServerCmd:
-    """The ``--dev`` flag should reload only on edits under ``app/``.
-
-    Earlier versions also watched the on-disk config tree so editing an
-    agent ``.md`` file triggered a reload, but the agent itself writes
-    there, which caused restart storms during normal use. Config edits
-    in dev now require a manual restart — matching prod behaviour.
+    """``_server_cmd`` builds a plain uvicorn argv — no reload flags,
+    since hot-reload now lives in ``make dev`` (not the CLI).
     """
 
-    def test_prod_argv_has_no_reload_flags(self):
+    def test_argv_has_no_reload_flags(self):
         from app.cli.server import _server_cmd
 
-        cmd = _server_cmd(host="127.0.0.1", port=4082, dev=False)
+        cmd = _server_cmd(host="127.0.0.1", port=4082)
         assert "--reload" not in cmd
         assert "--reload-dir" not in cmd
         assert "--reload-include" not in cmd
 
-    def test_dev_argv_watches_app_source(self):
+    def test_argv_includes_host_and_port(self):
         from app.cli.server import _server_cmd
 
-        cmd = _server_cmd(host="127.0.0.1", port=4082, dev=True)
-        assert "--reload" in cmd
-        # ``--reload-dir`` precedes ``app`` — pair them positionally.
-        idx = cmd.index("--reload-dir")
-        assert cmd[idx + 1] == "app"
-
-    def test_dev_argv_does_not_watch_config_dir(self, tmp_path, monkeypatch):
-        """Even when OPENAGENTD_CONFIG_DIR points at an existing directory,
-        the dev argv must not add it as a second ``--reload-dir`` — that
-        coupling caused reload storms when the agent wrote to its own
-        config tree."""
-        from app.cli.server import _server_cmd
-
-        cfg = tmp_path / "cfg"
-        cfg.mkdir()
-        monkeypatch.setenv("OPENAGENTD_CONFIG_DIR", str(cfg))
-
-        cmd = _server_cmd(host="127.0.0.1", port=4082, dev=True)
-        reload_dirs = [cmd[i + 1] for i, x in enumerate(cmd) if x == "--reload-dir"]
-        # ``app`` is the only watched directory.
-        assert reload_dirs == ["app"]
-        assert str(cfg) not in reload_dirs
-
-    def test_dev_argv_emits_no_reload_include_filters(self):
-        """With only ``app/`` watched, ``--reload-include`` filters are
-        unnecessary — uvicorn's default ``*.py`` covers the source tree."""
-        from app.cli.server import _server_cmd
-
-        cmd = _server_cmd(host="127.0.0.1", port=4082, dev=True)
-        assert "--reload-include" not in cmd
+        cmd = _server_cmd(host="0.0.0.0", port=9000)
+        assert "--host" in cmd
+        assert "0.0.0.0" in cmd
+        assert "--port" in cmd
+        assert "9000" in cmd

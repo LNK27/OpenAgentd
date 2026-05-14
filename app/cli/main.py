@@ -32,8 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5\n"
             "  openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5\n"
             "  openagentd auth copilot   # authenticate with an OAuth provider\n"
-            "  openagentd                # start in background (production)\n"
-            "  openagentd --dev          # start in foreground with hot-reload\n"
+            "  openagentd                # start in background\n"
             "  openagentd stop           # stop background processes\n"
             "  openagentd status         # check if running\n"
             "  openagentd logs           # tail the server log\n"
@@ -43,27 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"openagentd v{VERSION}")
     parser.add_argument(
-        "--dev", action="store_true", help="Foreground mode with hot-reload"
-    )
-    parser.add_argument(
         "--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)"
     )
-    # Port default is mode-dependent: 4082 in production (single bundled
-    # server), 8000 in --dev so Vite's hard-coded `/api → :8000` proxy
-    # (web/vite.config.ts) and the `make dev` workflow line up. Resolved
-    # in cmd_start() so an explicit --port still overrides everything.
     parser.add_argument(
         "--port",
         type=int,
         default=None,
-        help="API port (default: 8000 in --dev, 4082 otherwise)",
-    )
-    parser.add_argument(
-        "--web-port",
-        dest="web_port",
-        type=int,
-        default=5173,
-        help="Web UI port (default: 5173)",
+        help="API port (default: 4082)",
     )
     parser.set_defaults(func=cmd_start)
 
@@ -73,11 +58,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_init = sub.add_parser(
         "init",
         help="First-time setup: write .env and seed config files",
-    )
-    p_init.add_argument(
-        "--dev",
-        action="store_true",
-        help="Set up for development mode (.env in project root, .openagentd/ tree)",
     )
     p_init.set_defaults(func=cmd_init)
 
@@ -107,17 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_migrate.add_argument(
         "--config-dir",
-        help="OpenAgentd config directory (default: XDG config, or .openagentd/config with --dev)",
+        help="OpenAgentd config directory (default: XDG config)",
     )
     p_migrate.add_argument(
         "--force",
         action="store_true",
         help="Replace an existing imported agent file",
-    )
-    p_migrate.add_argument(
-        "--dev",
-        action="store_true",
-        help="Use development config dir (.openagentd/config)",
     )
     p_migrate.set_defaults(func=cmd_migrate)
 
