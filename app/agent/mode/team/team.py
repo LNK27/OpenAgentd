@@ -99,6 +99,14 @@ def make_instance_handle(blueprint: str, n: int) -> str:
     return f"{blueprint}#{n}"
 
 
+def _truncate_hint(text: str, *, limit: int = 80) -> str:
+    """Collapse whitespace and clip *text* so a roster hint fits one prompt line."""
+    cleaned = " ".join(text.split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 1].rstrip() + "…"
+
+
 class AgentTeam:
     """Singleton team: one lead, N member blueprints, dynamic instance roster.
 
@@ -165,6 +173,13 @@ class AgentTeam:
         # work is short, but two concurrent roster-management calls from the
         # same lead turn could otherwise race the counter.
         self._roster_lock = asyncio.Lock()
+
+        # Restorable-instance roster, refreshed once per user turn by
+        # ``handle_user_message``.  Maps blueprint name → list of
+        # ``(handle, hint)`` for dismissed-but-on-disk instances under
+        # the current lead session, newest-first.  Empty until the first
+        # ``refresh_restorable_index()`` call.
+        self._restorable_index: dict[str, list[tuple[str, str]]] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -328,6 +343,11 @@ class AgentTeam:
                 for bp in self.blueprints.values():
                     bp.counter_reconciled_for = None
 
+                # Drop the prior session's restorable cache — the next
+                # lead-turn prompt rebuild will repopulate it from the new
+                # lead session's children.
+                self._restorable_index = {}
+
                 # Restore previously-spawned-and-not-dismissed instances by
                 # rehydrating their session ids from DB.  Any instance that was
                 # alive (registered) when we entered this branch keeps its
@@ -411,6 +431,22 @@ class AgentTeam:
 
             # Mark that a turn is now active
             self._has_active_turn = True
+
+            # Refresh the restorable-instance roster from the DB BEFORE
+            # the lead's activation task starts. Doing this here (rather
+            # than inside ``AgentTeamProtocolHook.wrap_model_call``) keeps
+            # the DB read off the cancellable activation path — otherwise
+            # cancelling the activation task mid-query (e.g. on
+            # ``team.stop()``) can leave the connection in a bad state on
+            # in-memory test SQLite, breaking subsequent tests. The roster
+            # only changes between turns (dismissals from a prior process
+            # or a prior turn), so refreshing once per user message is
+            # sufficient; within-turn dismisses are surfaced to the LLM via
+            # the ``team_manage`` tool result rather than the prompt.
+            try:
+                await self.refresh_restorable_index()
+            except Exception as exc:  # never block the turn on a roster glitch
+                logger.warning("team_restorable_index_prerefresh_failed error={}", exc)
 
             # Deliver user message to lead inbox (on_message callback activates lead)
             msg = Message(
@@ -807,6 +843,120 @@ class AgentTeam:
                 matches.append((parsed[1], handle))
         matches.sort(key=lambda x: x[0])
         return [handle for _, handle in matches]
+
+    def restorable_instances_for_blueprint(
+        self, blueprint: str
+    ) -> list[tuple[str, str]]:
+        """Return ``[(handle, hint), ...]`` for restorable (dismissed-but-on-disk) instances.
+
+        Reads from the per-turn cache populated by
+        :meth:`refresh_restorable_index`, which is invoked once per user
+        message in :meth:`handle_user_message` (before the lead's
+        activation task is spawned).  Returns an empty list when the
+        cache is not yet primed.
+
+        Each *hint* is a short, model-friendly summary of what that
+        instance previously worked on (first lead-issued message, or
+        the member's session title).  Live instances are excluded so
+        the same handle never appears in both lists.
+        """
+        per_bp = self._restorable_index.get(blueprint, [])
+        live = set(self.live_instances_for_blueprint(blueprint))
+        return [(handle, hint) for handle, hint in per_bp if handle not in live]
+
+    async def refresh_restorable_index(self) -> None:
+        """Rebuild :attr:`_restorable_index` from the DB for the current lead session.
+
+        Called by :meth:`handle_user_message` once per user turn (before
+        the lead's activation task is spawned) so the
+        ``## Spawnable blueprints`` section reflects the latest
+        dismissed-instance roster.  Failures are swallowed and logged —
+        a missing roster is worse than no roster, but it must not crash
+        the turn.
+        """
+        try:
+            lead_uuid = UUID(self.lead.session_id)
+        except (ValueError, AttributeError):
+            self._restorable_index = {}
+            return
+
+        index: dict[str, list[tuple[str, str]]] = {}
+        db_factory = resolve_db_factory(self._db_factory or self.lead.db_factory)
+        try:
+            async with db_factory() as db:
+                result = await db.exec(
+                    select(ChatSession)
+                    .where(col(ChatSession.parent_session_id) == lead_uuid)
+                    .order_by(col(ChatSession.created_at).desc())
+                )
+                rows = result.all()
+
+                # Group by blueprint, keep newest-first within each blueprint.
+                grouped: dict[str, list[ChatSession]] = {}
+                for row in rows:
+                    if not row.agent_name:
+                        continue
+                    parsed = parse_instance_handle(row.agent_name)
+                    if parsed is None:
+                        continue
+                    blueprint, _ = parsed
+                    grouped.setdefault(blueprint, []).append(row)
+
+                # Build hints — one cheap query per session row, capped to
+                # avoid pathological costs when a session has hundreds of
+                # dismissed members of the same blueprint.
+                for blueprint, sessions in grouped.items():
+                    entries: list[tuple[str, str]] = []
+                    for sess in sessions[:8]:  # cap at 8 per blueprint
+                        hint = await self._compute_restore_hint(db, sess)
+                        entries.append((sess.agent_name or "?", hint))
+                    index[blueprint] = entries
+        except Exception as exc:
+            logger.warning("team_restorable_index_refresh_failed error={}", exc)
+            return
+
+        self._restorable_index = index
+
+    async def _compute_restore_hint(self, db, sess: "ChatSession") -> str:  # type: ignore[no-untyped-def]
+        """Produce a short hint of what *sess*'s instance previously worked on.
+
+        Preference order:
+        1. First inbox message from the lead (``[<lead>]: ...``) — this is
+           the original task assignment and is the most informative single
+           line.
+        2. Session title if present.
+        3. Fallback ``"prior context"``.
+        """
+        from app.models.chat import SessionMessage
+
+        try:
+            result = await db.exec(
+                select(SessionMessage)
+                .where(col(SessionMessage.session_id) == sess.id)
+                .where(col(SessionMessage.role) == "user")
+                .order_by(col(SessionMessage.created_at).asc())
+                .limit(1)
+            )
+            row = result.first()
+            if row is not None and row.content:
+                content = row.content
+                # Strip the ``[lead]:`` prefix the inbox tool prepends; it
+                # adds noise without changing the hint's meaning.
+                if content.startswith("["):
+                    bracket_end = content.find("]: ")
+                    if bracket_end != -1:
+                        content = content[bracket_end + 3 :]
+                return _truncate_hint(content)
+        except Exception as exc:
+            logger.debug(
+                "team_restore_hint_message_lookup_failed session_id={} error={}",
+                sess.id,
+                exc,
+            )
+
+        if sess.title:
+            return _truncate_hint(sess.title)
+        return "prior context"
 
     # ------------------------------------------------------------------
     # Tool injection

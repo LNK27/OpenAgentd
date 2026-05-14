@@ -104,19 +104,21 @@ LEAD_PROTOCOL = """\
 1. Receive user request. Classify: **light or heavy?**
    - Light (single-step, one tool call, factual answer) → handle it yourself directly.
    - Heavy (produces files, needs research, needs reasoning, 3+ steps) → delegate. Do not do this work yourself.
-2. When delegating:
+2. **Before delegating, consult your skills.** If the user's request matches one of your declared skills (e.g. install/setup/configure/add a skill, tool, MCP, plugin, agent, or extension → `skill-installer`; brand or design work → relevant skill), call `skill(skill_name='<name>')` *before* spawning members. Skills carry canonical paths, file formats, and conventions members would otherwise guess wrong. Skipping this step is the #1 cause of members writing to the wrong location.
+3. When delegating:
    - For multi-step work, create a todo plan first. Use first-class `dependencies` and `assigned_to` fields; `assigned_to` must be one concrete spawned handle (`<blueprint>#<n>`), not a bare blueprint or group expression. Do not spawn or message owners of blocked tasks until their dependencies are complete.
    - Identify which blueprints cover the work using the routing guide above.
-   - **Spawn before assigning member todos.** Call `team_manage(action='spawn', members=[...])`. Use bare blueprint names (`<blueprint>`) for new instances, or explicit handles (`<blueprint>#1`) to restore/reuse history. Repeated blueprint names create parallel instances (`<blueprint>#1`, `<blueprint>#2`). Use the returned concrete handles in `assigned_to`.
+   - **Prefer restoring a relevant prior instance over spawning fresh.** Check the `## Spawnable blueprints` section: each blueprint lists live + restorable instances with a hint of what each worked on. If a restorable instance's prior work overlaps with the new task (same topic, files, or follow-up correction), spawn its explicit handle (`<blueprint>#N`) so it keeps the context — no re-explaining. Spawn a fresh bare blueprint only when the work is genuinely independent or no restorable instance fits.
+   - **Spawn before assigning member todos.** Call `team_manage(action='spawn', members=[...])`. Bare blueprint names (`<blueprint>`) create new instances; explicit handles (`<blueprint>#<n>`) restore/reuse that instance's history. Repeated blueprint names create parallel instances. Use the returned concrete handles in `assigned_to`.
    - Assign every relevant instance **in parallel** via `team_message(to=['<handle>'])`.
    - For dependent workflows, delegate a peer handoff chain from the todo dependencies. Tell prerequisite owners to send final output directly to the owner of each unblocked downstream task; spawn/message downstream owners only after their dependencies are complete so they can claim the task and start.
    - Do not make yourself the default relay for member outputs. Use the lead as the synthesizer/final verifier, not as a message bus between members.
    - Briefly let the user know work is underway (plain text — 1 sentence max).
-3. When members report back:
+4. When members report back:
    - If a member's result is partial or more is coming, respond with `<sleep>` to wait.
    - When ALL assigned members have reported final results, respond to the user with the full synthesised answer.
    - **Sanity-check claims before promising "done" to the user.** When a member says they wrote a file or changed state, verify with a cheap read (`ls`, `read`) when feasible. Members can hallucinate success after a failed tool call — one verification beats one wrong answer.
-4. After delivering the answer, dismiss any instance whose work is complete: `team_manage(action='dismiss', members=['<handle>'])` so future turns start with a clean roster. Restore later with `team_manage(action='spawn', members=['<handle>'])` if you need its history."""
+5. After delivering the answer, dismiss any instance whose work is complete: `team_manage(action='dismiss', members=['<handle>'])` so future turns start with a clean roster. Dismissal preserves history on disk — if a follow-up turn extends that work, restore the same handle with `team_manage(action='spawn', members=['<blueprint>#<n>'])` rather than spawning a fresh peer."""
 
 MEMBER_COMMUNICATION_RULES = """\
 ## Communication protocol
@@ -781,20 +783,34 @@ class TeamLead(TeamMemberBase):
         ]
 
         # Blueprints section — spawnable members.  Each blueprint shows
-        # its description and any live instance handles so the lead can
-        # see which roles are already running.
+        # its description, currently-live instances, and any restorable
+        # (dismissed-but-on-disk) instances so the lead can choose to
+        # restore one with its prior context rather than spawning a
+        # fresh peer that has to be re-briefed.
         if team.blueprints:
             bp_lines: list[str] = []
             for bp in team.blueprints.values():
                 live = team.live_instances_for_blueprint(bp.name)
-                live_str = (
-                    f" — live: {', '.join(live)}" if live else " — no live instances"
-                )
-                bp_lines.append(f"- **{bp.name}**: {bp.description}{live_str}")
+                restorable = team.restorable_instances_for_blueprint(bp.name)
+
+                bp_lines.append(f"- **{bp.name}**: {bp.description}")
+                if live:
+                    bp_lines.append(f"    - live: {', '.join(live)}")
+                if restorable:
+                    # One sub-bullet per restorable handle so the model
+                    # can see *what* each prior instance worked on — that
+                    # is the signal it needs to decide reuse vs. fresh.
+                    for handle, hint in restorable:
+                        bp_lines.append(f"    - restorable: {handle} — {hint}")
+                if not live and not restorable:
+                    bp_lines.append("    - none spawned yet")
             sections.append(
                 "## Spawnable blueprints\n"
-                "Spawn with `team_manage(action='spawn', members=['<name>'])`; "
-                "use explicit handles (`<name>#1`) to restore history.\n"
+                "Spawn with `team_manage(action='spawn', members=['<name>'])` "
+                "for new instances, or `team_manage(action='spawn', members=['<name>#<n>'])` "
+                "to restore a prior instance with its history. "
+                "Prefer restoring when the new task continues, corrects, or "
+                "extends what a restorable instance already worked on.\n"
                 + "\n".join(bp_lines)
             )
 

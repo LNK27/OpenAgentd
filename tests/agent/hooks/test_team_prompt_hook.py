@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -98,6 +98,12 @@ def _mock_team(
     team.members = members
     team.task_board = MagicMock()
     team.task_board.tasks = []
+    # ``TeamLead.build_protocol`` reads the cached restorable roster via
+    # ``restorable_instances_for_blueprint``. The roster is refreshed by
+    # ``AgentTeam.handle_user_message`` once per user turn (not by the
+    # hook). Both are stubbed here because the mock team has no DB.
+    team.refresh_restorable_index = AsyncMock(return_value=None)
+    team.restorable_instances_for_blueprint = MagicMock(return_value=[])
     return team
 
 
