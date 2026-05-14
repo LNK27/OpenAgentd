@@ -8,6 +8,7 @@ from loguru import logger
 from pydantic import Field
 
 from app.agent.sandbox import get_sandbox
+from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
 
 
@@ -36,6 +37,7 @@ async def _write_file(
     encoded = content.encode("utf-8")
     resolved.write_bytes(encoded)
     logger.info("file_written path={} bytes={}", resolved, len(encoded))
+    notify_fs_change(resolved)
     return f"Written {len(encoded)} bytes to {rel}"
 
 
