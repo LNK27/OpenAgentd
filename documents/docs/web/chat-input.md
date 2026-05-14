@@ -2,12 +2,12 @@
 title: Chat Input & Message Queue
 description: How the frontend queues messages while the lead is working and drains them after each turn.
 status: stable
-updated: 2026-05-11
+updated: 2026-05-14
 ---
 
 # Chat Input & Message Queue
 
-**Sources:** `web/src/stores/useTeamStore/`, `web/src/components/FloatingInputBar.tsx`, `web/src/components/PendingMessageQueue.tsx`
+**Sources:** `web/src/stores/useTeamStore/`, `web/src/components/FloatingInputBar.tsx`, `web/src/components/PendingMessageQueue.tsx`, `web/src/components/InputBar.mentions.ts`, `web/src/components/InputBar.overlay.tsx`
 
 ---
 
@@ -64,6 +64,22 @@ The `InputBarHandle` ref exposes:
 - `setValue(text)` — expand the floating composer when needed, inject text, and trigger height recalculation
 
 `newSession()` aborts any active team SSE stream and resets the live roster/scroll state before focusing the empty composer, so stale tokens or scroll affordances from the previous session do not leak into the fresh chat.
+
+---
+
+## `@`-mention file/folder picker
+
+Typing `@` (at start of input or after whitespace) opens a picker of workspace files and folders. Same UX as opencode / Cursor / Claude.
+
+| Aspect | Detail |
+|---|---|
+| Trigger | `@` preceded by start-of-string or whitespace. Email-like `user@host` does **not** trigger. |
+| Sources | Files come from `GET /api/team/{sid}/files` (normal mode) or `GET /api/team/workspace/files/list?workspace=…` (`/coding`). Folders are derived from path prefixes client-side. Cached 30s by TanStack Query. |
+| Ranking | Fuzzy subsequence via `fuzzysort` (so `dockcom` matches `docker-compose.yml`). Directories get a small bonus so `@src` surfaces the `src/` directory above its children. Empty query lists top-level folders alphabetically. |
+| Inserted text | Plain `@path ` for files, `@dir/ ` for directories. The textarea stays plain-text — no structured chips inside the value. |
+| Visual chip | A transparent mirror `<div>` behind the textarea paints a soft accent background at each committed mention's position. The actively-typed mention is **not** chipped (the picker provides feedback there). Pasted or hand-typed mentions chip the same way. |
+
+Helpers live in `InputBar.mentions.ts` (`findActiveMention`, `findCommittedMentions`, `rankFileRefs`). The overlay is `InputBar.overlay.tsx`. The query hook is `useFileRefsQuery.ts`.
 
 ---
 
