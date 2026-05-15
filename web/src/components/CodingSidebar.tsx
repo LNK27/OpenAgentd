@@ -5,7 +5,7 @@
  *
  *   • Search input at the top — opens the command palette (Ctrl+P).
  *   • Flat list of workspaces. Each row is a collapsible tree node:
- *       ``▷/⏷`` chevron · 📁 · workspace label · status dot · `+` new
+ *       ``▷/⏷`` chevron · 📁 · workspace label · `+` new
  *     The active workspace has an accent left-border (3 px).
  *     Expanding a row reveals the nested coding sessions belonging
  *     to that workspace, with the same delete-on-hover affordance as
@@ -297,14 +297,6 @@ export function CodingSidebar({
                   </span>
                   {isPending && (
                     <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
-                  )}
-                  {!isPending && (
-                    <span
-                      aria-hidden
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                        isActive ? 'bg-(--color-accent)' : 'bg-(--color-success)'
-                      }`}
-                    />
                   )}
                 </button>
                 <button
