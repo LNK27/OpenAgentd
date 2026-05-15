@@ -82,6 +82,8 @@ jobs:
             libssl-dev
 
       - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - uses: oven-sh/setup-bun@v2
 
@@ -89,15 +91,41 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      # ``Swatinem/rust-cache`` cleans the target/ tree (drops examples,
+      # tests, incremental artifacts) before saving, so the cached blob
+      # stays small (~200 MB instead of >1 GB). It also keys on
+      # ``rustc -Vv``, ``Cargo.lock``, and target triple so a Rust
+      # toolchain bump or dependency change invalidates correctly.
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            desktop/src-tauri/target
-          key: cargo-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('desktop/src-tauri/Cargo.toml') }}
+          workspaces: desktop/src-tauri
+          key: ${{ matrix.platform }}-${{ matrix.arch }}
+          # Save on every run including PR re-pushes — without this,
+          # only the default branch warms the cache.
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
 
+      # ``tauri-cli`` would otherwise compile from source for ~3 minutes
+      # per platform per release. ``cargo-binstall`` fetches a prebuilt
+      # binary from the tauri-apps release page in a few seconds.
+      - name: Install cargo-binstall
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-binstall
+
+      - name: Install tauri-cli (prebuilt)
+        run: cargo binstall --no-confirm --version "^2.0" tauri-cli
+
+      - name: Generate platform icons
+        working-directory: desktop/src-tauri
+        run: cargo tauri icon icons/icon.png
+
+      # Tauri's ``beforeBuildCommand`` (declared in tauri.conf.json)
+      # already runs ``bun install --frozen-lockfile && bun run build``
+      # and copies web/dist → app/_web_dist/. We invoke it once
+      # explicitly here so the Python sidecar build below can pick up
+      # app/_web_dist/ before cargo tauri build runs (which would
+      # otherwise run beforeBuildCommand a second time, mid-Rust-build).
       - name: Build web UI
         run: |
           cd web
@@ -112,12 +140,6 @@ jobs:
             --root . \
             --out desktop/sidecar-bundle \
             --python-version 3.14
-
-      - name: Generate platform icons
-        working-directory: desktop/src-tauri
-        run: |
-          cargo install tauri-cli --version "^2.0" --locked
-          cargo tauri icon icons/icon.png
 
       - name: Import Apple signing certificate
         if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE != ''
