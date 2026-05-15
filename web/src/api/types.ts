@@ -43,9 +43,7 @@ export interface TeamAgentInfo extends AgentInfo {
   is_lead: boolean
 }
 
-export interface TeamBlueprintInfo {
-  name: string
-  description: string
+export interface TeamBlueprintInfo extends AgentInfo {
   live_instances: string[]
 }
 

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
 from app.agent.mode.team.member import TeamLead, TeamMember
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.team import AgentTeam, MemberBlueprint
 from app.models.chat import ChatSession
 
 
@@ -128,6 +128,37 @@ class TestTeamAgentsRouteExtra:
             assert "tools" in agent
             assert "skills" in agent
             assert "model" in agent
+
+    def test_agents_blueprints_include_agent_details_and_live_instances(
+        self, app_with_team, test_team, tmp_path
+    ):
+        test_team.blueprints["executor"] = MemberBlueprint(
+            name="executor",
+            description="writes code",
+            source_path=tmp_path / "executor.md",
+        )
+        test_team.members["executor#1"] = TeamMember(
+            Agent(
+                name="executor#1", llm_provider=MockProvider(), system_prompt="Worker"
+            )
+        )
+        blueprint_agent = Agent(
+            name="executor", llm_provider=MockProvider(), system_prompt="Blueprint"
+        )
+        blueprint_agent.description = "writes code"
+
+        with patch(
+            "app.agent.loader.rebuild_agent_from_disk", return_value=blueprint_agent
+        ):
+            data = TestClient(app_with_team).get("/api/team/agents").json()
+
+        blueprint = next(bp for bp in data["blueprints"] if bp["name"] == "executor")
+        assert blueprint["description"] == "writes code"
+        assert blueprint["live_instances"] == ["executor#1"]
+        assert "tools" in blueprint
+        assert "skills" in blueprint
+        assert "model" in blueprint
+        assert "capabilities" in blueprint
 
     def test_agents_workspace_returns_coding_team(
         self, app_without_team, test_team, monkeypatch

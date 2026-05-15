@@ -78,6 +78,19 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
     }
 
 
+def _serialize_blueprint(team_obj, bp) -> dict:
+    from app.agent.loader import rebuild_agent_from_disk
+
+    agent = rebuild_agent_from_disk(
+        bp.source_path,
+        provider_factory=team_obj._provider_factory,
+        extra_tools=team_obj._extra_tools,
+    )
+    payload = _serialize_agent(agent)
+    payload["live_instances"] = team_obj.live_instances_for_blueprint(bp.name)
+    return payload
+
+
 def _validate_workspace_or_422(workspace: str) -> str:
     try:
         return team_manager.validate_workspace(workspace)
@@ -252,12 +265,7 @@ async def list_team_agents(
     team_manager.refresh_idle_agents(team_obj)
     all_members: list[TeamMemberBase] = [team_obj.lead, *team_obj.members.values()]
     blueprints = [
-        {
-            "name": bp.name,
-            "description": bp.description,
-            "live_instances": team_obj.live_instances_for_blueprint(bp.name),
-        }
-        for bp in team_obj.blueprints.values()
+        _serialize_blueprint(team_obj, bp) for bp in team_obj.blueprints.values()
     ]
     return {
         "agents": [

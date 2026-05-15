@@ -27,7 +27,6 @@ import {
   ArrowRight,
   Sparkles,
   Plug,
-  Network,
 } from 'lucide-react'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import type {
@@ -372,30 +371,32 @@ function Skills({ skills }: { skills: AgentInfo['skills'] }) {
 
 // ── Switcher ──────────────────────────────────────────────────────────────────
 
-function AgentSwitcher({
-  agents,
-  selectedName,
-  leadName,
+type DetailItem =
+  | { kind: 'agent'; name: string; agent: TeamAgentInfo }
+  | { kind: 'blueprint'; name: string; blueprint: TeamBlueprintInfo }
+
+function DetailSwitcher({
+  items,
+  selectedKey,
   streams,
   onSelect,
 }: {
-  agents: AgentInfo[]
-  selectedName: string
-  leadName: string | null
+  items: DetailItem[]
+  selectedKey: string
   streams: Record<string, AgentStream>
-  onSelect: (name: string) => void
+  onSelect: (key: string) => void
 }) {
   return (
     <div className="shrink-0 border-b border-(--color-border) bg-(--bg-key) px-3 py-2">
       <div className="flex flex-wrap items-center gap-1">
-        {agents.map((agent) => {
-          const active = agent.name === selectedName
-          const isLead = leadName ? agent.name === leadName : false
-          const stream = streams[agent.name]
+        {items.map((item) => {
+          const key = `${item.kind}:${item.name}`
+          const active = key === selectedKey
+          const stream = item.kind === 'agent' ? streams[item.name] : undefined
           return (
             <button
-              key={agent.name}
-              onClick={() => onSelect(agent.name)}
+              key={key}
+              onClick={() => onSelect(key)}
               className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
                 active
                   ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)'
@@ -403,10 +404,28 @@ function AgentSwitcher({
               }`}
               aria-pressed={active}
             >
-              <StatusDot status={stream?.status} />
-              <span className={`font-medium ${isLead ? 'text-(--color-accent)' : ''}`}>
-                {agent.name}
+              {item.kind === 'agent' ? (
+                <StatusDot status={stream?.status} />
+              ) : (
+                <Plug size={11} className="text-(--color-text-muted)" aria-hidden />
+              )}
+              <span className={`font-medium ${item.kind === 'agent' ? 'text-(--color-accent)' : ''}`}>
+                {item.name}
               </span>
+              {item.kind === 'blueprint' && (
+                <span
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    item.blueprint.live_instances.length > 0
+                      ? 'bg-(--bg-card) text-(--color-accent)'
+                      : 'bg-(--bg-card) text-(--color-text-muted)'
+                  }`}
+                  title={item.blueprint.live_instances.join(', ') || 'No live instances'}
+                >
+                  {item.blueprint.live_instances.length > 0
+                    ? `${item.blueprint.live_instances.length} live`
+                    : 'idle'}
+                </span>
+              )}
             </button>
           )
         })}
@@ -415,63 +434,26 @@ function AgentSwitcher({
   )
 }
 
-// ── Blueprint roster ─────────────────────────────────────────────────────────
-
-function BlueprintRoster({ blueprints }: { blueprints: TeamBlueprintInfo[] }) {
-  if (blueprints.length === 0) return null
-
+function BlueprintDetails({ blueprint }: { blueprint: TeamBlueprintInfo }) {
   return (
-    <section className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-5 py-3">
-      <div className="mb-2 flex items-center gap-2">
-        <Network size={12} className="text-(--color-text-muted)" aria-hidden />
-        <h3 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
-          Spawnable blueprints
+    <>
+      <section className="shrink-0 px-5 py-4">
+        <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+          About
         </h3>
-      </div>
-      <div className="space-y-2">
-        {blueprints.map((bp) => {
-          const live = bp.live_instances
-          return (
-            <div
-              key={bp.name}
-              className="rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <code className="font-mono text-xs font-semibold text-(--color-text)">
-                  {bp.name}
-                </code>
-                <span
-                  className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${
-                    live.length > 0
-                      ? 'bg-(--bg-key) text-(--color-accent)'
-                      : 'bg-(--bg-key) text-(--color-text-muted)'
-                  }`}
-                >
-                  {live.length > 0 ? `${live.length} live` : 'idle'}
-                </span>
-              </div>
-              {bp.description && (
-                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-(--color-text-muted)">
-                  {bp.description}
-                </p>
-              )}
-              {live.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {live.map((handle) => (
-                    <span
-                      key={handle}
-                      className="rounded-md bg-(--bg-key) px-2 py-0.5 font-mono text-[11px] text-(--color-text-2) ring-1 ring-(--color-border-strong)"
-                    >
-                      {handle}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </section>
+        <p className="text-sm leading-relaxed text-(--color-text-2)">
+          {blueprint.description?.trim() || (
+            <span className="italic text-(--color-text-muted)">No description.</span>
+          )}
+        </p>
+      </section>
+
+      <Skills skills={blueprint.skills} />
+
+      {blueprint.capabilities && <Capabilities caps={blueprint.capabilities} tools={blueprint.tools} />}
+
+      <Tools tools={blueprint.tools} mcpServers={blueprint.mcp_servers ?? []} />
+    </>
   )
 }
 
@@ -514,7 +496,7 @@ export function AgentCapabilities({
   }, [open, onClose])
 
   const allAgents: TeamAgentInfo[] = data?.agents ?? []
-  const blueprints = data?.blueprints ?? []
+  const blueprints = useMemo(() => data?.blueprints ?? [], [data?.blueprints])
   const byName = new Map(allAgents.map((a) => [a.name, a]))
 
   // Resolve which agents to show. Prefer the caller's ordering; fall back to
@@ -528,22 +510,36 @@ export function AgentCapabilities({
   // Lead comes from the API `is_lead` flag if present, else first in list.
   const leadFromApi = allAgents.find((a) => a.is_lead)
   const leadName = display.length > 1 ? (leadFromApi?.name ?? display[0]?.name ?? null) : null
+  const leadAgent = (leadName ? byName.get(leadName) : null) ?? display[0]
+  const detailItems: DetailItem[] = useMemo(
+    () => [
+      ...(leadAgent ? [{ kind: 'agent' as const, name: leadAgent.name, agent: leadAgent }] : []),
+      ...blueprints.map((blueprint) => ({
+        kind: 'blueprint' as const,
+        name: blueprint.name,
+        blueprint,
+      })),
+    ],
+    [blueprints, leadAgent]
+  )
 
-  const [selectedName, setSelectedName] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
-  // Keep the selection in sync with the available agents. Default to the
-  // first agent (lead when present).
+  // Keep the selection in sync with the available details. Default to the lead
+  // agent when present so the modal opens on the primary team member.
   useEffect(() => {
-    if (display.length === 0) {
-      setSelectedName(null)
+    if (detailItems.length === 0) {
+      setSelectedKey(null)
       return
     }
-    if (!selectedName || !display.some((a) => a.name === selectedName)) {
-      setSelectedName(display[0].name)
+    if (!selectedKey || !detailItems.some((item) => `${item.kind}:${item.name}` === selectedKey)) {
+      setSelectedKey(`${detailItems[0].kind}:${detailItems[0].name}`)
     }
-  }, [display, selectedName])
+  }, [detailItems, selectedKey])
 
-  const selected = selectedName ? byName.get(selectedName) ?? display[0] : display[0]
+  const selected = selectedKey
+    ? detailItems.find((item) => `${item.kind}:${item.name}` === selectedKey) ?? detailItems[0]
+    : detailItems[0]
 
   return (
     <AnimatePresence>
@@ -577,15 +573,30 @@ export function AgentCapabilities({
           ) : (
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <StatusDot status={agentStreams[selected.name]?.status} />
+                {selected.kind === 'agent' ? (
+                  <StatusDot status={agentStreams[selected.name]?.status} />
+                ) : (
+                  <Plug size={13} className="text-(--color-text-muted)" aria-hidden />
+                )}
                 <h2 className="truncate text-base font-semibold text-(--color-text)">
                   {selected.name}
                 </h2>
-                <RolePill isLead={leadName === selected.name} />
+                {selected.kind === 'agent' ? (
+                  <RolePill isLead={leadName === selected.name} />
+                ) : (
+                  <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-(--color-text-muted) ring-1 ring-(--color-border-strong)">
+                    Blueprint
+                  </span>
+                )}
               </div>
-              {selected.model && (
+              {selected.kind === 'agent' && selected.agent.model && (
                 <p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">
-                  {selected.model}
+                  {selected.agent.model}
+                </p>
+              )}
+              {selected.kind === 'blueprint' && selected.blueprint.model && (
+                <p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">
+                  {selected.blueprint.model}
                 </p>
               )}
             </div>
@@ -600,18 +611,14 @@ export function AgentCapabilities({
           </button>
         </header>
 
-        {/* Agent switcher — only when 2+ agents */}
-        {display.length > 1 && selected && (
-          <AgentSwitcher
-            agents={display}
-            selectedName={selected.name}
-            leadName={leadName}
+        {detailItems.length > 1 && selectedKey && (
+          <DetailSwitcher
+            items={detailItems}
+            selectedKey={selectedKey}
             streams={agentStreams}
-            onSelect={setSelectedName}
+            onSelect={setSelectedKey}
           />
         )}
-
-        <BlueprintRoster blueprints={blueprints} />
 
         {/* Body */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -623,25 +630,30 @@ export function AgentCapabilities({
             </div>
           ) : (
             <>
-              {/* Description */}
-              <section className="shrink-0 px-5 py-4">
-                <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
-                  About
-                </h3>
-                <p className="text-sm leading-relaxed text-(--color-text-2)">
-                  {selected.description?.trim() || (
-                    <span className="italic text-(--color-text-muted)">No description.</span>
+              {selected.kind === 'agent' ? (
+                <>
+                  <section className="shrink-0 px-5 py-4">
+                    <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+                      About
+                    </h3>
+                    <p className="text-sm leading-relaxed text-(--color-text-2)">
+                      {selected.agent.description?.trim() || (
+                        <span className="italic text-(--color-text-muted)">No description.</span>
+                      )}
+                    </p>
+                  </section>
+
+                  <Skills skills={selected.agent.skills} />
+
+                  {selected.agent.capabilities && (
+                    <Capabilities caps={selected.agent.capabilities} tools={selected.agent.tools} />
                   )}
-                </p>
-              </section>
 
-              <Skills skills={selected.skills} />
-
-              {selected.capabilities && (
-                <Capabilities caps={selected.capabilities} tools={selected.tools} />
+                  <Tools tools={selected.agent.tools} mcpServers={selected.agent.mcp_servers ?? []} />
+                </>
+              ) : (
+                <BlueprintDetails blueprint={selected.blueprint} />
               )}
-
-              <Tools tools={selected.tools} mcpServers={selected.mcp_servers ?? []} />
             </>
           )}
         </div>
