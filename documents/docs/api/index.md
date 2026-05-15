@@ -192,9 +192,8 @@ The config is written to `speech.yaml` and hot-reloaded immediately — no serve
 restart needed. Editable from **Settings → Voice** in the web UI.
 
 `POST /api/speech/transcribe` accepts `multipart/form-data` with one `file`
-field. V1 supports local transcription via `voice.model: local:base`; the
-backend does not require the optional `voice-local` dependencies unless that
-provider is configured and invoked.
+field. V1 supports local transcription via `voice.model: local:base`, powered by
+`faster-whisper` (bundled with every install — no extras to enable).
 
 ## Settings
 
