@@ -699,8 +699,17 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         rows={1}
         autoFocus={autoFocus}
         tabIndex={minimized ? -1 : 0}
-        className="w-full resize-none bg-transparent text-sm leading-relaxed text-(--color-text) placeholder-(--color-text-subtle) focus:outline-none disabled:opacity-50"
-        style={{ maxHeight: '144px' }}
+        // ``p-0`` zeroes WebKit's asymmetric default textarea padding (WKWebView
+        // in the macOS Tauri shell ships ~2px top + ~1px bottom that bias the
+        // single-line baseline upward). ``align-middle`` keeps the textarea's
+        // bounding box centred in the flex row instead of sitting on the
+        // baseline of adjacent inline-block buttons. Together they make the
+        // placeholder sit vertically centred against the 28px action buttons
+        // both in Chrome (web build) and WKWebView (desktop build).
+        className="block w-full resize-none bg-transparent p-0 align-middle text-sm leading-relaxed text-(--color-text) placeholder-(--color-text-subtle) focus:outline-none disabled:opacity-50"
+        // Cap matches the ``resize()`` ceiling above so the JS-driven height
+        // and the CSS limit stay in lockstep.
+        style={{ maxHeight: '120px' }}
         aria-label="Message input"
       />
       </div>
