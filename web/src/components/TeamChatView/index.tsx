@@ -75,7 +75,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('split')
+  const [viewMode, setViewMode] = useState<ViewMode>('agent')
 
   // On mobile, always force agent view — split/unified require a wide screen.
   // Also close any desktop-only panels when shrinking to mobile.
