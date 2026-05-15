@@ -7,34 +7,61 @@ updated: 2026-05-16
 
 # OpenAgentd
 
-On-machine AI assistant with a FastAPI backend and React web UI.
+On-machine AI assistant. FastAPI backend, React web UI, runs locally.
 
-It runs locally, connects to LLM providers (Gemini, Vertex AI, OpenAI-compatible APIs, GitHub Copilot, OpenAI Codex, xAI Grok, AWS Bedrock), maintains persistent conversation sessions, supports multimodal input (text, images, documents), streams responses over SSE, and can coordinate multi-agent teams.
+Connects to LLM providers (Gemini, Vertex AI, OpenAI, OpenRouter, Copilot OAuth, Codex OAuth, xAI, DeepSeek, Bedrock, NVIDIA NIM, local proxies, Ollama), maintains persistent sessions, supports multimodal input, streams over SSE, and coordinates multi-agent teams.
 
-Quick start: `Makefile` (`make run` for the backend on :8000; `cd web && bun dev` for the UI on :5173). Provider keys and agent `.md` files are documented in [`configuration.md`](./configuration.md).
+**Quick start.** [`install.md`](./install.md) → `openagentd init` → `openagentd`. Web UI at `http://localhost:4082`.
 
 ---
 
 ## Documentation
 
-| Section                                              | What it covers                                                                                       |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| [Architecture](./architecture.md)                    | C4 diagrams, in-memory SSE streaming, SSE protocol, agent loop                                       |
-| [Configuration](./configuration.md)                  | Env vars, agent `.md` files, sandbox, skills, settings UI                                            |
-| [Desktop distribution](./desktop.md)                 | Tauri v2 packaging, sidecar bundle, token auth, release pipeline, signing                            |
-| [Guidelines](./guidelines.md)                        | Dev commands, code style, testing, conventions                                                       |
-| [Logging](./logging.md)                              | Two-tier logging: app log, per-session logs, JSONL events, log levels                                |
-| [Observability](./observability.md)                  | OpenTelemetry spans, metrics, JSONL partitions, export-tier sampling, DuckDB HTTP API, `/telemetry` UI |
-| [Agent engine](./agent/index.md)                     | Reasoning loop, hooks, tools, teams, context management                                              |
-| [API reference](./api/index.md)                      | HTTP endpoints, SSE events, file handling                                                            |
-| [App chrome](./web/chrome.md)                        | Shared header, platform detection, Tauri window-drag plumbing, macOS overlay traffic-light alignment |
-| [Workspace Files panel](./web/workspace-files.md)    | Web UI Files drawer — listing endpoint, previews, live invalidation                                  |
-| [Todos popover](./web/todos.md)                      | Web UI Todos popover — task list display, live invalidation, keyboard shortcut                       |
-| [Mobile layout](./web/mobile.md)                     | Phone-first responsive design — breakpoints, safe areas, master/detail patterns, per-component behaviour |
-| [Chat input & queue](./web/chat-input.md)            | Consecutive message queuing, drain-on-done behaviour, `PendingMessageQueue` UI                       |
-| [Voice input](./web/voice-input.md)                  | Browser microphone recording, local speech-to-text, transcript insertion, and settings UI            |
-| [Title generation](./title-generation.md)            | LLM-generated session titles, SSE event, sidebar animation                                           |
-| [Team testing](./testing/team.md)                    | Manual test guide — multi-agent team                                                                 |
+### Getting started
+
+| Doc | What it covers |
+|-----|----------------|
+| [Install](./install.md) | uv tool / pipx / pip / Homebrew / Docker / source. First-run wizard. |
+| [CLI reference](./cli.md) | Every `openagentd` subcommand (`init`, `auth`, `stop`, `doctor`, `upgrade`, …). |
+| [Configuration](./configuration.md) | Env vars, XDG paths, agent `.md` files, providers, tools, skills, sandbox, hooks. |
+| [Troubleshooting](./troubleshooting.md) | Common install & runtime issues. |
+| [Comparison](./comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent. |
+
+### Architecture & internals
+
+| Doc | What it covers |
+|-----|----------------|
+| [Architecture](./architecture.md) | C4 diagrams, in-memory SSE streaming, SSE protocol, request flow. |
+| [Agent engine](./agent/index.md) | Reasoning loop, hooks, tools, teams, plugins, context, memory, summarization. |
+| [API reference](./api/index.md) | HTTP routes, SSE event payloads, file/upload handling. |
+
+### Operations
+
+| Doc | What it covers |
+|-----|----------------|
+| [Logging](./logging.md) | App log + per-session JSONL, rotation, console format. |
+| [Observability](./observability.md) | OpenTelemetry spans, DuckDB-backed `/api/observability/*`, `/telemetry` UI. |
+| [Desktop distribution](./desktop.md) | Tauri v2 shell, Python sidecar, token auth, release pipeline. |
+| [Title generation](./title-generation.md) | LLM-generated session titles, SSE event, config. |
+
+### Frontend (`web/`)
+
+| Doc | What it covers |
+|-----|----------------|
+| [App chrome](./web/chrome.md) | Shared header, platform detection, Tauri drag, macOS overlay. |
+| [Chat input & queue](./web/chat-input.md) | Consecutive message queuing, `PendingMessageQueue`. |
+| [Voice input](./web/voice-input.md) | Browser mic, local STT, transcript insertion, settings. |
+| [Tool results](./web/tool-results.md) | Per-tool result renderers. |
+| [Workspace Files panel](./web/workspace-files.md) | Files drawer, previews, live invalidation. |
+| [Todos popover](./web/todos.md) | Task list display, live invalidation, shortcut. |
+| [Mobile layout](./web/mobile.md) | Phone-first responsive design — breakpoints, safe areas. |
+
+### Contributing
+
+| Doc | What it covers |
+|-----|----------------|
+| [Guidelines](./guidelines.md) | Dev commands, code style, testing, GitHub conventions. |
+| [Team testing](./testing/team.md) | Manual test guide for the multi-agent team flow. |
 
 ---
 
@@ -42,32 +69,32 @@ Quick start: `Makefile` (`make run` for the backend on :8000; `cd web && bun dev
 
 ```
 app/          FastAPI backend
-  agent/      LLM engine (loop, hooks, tools, providers, teams)
-  api/        HTTP routes + schemas
-  core/       Config, DB, logging, middleware
-  models/    SQLModel ORM tables
-  services/   chat_service, wiki, dream, stream_store
+  agent/      LLM engine (loop, hooks, tools, providers, teams, plugins)
+  api/        HTTP routes (thin — logic in services/)
+  core/       Config, DB, logging, paths, middleware
+  models/     SQLModel ORM tables
+  services/   chat_service, wiki, dream, memory_stream_store, title_service
+  cli/        openagentd CLI entry points
 web/          React frontend (Vite + Bun)
-manual/       Manual HTTP test scripts
-tests/        pytest test suite
+desktop/      Tauri v2 desktop shell
+seed/         Default agents, skills, mcp.json (copied on first init)
+tests/        pytest test suite (mirrors app/)
 documents/    Developer docs (this directory)
-  docs/       Architecture, configuration, agent engine, API
-  styling-specs/ Design tokens and brand reference
-  techdebts/  Tracked tech debt
 ```
 
 ---
 
 ## Key design rules
 
-The invariants that hold the system together live next to the code they govern, not duplicated here. Start at the linked file when you need to verify a rule before changing related code.
+Invariants live next to the code they govern. Start at the linked file when you need to verify a rule before changing related code.
 
-| Subsystem            | Where the rules live                                                                |
-| -------------------- | ----------------------------------------------------------------------------------- |
-| Stream store & SSE   | [`architecture.md`](./architecture.md), `app/services/stream_store.py`              |
-| Agent loop & hooks   | [`agent/loop.md`](./agent/loop.md), [`agent/hooks.md`](./agent/hooks.md)            |
-| Tools & permissions  | [`agent/tools.md`](./agent/tools.md), `app/agent/tools/__init__.py`                 |
-| Teams                | [`agent/teams.md`](./agent/teams.md), `app/agent/mode/team/`                        |
+| Subsystem | Where the rules live |
+|-----------|---------------------|
+| Stream store & SSE | [`architecture.md`](./architecture.md), `app/services/memory_stream_store.py` |
+| Agent loop & hooks | [`agent/loop.md`](./agent/loop.md), [`agent/hooks.md`](./agent/hooks.md) |
+| Tools & permissions | [`agent/tools.md`](./agent/tools.md), `app/agent/tools/__init__.py` |
+| Teams | [`agent/teams.md`](./agent/teams.md), `app/agent/mode/team/` |
 | Memory & summarization | [`agent/memory.md`](./agent/memory.md), [`agent/summarization.md`](./agent/summarization.md) |
-| Filesystem & paths     | `app/core/paths.py`, `app/agent/sandbox.py`                                                   |
-| Frontend conventions | [`web/`](./web/)                                                                    |
+| Plugins | [`agent/plugins.md`](./agent/plugins.md), `app/agent/plugins/` |
+| Filesystem & paths | `app/core/paths.py`, `app/agent/sandbox.py` |
+| Frontend conventions | [`web/`](./web/) |

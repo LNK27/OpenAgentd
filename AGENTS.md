@@ -6,24 +6,26 @@ On-machine AI assistant: FastAPI backend + React web UI.
 
 - **Backend:** Python 3.14, FastAPI, SQLModel, Pydantic v2, SQLite (WAL), SSE, loguru.
 - **Frontend:** React 19, TypeScript 5, Vite, Bun, Tailwind v4, Zustand + Immer, TanStack Query.
-- **Agent config:** `.md` files with YAML frontmatter in `.openagentd/agents/`.
+- **Desktop:** Tauri v2 shell with a Python sidecar.
+- **Agent config:** `.md` files with YAML frontmatter in `{OPENAGENTD_CONFIG_DIR}/agents/`.
 
 ## Layout
 
 ```
-app/        FastAPI backend (agent/, api/, core/, models/, services/)
-web/        React frontend
-tests/      pytest suite
-.openagentd/    Runtime data (agents/, skills/, chat/, team/)
-documents/  All docs (see below)
+app/         FastAPI backend (agent/, api/, core/, models/, services/, cli/)
+web/         React frontend
+desktop/     Tauri v2 shell
+seed/        Default agents, skills, mcp.json (installed by `openagentd init`)
+tests/       pytest suite (mirrors app/)
+documents/   Developer docs (see documents/docs/index.md)
 ```
 
-## Commands (essentials)
+## Essential commands
 
 ```bash
 # Backend
 uv sync                           # install
-make dev                          # run with reload on :8000
+make dev                          # backend (:8000 reload) + Vite (:5173)
 uv run ruff check app/ tests/     # lint
 uv run ty check app/              # type check
 uv run pytest --no-cov -q         # fast tests
@@ -33,15 +35,13 @@ cd web && bun dev                 # :5173, proxies /api → :8000
 cd web && bun run lint && bun run typecheck && bun run test
 ```
 
-Full command reference: [`documents/docs/guidelines.md`](documents/docs/guidelines.md).
+Full command + style reference: [`documents/docs/guidelines.md`](documents/docs/guidelines.md).
 
 ## Code style (summary)
 
 - **Python 3.14+** — `|` unions, `from __future__ import annotations`, strict type hints, Pydantic v2, absolute imports from `app`, loguru `logger.info("event key={}", val)`.
-- **TypeScript** — `strict: true`, functional components with explicit props, TanStack for server state, Zustand + Immer for client state, ESM only (Always mobile-first design)
-- **General** — thin routes, logic in services/hooks, no unnecessary abstractions, always use the `guidelines` skill.
-
-Full style guide: [`documents/docs/guidelines.md`](documents/docs/guidelines.md).
+- **TypeScript** — `strict: true`, functional components with explicit props, TanStack for server state, Zustand + Immer for client state, ESM only, mobile-first design.
+- **General** — thin routes, logic in services/hooks, no unnecessary abstractions, always invoke the `guidelines` skill.
 
 ## Post-implementation checklist
 
@@ -50,18 +50,6 @@ uv run ruff check app/ tests/ && uv run ty check app/ && uv run pytest --no-cov 
 cd web && bun run lint && bun run test              # if frontend changed
 ```
 
-## Documentation map
+## Documentation
 
-Start at [`documents/docs/index.md`](documents/docs/index.md).
-
-| Topic | Doc |
-|-------|-----|
-| Commands, code style, testing | [`docs/guidelines.md`](documents/docs/guidelines.md) |
-| C4 diagrams, agent loop, SSE protocol | [`docs/architecture.md`](documents/docs/architecture.md) |
-| Env vars, agent `.md` config, providers, sandbox | [`docs/configuration.md`](documents/docs/configuration.md) |
-| Logging (app log, per-session, JSONL) | [`docs/logging.md`](documents/docs/logging.md) |
-| Desktop distribution (Tauri shell, sidecar, release) | [`docs/desktop.md`](documents/docs/desktop.md) |
-| Observability (OTel, DuckDB, `/telemetry`) | [`docs/observability.md`](documents/docs/observability.md) |
-| Agent engine (loop, hooks, tools, teams, memory, plugins) | [`docs/agent/`](documents/docs/agent/) |
-| HTTP routes, SSE events, file handling | [`docs/api/index.md`](documents/docs/api/index.md) |
-| Tracked tech debt | [`techdebts/`](documents/techdebts/) |
+Start at [`documents/docs/index.md`](documents/docs/index.md) — it groups every doc by audience (getting-started / architecture / operations / frontend / contributing). Tracked tech debt: [`documents/techdebts/`](documents/techdebts/).
