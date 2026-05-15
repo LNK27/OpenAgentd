@@ -7,13 +7,13 @@ updated: 2026-05-15
 
 # App chrome
 
-**Sources:** `web/src/components/AppHeader.tsx`, `web/src/components/MacTitleBar.tsx`, `web/src/hooks/use-platform.ts`, `web/src/hooks/use-tauri-drag.ts`, `desktop/src-tauri/src/main.rs`
+**Sources:** `web/src/components/AppHeader.tsx`, `web/src/routes/telemetry/chrome.tsx`, `web/src/components/MacTitleBar.tsx`, `web/src/hooks/use-platform.ts`, `web/src/hooks/use-tauri-drag.ts`, `desktop/src-tauri/src/main.rs`
 
 ---
 
 ## Layout
 
-A 40 px header sits above every route. Settings uses `AppHeader` directly; `TeamChatView` renders its own header that follows the same conventions.
+A 40 px header sits above every route. Settings and Telemetry use `AppHeader` directly; `TeamChatView` renders its own header that follows the same conventions.
 
 ```
 [traffic-lights]  [🏠] [☰]  Title              ● local

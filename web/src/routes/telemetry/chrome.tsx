@@ -3,7 +3,9 @@
  * Used by both the summary and trace-detail routes inside `/telemetry`.
  */
 
-import { Activity, AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertTriangle, Loader2 } from 'lucide-react'
+
+import { AppHeader } from '@/components/AppHeader'
 
 export function PageHeader({
   isFetching,
@@ -14,25 +16,30 @@ export function PageHeader({
   isFetching: boolean
   left?: React.ReactNode
   subtitle?: string
-  right: React.ReactNode
+  right?: React.ReactNode
 }) {
   return (
-    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
-      {left}
-      <Activity size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-      <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Telemetry</h1>
-      <div className="hidden min-w-0 items-center gap-1.5 text-(--color-text-muted) md:flex">
-        <span className="truncate text-xs">{subtitle ?? 'Span aggregates & latency'}</span>
-        {isFetching && (
-          <Loader2
-            size={13}
-            className="ml-1 animate-spin"
-            aria-label="Refreshing"
-          />
-        )}
-      </div>
-      <div className="flex items-center gap-2">{right}</div>
-    </header>
+    <AppHeader
+      title="Telemetry"
+      center={
+        <div className="ml-4 flex min-w-0 items-center gap-2 text-(--color-text-muted)">
+          {left}
+          <span className="truncate text-xs">{subtitle ?? 'Span aggregates & latency'}</span>
+          {isFetching && (
+            <Loader2
+              size={13}
+              className="shrink-0 animate-spin"
+              aria-label="Refreshing"
+            />
+          )}
+        </div>
+      }
+      right={
+        right ? (
+          <div className="flex shrink-0 items-center gap-2 pr-3">{right}</div>
+        ) : undefined
+      }
+    />
   )
 }
 

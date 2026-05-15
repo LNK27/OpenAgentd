@@ -11,7 +11,6 @@
  */
 
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import {
   useObservabilitySummaryQuery,
@@ -93,14 +92,6 @@ function SummaryRoute({
                 </button>
               ))}
             </div>
-            <Link
-              to="/"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-              aria-label="Back to home"
-              title="Back to home"
-            >
-              <ArrowLeft size={15} />
-            </Link>
           </>
         }
       />
@@ -158,16 +149,6 @@ function TraceDetailRoute({
           </button>
         }
         subtitle={`Trace ${formatShortId(traceId)}`}
-        right={
-          <Link
-            to="/"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-            aria-label="Back to home"
-            title="Back to home"
-          >
-            <ArrowLeft size={15} />
-          </Link>
-        }
       />
 
       {/* On mobile: span detail overlays the waterfall full-width (absolute).
