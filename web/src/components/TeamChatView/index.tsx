@@ -69,6 +69,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const inputRef = useRef<InputBarHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
+  const agentTabsRef = useRef<HTMLDivElement>(null)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'files' | 'diff'>(null)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(false)
@@ -105,6 +106,20 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const sessionIdState = useTeamStore((s) => s.sessionId)
   const sessionTitle   = useTeamStore((s) => s.sessionTitle)
   const leadName       = useTeamStore((s) => s.leadName)
+
+  useEffect(() => {
+    if (effectiveViewMode !== 'agent' || !activeAgent) return
+
+    const container = agentTabsRef.current
+    if (!container) return
+
+    const chip = Array.from(container.querySelectorAll<HTMLElement>('[data-agent-chip]'))
+      .find((node) => node.dataset.agentChip === activeAgent)
+    if (!chip) return
+
+    const targetLeft = chip.offsetLeft - (container.clientWidth - chip.offsetWidth) / 2
+    container.scrollTo({ left: Math.max(0, targetLeft), behavior: 'smooth' })
+  }, [activeAgent, effectiveViewMode])
 
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const wikiOpen = useUIStore((s) => s.wikiOpen)
@@ -395,8 +410,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             )}
           </div>
 
-          {/* Left: agent tabs (agent view) or unified tab strip */}
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {/* Agent tabs sit next to the sidebar controls, bounded and scrollable. */}
+          <div className="flex min-w-0 flex-1 justify-start">
+            <div ref={agentTabsRef} className="scrollbar-none flex min-w-0 w-max max-w-[min(44rem,45vw)] items-center gap-1 overflow-x-auto">
             {effectiveViewMode === 'agent' && agentNames.map((name) => {
               const stream = agentStreams[name]
               const isActive = activeAgent === name
@@ -421,6 +437,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                     active={isActive}
                     onClick={() => setActiveAgent(name)}
                     dotClassName={dotClassName}
+                    data-agent-chip={name}
                     label={name === leadName ? `${name} ·` : undefined}
                   />
                 )
@@ -429,6 +446,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               return (
                 <button
                   key={name}
+                  data-agent-chip={name}
                   onClick={() => setActiveAgent(name)}
                   className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
                     isActive
@@ -442,8 +460,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                     : isOffline ? 'bg-(--color-text-subtle) opacity-50'
                     : 'bg-(--color-success)'
                   }`} />
-                  {name}
-                   {name === leadName && <span className="text-(--color-text-subtle)">·</span>}
+                  <span className="min-w-0 truncate">{name}</span>
+                  {name === leadName && <span className="text-(--color-text-subtle)">·</span>}
                 </button>
               )
             })}
@@ -453,6 +471,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                 Split · {splitAgentNames.length} agents
               </span>
             )}
+            </div>
           </div>
 
           {/* Right: tokens, dream, split-pane, view toggle, panel toggles —
@@ -485,15 +504,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             filesAction={mode === 'coding'
               ? workspace ? {
                   Icon: FolderOpen,
-                  label: 'Files & Diff',
-                  onClick: () => setCodingPanel('files'),
-                  title: 'Workspace files and git diff',
+                  onClick: handleWorkspaceFiles,
+                  title: codingPanel === null ? 'Workspace files and git diff' : 'Close files and diff',
                   ariaLabel: 'Workspace files and git diff',
                   className: 'mr-2',
                 } : undefined
               : {
                   Icon: FolderOpen,
-                  label: 'Files',
                   onClick: () => setShowFilesPanel((v) => !v),
                   disabled: !sessionIdState,
                   title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',

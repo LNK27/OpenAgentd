@@ -112,7 +112,6 @@ export function TodosPopover({
         render={
           <TopbarAction
             Icon={ListTodo}
-            label="Todos"
             indicator={hasInProgress}
             title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
             aria-label="Task list"

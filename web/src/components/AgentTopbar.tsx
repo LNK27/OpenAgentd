@@ -43,7 +43,7 @@ export interface AgentTopbarTokens {
 export interface AgentTopbarActionDescriptor {
   /** Lucide icon component. */
   Icon: LucideIcon
-  label: string
+  label?: string
   onClick: () => void
   /** Disable the action (renders muted, blocks click). */
   disabled?: boolean
@@ -180,7 +180,7 @@ function AgentTopbarActionButton({
       disabled={action.disabled}
       className={action.className}
       title={action.title}
-      aria-label={action.ariaLabel ?? action.label}
+      aria-label={action.ariaLabel ?? action.label ?? action.title}
       indicator={action.indicator}
       indicatorClassName={action.indicatorClassName}
     />

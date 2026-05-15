@@ -85,7 +85,7 @@ export function AgentChip({
   const content = (
     <>
       <span className={dotClasses} aria-hidden="true" />
-      <span className="truncate">{label ?? role}</span>
+      <span className="min-w-0 truncate">{label ?? role}</span>
     </>
   )
 

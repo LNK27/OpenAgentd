@@ -399,10 +399,10 @@ export function Sidebar({
                &ldquo;{deleteTarget?.title || 'Untitled'}&rdquo; will be permanently deleted. This cannot be undone.
              </DialogDescription>
            </DialogHeader>
-           <DialogFooter>
-             <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-               Cancel
-             </Button>
+            <DialogFooter className="p-3">
+              <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </Button>
              <Button variant="destructive" onClick={confirmDelete}>
                Delete
              </Button>

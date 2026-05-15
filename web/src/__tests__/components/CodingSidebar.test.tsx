@@ -13,6 +13,7 @@ const browseResponse = {
   directories: [],
 }
 let validateError: Error | null = null
+const deleteSessionMutate = mock(() => {})
 let sessionsData: Array<{
   id: string
   title: string | null
@@ -70,7 +71,7 @@ mock.module('@/queries/useSessionsQuery', () => ({
     isFetching: false,
     refetch: mock(() => {}),
   }),
-  useDeleteTeamSessionMutation: () => ({ mutate: mock(() => {}) }),
+  useDeleteTeamSessionMutation: () => ({ mutate: deleteSessionMutate }),
 }))
 
 describe('CodingSidebar workspace trust flow', () => {
@@ -79,6 +80,7 @@ describe('CodingSidebar workspace trust flow', () => {
     sessionsData = []
     useTeamStore.setState({ isTeamWorking: false, sessionId: null })
     navigate.mockClear()
+    deleteSessionMutate.mockClear()
     validateError = null
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
@@ -215,5 +217,32 @@ describe('CodingSidebar workspace trust flow', () => {
     await renderCodingSidebarForSessions('session-1')
 
     expect(screen.queryByLabelText('Session running')).toBeNull()
+  })
+
+  it('requires confirmation before deleting a coding session', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Delete me',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Delete session Delete me'))
+
+    expect(deleteSessionMutate).not.toHaveBeenCalled()
+    expect(screen.getByText('Delete session')).toBeTruthy()
+    expect(screen.getByText(/will be permanently deleted/i)).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
+    expect(navigate).toHaveBeenCalledWith({ to: '/coding' })
   })
 })

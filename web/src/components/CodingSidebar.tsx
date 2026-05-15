@@ -149,6 +149,7 @@ export function CodingSidebar({
   const [loading, setLoading] = useState(false)
   const [pendingWorkspace, setPendingWorkspace] = useState<string | null>(null)
   const [trustWorkspace, setTrustWorkspace] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
 
   const loadBrowser = useCallback(async (path?: string | null) => {
     setLoading(true)
@@ -225,8 +226,14 @@ export function CodingSidebar({
 
   const handleSessionDelete = (e: React.MouseEvent, session: SessionResponse) => {
     e.stopPropagation()
-    deleteSession.mutate(session.id)
-    if (session.id === currentSessionId) navigate({ to: '/coding' })
+    setDeleteTarget(session)
+  }
+
+  const confirmSessionDelete = () => {
+    if (!deleteTarget) return
+    deleteSession.mutate(deleteTarget.id)
+    if (deleteTarget.id === currentSessionId) navigate({ to: '/coding' })
+    setDeleteTarget(null)
   }
 
   return (
@@ -463,6 +470,24 @@ export function CodingSidebar({
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete session</DialogTitle>
+            <DialogDescription>
+              &ldquo;{deleteTarget?.title || 'Untitled'}&rdquo; will be permanently deleted. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="p-3">
+            <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button type="button" variant="destructive" onClick={confirmSessionDelete}>Delete</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </motion.aside>
