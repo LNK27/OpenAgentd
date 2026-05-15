@@ -344,6 +344,28 @@ def main() -> int:
 
     root = Path(args.root).resolve()
     out = Path(args.out).resolve()
+
+    # ── Fail fast on stale frontend ─────────────────────────────────────
+    # The wheel built by ``uv pip install .`` packages ``app/_web_dist/``
+    # — *not* ``web/dist/``. If a developer runs ``bun run build`` but
+    # forgets to sync ``app/_web_dist/``, the sidecar silently ships the
+    # last-synced UI and the user sees stale code in the desktop app.
+    # Catch it here rather than at runtime.
+    web_dist = root / "web" / "dist" / "index.html"
+    app_web_dist = root / "app" / "_web_dist" / "index.html"
+    if not app_web_dist.is_file():
+        raise SystemExit(
+            f"error: {app_web_dist} is missing.\n"
+            f"       Run ``make build-web`` first to build the web UI and copy it\n"
+            f"       into app/_web_dist/."
+        )
+    if web_dist.is_file() and web_dist.stat().st_mtime > app_web_dist.stat().st_mtime + 1:
+        raise SystemExit(
+            f"error: {app_web_dist} is older than {web_dist}.\n"
+            f"       The sidecar bundle would ship a stale UI. Run ``make build-web``\n"
+            f"       to copy web/dist/ → app/_web_dist/ before building the sidecar."
+        )
+
     if out.exists():
         print(f"removing existing {out}")
         shutil.rmtree(out)
