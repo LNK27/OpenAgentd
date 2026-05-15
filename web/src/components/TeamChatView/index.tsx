@@ -655,7 +655,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         onClose={() => setShowFilesPanel(false)}
       />
       <WikiPanel open={wikiOpen} onClose={closeWiki} />
-      <SchedulerPanel open={schedulerOpen} onClose={closeScheduler} />
+      <SchedulerPanel
+        open={schedulerOpen}
+        onClose={closeScheduler}
+        contextMode={mode}
+        contextWorkspace={workspace ?? null}
+      />
       {!isMobile && showPalette && (
         <CommandPalette commands={commands} onClose={() => setShowPalette(false)} />
       )}

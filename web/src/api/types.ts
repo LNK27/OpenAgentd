@@ -369,10 +369,16 @@ export interface WorkspaceFilesResponse {
 
 // ── Scheduler ───────────────────────────────────────────────────────────────
 
+export type ScheduledTaskMode = 'normal' | 'coding'
+
 export interface ScheduledTaskResponse {
   id: string
   name: string
-  agent: string
+  // Routing target — every task delivers to the team lead of the matching
+  // team (default lead for ``normal``, workspace lead for ``coding``).
+  // See documents/docs/agent/tools.md#scheduler-builtinschedulepy.
+  mode: ScheduledTaskMode
+  workspace: string | null
   schedule_type: 'at' | 'every' | 'cron'
   at_datetime: string | null
   every_seconds: number | null
@@ -392,7 +398,8 @@ export interface ScheduledTaskResponse {
 
 export interface ScheduledTaskCreate {
   name: string
-  agent: string
+  mode?: ScheduledTaskMode
+  workspace?: string | null
   schedule_type: 'at' | 'every' | 'cron'
   at_datetime?: string | null
   every_seconds?: number | null

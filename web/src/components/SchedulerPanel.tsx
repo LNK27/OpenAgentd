@@ -5,9 +5,9 @@
  * backdrop click to close, and X close button.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Clock, Play, Pause, Trash2, Plus, Loader2, AlertCircle, CalendarClock, Zap, ArrowLeft, Pencil } from 'lucide-react'
+import { X, Clock, Play, Pause, Trash2, Plus, Loader2, AlertCircle, CalendarClock, Zap, ArrowLeft, Pencil, FolderOpen } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,15 +21,21 @@ import {
   usePauseScheduledTaskMutation,
   useResumeScheduledTaskMutation,
   useTriggerScheduledTaskMutation,
-  useTeamAgentsQuery,
 } from '@/queries'
-import type { ScheduledTaskResponse, ScheduledTaskCreate } from '@/api/types'
+import type { ScheduledTaskResponse, ScheduledTaskCreate, ScheduledTaskMode } from '@/api/types'
 import { formatRelativeDate, formatInTimezone, wallClockToISO, isoToWallClock } from '@/utils/format'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { loadCodingWorkspaceEntries, workspaceLabel } from '@/utils/workspace'
 
 interface SchedulerPanelProps {
   open: boolean
   onClose: () => void
+  /** Routing target inherited from the surrounding chat view. When the
+   *  scheduler is opened inside a coding workspace, the Create form
+   *  pre-fills mode='coding' + that workspace. Edit forms always start
+   *  from the task's own stored mode/workspace. */
+  contextMode?: ScheduledTaskMode
+  contextWorkspace?: string | null
 }
 
 // ── Shared utility ──────────────────────────────────────────────────────────
@@ -66,7 +72,9 @@ function ScheduleTypeSegmented({
     <div
       role="tablist"
       aria-label="Schedule type"
-      className="mt-2 flex w-full gap-1 rounded-md border border-(--color-border) bg-(--bg-page) p-1"
+      // ``inline-flex`` (not ``flex w-full``) so the control sizes to its
+      // contents — three short labels do not need the full form width.
+      className="mt-2 inline-flex gap-1 rounded-md border border-(--color-border) bg-(--bg-page) p-1"
     >
       {options.map((opt) => {
         const active = value === opt.key
@@ -78,7 +86,10 @@ function ScheduleTypeSegmented({
             aria-selected={active}
             onClick={() => onChange(opt.key)}
             className={
-              'flex-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors ' +
+              // Drop ``flex-1`` — let each button hug its label with
+              // comfortable horizontal padding instead of stretching to
+              // fill the container.
+              'rounded-sm px-3 py-1 text-xs font-medium transition-colors ' +
               (active
                 ? 'bg-(--bg-card) text-(--color-text) shadow-sm ring-1 ring-(--color-border-strong)'
                 : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')
@@ -112,9 +123,163 @@ function formatScheduleLabel(task: Pick<ScheduledTaskResponse, 'schedule_type' |
   return 'unknown schedule'
 }
 
+// ── Mode / workspace shared bits ────────────────────────────────────────────
+
+function ModeBadge({ task }: { task: Pick<ScheduledTaskResponse, 'mode' | 'workspace'> }) {
+  if (task.mode === 'coding' && task.workspace) {
+    return (
+      <span
+        className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)"
+        title={task.workspace}
+      >
+        <FolderOpen size={10} className="shrink-0" />
+        <span className="truncate">coding · {workspaceLabel(task.workspace)}</span>
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center rounded-md bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)">
+      normal
+    </span>
+  )
+}
+
+/**
+ * Mode toggle + workspace input — shared between Create and Edit forms.
+ *
+ * Workspace control:
+ *   - When the caller has a context workspace (scheduler opened inside a
+ *     coding chat), the input pre-fills with that path. The user can still
+ *     edit it or switch modes.
+ *   - Saved coding workspaces from localStorage are surfaced as quick-pick
+ *     suggestions via a small `<Select>` next to the path input.
+ */
+/**
+ * Internal subcomponent — exported solely for unit testing the mode/workspace
+ * toggle contract. Not part of the public ``SchedulerPanel`` API; do not
+ * consume from other modules.
+ */
+export function ModeWorkspaceFields({
+  mode,
+  workspace,
+  onChange,
+}: {
+  mode: ScheduledTaskMode
+  workspace: string | null
+  /** Emits both fields together so the parent applies them in a single
+   *  setState — preventing the stale-snapshot bug where switching
+   *  ``coding → normal`` would clear the workspace but leave ``mode``
+   *  unchanged (two sequential setState calls on the same snapshot). */
+  onChange: (next: { mode: ScheduledTaskMode; workspace: string | null }) => void
+}) {
+  const savedWorkspaces = useMemo(
+    () =>
+      loadCodingWorkspaceEntries()
+        .map((entry) => entry.path)
+        .sort(),
+    [],
+  )
+
+  const modeOptions: { key: ScheduledTaskMode; label: string }[] = [
+    { key: 'normal', label: 'Normal' },
+    { key: 'coding', label: 'Coding' },
+  ]
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-(--color-text)">Routing</label>
+      <div
+        role="tablist"
+        aria-label="Task mode"
+        // ``inline-flex`` so two short labels ("Normal" / "Coding") do not
+        // sprawl across the full form width.
+        className="mt-2 inline-flex gap-1 rounded-md border border-(--color-border) bg-(--bg-page) p-1"
+      >
+        {modeOptions.map((opt) => {
+          const active = mode === opt.key
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => {
+                onChange({
+                  mode: opt.key,
+                  // Drop the workspace when leaving coding mode; preserve it
+                  // when staying on coding so the user does not lose their
+                  // typed-in path by tapping the active tab.
+                  workspace: opt.key === 'coding' ? workspace : null,
+                })
+              }}
+              className={
+                'rounded-sm px-3 py-1 text-xs font-medium transition-colors ' +
+                (active
+                  ? 'bg-(--bg-card) text-(--color-text) shadow-sm ring-1 ring-(--color-border-strong)'
+                  : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')
+              }
+            >
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
+      <p className="mt-1 text-xs text-(--color-text-muted)">
+        {mode === 'normal'
+          ? 'Delivers to the default team lead.'
+          : 'Delivers to the lead of the coding team for the workspace below.'}
+      </p>
+
+      {mode === 'coding' && (
+        <div className="mt-3">
+          <label className="block text-sm font-medium text-(--color-text)">Workspace</label>
+          <div className="mt-1 flex gap-2">
+            <Input
+              className={`flex-1 ${FIELD_CLASS}`}
+              value={workspace ?? ''}
+              onChange={(e) => onChange({ mode, workspace: e.target.value || null })}
+              placeholder="Absolute path, e.g. /Users/you/project"
+            />
+            {savedWorkspaces.length > 0 && (
+              <Select
+                value=""
+                onValueChange={(v) => {
+                  if (v) onChange({ mode, workspace: v })
+                }}
+              >
+                <SelectTrigger
+                  className={`w-44 shrink-0 ${FIELD_CLASS}`}
+                  aria-label="Pick a saved workspace"
+                >
+                  <SelectValue placeholder="Saved…" />
+                </SelectTrigger>
+                <SelectContent className={SELECT_CONTENT_CLASS}>
+                  {savedWorkspaces.map((path) => (
+                    <SelectItem key={path} value={path}>
+                      {workspaceLabel(path)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-(--color-text-muted)">
+            The directory must already exist on disk.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Panel root ──────────────────────────────────────────────────────────────
 
-export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
+export function SchedulerPanel({
+  open,
+  onClose,
+  contextMode = 'normal',
+  contextWorkspace = null,
+}: SchedulerPanelProps) {
   const isMobile = useIsMobile()
 
   // Ephemeral panel-scoped state — not shared outside this component tree,
@@ -125,14 +290,12 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'create'>('list')
 
   const tasksQuery = useScheduledTasksQuery()
-  const agentsQuery = useTeamAgentsQuery()
 
   // Refresh on open — the drawer is mounted persistently so AnimatePresence
   // can play exit animations; without this the list goes stale on reopen.
   useEffect(() => {
     if (open) {
       tasksQuery.refetch()
-      agentsQuery.refetch()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -148,13 +311,34 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
   }, [open, onClose])
 
   const tasks = tasksQuery.data?.tasks ?? []
-  const agents = agentsQuery.data?.agents ?? []
 
-  const filteredTasks = tasks.filter(
-    (task) =>
-      task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.agent.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+  // Scope the visible list to the caller's chat context so the user only
+  // sees reminders that belong to *this* lead:
+  //   * Default chat (``contextMode='normal'``)   → only normal tasks.
+  //   * Coding chat  (``contextMode='coding'``,
+  //     ``contextWorkspace='/repo/x'``)            → only coding tasks
+  //                                                  for that workspace.
+  // Mirrors the server-side ``_in_scope`` filter applied by the
+  // ``schedule_task`` tool so the UI shows what the agent itself sees.
+  // No explicit toggle is exposed: per the UX decision, the scoping is
+  // implicit and there is no "show all" escape hatch from inside the panel.
+  const scopedTasks = tasks.filter((task) => {
+    if (task.mode !== contextMode) return false
+    if (contextMode === 'coding') {
+      return task.workspace === contextWorkspace
+    }
+    return true
+  })
+
+  const filteredTasks = scopedTasks.filter((task) => {
+    const q = searchQuery.toLowerCase()
+    if (!q) return true
+    return (
+      task.name.toLowerCase().includes(q) ||
+      task.mode.toLowerCase().includes(q) ||
+      (task.workspace ?? '').toLowerCase().includes(q)
+    )
+  })
 
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null
 
@@ -236,8 +420,19 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
                           : 'Scheduled Tasks'}
                     </h2>
                     {(!isMobile || mobilePane === 'list') && (
-                      <p className="mt-0.5 truncate text-xs text-(--color-text-muted)">
-                        Manage cron and scheduled agent tasks
+                      <p
+                        className="mt-0.5 truncate text-xs text-(--color-text-muted)"
+                        // ``title`` exposes the full workspace path on
+                        // hover when the truncated label hides it.
+                        title={
+                          contextMode === 'coding' && contextWorkspace
+                            ? `Reminders for ${contextWorkspace}`
+                            : undefined
+                        }
+                      >
+                        {contextMode === 'coding' && contextWorkspace
+                          ? `Reminders for ${workspaceLabel(contextWorkspace)}`
+                          : 'Reminders for this chat'}
                       </p>
                     )}
                   </div>
@@ -327,11 +522,14 @@ export function SchedulerPanel({ open, onClose }: SchedulerPanelProps) {
                   {selectedTask && (!isMobile || mobilePane === 'detail') ? (
                     <TaskDetailView
                       task={selectedTask}
-                      agents={agents}
                       onClose={handleCloseDetail}
                     />
                   ) : (
-                    <CreateTaskForm agents={agents} onSuccess={handleCloseDetail} />
+                    <CreateTaskForm
+                      contextMode={contextMode}
+                      contextWorkspace={contextWorkspace}
+                      onSuccess={handleCloseDetail}
+                    />
                   )}
                 </div>
               )}
@@ -385,9 +583,7 @@ function TaskListItem({
             {formatScheduleLabel(task)}
           </p>
           <div className="mt-1 flex items-center gap-2">
-            <span className="inline-flex items-center rounded-md bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)">
-              {task.agent}
-            </span>
+            <ModeBadge task={task} />
             <span className={`text-xs font-medium ${statusColor}`}>{task.status}</span>
           </div>
           {task.last_error && (
@@ -468,16 +664,22 @@ function TaskListItem({
 // ── Create task form ────────────────────────────────────────────────────────
 
 function CreateTaskForm({
-  agents,
+  contextMode,
+  contextWorkspace,
   onSuccess,
 }: {
-  agents: Array<{ name: string }>
+  contextMode: ScheduledTaskMode
+  contextWorkspace: string | null
   onSuccess: () => void
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const initialMode: ScheduledTaskMode = contextMode
+  const initialWorkspace: string | null =
+    contextMode === 'coding' ? contextWorkspace : null
   const [formData, setFormData] = useState<ScheduledTaskCreate>({
     name: '',
-    agent: agents[0]?.name ?? '',
+    mode: initialMode,
+    workspace: initialWorkspace,
     schedule_type: 'every',
     every_seconds: 3600,
     timezone: localTz,
@@ -492,8 +694,13 @@ function CreateTaskForm({
     e.preventDefault()
     setError(null)
 
+    const mode: ScheduledTaskMode = formData.mode ?? 'normal'
+    const workspace = formData.workspace ?? null
+
     if (!formData.name.trim()) { setError('Task name is required'); return }
-    if (!formData.agent) { setError('Agent is required'); return }
+    if (mode === 'coding' && !workspace?.trim()) {
+      setError('Workspace is required for coding mode'); return
+    }
     if (!formData.prompt.trim()) { setError('Prompt is required'); return }
     if (formData.schedule_type === 'at' && !formData.at_datetime) {
       setError('Date/time is required for "at" schedule'); return
@@ -517,7 +724,8 @@ function CreateTaskForm({
     const atIso = formData.at_datetime ? wallClockToISO(formData.at_datetime, tz) : undefined
     const payload: ScheduledTaskCreate = {
       name: formData.name.trim(),
-      agent: formData.agent,
+      mode,
+      workspace: mode === 'coding' ? workspace!.trim() : null,
       schedule_type: formData.schedule_type,
       timezone: tz,
       prompt: formData.prompt.trim(),
@@ -532,7 +740,8 @@ function CreateTaskForm({
       onSuccess: () => {
         setFormData({
           name: '',
-          agent: agents[0]?.name ?? '',
+          mode: initialMode,
+          workspace: initialWorkspace,
           schedule_type: 'every',
           every_seconds: 3600,
           timezone: localTz,
@@ -571,25 +780,20 @@ function CreateTaskForm({
             />
           </div>
 
-          {/* Agent */}
-          <div>
-            <label className="block text-sm font-medium text-(--color-text)">Agent</label>
-            <Select
-              value={formData.agent ?? ''}
-              onValueChange={(v) => { if (v) setFormData({ ...formData, agent: v }) }}
-            >
-              <SelectTrigger className={`mt-1 w-full ${FIELD_CLASS}`}>
-                <SelectValue placeholder="Select agent" />
-              </SelectTrigger>
-              <SelectContent className={SELECT_CONTENT_CLASS}>
-                {agents.map((agent) => (
-                  <SelectItem key={agent.name} value={agent.name}>
-                    {agent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Routing — mode + workspace (mode is auto-injected into the
+              schedule_task tool when fired; here the user sets where the
+              task should route once the timer fires). */}
+          <ModeWorkspaceFields
+            mode={formData.mode ?? 'normal'}
+            workspace={formData.workspace ?? null}
+            onChange={(next) =>
+              setFormData((prev) => ({
+                ...prev,
+                mode: next.mode,
+                workspace: next.workspace,
+              }))
+            }
+          />
 
           {/* Schedule Type */}
           <div>
@@ -632,7 +836,9 @@ function CreateTaskForm({
             <div>
               <label className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
               <Input
-                className={`mt-1 ${FIELD_CLASS}`}
+                // Numeric value rarely exceeds 6 digits — constrain to ~9rem
+                // so the input does not stretch across the full form width.
+                className={`mt-1 w-36 ${FIELD_CLASS}`}
                 type="number"
                 min="1"
                 value={formData.every_seconds ?? 3600}
@@ -677,7 +883,7 @@ function CreateTaskForm({
               className={`mt-1 ${FIELD_CLASS}`}
               value={formData.prompt}
               onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
-              placeholder="What should the agent do?"
+              placeholder="Message to deliver to the team lead when the task fires."
               rows={4}
             />
           </div>
@@ -732,11 +938,9 @@ function CreateTaskForm({
 
 function TaskDetailView({
   task,
-  agents,
   onClose,
 }: {
   task: ScheduledTaskResponse
-  agents: Array<{ name: string }>
   onClose: () => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -745,7 +949,6 @@ function TaskDetailView({
     return (
       <EditTaskForm
         task={task}
-        agents={agents}
         onSuccess={() => setEditing(false)}
         onCancel={() => setEditing(false)}
       />
@@ -847,9 +1050,20 @@ function TaskDetailView({
           </h3>
           <div className="space-y-3">
             <div>
-              <span className="text-xs text-(--color-text-muted)">Agent</span>
+              <span className="text-xs text-(--color-text-muted)">Routing</span>
               <p className="mt-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text)">
-                {task.agent}
+                {task.mode === 'coding' ? (
+                  <>
+                    Coding team
+                    {task.workspace && (
+                      <span className="ml-1 font-mono text-xs text-(--color-text-muted)">
+                        · {task.workspace}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  'Default team lead'
+                )}
               </p>
             </div>
             <div>
@@ -927,12 +1141,10 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 function EditTaskForm({
   task,
-  agents,
   onSuccess,
   onCancel,
 }: {
   task: ScheduledTaskResponse
-  agents: Array<{ name: string }>
   onSuccess: () => void
   onCancel: () => void
 }) {
@@ -943,7 +1155,8 @@ function EditTaskForm({
   const initialAt = task.at_datetime ? isoToWallClock(task.at_datetime, task.timezone) : undefined
   const [formData, setFormData] = useState<ScheduledTaskCreate>({
     name: task.name,
-    agent: task.agent,
+    mode: task.mode,
+    workspace: task.workspace,
     schedule_type: task.schedule_type,
     at_datetime: initialAt,
     every_seconds: task.every_seconds ?? undefined,
@@ -961,7 +1174,12 @@ function EditTaskForm({
     e.preventDefault()
     setError(null)
 
-    if (!formData.agent) { setError('Agent is required'); return }
+    const mode: ScheduledTaskMode = formData.mode ?? 'normal'
+    const workspace = formData.workspace ?? null
+
+    if (mode === 'coding' && !workspace?.trim()) {
+      setError('Workspace is required for coding mode'); return
+    }
     if (!formData.prompt.trim()) { setError('Prompt is required'); return }
     if (formData.schedule_type === 'at' && !formData.at_datetime) {
       setError('Date/time is required for "at" schedule'); return
@@ -977,7 +1195,8 @@ function EditTaskForm({
     const tz = formData.timezone || localTz
     const atIso = formData.at_datetime ? wallClockToISO(formData.at_datetime, tz) : undefined
     const payload: Partial<ScheduledTaskCreate> = {
-      agent: formData.agent,
+      mode,
+      workspace: mode === 'coding' ? workspace!.trim() : null,
       schedule_type: formData.schedule_type,
       timezone: tz,
       prompt: formData.prompt.trim(),
@@ -1020,25 +1239,18 @@ function EditTaskForm({
       {/* Form */}
       <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto px-5 py-4">
         <div className="space-y-4">
-          {/* Agent */}
-          <div>
-            <label className="block text-sm font-medium text-(--color-text)">Agent</label>
-            <Select
-              value={formData.agent ?? ''}
-              onValueChange={(v) => { if (v) setFormData({ ...formData, agent: v }) }}
-            >
-              <SelectTrigger className={`mt-1 w-full ${FIELD_CLASS}`}>
-                <SelectValue placeholder="Select agent" />
-              </SelectTrigger>
-              <SelectContent className={SELECT_CONTENT_CLASS}>
-                {agents.map((agent) => (
-                  <SelectItem key={agent.name} value={agent.name}>
-                    {agent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Routing — mode + workspace */}
+          <ModeWorkspaceFields
+            mode={formData.mode ?? 'normal'}
+            workspace={formData.workspace ?? null}
+            onChange={(next) =>
+              setFormData((prev) => ({
+                ...prev,
+                mode: next.mode,
+                workspace: next.workspace,
+              }))
+            }
+          />
 
           {/* Schedule Type */}
           <div>
@@ -1081,7 +1293,9 @@ function EditTaskForm({
             <div>
               <label className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
               <Input
-                className={`mt-1 ${FIELD_CLASS}`}
+                // Numeric value rarely exceeds 6 digits — constrain to ~9rem
+                // so the input does not stretch across the full form width.
+                className={`mt-1 w-36 ${FIELD_CLASS}`}
                 type="number"
                 min="1"
                 value={formData.every_seconds ?? 3600}
@@ -1126,7 +1340,7 @@ function EditTaskForm({
               className={`mt-1 ${FIELD_CLASS}`}
               value={formData.prompt}
               onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
-              placeholder="What should the agent do?"
+              placeholder="Message to deliver to the team lead when the task fires."
               rows={4}
             />
           </div>
