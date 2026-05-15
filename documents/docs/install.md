@@ -175,22 +175,23 @@ Requires [uv](https://docs.astral.sh/uv/) and [Bun](https://bun.sh).
 
 ## First run
 
-### 1. Initialize
+### Desktop app
+
+Open the app, then go to **Settings → Providers**. Add an API-key provider or click **Connect** for OAuth providers such as GitHub Copilot or OpenAI Codex. After the first provider is saved, OpenAgentd installs the default agent team and skills automatically.
+
+### CLI / server
+
+Run the setup wizard once:
 
 ```bash
 openagentd init
 ```
 
-`init` runs an interactive setup wizard:
+`init` asks for a provider, model, API key when needed, and installs the default agent team and skills. Existing files are never overwritten, so re-running `init` is safe.
 
-1. **Provider** — choose from 12 LLM providers (Google Gemini, OpenAI, OpenRouter, etc.). Providers with free tiers are labelled.
-2. **Model** — pick from a curated list for your provider, or type any model name.
-3. **API key** — paste your key (input is hidden). OAuth-only providers (GitHub Copilot, OpenAI Codex) skip this step and prompt you to run `openagentd auth <provider>` instead.
-4. **Seed config** — installs the default agent team and skills into your config directory. Existing files are never overwritten, so re-running `init` is safe.
+Config is written to `~/.config/openagentd/` (XDG standard). The desktop app and CLI share this same config directory. The database and logs go to `~/.local/share/openagentd/` and `~/.local/state/openagentd/`.
 
-Config is written to `~/.config/openagentd/` (XDG standard). The database and logs go to `~/.local/share/openagentd/` and `~/.local/state/openagentd/`.
-
-### 2. Start
+### Start the server
 
 ```bash
 openagentd
