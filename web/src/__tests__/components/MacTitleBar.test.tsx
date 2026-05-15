@@ -9,13 +9,13 @@
  *
  * What we want to verify:
  *
- *   1. macOS-detected: renders a fixed 28 px strip with the magic
- *      ``data-tauri-drag-region`` attribute and exactly 78 px left
- *      padding (mirrors the traffic-light position in tauri.conf.json).
+ *   1. macOS-detected: renders a fixed 40 px strip with exactly 70 px
+ *      left padding (mirrors the traffic-light position in
+ *      tauri.conf.json — x=12 origin + ~58 px button group).
  *   2. macOS-detected: sets ``html[data-platform="mac-overlay"]`` so
- *      the global CSS hook reserves the body padding.
- *   3. macOS-detected: cleans up the attribute on unmount (no stale
- *      padding when the strip disappears).
+ *      other components (e.g. floating overlays) can react to the
+ *      mac-overlay state without re-detecting.
+ *   3. macOS-detected: cleans up the attribute on unmount.
  *   4. Non-macOS: renders nothing (``null``), no attribute side-effect.
  *   5. Forward-compat: the UA-CH ``userAgentData.platform === "macOS"``
  *      branch fires even when ``navigator.platform`` is frozen/empty.
@@ -105,30 +105,23 @@ beforeEach(() => {
 })
 
 describe("MacTitleBar — macOS in Tauri", () => {
-  it("renders a fixed 28 px drag strip with the tauri-drag-region attr", async () => {
+  it("renders a 70 × 40 px corner drag pad", async () => {
     setPlatform("MacIntel")
     enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const { container } = render(<MacTitleBar />)
-    const strip = container.firstElementChild as HTMLElement | null
-    expect(strip).not.toBeNull()
-    // Magic attribute — Tauri intercepts mouse-down here for drag.
-    expect(strip!.hasAttribute("data-tauri-drag-region")).toBe(true)
-    // Layout invariants: fixed, full-width, 28 px tall.
-    expect(strip!.className).toContain("fixed")
-    expect(strip!.className).toContain("inset-x-0")
-    expect(strip!.className).toContain("top-0")
-    expect(strip!.className).toContain("h-7") // h-7 = 1.75rem = 28 px
-  })
-
-  it("reserves 78 px left padding to clear the traffic lights", async () => {
-    setPlatform("MacIntel")
-    enableTauri()
-    const { MacTitleBar } = await freshMacTitleBar()
-    const { container } = render(<MacTitleBar />)
-    const strip = container.firstElementChild as HTMLElement
-    // Inline style mirrors trafficLightPosition.x (16) + button group (~62).
-    expect(strip.style.paddingLeft).toBe("78px")
+    const pad = container.firstElementChild as HTMLElement | null
+    expect(pad).not.toBeNull()
+    // Layout invariants — the pad sits in the top-left corner only,
+    // sized to the traffic-light inset. It is NOT a full-width strip:
+    // a full-width strip would catch ``mousedown`` events meant for
+    // the route's own header buttons. See MacTitleBar.tsx for the
+    // rationale.
+    expect(pad!.className).toContain("fixed")
+    expect(pad!.className).toContain("left-0")
+    expect(pad!.className).toContain("top-0")
+    expect(pad!.className).toContain("h-10") // h-10 = 2.5rem = 40 px
+    expect(pad!.className).toContain("w-(--spacing-mac-traffic-inset)")
   })
 
   it("sets aria-hidden so AT ignores the empty strip", async () => {
@@ -247,20 +240,23 @@ describe("MacTitleBar — non-macOS", () => {
   })
 })
 
-describe("MacTitleBar — module-level memoization", () => {
-  it("re-renders cheaply: IS_MAC is computed once per module load", async () => {
+describe("MacTitleBar — platform changes between renders", () => {
+  it("re-evaluates platform on each render via usePlatform()", async () => {
     setPlatform("MacIntel")
     enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const view = render(<MacTitleBar />)
     expect(document.documentElement.getAttribute("data-platform")).toBe("mac-overlay")
 
-    // Even if we change navigator.platform after the fact, the cached
-    // ``IS_MAC`` does not flip. The strip stays mounted.
+    // Patching navigator.platform mid-flight is purely a test
+    // convenience — the platform doesn't change at runtime in practice.
+    // We re-check it on every call so tests can flip between cases
+    // without bouncing the module cache.
     setPlatform("Win32")
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
     view.rerender(<MacTitleBar />)
-    const strip = view.container.firstElementChild
-    expect(strip).not.toBeNull()
+    // The component unmounts the platform attribute and the strip.
+    expect(view.container.firstElementChild).toBeNull()
   })
 })
 

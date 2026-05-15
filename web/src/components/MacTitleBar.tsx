@@ -1,105 +1,68 @@
 /**
- * MacTitleBar — custom draggable title strip for the macOS Tauri build.
+ * MacTitleBar — passive platform marker + minimal drag fallback for
+ * the macOS traffic-light inset.
  *
- * macOS doesn't have an HTML-overlay equivalent of Windows's
- * "extends-content-into-titlebar" mode out of the box; instead Tauri
- * exposes the **Overlay** titleBarStyle which keeps the three native
- * traffic-light buttons (close / minimize / zoom) floating on top of
- * a WebView that extends edge-to-edge. The price is that there's no
- * default place to grab the window for dragging.
+ * Background
+ * ──────────
+ * macOS Tauri uses the **Overlay** title-bar style: the three native
+ * traffic-light buttons float over a WebView that extends edge-to-edge.
+ * The OS draws the buttons but provides no default drag handle, so the
+ * WebView must declare one somewhere along the window's top edge.
  *
- * This component renders that missing grab handle:
+ * What this component does
+ * ────────────────────────
+ * 1. Sets ``html[data-platform=mac-overlay]`` so CSS / other components
+ *    can react to the overlay condition.
+ * 2. Renders a tiny 70 × 40 px drag pad in the **top-left corner only**
+ *    — the empty inset reserved for the OS traffic lights. That zone
+ *    is otherwise empty in every route, so the drag handler doesn't
+ *    collide with any clickable UI. Routes with their own header
+ *    (TeamChatView, AppHeader, telemetry PageHeader) provide drag for
+ *    the rest of the top edge via ``useTauriDrag``.
  *
- *   - A 28 px tall strip pinned to the top of the viewport.
- *   - 78 px left padding so the traffic-light buttons (which sit at
- *     ``x: 16, y: 18`` per ``trafficLightPosition`` in tauri.conf.json)
- *     don't overlap any text.
- *   - ``data-tauri-drag-region`` makes the strip a native drag handle —
- *     mouse-down moves the OS window.
- *   - ``pointer-events`` are scoped so descendants don't accidentally
- *     swallow drag events; click-through is enabled for empty space.
- *
- * The strip is only rendered on macOS. On Windows / Linux the native
- * title bar handles all of this and there's no traffic-light overlap
- * to work around. We deliberately render *nothing* on those platforms
- * so the rest of the layout stays untouched.
- *
- * To leave room below the strip in the main app layout, the body's
- * ``padding-top`` is bumped via the ``[data-platform="mac-overlay"]``
- * CSS hook applied to ``<html>`` in this same module's effect.
+ * Why not a full-width strip?
+ * ───────────────────────────
+ * A full-width ``fixed top-0`` strip would catch every ``mousedown``
+ * event at the top of the viewport. The community-recommended
+ * "pointer-events layering" trick (a ``pointer-events-none`` strip
+ * with a ``pointer-events-auto`` drag child underneath the buttons)
+ * only works when the drag child is *below* the route buttons in
+ * stacking order — which is fragile when MacTitleBar mounts at the
+ * root and route headers later in the DOM use ``position: fixed``
+ * with their own ``z-index`` values. The 70 × 40 corner pad sidesteps
+ * the stacking question entirely: it sits in a region that no route
+ * draws into, so collisions are impossible.
  */
 import { useEffect } from 'react'
 
-/** Runtime macOS detection. We can't rely on build-time constants
- *  because the same bundle runs on every platform. Module-level so
- *  the result is computed once at first import and shared by every
- *  render. */
-function detectMac(): boolean {
-  if (typeof navigator === 'undefined') return false
-  // ``navigator.platform`` is the cheap path and works for every
-  // Tauri-wrapped WebView (Safari WebKit on macOS).
-  if (/Mac/.test(navigator.platform)) return true
-  // Fallback: UA-CH for forward-compat with browsers that have already
-  // frozen ``navigator.platform``.
-  type UAClientHints = { platform?: string }
-  const uaData = (navigator as unknown as { userAgentData?: UAClientHints }).userAgentData
-  return uaData?.platform === 'macOS'
-}
-
-/** Detect whether we're running inside the Tauri WebView (vs a plain
- *  browser). The marker ``window.__TAURI_INTERNALS__`` is set by Tauri 2.x
- *  on the global ``window`` before any app code runs. In a regular
- *  browser tab (e.g. ``bun dev``) the marker is absent, so we can skip
- *  the title-bar chrome — there are no traffic-light buttons to clear. */
-function detectTauri(): boolean {
-  if (typeof window === 'undefined') return false
-  return '__TAURI_INTERNALS__' in window
-}
-
-const IS_MAC = detectMac()
-const IS_TAURI = detectTauri()
-// Only the Tauri WebView paints native traffic-light buttons over the
-// content, so the 28 px overlay strip + body padding are only needed
-// there. In a browser, leave the layout untouched.
-const SHOULD_RENDER = IS_MAC && IS_TAURI
+import { usePlatform } from '@/hooks/use-platform'
+import { useTauriDrag } from '@/hooks/use-tauri-drag'
 
 export function MacTitleBar() {
-  // Sync the platform attribute so the global stylesheet's
-  // ``html[data-platform="mac-overlay"] body { padding-top: 28px; }``
-  // rule reserves space for the title strip. The attribute is a
-  // single source of truth so any other component that needs to
-  // adjust for the strip (e.g. a sticky sidebar header) can read
-  // it without re-detecting the platform.
+  const { isMacOverlay } = usePlatform()
+  const dragHandlers = useTauriDrag()
+
+  // Sync the platform attribute so other components that need to react
+  // to the mac-overlay condition can read it without re-detecting.
   useEffect(() => {
-    if (!SHOULD_RENDER) return
+    if (!isMacOverlay) return
     document.documentElement.setAttribute('data-platform', 'mac-overlay')
     return () => {
       document.documentElement.removeAttribute('data-platform')
     }
-  }, [])
+  }, [isMacOverlay])
 
-  if (!SHOULD_RENDER) return null
+  if (!isMacOverlay) return null
 
+  // 70 × 40 px corner pad. Width matches --spacing-mac-traffic-inset
+  // and height matches --spacing-app-header. Sits at z-20 — above
+  // route headers (no z) but well below modals (z-50). Clicks in
+  // this rectangle never hit anything underneath: it's the empty
+  // inset every header reserves for the OS-overlaid traffic lights.
   return (
     <div
-      // ``data-tauri-drag-region`` is the magic attribute — Tauri's
-      // WebView intercepts mouse-down on elements carrying it and
-      // forwards it to the OS as a window-drag start.
-      data-tauri-drag-region
-      // Fixed strip across the very top. ``inset-x-0 top-0`` pins
-      // horizontally; ``h-7`` (28 px) leaves room for the standard
-      // 14 pt traffic lights. ``z-50`` keeps it above any app
-      // overlays; the strip itself stays visually empty (rgba with
-      // alpha 0) but carries an explicit ``backgroundColor`` so the
-      // Tauri/WKWebView hit-tester registers it as an opaque target
-      // for drag events. ``bg-transparent`` alone has been reported
-      // to fail drag detection on macOS Overlay windows.
-      className="fixed inset-x-0 top-0 z-50 h-7 select-none"
-      // The pl-[78px] mirrors the trafficLightPosition.x (16) + button
-      // group width (~62 px) so anything we ever decide to render
-      // *inside* the strip starts to the right of the buttons. Empty
-      // for now — the strip is just a drag handle.
-      style={{ paddingLeft: 78, backgroundColor: 'rgba(0,0,0,0)' }}
+      {...dragHandlers}
+      className="fixed left-0 top-0 z-20 h-10 w-(--spacing-mac-traffic-inset) select-none"
       aria-hidden="true"
     />
   )

@@ -23,9 +23,25 @@ struct AppState {
 /// rendering the traffic-light buttons (close/minimize/zoom) but the
 /// WebView extends edge-to-edge under them. The React app is then
 /// responsible for laying out a custom header strip and reserving
-/// ~78 pt of empty space at the top-left so the buttons don't sit on
-/// top of any clickable controls. A ``data-tauri-drag-region`` div
-/// inside that strip gives the user a window-drag handle.
+/// ~70 pt of empty space at the top-left so the buttons don't sit on
+/// top of any clickable controls. A ``useTauriDrag`` mousedown handler
+/// inside that header turns the bar into a window-drag handle.
+///
+/// ``traffic_light_position`` is applied programmatically here because
+/// the JSON config value is ignored when the window is created from
+/// Rust via ``WebviewWindowBuilder``. ``y`` controls the **bottom**
+/// inset of the buttons within the resized native title-bar container
+/// (Tao's ``inset_traffic_lights`` in
+/// ``tao-0.35.x/src/platform_impl/macos/view.rs:1152`` does
+/// ``title_bar_height = button_height + y`` and pins the buttons to
+/// the *top* of that container).
+///
+/// Empirical tuning for our 40 pt header:
+///   - ``y = 14`` → buttons sit near the top (visibly above centre).
+///   - ``y = 20`` → still slightly above centre.
+///   - ``y = 22`` → visually centred.
+///   - ``y = 26`` → buttons sit near the bottom (visibly below centre).
+/// ``x = 12`` keeps the standard macOS left margin.
 ///
 /// On Windows and Linux we keep the default OS chrome — those
 /// platforms have native title bars that integrate well with their
@@ -34,10 +50,11 @@ struct AppState {
 fn configure_window_chrome(builder: WebviewWindowBuilder<'_, tauri::Wry, AppHandle>) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
     #[cfg(target_os = "macos")]
     {
-        use tauri::TitleBarStyle;
+        use tauri::{LogicalPosition, TitleBarStyle};
         builder
             .title_bar_style(TitleBarStyle::Overlay)
             .hidden_title(true)
+            .traffic_light_position(LogicalPosition::new(12.0, 22.0))
     }
     #[cfg(not(target_os = "macos"))]
     {
