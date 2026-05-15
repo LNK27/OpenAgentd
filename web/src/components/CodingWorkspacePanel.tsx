@@ -167,9 +167,9 @@ function DiffPreview({ diff }: { diff: string }) {
               </span>
               <DiffChanges additions={file.additions} deletions={file.deletions} />
             </div>
-            <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed">
+            <pre className="font-mono text-[11px] leading-relaxed">
               {file.lines.map((line, index) => (
-                <span key={index} className={cn('block whitespace-pre px-3', diffLineClassName(line.kind))}>
+                <span key={index} className={cn('block whitespace-pre-wrap break-all px-3', diffLineClassName(line.kind))}>
                   {line.content}
                 </span>
               ))}
@@ -181,9 +181,9 @@ function DiffPreview({ diff }: { diff: string }) {
   }
 
   return (
-    <pre className="overflow-x-auto rounded bg-(--bg-page) p-2 font-mono text-[11px] leading-relaxed">
+    <pre className="rounded bg-(--bg-page) p-2 font-mono text-[11px] leading-relaxed">
       {diff.split('\n').map((line, index) => (
-        <span key={index} className={cn('block whitespace-pre', diffLineClass(line))}>
+        <span key={index} className={cn('block whitespace-pre-wrap break-all', diffLineClass(line))}>
           {line || ' '}
         </span>
       ))}
