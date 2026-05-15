@@ -391,7 +391,7 @@ export function SchedulerPanel({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed left-1/2 top-1/2 z-50 flex h-[min(860px,calc(100vh-40px))] w-[min(1180px,calc(100vw-40px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl"
+            className="fixed left-1/2 top-1/2 z-50 flex h-[min(90vh,860px)] w-[min(90vw,1180px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-label="Scheduled tasks"

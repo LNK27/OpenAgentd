@@ -314,7 +314,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         onDragEnd={handleDragEnd}
         animate={{ x: offset.x, y: offset.y }}
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-        className="pointer-events-auto absolute bottom-4 left-1/2 z-20 w-full max-w-xl -translate-x-1/2 px-4"
+        className="pointer-events-auto absolute bottom-4 left-1/2 z-20 w-full max-w-md -translate-x-1/2 px-3"
         style={{ touchAction: 'none' }}
       >
         <PendingMessageQueue inputRef={innerRef} />

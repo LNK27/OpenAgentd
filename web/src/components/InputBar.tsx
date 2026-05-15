@@ -188,8 +188,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    // max 6 rows ≈ 144px
-    el.style.height = `${Math.min(el.scrollHeight, 144)}px`
+    // max 5 rows ≈ 120px
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
     const computed = window.getComputedStyle(el)
     const lineHeight = parseFloat(computed.lineHeight) ||
       parseFloat(computed.fontSize) * 1.5
@@ -570,7 +570,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // calls these `inputBarAttach`, `inputBarMic`: 32×32, rounded-sm border,
   // --color-surface fill).
   const actionBtnClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
+    'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
 
   // Three states share one DOM tree: minimized, single-line, multi-line.
   // Multi-line is triggered by the slot's flex-basis:100% which wraps the
@@ -620,7 +620,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       type="button"
       onClick={(e) => { stopClick(e); onStop?.() }}
       aria-label="Stop generation"
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition-colors hover:opacity-90"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition-colors hover:opacity-90"
     >
       <Square size={12} fill="currentColor" />
     </button>
@@ -634,7 +634,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       disabled={!canSend}
       aria-label="Send message"
       title="Send (Enter) · New line (Shift+Enter) · Commands (/)"
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
     >
       {disabled && !minimized ? (
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
@@ -693,7 +693,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
             : disabled
               ? 'Waiting for response…'
               : isStreaming
-                ? 'Queue a follow-up, type /stop, or click stop…'
+                ? 'Queue a follow-up or /stop…'
                 : placeholder
         }
         rows={1}
@@ -774,7 +774,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           <motion.div
             layout
             initial={false}
-            animate={{ padding: minimized ? 6 : 14 }}
+            animate={{ padding: minimized ? 6 : 8 }}
             transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
