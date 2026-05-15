@@ -9,7 +9,7 @@ updated: 2026-04-21
 
 Context engineering is how openagentd controls what the LLM sees on each call: which messages survive, how the system prompt is shaped, and how per-run data flows through the agent.
 
-**Sources:** `app/agent/state.py`, `app/agent/schemas/agent.py`, `app/agent/agent_loop.py`, `app/services/chat_service.py`
+**Sources:** `app/agent/state.py`, `app/agent/schemas/agent.py`, `app/agent/agent_loop/`, `app/services/chat_service.py`
 
 ---
 

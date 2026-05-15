@@ -2,12 +2,12 @@
 title: Agent Loop & Execution
 description: One-turn reasoning loop with iteration, tool dispatch, checkpointing, and interrupts.
 status: stable
-updated: 2026-04-21
+updated: 2026-05-16
 ---
 
 # Agent Loop
 
-**Source:** `app/agent/agent_loop.py`
+**Sources:** `app/agent/agent_loop/core.py` (Agent class), `app/agent/agent_loop/streaming.py`, `app/agent/agent_loop/retry.py`, `app/agent/agent_loop/tool_dispatch.py`
 
 The `Agent` class drives all LLM reasoning in openagentd. One `Agent.run()` call = one user turn.
 
@@ -36,15 +36,19 @@ agent = Agent(
 |-----------|---------|-------|
 | `llm_provider` | required | Any `LLMProviderBase` implementation |
 | `name` | `"Agent"` | Appears in SSE `agent` field and logs |
+| `description` | `None` | Optional description — surfaced on `GET /api/agents` and in the UI |
 | `system_prompt` | `"You are a helpful assistant."` | Stored in `state.system_prompt`; prepended as `SystemMessage` inside `_stream_and_assemble` per LLM call |
 | `tools` | `[]` | `Tool` objects or plain callables decorated with `@tool` |
+| `skills` | `[]` | Skill names advertised in the system prompt; loaded on demand via the `skill` tool |
+| `mcp_servers` | `[]` | MCP server names the agent was configured with (surfaced to the UI even when zero tools are ready) |
 | `hooks` | `[]` | `BaseAgentHook` instances — run in order |
-| `max_iterations` | `100` | Guards against infinite tool-call loops |
-| `max_concurrent_tools` | `10` | Semaphore for parallel tool execution |
+| `max_iterations` | `100` (`MAX_AGENT_ITERATIONS`) | Guards against infinite tool-call loops |
+| `max_concurrent_tools` | `10` (`MAX_CONCURRENT_TOOLS`) | Semaphore for parallel tool execution |
 | `context` | `None` | Optional `AgentContext` subclass; accessible as `state.context` in hooks |
+| `model_id` | `None` | `"provider:model"` string used for capability lookup (`get_capabilities`) and logs |
 | `fallback_provider` | `None` | Secondary `LLMProviderBase` used when primary exhausts retries on retryable errors |
 | `fallback_model_id` | `None` | `"provider:model"` string for logging (e.g. `"copilot:gpt-5-mini"`) |
-| `summarization_config` | `None` | `SummarizationConfig` from YAML; read by `build_summarization_hook` in the route/team member to wire `SummarizationHook` per turn |
+| `summarization_config` | `None` | `SummarizationConfig` from YAML; read by `build_summarization_hook` to wire `SummarizationHook` per turn |
 
 ---
 
@@ -79,7 +83,7 @@ async def run(
 - Returns the full message list including new assistant + tool messages appended this turn.
 - Pass `checkpointer=None` (default) to skip all persistence — useful for unit tests.
 
-See `app/agent/agent_loop.py:Agent.__init__` and `Agent.run()` for full signature details.
+See `app/agent/agent_loop/core.py:Agent.__init__` and `Agent.run()` for full signature details.
 
 ---
 

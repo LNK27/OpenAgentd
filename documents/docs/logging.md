@@ -2,7 +2,7 @@
 title: Logging Architecture
 description: Two-tier loguru system: app-wide JSON logs, per-session transcripts, structured JSONL events with file rotation.
 status: stable
-updated: 2026-04-21
+updated: 2026-05-16
 ---
 
 # Logging
@@ -33,9 +33,10 @@ Log paths live under `{OPENAGENTD_STATE_DIR}/logs/`. Value depends on environmen
     └── sessions/
         └── {session_id}/
             ├── session.log                  # Human-readable, all DEBUG+ logs
-            ├── assistant.jsonl              # Structured events (SessionLogHook)
-            └── explorer.jsonl               # (team mode: one JSONL per agent)
+            └── {agent_name}.jsonl           # Structured events (SessionLogHook) — one per agent
 ```
+
+In team mode there is one `{agent_name}.jsonl` per active agent (e.g. `openagentd.jsonl`, `explorer.jsonl`, `writer.jsonl`); single-agent chat produces one named after the lead agent.
 
 Session workspaces (`workspace_dir(sid)`) — and the user-upload subdir
 inside them (`uploads_dir(sid) == workspace_dir(sid)/uploads`) — live
@@ -174,32 +175,35 @@ See [JSONL Event Schema](#jsonl-event-schema) below.
 
 ## Agent Loop Events
 
-The agent's main loop (`app/agent/agent_loop.py`) logs at key points.
+The agent's main loop (`app/agent/agent_loop/`) logs at key points.
 
 ### Event Catalog
 
-| Event | Level | Line | Fields | Purpose |
-|-------|-------|------|--------|---------|
-| `agent_run_start` | INFO | 193 | `agent`, `message_count`, `tools`, `session` | Marks beginning of agent run |
-| `agent_iteration` | INFO | 222 | `agent`, `iteration`, `messages` | Per-loop iteration start |
-| `llm_response` | INFO | 263 | `agent`, `iteration`, `elapsed`, `content_len`, `reasoning_len`, `tool_calls`, `tokens` (prompt/completion/total) | After LLM call succeeds |
-| `llm_usage_detail` | DEBUG | N/A | `cached_tokens`, `thoughts_tokens`, `tool_use_tokens` | Advanced token breakdown |
-| `agent_iteration_done` | INFO | 312, 349 | `agent`, `iteration`, `action` (`final_response`, `sleep`, `sleep_after_tools`) | Iteration conclusion |
-| `tool_dispatch` | INFO | 320 | `agent`, `count`, `tools` (array) | Before executing tool calls |
-| `tool_start` | INFO | 557 | `agent`, `tool`, `id`, `args` (first 500 chars) | Before tool execution |
-| `tool_args_parse_failed` | WARNING | 571 | `tool`, `raw_args`, `error` | Tool args couldn't be JSON-parsed |
-| `tool_done` | INFO | 596 | `agent`, `tool`, `elapsed`, `result_len` | After successful tool execution |
-| `tool_result_preview` | DEBUG | 603 | `agent`, `tool`, `result` (first 1000 chars) | Tool output snippet |
-| `tool_error` | ERROR | 613 | `agent`, `tool`, `elapsed`, `error` | Tool execution failed |
-| `tool_gather_error` | ERROR | 335 | `error` | Parallel tool execution failure |
-| `agent_streaming_interrupted` | DEBUG | 414 | `agent` | Streaming halted (user interrupt) |
-| `tool_call_index_collision` | WARNING | 443 | `idx`, `existing_id`, `new_id` | Multiple tool calls in same slot |
-| `llm_provider_error` | ERROR | 700 | `model`, `status`, `body` | Non-retryable HTTP error (4xx except 429) — raised immediately |
-| `llm_provider_retry` | WARNING | 737 | `model`, `status`, `attempt`, `delay`, `retry_after` | Retrying transient error (429, 5xx, connection) |
-| `llm_provider_exhausted` | WARNING | 726, 751 | `model`, `status` or `error`, `attempts` | All retry attempts exhausted for this provider |
-| `llm_provider_fallback` | WARNING | 771 | `agent`, `primary`, `fallback` | Switching from primary to fallback model (see [fallback model](configuration.md#fallback-model)) |
-| `agent_run_done` | INFO | 367 | `agent`, `elapsed`, `iterations`, `total_messages`, `total_tokens`, `has_response` | Final result before returning |
-| `checkpointer_sync_failed` | ERROR | 543 | `session_id`, `error` | DB persistence failed |
+Line numbers drift; the canonical reference is the `logger.info("event_name …")` call in the linked module. Use ripgrep to jump straight there.
+
+| Event | Level | Fields | Purpose |
+|-------|-------|--------|---------|
+| `agent_run_start` | INFO | `agent`, `message_count`, `tools`, `session` | Beginning of agent run |
+| `agent_iteration` | INFO | `agent`, `iteration`, `max_iterations`, `messages` | Per-loop iteration start |
+| `llm_response` | INFO | `agent`, `iteration`, `elapsed`, `content_len`, `reasoning_len`, `tool_calls`, `tokens` (prompt/completion/total) | LLM call succeeded |
+| `llm_usage_detail` | DEBUG | `cached_tokens`, `thoughts_tokens`, `tool_use_tokens` | Advanced token breakdown |
+| `tool_dispatch` | INFO | `agent`, `count`, tool names | Before executing tool calls |
+| `tool_dispatch_skipped_interrupt` | INFO | `agent`, `count` | Interrupt was set before tools dispatched |
+| `tool_start` | INFO | `agent`, `tool`, `id`, args preview | Before tool execution |
+| `tool_args_parse_failed` | WARNING | `tool`, `raw_args`, `error` | Tool args couldn't be JSON-parsed |
+| `tool_done` | INFO | `agent`, `tool`, `elapsed`, `result_len` | After successful tool execution |
+| `tool_result_preview` | DEBUG | `agent`, `tool`, `result` (first ~1000 chars) | Tool output snippet |
+| `tool_cancelled` | INFO | `agent`, `tool` | Tool cancelled mid-execution by interrupt |
+| `tool_error` | ERROR | `agent`, `tool`, `elapsed`, `error` | Tool execution failed |
+| `tool_call_index_collision` | WARNING | `idx`, `existing_id`, `new_id` | Multiple tool calls collided on the same `.index` |
+| `tool_call_orphans_healed` | WARNING | `session_id`, `count`, `ids` | Synthetic tool replies inserted on crash recovery |
+| `deserialize_drop_partial_tool_call` | WARNING | `tool`, `id`, `args_prefix` | Dropped a tool call whose arguments were truncated by a mid-stream interrupt |
+| `llm_provider_error` | ERROR | `model`, `status`, `body` | Non-retryable HTTP error (4xx except 429) |
+| `llm_provider_retry` | WARNING | `model`, `status`, `attempt`, `delay`, `retry_after` | Retrying transient error (429, 5xx, connection) |
+| `llm_provider_exhausted` | WARNING | `model`, `status` or `error`, `attempts` | All retry attempts exhausted for this provider |
+| `llm_provider_fallback` | WARNING | `agent`, `primary`, `fallback` | Switching from primary to fallback model (see [`configuration.md#fallback-model`](configuration.md#fallback-model)) |
+| `agent_run_done` | INFO | `agent`, `elapsed`, `iterations`, `total_messages`, `total_tokens` | Final result before returning |
+| `checkpointer_sync_failed` | ERROR | `session_id`, `error` | DB persistence failed |
 
 ### Log Message Examples
 
@@ -620,7 +624,7 @@ logging.getLogger("noisy_module").setLevel(logging.WARNING)
    - `app/core/logging_config.py` — Loguru setup
    - `app/agent/hooks/session_log.py` — SessionLogHook implementation
    - `app/agent/hooks/otel.py` — OpenTelemetry integration
-   - `app/agent/agent_loop.py` — Agent loop event logging
+   - `app/agent/agent_loop/` — Agent loop event logging
    - `app/agent/mode/team/member.py` — Team member activation: session sink lifecycle, hook assembly
 
 ---

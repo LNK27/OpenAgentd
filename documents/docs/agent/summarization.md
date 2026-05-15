@@ -335,7 +335,7 @@ mark_loaded(session_id, history)
        scans history in reverse for last assistant extra.usage.input
        stores result in _seeded_tokens[session_id]
 
-agent_loop.py — after building AgentState:
+agent_loop/core.py — after building AgentState:
   if checkpointer has seed_state:
       checkpointer.seed_state(session_id, state)
           → state.usage.last_prompt_tokens = _seeded_tokens[session_id]

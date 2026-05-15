@@ -475,7 +475,6 @@ await agent.run(messages, hooks=[hook, publisher_hook, ...])
 
 Team message history can violate Gemini's strict `user → model → user` alternation:
 
-- **Synthetic `[DONE]` messages**: `message_leader(stop=true)` appends `AssistantMessage(content="[DONE]")`, creating consecutive model turns. **Fix**: Filter them out in `_convert_messages_to_gemini()`.
 - **Consecutive HumanMessages**: Inbox messages (from lead/teammates) are appended as `HumanMessage`. If DB history ends with a `HumanMessage`, you get consecutive user turns. **Fix**: The same-role merging in the provider handles this.
 - **Error**: `"Please ensure that function call turn comes immediately after a user turn or after a function response turn"` — means a `model` message with `functionCall` appeared after another `model` message.
 
@@ -492,29 +491,29 @@ graph TB
         Route["API Route\n─────────\nsave user msg to DB\ninit_turn(session_id)\nmailbox.send(lead)\nreturns 202"]
 
         subgraph AgentTeam["AgentTeam (starts at lifespan)"]
-            Lead["Team Lead\n──────────────\nTeamLead(TeamMemberBase)\nStreamPublisherHook\nsend_message · broadcast\ncreate_tasks · assign_task"]
+            Lead["Team Lead\n──────────────\nTeamLead(TeamMemberBase)\nStreamPublisherHook\nteam_message · team_manage · team_configure\ntodo_manage"]
 
             subgraph Mailbox["TeamMailbox"]
                 LI[lead inbox]
                 RI[member inboxes]
             end
 
-            subgraph TaskBoard["TeamTaskBoard (shared, asyncio.Lock)"]
+            subgraph TaskBoard["Todo board (todo_manage, asyncio.Lock)"]
                 T1["task_1 · pending"]
                 T2["task_2 · in_progress"]
             end
 
-            Members["Member agents\n──────────────\nTeamMember(TeamMemberBase) (each)\nStreamPublisherHook\nmessage_leader · claim_task"]
+            Members["Member agents\n──────────────\nTeamMember(TeamMemberBase) (each)\nStreamPublisherHook\nteam_message · todo_manage"]
         end
 
-        StreamStore["In-memory stream_store\n─────────────────\nstate:{lead_sid}\nevents:{lead_sid}\nAll agents write here"]
+        StreamStore["memory_stream_store\n─────────────────\nstate:{lead_sid}\nevents:{lead_sid}\nAll agents write here"]
     end
 
     Route -->|mailbox.send| LI
-    Lead -->|send_message / broadcast| RI
-    Members -->|message_leader| LI
-    Lead <-->|read/write| TaskBoard
-    Members <-->|read/write| TaskBoard
+    Lead -->|team_message| RI
+    Members -->|team_message| LI
+    Lead <-->|todo_manage| TaskBoard
+    Members <-->|todo_manage| TaskBoard
     Lead -->|StreamPublisherHook| StreamStore
     Members -->|StreamPublisherHook| StreamStore
     StreamStore -->|SSE| User

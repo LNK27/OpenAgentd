@@ -2,7 +2,7 @@
 title: Agent Hooks & Lifecycle
 description: Hook protocol, lifecycle order, built-in hooks, and custom hook patterns.
 status: stable
-updated: 2026-04-24
+updated: 2026-05-16
 ---
 
 # Agent Hooks
@@ -73,7 +73,7 @@ async def wrap_tool_call(self, ctx: RunContext, state: AgentState, tool_call: To
     return result                                    # MUST return result
 ```
 
-Hooks are chained in declaration order: `Hook0 → Hook1 → … → execute_fn`. The last link in the chain is the actual tool executor in `agent_loop.py`. `build_tool_chain()` in `state.py` assembles the chain once per run.
+Hooks are chained in declaration order: `Hook0 → Hook1 → … → execute_fn`. The last link in the chain is the actual tool executor in `app/agent/agent_loop/tool_executor.py`. `build_tool_chain()` in `state.py` assembles the chain once per run.
 
 ---
 
@@ -197,11 +197,14 @@ Preview (last):
 Persistence is handled by the **Checkpointer**, not by hooks. Hooks do not persist messages.
 
 ```python
-@runtime_checkable
-class Checkpointer(Protocol):
+class Checkpointer(ABC):
     async def load(self, session_id: str) -> AgentState | None: ...
     async def sync(self, ctx: RunContext, state: AgentState) -> None: ...
+    async def seed_state(self, session_id: str, state: AgentState) -> None: ...
+    async def mark_loaded(self, session_id: str) -> None: ...
 ```
+
+It's an `ABC` (not a `Protocol`) — concrete classes subclass it directly. `seed_state` and `mark_loaded` are used by `SQLiteCheckpointer` to seed `state.usage.last_prompt_tokens` from the most recent persisted assistant message, so summarization decisions are correct on resume without an extra DB query inside the hook.
 
 ### Implementations
 
@@ -294,13 +297,13 @@ Writes verbose structured JSONL to `{OPENAGENTD_STATE_DIR}/logs/sessions/{sessio
 
 | JSONL event | When | Fields |
 |-------------|------|--------|
-| `agent_start` | `before_agent` | trigger message, tools, model, context size, role distribution |
-| `model_call` | `before_model` | iteration, message count, role distribution |
-| `assistant_message` | `after_model` | full content, reasoning, tool call names |
-| `usage` | `after_model` | all token counts, model name |
-| `tool_call` | `wrap_tool_call` (pre) | tool name, parsed args, tool_call_id |
-| `tool_result` | `wrap_tool_call` (post) | result (up to 5 000 chars), result_length |
-| `agent_done` | `after_agent` | elapsed seconds, iterations, total tokens |
+| `agent_start` | `before_agent` | trigger message, context message count, role distribution, tools |
+| `model_call` | `before_model` | iteration, context message count, role distribution |
+| `assistant_message` | `after_model` | content, reasoning (truncated to 2 000 chars), `has_tool_calls`, `tool_call_count`, `tool_names` |
+| `usage` | `on_model_delta` (when chunk carries usage) | prompt/completion/total/cached/thoughts/tool-use tokens, model |
+| `agent_done` | `after_agent` | content, elapsed seconds, iterations, total tokens |
+
+Per-tool events (`tool_start`, `tool_done`, `tool_error`, `tool_cancelled`) are written to the **app log** by the loop itself (`agent_loop/`), not by `SessionLogHook`. See [`logging.md`](../logging.md) for the full event catalogue.
 
 ```python
 hook = SessionLogHook(session_id=session_id, agent_name=agent_name)
@@ -333,6 +336,40 @@ the config for fully non-blocking mode.
 
 See [`title-generation.md`](../title-generation.md) for full configuration,
 LLM call details, SSE payload, client handling, and observability.
+
+---
+
+### `WikiInjectionHook`
+
+**File:** `wiki_injection.py`
+
+Injects `USER.md` (and selected `topics/` material) into the system prompt on every model call so the agent has stable cross-session memory. See [`memory.md`](./memory.md) for the wiki layout and dream-driven note synthesis.
+
+---
+
+### `WorkspaceInstructionsHook`
+
+**File:** `workspace_instructions.py`
+
+Coding-mode only. Reads a root `AGENTS.md` in the active workspace (when present and under the size limit) and appends it to the system prompt, so the agent picks up per-repo conventions without the user copying them into the agent `.md`.
+
+---
+
+### `OpenTelemetryHook`
+
+**File:** `otel.py`
+
+Wraps each model call in an OTEL span and emits per-turn metrics. See [`observability.md`](../observability.md) for the span hierarchy, attribute schema, and DuckDB-backed `/api/observability/*` endpoints. Registered in `TeamMemberBase._handle_messages()` alongside the streaming/protocol hooks.
+
+`TelemetryHook` (`telemetry.py`) is a legacy lightweight counterpart kept for tests that don't initialise OTEL.
+
+---
+
+### `build_memory_flush_hook`
+
+**File:** `memory_flush.py`
+
+Optional factory that returns a hook flushing dream-synthesis events to disk at the end of each turn. Off by default — see [`memory.md`](./memory.md) for when to enable it.
 
 ---
 
@@ -429,4 +466,23 @@ class AuditHook(BaseAgentHook):
 |------|-------------|
 | `Agent(hooks=[...])` | Always active for every run of this agent |
 | `agent.run(hooks=[...])` | Active for this run only; merged with constructor hooks |
-| `TeamMemberBase._handle_messages()` | Registers `[inject_current_date, AgentTeamProtocolHook, TeamInboxHook, StreamPublisherHook, OpenTelemetryHook, (TitleGenerationHook — lead only), (SummarizationHook via build_summarization_hook)]` per turn; passes `SQLiteCheckpointer` to `agent.run()` |
+| `TeamMemberBase._handle_messages()` | Registers the per-turn hook set; passes `SQLiteCheckpointer` to `agent.run()` |
+| `Agent._load_plugin_hooks(role)` | Lazily loads user-authored plugin hooks from `OPENAGENTD_PLUGINS_DIRS` once per `(agent, role)` — see [`plugins.md`](./plugins.md) |
+
+`TeamMemberBase._handle_messages()` builds approximately this hook list per turn (lead vs member differ in a few entries):
+
+```python
+[
+    inject_current_date,             # date in system prompt
+    AgentTeamProtocolHook,           # team protocol injection
+    TeamInboxHook,                   # mailbox drain → state.messages
+    WikiInjectionHook,               # USER.md / topics injection
+    WorkspaceInstructionsHook,       # coding mode only
+    SessionLogHook,                  # JSONL per-session log
+    OpenTelemetryHook,               # spans + metrics
+    StreamPublisherHook,             # SSE event publishing
+    ToolResultOffloadHook,           # large tool result offload
+    TitleGenerationHook,             # lead only, first turn
+    SummarizationHook,               # built via build_summarization_hook (may be None)
+]
+```

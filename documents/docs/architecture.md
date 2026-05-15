@@ -2,7 +2,7 @@
 title: System Architecture
 description: C4-model system context, containers, components, in-memory SSE streaming, agent loop, SSE protocol, logging tiers.
 status: stable
-updated: 2026-04-21
+updated: 2026-05-16
 ---
 
 # openagentd Architecture (C4 Model)
@@ -71,22 +71,23 @@ C4Component
     ContainerDb(db, "Database", "SQLite")
 
     Container_Boundary(api_boundary, "FastAPI Application") {
-        Component(routes, "API Routes", "api/routes/", "team.py, health.py, quote.py — handle HTTP requests and SSE streaming.")
-        Component(agent_loader, "Agent Loader", "agent/loader.py", "Reads agents/*.md, constructs Agent instances with primary + optional fallback providers.")
-        Component(agent, "Agent", "agent/agent_loop.py", "Manages the multi-turn conversational loop, tool calls, and delegates events to Hooks.")
-        Component(hooks, "Agent Hooks", "agent/hooks/", "StreamingHook, StreamPublisherHook, SummarizationHook, DynamicPromptHook, SessionLogHook, TitleGenerationHook.")
-        Component(checkpointer, "Checkpointer", "agent/checkpointer.py", "Checkpointer protocol + SQLiteCheckpointer. Synced at 4 points per run: after_model, tool result, summarization, run end.")
-        Component(stream_store, "Stream Store", "services/stream_store.py", "In-memory turn state blob + asyncio queues per session. init_turn, push_event, attach, mark_done.")
-        Component(tool_registry, "Tool Registry", "agent/tools/registry.py", "Manages available tools and JSON Schema metadata via @tool decorator.")
-        Component(builtin_tools, "Builtin Tools", "agent/tools/builtin/", "filesystem (read, write, edit, ls, grep, glob, rm), shell (shell, bg), web (web_search, web_fetch), date, skill.")
-        Component(permission, "Permission Service", "agent/permission.py", "Rule/Ruleset wildcard matching, last-match-wins evaluation. AutoAllowPermissionService auto-allows and fires SSE events; PermissionService blocks on asyncio.Future until user replies.")
-        Component(provider, "LLM Provider", "agent/providers/", "GoogleGenAIProvider, VertexAIProvider, ZAIProvider, OpenRouterProvider, … — all implement LLMProviderBase. agent/providers/factory.py:build_provider dispatches a 'provider:model' string with one match statement.")
-        Component(chat_service, "Chat Service", "services/chat_service.py", "Sessions, messages, and team-history aggregation. Owns list/delete/get_team_history; get_messages_for_llm returns visible + summary context.")
-        Component(quote_service, "Quote Service", "services/quote_service.py", "Fetches and caches daily quote from API Ninjas (free tier: 3000 calls/month).")
-        Component(models, "Models", "models/", "SQLModel database schemas: ChatSession, SessionMessage.")
-        Component(schemas, "Schemas", "agent/schemas/", "Pydantic models: chat.py, agent.py, events.py (SSE wire types).")
-         Component(teams, "Agent Teams", "agent/mode/team/", "AgentTeam, TeamLead, TeamMember, TeamMailbox, team_message tool for peer messaging. Refer to app/agent/AGENTS.md for details.")
-        Component(logging, "Logging", "core/logging_config.py", "Loguru-based: app logs to {OPENAGENTD_STATE_DIR}/logs/app/, per-session logs to {OPENAGENTD_STATE_DIR}/logs/sessions/{id}/.")
+        Component(routes, "API Routes", "app/api/routes/", "Top-level: agents, dream, health, mcp, observability, quote, scheduler, settings, skills, speech, wiki, diagnostics. Team: routes/team/{chat,files,permissions,todos}.py — chat handles POST + SSE.")
+        Component(agent_loader, "Agent Loader", "app/agent/loader.py", "Reads agents/*.md, constructs Agent instances with primary + optional fallback providers.")
+        Component(agent, "Agent", "app/agent/agent_loop/", "Reasoning loop package — core.py (Agent class), streaming.py, retry.py, tool_dispatch.py, tool_executor.py.")
+        Component(hooks, "Agent Hooks", "app/agent/hooks/", "StreamPublisherHook, SummarizationHook, dynamic_prompt, SessionLogHook, TitleGenerationHook, ToolResultOffloadHook, OpenTelemetryHook, WikiInjectionHook, WorkspaceInstructionsHook + StreamingHook (custom integrations).")
+        Component(team_hooks, "Team Hooks", "app/agent/mode/team/hooks/", "AgentTeamProtocolHook (system-prompt protocol injection), TeamInboxHook (mailbox drain).")
+        Component(checkpointer, "Checkpointer", "app/agent/checkpointer.py", "Abstract base Checkpointer + InMemoryCheckpointer / SQLiteCheckpointer. Synced at 4 points per turn.")
+        Component(stream_store, "Stream Store", "app/services/memory_stream_store.py", "In-memory turn state blob + asyncio queues per session. init_turn, push_event, attach, mark_done, commit_agent_content.")
+        Component(tool_registry, "Tool Registry", "app/agent/tools/registry.py", "Manages available tools and JSON Schema metadata via @tool decorator.")
+        Component(builtin_tools, "Builtin Tools", "app/agent/tools/builtin/", "filesystem (read, write, edit, ls, grep, glob, rm), shell (shell, bg), web (web_search, web_fetch), date, skill, wiki_search, note, todo, schedule.")
+        Component(permission, "Permission Service", "app/agent/permission.py", "Rule/Ruleset wildcard matching. AutoAllowPermissionService auto-allows; PermissionService blocks on asyncio.Future until user replies.")
+        Component(provider, "LLM Provider", "app/agent/providers/", "GoogleGenAIProvider, VertexAIProvider, ZAIProvider, OpenAIProvider, OpenRouter, NVIDIA, xAI, DeepSeek, Bedrock, Copilot, Codex, GeminiCLI, Ollama — all implement LLMProviderBase. factory.py:build_provider dispatches a 'provider:model' string.")
+        Component(plugins, "Plugins", "app/agent/plugins/", "User-authored .py drop-ins loaded from settings.OPENAGENTD_PLUGINS_DIRS. Loader resolves @plugin functions and Plugin(BaseAgentHook) classes per (agent, role).")
+        Component(chat_service, "Chat Service", "app/services/chat_service.py", "Sessions, messages, team-history aggregation, heal_orphaned_tool_calls.")
+        Component(models, "Models", "app/models/", "SQLModel schemas: ChatSession, SessionMessage, ScheduledTask, etc.")
+        Component(schemas, "Schemas", "app/agent/schemas/", "Pydantic wire types: chat.py (messages), agent.py (RunConfig, AgentContext), events.py (SSE).")
+        Component(teams, "Agent Teams", "app/agent/mode/team/", "AgentTeam, TeamLead, TeamMember, TeamMailbox, team_message/team_manage/team_configure tools.")
+        Component(logging, "Logging", "app/core/logging_config.py", "Loguru-based: app logs to {STATE_DIR}/logs/app/, per-session logs to {STATE_DIR}/logs/sessions/{id}/.")
     }
 
     System_Ext(gemini, "Gemini / Vertex AI")
@@ -146,21 +147,25 @@ The `type` field inside the JSON body mirrors the SSE `event:` line. Both must b
 
 ### SSE Event Protocol
 
-| Event | Direction | Payload fields |
-|-------|-----------|---------------|
-| `session` | server→client | `session_id` |
-| `thinking` | server→client | `agent`, `text` |
-| `message` | server→client | `agent`, `text` |
-| `tool_call` | server→client | `agent`, `tool_call_id`, `name` — first delta, no args yet |
-| `tool_start` | server→client | `agent`, `tool_call_id`, `name`, `arguments` — full args, execution beginning |
-| `tool_end` | server→client | `agent`, `tool_call_id`, `name`, `result` — execution done |
-| `usage` | server→client | `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `thoughts_tokens` |
-| `rate_limit` | server→client | `retry_after`, `attempt`, `max_attempts` |
-| `error` | server→client | `message` |
-| `done` | server→client | — |
-| `agent_status` | server→client | `agent`, `status` (`idle`\|`working`\|`offline`\|`error`) — team only |
-| `permission_asked` | server→client | `request_id`, `session_id`, `tool`, `patterns` — agent requesting approval before executing a tool |
-| `permission_replied` | server→client | `request_id`, `session_id`, `reply` (`once`\|`always`\|`reject`) — permission request resolved |
+All events flow server→client. Schemas live in `app/agent/schemas/events.py`; the dispatch envelope is `app/services/stream_envelope.py`.
+
+| Event | Emitted from | Payload fields |
+|-------|--------------|---------------|
+| `thinking` | `StreamPublisherHook.on_model_delta` | `agent`, `text` |
+| `message` | `StreamPublisherHook.on_model_delta` | `agent`, `text` |
+| `tool_call` | `StreamPublisherHook.on_model_delta` | `agent`, `tool_call_id`, `name` — first delta, no args yet |
+| `tool_start` | `StreamPublisherHook.wrap_tool_call` | `agent`, `tool_call_id`, `name`, `arguments` — full args, execution beginning |
+| `tool_end` | `StreamPublisherHook.wrap_tool_call` | `agent`, `tool_call_id`, `name`, `result` — execution done |
+| `usage` | `StreamPublisherHook` after each model call + `after_agent` turn total | `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `thoughts_tokens` |
+| `inbox` | `TeamInboxHook.before_model` | `agent`, `text`, `from_agent` — peer message injected into LLM context |
+| `agent_status` | `AgentTeam` activation/done | `agent`, `status` (`idle`\|`working`\|`offline`\|`error`) — team only |
+| `rate_limit` | `StreamPublisherHook.on_rate_limit` | `retry_after`, `attempt`, `max_attempts` |
+| `permission_asked` | `StreamPublisherHook` (permission system) | `request_id`, `session_id`, `tool`, `patterns` |
+| `title_update` | `TitleGenerationHook` after first turn | `session_id`, `title` |
+| `error` | route exception handler | `message` |
+| `done` | `AgentTeam._try_emit_done` | — (turn-wide terminator) |
+
+> `SessionEvent` and `PermissionRepliedEvent` schemas exist in `events.py` but are not currently emitted on the SSE stream.
 
 ### 3-Phase Tool Event Lifecycle
 
