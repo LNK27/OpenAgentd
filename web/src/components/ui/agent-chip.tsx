@@ -43,7 +43,12 @@ const chipVariants = cva(
       },
     },
     compoundVariants: [
-      { role: 'openagentd', active: true, className: 'border-(--color-marker-mint)' },
+      // ``openagentd`` is the team lead; it's almost always the active
+      // agent so a mint border on top of an already-mint dot reads as
+      // visual noise. Omit the role-coloured border for this role and
+      // let the bold-label + ``--color-text`` foreground carry the
+      // active state alone.
+      { role: 'openagentd', active: true, className: 'border-transparent' },
       { role: 'executor', active: true, className: 'border-(--color-marker-orange)' },
       { role: 'consultant', active: true, className: 'border-(--color-marker-blue)' },
       { role: 'explorer', active: true, className: 'border-(--color-text-muted)' },

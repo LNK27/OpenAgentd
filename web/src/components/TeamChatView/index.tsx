@@ -43,11 +43,19 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { FolderOpen, FolderCode, Home, Menu } from 'lucide-react'
+import { Check, ChevronDown, FolderOpen, FolderCode, Home, Menu } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { AgentChip } from '@/components/ui/agent-chip'
+import { usePlatform } from '@/hooks/use-platform'
+import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
-import { isAgentRole } from '@/lib/agent-roles'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { isAgentRole, type AgentRole } from '@/lib/agent-roles'
+import type { AgentStream } from '@/stores/useTeamStore'
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { type InputBarHandle, type SlashCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
@@ -66,10 +74,15 @@ interface TeamChatViewProps {
 export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: TeamChatViewProps) {
   const navigate = useNavigate()
   const isMobile = useIsMobile()
+  const { isMacOverlay } = usePlatform()
+  // Manual drag pattern: a mousedown handler that only starts a drag
+  // when the user pressed on the bare header, not on a child button.
+  // The hook returns `{}` outside Tauri so the spread is a no-op in
+  // browsers. See ``useTauriDrag`` for details.
+  const dragHandlers = useTauriDrag()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const inputRef = useRef<InputBarHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
-  const agentTabsRef = useRef<HTMLDivElement>(null)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'files' | 'diff'>(null)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(false)
@@ -106,20 +119,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const sessionIdState = useTeamStore((s) => s.sessionId)
   const sessionTitle   = useTeamStore((s) => s.sessionTitle)
   const leadName       = useTeamStore((s) => s.leadName)
-
-  useEffect(() => {
-    if (effectiveViewMode !== 'agent' || !activeAgent) return
-
-    const container = agentTabsRef.current
-    if (!container) return
-
-    const chip = Array.from(container.querySelectorAll<HTMLElement>('[data-agent-chip]'))
-      .find((node) => node.dataset.agentChip === activeAgent)
-    if (!chip) return
-
-    const targetLeft = chip.offsetLeft - (container.clientWidth - chip.offsetWidth) / 2
-    container.scrollTo({ left: Math.max(0, targetLeft), behavior: 'smooth' })
-  }, [activeAgent, effectiveViewMode])
 
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const wikiOpen = useUIStore((s) => s.wikiOpen)
@@ -361,14 +360,41 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     // sits below it — matches the wireframe layout (header above the
     // sidebar/content row).
     <div className="flex h-dvh flex-col bg-(--bg-page)">
-      {/* Header — full width, above both sidebar and content. */}
-      <header className="flex items-center border-b border-(--color-border) bg-(--bg-page) py-0">
+      {/* Header — full-width 40 px bar above sidebar and content. On
+          macOS Tauri the header carries an onMouseDown handler that
+          starts a window drag only when the user pressed on the bare
+          header (not on a child button). ``pl-[70px]`` reserves room
+          for the OS-overlaid traffic-light buttons. The buttons are
+          12 pt tall and positioned at (12, 14) by Rust
+          (configure_window_chrome in main.rs), centring them in the
+          40 pt header: y = (40 - 12) / 2 = 14. */}
+      <header
+        {...dragHandlers}
+        className={`flex h-10 items-center border-b border-(--color-border) bg-(--bg-page) ${
+          isMacOverlay ? 'select-none pl-[70px]' : ''
+        }`}
+      >
 
           {/* Home — pinned to a 56 px column so it sits vertically aligned
               with the collapsed sidebar (which is also 56 px wide). On
               mobile the column shrinks to the natural button size since
-              the sidebar is a position:fixed overlay, not a column. */}
-          <div className="flex h-full shrink-0 items-center justify-center md:w-14">
+              the sidebar is a position:fixed overlay, not a column.
+              On macOS the header itself adds 70 px inset so this
+              column drops to its natural width to sit flush against
+              the inset. The wrapper carries no drag handler — clicks
+              flow naturally to the <Link>. */}
+          <div
+            className={`flex h-full shrink-0 items-center justify-center ${
+              // On macOS the parent header already pads 70 px for the
+              // traffic-light overlay, so the column shrinks to the
+              // button's natural width and adds ``pl-2`` (8 px) of
+              // breathing room to mirror ``AppHeader`` on the settings
+              // page. On other platforms we keep the 56 px column so
+              // the Home button sits vertically aligned with the
+              // collapsed sidebar.
+              isMacOverlay ? 'pl-2' : 'md:w-14'
+            }`}
+          >
             <Link
               to="/"
               aria-label="Home"
@@ -383,7 +409,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               affordances tight; ``mr-2`` pushes content away on the right.
               Hamburger target depends on mode: coding sidebar toggle, mobile
               drawer, or a synthetic Ctrl+B for the normal sidebar (whose
-              collapse state is owned by ``Sidebar``). */}
+              collapse state is owned by ``Sidebar``).
+              The wrapper itself stays un-tagged so the button inside
+              receives clicks; the title <span> is the only inert child
+              and carries the drag attribute. */}
           <div className="mr-2 flex shrink-0 items-center gap-1 pl-2 md:pl-0">
             <button
               type="button"
@@ -404,80 +433,46 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               <Menu size={16} aria-hidden="true" />
             </button>
             {mode !== 'coding' && sessionTitle && (
-              <span className="ml-1 max-w-60 truncate text-sm font-semibold text-(--color-text)" title={sessionTitle}>
+              <span
+                className="ml-1 max-w-60 truncate text-sm font-semibold text-(--color-text)"
+                title={sessionTitle}
+              >
                 {sessionTitle}
               </span>
             )}
           </div>
 
-          {/* Agent tabs sit next to the sidebar controls, bounded and scrollable. */}
+          {/* Active-agent chip + dropdown switcher. We show only the
+              currently active agent in the header to keep the bar
+              compact and predictable across team sizes; clicking the
+              chip opens a menu of all members so users can switch
+              focus without leaving the header. In ``split`` view the
+              header is collapsed to a status pill instead — the split
+              grid itself surfaces each agent. */}
           <div className="flex min-w-0 flex-1 justify-start">
-            <div ref={agentTabsRef} className="scrollbar-none flex min-w-0 w-max max-w-[min(44rem,45vw)] items-center gap-1 overflow-x-auto">
-            {effectiveViewMode === 'agent' && agentNames.map((name) => {
-              const stream = agentStreams[name]
-              const isActive = activeAgent === name
-              const isWorking = stream?.status === 'working'
-              const isError = stream?.status === 'error'
-              const isOffline = stream?.status === 'offline'
-
-              // Override dot color when status diverges from idle.
-              const dotClassName = isError
-                ? 'bg-(--color-error)'
-                : isWorking
-                  ? 'animate-pulse bg-(--color-accent)'
-                  : isOffline
-                    ? 'bg-(--color-text-subtle) opacity-50'
-                  : undefined
-
-              if (isAgentRole(name)) {
-                return (
-                  <AgentChip
-                    key={name}
-                    role={name}
-                    active={isActive}
-                    onClick={() => setActiveAgent(name)}
-                    dotClassName={dotClassName}
-                    data-agent-chip={name}
-                    label={name === leadName ? `${name} ·` : undefined}
-                  />
-                )
-              }
-
-              return (
-                <button
-                  key={name}
-                  data-agent-chip={name}
-                  onClick={() => setActiveAgent(name)}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-(--bg-key) text-(--color-accent)'
-                      : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)'
-                  }`}
-                >
-                  <span className={`h-1.5 w-1.5 rounded-full ${
-                    isError ? 'bg-(--color-error)'
-                    : isWorking ? 'animate-pulse bg-(--color-accent)'
-                    : isOffline ? 'bg-(--color-text-subtle) opacity-50'
-                    : 'bg-(--color-success)'
-                  }`} />
-                  <span className="min-w-0 truncate">{name}</span>
-                  {name === leadName && <span className="text-(--color-text-subtle)">·</span>}
-                </button>
-              )
-            })}
+            {effectiveViewMode === 'agent' && activeAgent && (
+              <ActiveAgentSwitcher
+                activeAgent={activeAgent}
+                agents={agentNames}
+                streams={agentStreams}
+                onSelect={setActiveAgent}
+              />
+            )}
 
             {effectiveViewMode === 'split' && (
               <span className="text-xs text-(--color-text-muted)">
                 Split · {splitAgentNames.length} agents
               </span>
             )}
-            </div>
           </div>
 
           {/* Right: tokens, dream, split-pane, view toggle, panel toggles —
               owned by the reusable ``AgentTopbar`` composite so this header
               stays in sync with single-agent surfaces and Pencil's
-              ``AgentTopbar`` (`E8lml9`). */}
+              ``AgentTopbar`` (`E8lml9`). No drag attribute on the
+              wrapper — every direct child is a button or popover
+              trigger. */}
+          <div className="flex shrink-0 items-center">
           <AgentTopbar
             isMobile={isMobile}
             tokens={
@@ -518,6 +513,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                   className: 'mr-2',
                 }}
           />
+          </div>
       </header>
 
       {/* Body row — sidebar (or coding rail) + main content column. On
@@ -651,5 +647,116 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         <CommandPalette commands={commands} onClose={() => setShowPalette(false)} />
       )}
     </div>
+  )
+}
+
+// ─── ActiveAgentSwitcher ───────────────────────────────────────────────────
+
+interface ActiveAgentSwitcherProps {
+  activeAgent: string
+  agents: string[]
+  streams: Record<string, AgentStream>
+  onSelect: (agent: string) => void
+}
+
+/** Role → marker-colour utility class. Mirrors ``AgentChip`` so the
+ *  dropdown dots match the chip in the header. */
+const DOT_BY_ROLE: Record<AgentRole, string> = {
+  openagentd: 'bg-(--color-marker-mint)',
+  executor: 'bg-(--color-marker-orange)',
+  consultant: 'bg-(--color-marker-blue)',
+  explorer: 'bg-(--color-text-muted)',
+}
+
+/** Status dot class for an agent stream — error / working / offline
+ *  override the role colour; ``undefined`` falls back to the role
+ *  marker (or ``--color-success`` for arbitrary agent names). */
+function dotClassFor(agent: string, stream: AgentStream | undefined): string {
+  if (stream?.status === 'error') return 'bg-(--color-error)'
+  if (stream?.status === 'working') return 'animate-pulse bg-(--color-accent)'
+  if (stream?.status === 'offline') return 'bg-(--color-text-subtle) opacity-50'
+  if (isAgentRole(agent)) return DOT_BY_ROLE[agent]
+  return 'bg-(--color-success)'
+}
+
+/**
+ * Single chip representing the currently active agent, with a
+ * ``DropdownMenu`` of all team members. Replaces the horizontal chip
+ * carousel that used to live here — it scaled poorly past ~4 agents
+ * and competed with the header's drag region for top-bar real estate.
+ *
+ * The trigger renders as a plain ``<button>`` styled to match
+ * ``AgentChip``'s active variant (mono label, rounded-md, role dot).
+ * We inline the styling rather than reusing ``AgentChip`` because
+ * Base UI's Menu trigger forwards props to the underlying element,
+ * and ``AgentChip`` already manages its own ``<button>`` shell.
+ *
+ * ``data-no-drag`` on the trigger tells ``useTauriDrag`` to ignore
+ * mousedowns here — without it, the chip-as-trigger could
+ * occasionally race the window-drag handler on the parent header.
+ */
+function ActiveAgentSwitcher({
+  activeAgent,
+  agents,
+  streams,
+  onSelect,
+}: ActiveAgentSwitcherProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        data-no-drag
+        className="inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs leading-none font-semibold text-(--color-text) outline-none transition-all hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-accent)/40"
+        aria-label={`Switch active agent (current: ${activeAgent})`}
+      >
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${dotClassFor(activeAgent, streams[activeAgent])}`}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 truncate">{activeAgent}</span>
+        <ChevronDown
+          size={12}
+          className="shrink-0 text-(--color-text-muted)"
+          aria-hidden="true"
+        />
+      </DropdownMenuTrigger>
+
+      {/* ``w-auto`` overrides the default ``w-(--anchor-width)`` so
+          the menu sizes to its content instead of the (narrow)
+          trigger chip. ``max-w-[min(90vw,24rem)]`` keeps it sane on
+          tiny windows. */}
+      <DropdownMenuContent
+        align="start"
+        sideOffset={6}
+        className="w-auto max-w-[min(90vw,24rem)]"
+      >
+        {agents.map((name) => {
+          const isActive = name === activeAgent
+          return (
+            <DropdownMenuItem
+              key={name}
+              onClick={() => onSelect(name)}
+              // ``whitespace-nowrap`` lets the menu grow horizontally
+              // to fit the longest agent name rather than truncating.
+              // ``min-w-40`` keeps a comfortable gap between the
+              // longest name and the trailing check on the right.
+              className="flex min-w-40 items-center gap-2 font-mono text-xs whitespace-nowrap"
+            >
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${dotClassFor(name, streams[name])}`}
+                aria-hidden="true"
+              />
+              <span>{name}</span>
+              {isActive && (
+                <Check
+                  size={12}
+                  className="ml-auto shrink-0 text-(--color-accent)"
+                  aria-hidden="true"
+                />
+              )}
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
