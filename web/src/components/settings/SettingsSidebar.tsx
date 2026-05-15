@@ -2,8 +2,6 @@
  * SettingsSidebar — wide labeled sidebar (240px) for the settings shell.
  *
  *   ┌──────────────────────────┐
- *   │ ← Back to chat            │
- *   │                           │
  *   │ CONFIGURATION             │
  *   │ ▌ 🔧 Agents          6    │  ← active row has accent left border
  *   │   ✨ Skills          12   │
@@ -22,7 +20,6 @@
  */
 import { Link, useLocation } from '@tanstack/react-router'
 import {
-  ArrowLeft,
   BarChart3,
   Info,
   KeyRound,
@@ -64,11 +61,6 @@ interface SidebarItem {
   matchPrefix: string
   /** Optional badge with a live count. */
   count?: number | null
-}
-
-interface SettingsSidebarProps {
-  /** When true, hide the back-to-chat link (caller already provides one). */
-  hideBackLink?: boolean
 }
 
 function GroupLabel({ children }: { children: string }) {
@@ -115,7 +107,7 @@ function SidebarRow({ item, active }: { item: SidebarItem; active: boolean }) {
   )
 }
 
-export function SettingsSidebar({ hideBackLink = false }: SettingsSidebarProps) {
+export function SettingsSidebar() {
   const { pathname } = useLocation()
   const agentsQ = useAgentFilesQuery()
   const skillsQ = useSkillFilesQuery()
@@ -212,16 +204,6 @@ export function SettingsSidebar({ hideBackLink = false }: SettingsSidebarProps) 
       aria-label="Settings categories"
       className="flex h-full w-60 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar)"
     >
-      {!hideBackLink && (
-        <Link
-          to="/"
-          className="flex items-center gap-2 px-3 pt-4 pb-3 text-xs italic text-(--color-accent) transition-colors hover:underline focus-visible:outline-none focus-visible:underline"
-        >
-          <ArrowLeft size={12} aria-hidden="true" />
-          Back to chat
-        </Link>
-      )}
-
       <GroupLabel>Configuration</GroupLabel>
       <div className="flex flex-col">
         {configurationItems.map((item) => (

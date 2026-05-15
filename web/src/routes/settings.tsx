@@ -76,7 +76,7 @@ export function SettingsLayout() {
               aria-hidden="true"
             />
             <div className="fixed inset-y-0 left-0 z-40 flex">
-              <SettingsSidebar hideBackLink />
+              <SettingsSidebar />
             </div>
           </>
         )}

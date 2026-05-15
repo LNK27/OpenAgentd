@@ -10,7 +10,6 @@
  */
 import { Link } from '@tanstack/react-router'
 import {
-  ArrowLeft,
   ChevronRight,
   Download,
   Info,
@@ -233,16 +232,6 @@ export function SettingsHubPage() {
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-8 px-4 pt-8 pb-12 sm:px-8">
         <header className="flex items-center gap-3">
-          {/* Mobile: back to cockpit */}
-          {isMobile && (
-            <Link
-              to="/cockpit"
-              aria-label="Back to chat"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-            >
-              <ArrowLeft size={16} aria-hidden="true" />
-            </Link>
-          )}
           <span
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
             aria-hidden="true"
