@@ -99,3 +99,22 @@ class ProviderSaveResponse(BaseModel):
     # configured provider (frontend uses this to decide whether to
     # trigger the seed installer afterward).
     is_first_provider: bool = False
+
+
+class SeedInstallRequest(BaseModel):
+    """``POST /api/settings/seed`` request body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # ``provider:model`` string that substitutes for ``__PROVIDER_MODEL__``
+    # in every seeded agent .md.
+    provider_model: str = Field(min_length=1)
+
+
+class SeedInstallResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agents_written: list[str] = Field(default_factory=list)
+    skills_written: list[str] = Field(default_factory=list)
+    configs_written: list[str] = Field(default_factory=list)
+    source: str  # "local", "tag:v0.x.y", or "branch:main"

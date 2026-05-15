@@ -30,6 +30,8 @@ from app.api.schemas.settings import (
     ProviderTestResponse,
     ProvidersListBody,
     SandboxSettingsBody,
+    SeedInstallRequest,
+    SeedInstallResponse,
     UpdateInstallBody,
     UpdateStatusBody,
 )
@@ -395,4 +397,26 @@ async def save_provider(
     return ProviderSaveResponse(
         saved=True,
         is_first_provider=is_first,
+    )
+
+
+@router.post("/seed")
+async def install_seed_defaults(body: SeedInstallRequest) -> SeedInstallResponse:
+    """Install bundled first-run agents/skills into the user's config dir."""
+    from app.cli.seed import SeedDownloadError, install_seed
+
+    try:
+        result = install_seed(
+            Path(settings.OPENAGENTD_CONFIG_DIR),
+            provider_model=body.provider_model.strip(),
+        )
+    except SeedDownloadError as exc:
+        logger.warning("seed_install_failed error={}", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return SeedInstallResponse(
+        agents_written=result.agents_written,
+        skills_written=result.skills_written,
+        configs_written=result.configs_written,
+        source=result.source,
     )

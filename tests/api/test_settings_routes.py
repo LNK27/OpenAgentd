@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from app.agent.sandbox_config import DEFAULT_DENIED_PATTERNS
+from app.cli.seed import SeedDownloadError, SeedResult
 from app.api.routes import settings as settings_routes
 from app.api.routes.settings import router
 
@@ -428,3 +429,69 @@ def test_save_provider_404_for_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
         json={"api_key": "x"},
     )
     assert response.status_code == 404
+
+
+def test_install_seed_defaults_calls_seed_installer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    install_seed = Mock(
+        return_value=SeedResult(
+            agents_written=["openagentd.md"],
+            skills_written=["self-healing"],
+            configs_written=["mcp.json"],
+            source="local",
+        )
+    )
+    monkeypatch.setattr("app.cli.seed.install_seed", install_seed)
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/seed",
+        json={"provider_model": "googlegenai:gemini-3-flash-preview"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "agents_written": ["openagentd.md"],
+        "skills_written": ["self-healing"],
+        "configs_written": ["mcp.json"],
+        "source": "local",
+    }
+    install_seed.assert_called_once_with(
+        tmp_path, provider_model="googlegenai:gemini-3-flash-preview"
+    )
+
+
+def test_install_seed_defaults_reports_download_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+
+    def _fail(*_args: object, **_kwargs: object) -> None:
+        raise SeedDownloadError("offline")
+
+    monkeypatch.setattr("app.cli.seed.install_seed", _fail)
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/seed",
+        json={"provider_model": "googlegenai:gemini-3-flash-preview"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "offline"
+
+
+def test_install_seed_defaults_rejects_blank_model() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post("/api/settings/seed", json={"provider_model": ""})
+
+    assert response.status_code == 422
