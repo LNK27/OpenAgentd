@@ -359,10 +359,20 @@
     /* Remove iOS blue tap flash */
     -webkit-tap-highlight-color: transparent;
   }
+  html,
+  body {
+    /* Lock the document to the viewport so internal scroll regions
+     * (route shells use h-dvh + overflow-auto) are the sole scrollers.
+     * Without this the Tauri/Safari webview lets the whole document
+     * rubber-band on all four edges — exposing pixels above the
+     * header, below the bottom, and to the left/right of the layout
+     * on hover/scroll/trackpad swipe. */
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground;
-    /* Prevent body bounce scroll — each scroll region manages its own */
-    overscroll-behavior: none;
   }
   html {
     @apply font-sans;
