@@ -597,7 +597,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             lastError={agentStreams[activeAgent].lastError}
           />
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3">
+          <div className="flex flex-1 select-none flex-col items-center justify-center gap-3">
             <img src={OctobotMascot} className="opacity-25 grayscale" width={64} height={64} alt="Idle octobot" />
             <p className="text-sm text-(--color-text-muted)">Select an agent above</p>
           </div>

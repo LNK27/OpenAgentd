@@ -3,9 +3,7 @@
  * Used by both the summary and trace-detail routes inside `/telemetry`.
  */
 
-import { Link } from '@tanstack/react-router'
 import { Activity, AlertTriangle, Loader2 } from 'lucide-react'
-import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 
 export function PageHeader({
   isFetching,
@@ -19,30 +17,19 @@ export function PageHeader({
   right: React.ReactNode
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) px-4">
-      <div className="flex min-w-0 items-center gap-3">
-        <Link
-          to="/"
-          className="flex items-center gap-2.5 overflow-hidden rounded-md p-1 -ml-1 transition-colors hover:bg-(--bg-key)"
-          title="Home"
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--bg-key) ring-1 ring-(--color-border-strong)">
-            <img src={OpenAgentdAppIcon} width={28} height={28} alt="OpenAgentd logo" className="rounded-md" />
-          </div>
-          <span className="text-sm font-semibold text-(--color-text)">Telemetry</span>
-        </Link>
-        {left}
-        <div className="flex items-center gap-1.5 text-(--color-text-muted)">
-          <Activity size={14} className="text-(--color-accent)" />
-          <span className="text-xs">{subtitle ?? 'Span aggregates & latency'}</span>
-          {isFetching && (
-            <Loader2
-              size={13}
-              className="ml-1 animate-spin"
-              aria-label="Refreshing"
-            />
-          )}
-        </div>
+    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
+      {left}
+      <Activity size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+      <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Telemetry</h1>
+      <div className="hidden min-w-0 items-center gap-1.5 text-(--color-text-muted) md:flex">
+        <span className="truncate text-xs">{subtitle ?? 'Span aggregates & latency'}</span>
+        {isFetching && (
+          <Loader2
+            size={13}
+            className="ml-1 animate-spin"
+            aria-label="Refreshing"
+          />
+        )}
       </div>
       <div className="flex items-center gap-2">{right}</div>
     </header>
