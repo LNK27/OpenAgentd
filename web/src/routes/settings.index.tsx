@@ -1,18 +1,23 @@
 /**
- * /settings — welcome / overview panel shown in the right pane when no
- * category is active. The left rail is always visible; this page just
- * gives the user a friendly summary and quick jumps with live counts.
+ * /settings — "About openagentd" landing.
+ *
+ * On desktop the new SettingsSidebar already exposes every category as a
+ * row; the right pane here therefore focuses on the things that don't
+ * have a dedicated category: version, application updates, and a short
+ * description of the project. On mobile this also doubles as the
+ * settings hub: the sidebar is hidden so we render the same overview
+ * cards used by older builds to let the user jump into each section.
  */
 import { Link } from '@tanstack/react-router'
 import {
   ArrowLeft,
   ChevronRight,
   Download,
+  Info,
   Mic,
   Moon,
   Plug,
   RefreshCw,
-  Settings as SettingsIcon,
   Shield,
   Sparkles,
   Wrench,
@@ -36,7 +41,13 @@ import {
 import { useToastStore } from '@/stores/useToastStore'
 
 interface CardProps {
-  to: '/settings/agents' | '/settings/skills' | '/settings/mcp' | '/settings/sandbox' | '/settings/dream' | '/settings/voice'
+  to:
+    | '/settings/agents'
+    | '/settings/skills'
+    | '/settings/mcp'
+    | '/settings/sandbox'
+    | '/settings/dream'
+    | '/settings/voice'
   icon: LucideIcon
   title: string
   description: string
@@ -204,16 +215,18 @@ export function SettingsHubPage() {
   const mcpQ = useMcpServersQuery()
   const sandboxQ = useSandboxSettingsQuery()
   const speechQ = useSpeechConfigQuery()
+  const healthQ = useHealthQuery()
 
   const agentsCount = agentsQ.data?.agents.length ?? null
   const skillsCount = skillsQ.data?.skills.length ?? null
   const mcpCount = mcpQ.data?.servers.length ?? null
   const sandboxCount = sandboxQ.data?.denied_patterns.length ?? null
   const voiceEnabled = speechQ.data?.enabled ?? false
+  const version = healthQ.data?.version
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-8 p-4 md:p-8">
+      <div className="mx-auto max-w-3xl space-y-8 px-4 pt-8 pb-12 sm:px-8">
         <header className="flex items-center gap-3">
           {/* Mobile: back to cockpit */}
           {isMobile && (
@@ -229,75 +242,83 @@ export function SettingsHubPage() {
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
             aria-hidden="true"
           >
-            <SettingsIcon size={18} />
+            <Info size={18} />
           </span>
           <div>
-            <h1 className="text-lg font-semibold text-(--color-text)">Settings</h1>
+            <h1 className="text-lg font-semibold text-(--color-text)">About openagentd</h1>
             <p className="text-xs text-(--color-text-muted)">
-              Configure your workspace and the agents that run in it.
+              {version
+                ? `On-machine AI assistant · v${version}`
+                : 'On-machine AI assistant'}
             </p>
           </div>
         </header>
 
-        <section>
-          <SectionHeader>Workspace</SectionHeader>
-          <div className="space-y-2">
-            <SettingsNavCard
-              to="/settings/agents"
-              icon={Wrench}
-              title="Agents"
-              description="Define and edit your agent team — model, tools, system prompt"
-              count={agentsCount}
-              countLabel={agentsCount === 1 ? 'agent' : 'agents'}
-            />
-            <SettingsNavCard
-              to="/settings/skills"
-              icon={Sparkles}
-              title="Skills"
-              description="Reusable instruction modules agents load on demand"
-              count={skillsCount}
-              countLabel={skillsCount === 1 ? 'skill' : 'skills'}
-            />
-            <SettingsNavCard
-              to="/settings/mcp"
-              icon={Plug}
-              title="MCP servers"
-              description="External tool providers via Model Context Protocol"
-              count={mcpCount}
-              countLabel={mcpCount === 1 ? 'server' : 'servers'}
-            />
-          </div>
-        </section>
+        {/* Mobile picks up navigation from this list because the sidebar is
+            hidden on small screens. */}
+        {isMobile && (
+          <>
+            <section>
+              <SectionHeader>Workspace</SectionHeader>
+              <div className="space-y-2">
+                <SettingsNavCard
+                  to="/settings/agents"
+                  icon={Wrench}
+                  title="Agents"
+                  description="Define and edit your agent team — model, tools, system prompt"
+                  count={agentsCount}
+                  countLabel={agentsCount === 1 ? 'agent' : 'agents'}
+                />
+                <SettingsNavCard
+                  to="/settings/skills"
+                  icon={Sparkles}
+                  title="Skills"
+                  description="Reusable instruction modules agents load on demand"
+                  count={skillsCount}
+                  countLabel={skillsCount === 1 ? 'skill' : 'skills'}
+                />
+                <SettingsNavCard
+                  to="/settings/mcp"
+                  icon={Plug}
+                  title="MCP servers"
+                  description="External tool providers via Model Context Protocol"
+                  count={mcpCount}
+                  countLabel={mcpCount === 1 ? 'server' : 'servers'}
+                />
+              </div>
+            </section>
 
-        <section>
-          <SectionHeader>System</SectionHeader>
-          <div className="space-y-2">
-            <SettingsNavCard
-              to="/settings/sandbox"
-              icon={Shield}
-              title="Sandbox"
-              description="Files and folders agents cannot access"
-              count={sandboxCount}
-              countLabel={sandboxCount === 1 ? 'pattern' : 'patterns'}
-            />
-            <SettingsNavCard
-              to="/settings/dream"
-              icon={Moon}
-              title="Dream"
-              description="Cron agent that synthesises sessions into wiki topics"
-              count={null}
-              countLabel=""
-            />
-            <SettingsNavCard
-              to="/settings/voice"
-              icon={Mic}
-              title="Voice input"
-              description="Transcribe mic recordings locally and insert into the chat input"
-              count={null}
-              countLabel={voiceEnabled ? 'enabled' : 'disabled'}
-            />
-          </div>
-        </section>
+            <section>
+              <SectionHeader>System</SectionHeader>
+              <div className="space-y-2">
+                <SettingsNavCard
+                  to="/settings/sandbox"
+                  icon={Shield}
+                  title="Sandbox"
+                  description="Files and folders agents cannot access"
+                  count={sandboxCount}
+                  countLabel={sandboxCount === 1 ? 'pattern' : 'patterns'}
+                />
+                <SettingsNavCard
+                  to="/settings/dream"
+                  icon={Moon}
+                  title="Dream"
+                  description="Cron agent that synthesises sessions into wiki topics"
+                  count={null}
+                  countLabel=""
+                />
+                <SettingsNavCard
+                  to="/settings/voice"
+                  icon={Mic}
+                  title="Voice input"
+                  description="Transcribe mic recordings locally and insert into the chat input"
+                  count={null}
+                  countLabel={voiceEnabled ? 'enabled' : 'disabled'}
+                />
+              </div>
+            </section>
+          </>
+        )}
 
         <section>
           <SectionHeader>Updates</SectionHeader>

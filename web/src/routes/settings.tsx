@@ -1,44 +1,40 @@
 /**
- * Settings shell — responsive layout.
+ * Settings shell — responsive two-column layout.
  *
- * Desktop (≥768px): three-column
- *   ┌──┬──────────────┬─────────────────────────────┐
- *   │  │              │                             │
- *   │🔧│  Agents      │   Editor / Detail /         │
- *   │✨│  ─ search ─  │   Empty-state               │
- *   │🔌│  • Coder     │                             │
- *   │🛡│  • Reviewer  │                             │
- *   │  │              │                             │
- *   └──┴──────────────┴─────────────────────────────┘
+ * Desktop (≥768px):
+ *   ┌──────────────┬─────────────────────────────┐
+ *   │ ← Back        │                             │
+ *   │               │                             │
+ *   │ CONFIGURATION │  Detail / list / editor     │
+ *   │ ▌ Agents  6   │  (rendered by route Outlet) │
+ *   │   Skills 12   │                             │
+ *   │   …           │                             │
+ *   │ ABOUT         │                             │
+ *   │   Telemetry   │                             │
+ *   │   About       │                             │
+ *   └──────────────┴─────────────────────────────┘
  *
- * Mobile (<768px): single column — CategoryList fills screen; detail
- * routes render full-screen on top. CategoryRail is hidden (each detail
- * route and the list header provide their own back navigation).
+ * Mobile (<768px): single column — the sidebar is replaced by the
+ * settings hub at /settings, and detail routes render full-screen.
+ *
+ * The legacy three-column layout with a middle list column has been
+ * replaced: list pages (agents/skills/MCP) now render cards inline in
+ * the right pane via `SettingsListView`.
  */
 import { Outlet, useLocation } from '@tanstack/react-router'
 
-import { CategoryList } from '@/components/settings/CategoryList'
-import { CategoryRail } from '@/components/settings/CategoryRail'
+import { SettingsSidebar } from '@/components/settings/SettingsSidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
-
-type ListKind = 'agents' | 'skills' | 'mcp'
-
-function detectListKind(pathname: string): ListKind | null {
-  if (pathname.startsWith('/settings/agents')) return 'agents'
-  if (pathname.startsWith('/settings/skills')) return 'skills'
-  if (pathname.startsWith('/settings/mcp')) return 'mcp'
-  return null
-}
 
 /** Returns true when the pathname points at a detail/editor route (not the list root). */
 function isDetailRoute(pathname: string): boolean {
   return (
     pathname.startsWith('/settings/agents/') ||
     pathname.startsWith('/settings/skills/') ||
-    pathname.startsWith('/settings/mcp/')   ||
-    pathname === '/settings/sandbox'         ||
-    pathname === '/settings/dream'           ||
-    pathname === '/settings/voice'           ||
+    pathname.startsWith('/settings/mcp/') ||
+    pathname === '/settings/sandbox' ||
+    pathname === '/settings/dream' ||
+    pathname === '/settings/voice' ||
     pathname === '/settings'
   )
 }
@@ -46,38 +42,28 @@ function isDetailRoute(pathname: string): boolean {
 export function SettingsLayout() {
   const { pathname } = useLocation()
   const isMobile = useIsMobile()
-  const listKind = detectListKind(pathname)
   const onDetail = isDetailRoute(pathname)
 
-  // Mobile layout: show list OR detail, never side-by-side.
-  // The list column fills the screen; when the user taps a row TanStack
-  // Router navigates to the detail route and we render only the Outlet.
+  // Mobile layout: at /settings show the hub (which lists categories);
+  // detail and list routes render full-screen via the Outlet.
   if (isMobile) {
     return (
       <div className="flex h-dvh flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
-        {/* On a list route show the list; on a detail route show the outlet */}
-        {onDetail ? (
-          <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {onDetail || pathname.startsWith('/settings/') ? (
             <Outlet />
-          </main>
-        ) : (
-          listKind ? (
-            <CategoryList kind={listKind} />
           ) : (
-            <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <Outlet />
-            </main>
-          )
-        )}
+            <Outlet />
+          )}
+        </main>
       </div>
     )
   }
 
-  // Desktop layout: three-column
+  // Desktop layout: sidebar + outlet.
   return (
     <div className="flex h-dvh overflow-hidden bg-(--bg-page) text-(--color-text)">
-      <CategoryRail />
-      {listKind && <CategoryList kind={listKind} />}
+      <SettingsSidebar />
       <main className="flex min-w-0 flex-1 flex-col">
         <Outlet />
       </main>
