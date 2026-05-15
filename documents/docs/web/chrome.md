@@ -2,7 +2,7 @@
 title: App Chrome (Header, Sidebar, Tauri Drag)
 description: Shared header, platform detection, and window-drag plumbing across browser and Tauri desktop.
 status: stable
-updated: 2026-05-15
+updated: 2026-05-16
 ---
 
 # App chrome
@@ -39,6 +39,8 @@ Two CSS tokens (`web/src/index.css`):
 Why not `data-tauri-drag-region`? It steals `mousedown` from interactive descendants when applied to a parent wrapper. The manual handler restores normal click flow. See the [Tauri docs](https://v2.tauri.app/learn/window-customization/#manual-implementation-of-data-tauri-drag-region).
 
 `MacTitleBar` adds a passive 70 × 40 corner pad over the empty traffic-light inset so users can also drag from there. It is **not** a full-width strip — that would catch every top-edge `mousedown` and pre-empt route header buttons.
+
+Routes that don't render an `AppHeader` (notably the home splash, `web/src/routes/index.tsx`) must add their own invisible drag strip starting at `--spacing-mac-traffic-inset` so the rest of the top edge stays draggable. Gate it behind `isMacOverlay` so other platforms (native title bar) don't paint over their own chrome.
 
 ## Tauri permissions
 

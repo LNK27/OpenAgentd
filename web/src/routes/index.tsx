@@ -5,11 +5,22 @@ import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 import { Activity, AlertCircle, Code2, Gauge, Settings, Wifi } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
+import { usePlatform } from '@/hooks/use-platform'
+import { useTauriDrag } from '@/hooks/use-tauri-drag'
 
 export function HomePage() {
   const navigate = useNavigate()
   const health = useHealthQuery()
   const team = useTeamStatusQuery()
+  // The home page is a splash screen with no AppHeader — without an
+  // explicit drag region the user can't move the window on macOS Tauri
+  // (the OS draws traffic-lights over the WebView but doesn't provide
+  // drag elsewhere). MacTitleBar already covers the 70px traffic-light
+  // inset; this strip extends the drag area across the rest of the top
+  // edge. Other platforms have a native OS title bar so the strip is
+  // gated to ``isMacOverlay``.
+  const { isMacOverlay } = usePlatform()
+  const dragHandlers = useTauriDrag()
 
   const backendOk = health.isSuccess
   const hasTeam = team.isSuccess && team.data !== null
@@ -22,6 +33,13 @@ export function HomePage() {
 
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-(--bg-page) px-4">
+      {isMacOverlay && (
+        <div
+          {...dragHandlers}
+          aria-hidden="true"
+          className="fixed left-(--spacing-mac-traffic-inset) right-0 top-0 z-20 h-10 select-none"
+        />
+      )}
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
@@ -29,7 +47,7 @@ export function HomePage() {
         className="flex w-full max-w-sm flex-col items-center gap-8"
       >
         {/* Logo */}
-        <div className="flex flex-col items-center gap-4">
+        <div className="flex select-none flex-col items-center gap-4">
           <div className="relative">
             <div className="absolute inset-0 rounded-3xl bg-(--bg-key) blur-2xl" />
             <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-(--bg-key) ring-1 ring-(--bg-key)">
