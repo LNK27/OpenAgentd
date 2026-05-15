@@ -310,17 +310,44 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
          "--handshake", "--generate-token"],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         env=env, text=True,
+        # Cross-platform process group so the smoke test can hard-kill
+        # the child (and any uvicorn worker it spawns) on timeout.
+        start_new_session=(os.name != "nt"),
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,  # type: ignore[attr-defined]
     )
+
+    # Read stdout from a background thread so the main thread can
+    # enforce a real wall-clock timeout. ``subprocess.Popen.stdout`` is
+    # buffered and blocking; without this scaffold, a child that goes
+    # quiet hangs the smoke test indefinitely (observed on Windows GHA
+    # runners).
+    import queue as _queue
+    import threading as _threading
+
+    stdout_queue: "_queue.Queue[str | None]" = _queue.Queue()
+
+    def _drain_stdout() -> None:
+        assert proc.stdout is not None
+        for line in iter(proc.stdout.readline, ""):
+            stdout_queue.put(line)
+        stdout_queue.put(None)  # EOF sentinel
+
+    reader = _threading.Thread(target=_drain_stdout, daemon=True)
+    reader.start()
+
     payload: dict | None = None
     try:
-        assert proc.stdout is not None
         deadline = 60.0
         start = time.monotonic()
         while True:
-            if time.monotonic() - start > deadline:
+            remaining = deadline - (time.monotonic() - start)
+            if remaining <= 0:
                 raise SystemExit("smoke test: handshake did not arrive in 60s")
-            line = proc.stdout.readline()
-            if not line:
+            try:
+                line = stdout_queue.get(timeout=remaining)
+            except _queue.Empty:
+                raise SystemExit("smoke test: handshake did not arrive in 60s")
+            if line is None:
                 err = proc.stderr.read() if proc.stderr else ""
                 raise SystemExit(
                     f"smoke test: sidecar exited before handshake.\nstderr:\n{err[-4000:]}"

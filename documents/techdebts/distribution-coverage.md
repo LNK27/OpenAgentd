@@ -107,6 +107,36 @@ Debian/Ubuntu users in the meantime.
 AppImage gives us coverage of non-Debian Linux distros (Arch, Fedora,
 openSUSE without rpm conversion) that `.deb` doesn't reach.
 
+### Windows sidecar smoke test (regression at 1.0.5)
+
+**What's missing:** `scripts/build_sidecar.py --no-smoke` is forced on
+the Windows leg of `release-desktop.yml`. The smoke test spawns the
+sidecar and waits for an `OPENAGENTD_HANDSHAKE` line on stdout — on
+Windows GHA runners this reliably hangs past 30 minutes despite the
+60s deadline, even after switching to a threaded `queue.Queue`-based
+stdout drain (so the symptom isn't `readline()` blocking the main
+thread — the child process itself appears to never write anything,
+or its stdout pipe never flushes through to the parent).
+
+macOS and Linux still run the smoke test, so the bundle layout
+invariants (versioned cpython directory, `app/cli/__main__.py` reachable,
+handshake protocol, token-gated middleware) remain exercised every
+release. The Windows bundle's first real integration test is the Tauri
+app launching it.
+
+**Cost to restore:** 1–2 hours. Candidate diagnoses:
+- Spawn the sidecar with `--no-buffer` / `PYTHONUNBUFFERED=1` explicitly
+  in the smoke test environment (we set it on the parent shell but it
+  may not be propagating to the grandchild uvicorn worker).
+- Replace the stdout pipe with a temp file the child writes to and the
+  parent tails — sidesteps any Windows-specific pipe buffering quirk.
+- Run the smoke test in `cmd.exe` rather than `bash` so we use the
+  shell Tauri itself will use to spawn the sidecar at runtime.
+
+**When worth doing:** before any change to the handshake protocol,
+the sidecar bootstrap, or `app/cli/commands/serve.py`. Today, those
+files are stable.
+
 ### Snap / Flatpak
 
 **Skip.** Both require separate publisher accounts and review queues.
