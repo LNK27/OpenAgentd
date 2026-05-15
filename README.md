@@ -65,6 +65,16 @@ Full breakdown: [`documents/docs/comparison.md`](https://github.com/lthoangg/ope
 
 ## Quick start
 
+**Desktop app** (double-click install, no terminal) — download from the [latest desktop release](https://github.com/lthoangg/openagentd/releases?q=desktop):
+
+| Platform | Artefact | First-launch note |
+|---|---|---|
+| macOS (Apple Silicon) | `OpenAgentd_*_aarch64.dmg` | Run the bundled `install.sh` to ad-hoc sign, then right-click → **Open**. The app is unsigned — [why](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md#desktop-unsigned). |
+| Windows | `OpenAgentd_*_x64-setup.exe` | SmartScreen warns on first run — click **More info → Run anyway**. |
+| Linux | `OpenAgentd_*_amd64.AppImage` | `chmod +x` the AppImage, or run the bundled `install.sh --install` for a launcher entry. |
+
+**CLI / API server** (terminal install — ships the same UI on `http://localhost:4082`):
+
 ```bash
 # macOS / Linux
 uv tool install openagentd        # recommended
@@ -74,7 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh
 # Windows
 irm https://raw.githubusercontent.com/lthoangg/openagentd/main/install.ps1 | iex
 
-# Docker
+# Docker (self-hosting)
 git clone https://github.com/lthoangg/openagentd.git
 cd openagentd && cp .env.example .env && docker compose up -d
 ```
