@@ -26,6 +26,7 @@ from app.api.routes.speech import router as speech_router
 from app.api.routes.team import router as team_router
 from app.api.routes.wiki import router as wiki_router
 from app.core.config import settings
+from app.core.desktop_auth import DesktopTokenMiddleware
 from app.core.exception_handlers import EXCEPTION_HANDLERS
 from app.core.metrics import HTTPMetricsMiddleware, metrics_endpoint
 from app.core.middlewares import RequestSizeLimitMiddleware, SecurityHeadersMiddleware
@@ -172,6 +173,9 @@ def create_app() -> FastAPI:
     # true end-to-end latency, including CORS / size-limit rejects.
     app.add_middleware(HTTPMetricsMiddleware)
     app.add_middleware(RequestSizeLimitMiddleware)
+    # Desktop token auth — no-op unless OPENAGENTD_DESKTOP_TOKEN is set
+    # (Tauri shell sets it; CLI/server users get the existing open behaviour).
+    app.add_middleware(DesktopTokenMiddleware)
     # Security headers run *inside* CORS so CORS preflights still receive the
     # right `Access-Control-*` headers unobstructed.
     app.add_middleware(SecurityHeadersMiddleware)
