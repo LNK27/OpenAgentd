@@ -18,9 +18,9 @@
  * navigation now lives inline so the sidebar matches the cockpit's
  * single-column shape. ``activeWorkspace`` is the workspace driving
  * the current chat (loaded from the route's ``w=`` search param);
- * ``expandedWorkspace`` is local UI state for which tree node is
- * currently showing its sessions. Switching the active workspace
- * auto-expands it.
+ * ``expandedWorkspaces`` is local UI state for which tree nodes are
+ * currently showing their sessions. Multiple workspaces can stay open
+ * at once. Switching the active workspace auto-expands it.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
@@ -118,13 +118,30 @@ export function CodingSidebar({
   const visibleWorkspaces = [...savedWorkspaces, ...sessionWorkspaces]
   const activeWorkspace = workspace ?? null
 
-  // ``expandedWorkspace`` is local UI state — it auto-tracks the active
-  // workspace but the user can also expand any other to peek at its
-  // sessions.
-  const [expandedWorkspace, setExpandedWorkspace] = useState<string | null>(activeWorkspace)
+  // ``expandedWorkspaces`` is local UI state — it auto-tracks the active
+  // workspace but the user can also expand/collapse any other workspace
+  // independently.
+  const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(
+    () => new Set(activeWorkspace ? [activeWorkspace] : []),
+  )
   useEffect(() => {
-    if (activeWorkspace) setExpandedWorkspace(activeWorkspace)
+    if (!activeWorkspace) return
+    setExpandedWorkspaces((current) => {
+      if (current.has(activeWorkspace)) return current
+      const next = new Set(current)
+      next.add(activeWorkspace)
+      return next
+    })
   }, [activeWorkspace])
+
+  const toggleWorkspaceExpanded = (path: string) => {
+    setExpandedWorkspaces((current) => {
+      const next = new Set(current)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [browserPath, setBrowserPath] = useState<string | null>(null)
@@ -243,7 +260,7 @@ export function CodingSidebar({
 
         {visibleWorkspaces.map((path) => {
           const isActive = path === activeWorkspace
-          const isExpanded = expandedWorkspace === path
+          const isExpanded = expandedWorkspaces.has(path)
           const isPending = pendingWorkspace === path
           const workspaceSessions = codingSessions.filter((s) => s.workspace === path)
           return (
@@ -260,7 +277,7 @@ export function CodingSidebar({
               <div className="group flex h-8 items-center pl-3 pr-2">
                 <button
                   type="button"
-                  onClick={() => setExpandedWorkspace((current) => (current === path ? null : path))}
+                  onClick={() => toggleWorkspaceExpanded(path)}
                   className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-expanded={isExpanded}
                   aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${workspaceLabel(path)}`}
