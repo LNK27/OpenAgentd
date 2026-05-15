@@ -253,15 +253,17 @@ describe('SchedulerPanel — Edit Task Form', () => {
     expect(panel).toBeInTheDocument()
   })
 
-  it('displays panel on the right side of screen', async () => {
+  it('displays panel centered on screen', async () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
       expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
     })
 
-    // Panel should have right-0 class (positioned on right)
-    const panel = document.querySelector('.right-0')
-    expect(panel).toBeInTheDocument()
+    // Panel should be centered, not docked as a right-side drawer.
+    const panel = screen.getByRole('dialog', { name: /scheduled tasks/i })
+    expect(panel.className).toContain('left-1/2')
+    expect(panel.className).toContain('top-1/2')
+    expect(panel.className).not.toContain('right-0')
   })
 })

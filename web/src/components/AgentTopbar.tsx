@@ -11,7 +11,7 @@
  *   • Optional "Dream…" running indicator
  *   • ViewToggle (desktop only)
  *   • TokenMeter (desktop only, shown when totals > 0)
- *   • TopbarAction quintet — Todos / Scheduler / Wiki / Files / Agents
+ *   • TopbarAction group — Todos / Files
  *
  * Keeping this composite props-driven (rather than reading global state
  * directly) makes it usable in previews, screenshots, and future
@@ -55,6 +55,7 @@ export interface AgentTopbarActionDescriptor {
   indicator?: boolean
   /** Override the indicator dot color (e.g. error red). */
   indicatorClassName?: string
+  className?: string
 }
 
 export interface AgentTopbarProps {
@@ -177,6 +178,7 @@ function AgentTopbarActionButton({
       label={action.label}
       onClick={action.onClick}
       disabled={action.disabled}
+      className={action.className}
       title={action.title}
       aria-label={action.ariaLabel ?? action.label}
       indicator={action.indicator}

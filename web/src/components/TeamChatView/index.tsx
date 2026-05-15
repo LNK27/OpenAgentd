@@ -42,7 +42,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { Brain, CalendarClock, FolderOpen, FolderCode, Home, Menu, Users } from 'lucide-react'
+import { FolderOpen, FolderCode, Home, Menu } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { AgentChip } from '@/components/ui/agent-chip'
 import { Button } from '@/components/ui/button'
@@ -480,22 +480,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                 sessionId={sessionIdState}
               />
             }
-            schedulerAction={{
-              Icon: CalendarClock,
-              label: 'Scheduler',
-              onClick: toggleScheduler,
-              title: 'Scheduled tasks (Ctrl+S)',
-              ariaLabel: 'Scheduled tasks',
-              indicator: schedulerOpen,
-            }}
-            wikiAction={{
-              Icon: Brain,
-              label: 'Wiki',
-              onClick: toggleWiki,
-              title: 'Memory wiki (Ctrl+M)',
-              ariaLabel: 'Memory wiki',
-              indicator: wikiOpen,
-            }}
             filesAction={mode === 'coding'
               ? workspace ? {
                   Icon: FolderOpen,
@@ -503,6 +487,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                   onClick: () => setCodingPanel('files'),
                   title: 'Workspace files and git diff',
                   ariaLabel: 'Workspace files and git diff',
+                  className: 'mr-2',
                 } : undefined
               : {
                   Icon: FolderOpen,
@@ -512,13 +497,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                   title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
                   ariaLabel: 'Workspace files',
                 }}
-            agentsAction={{
-              Icon: Users,
-              label: 'Agents',
-              onClick: () => setShowAgentSidebar((v) => !v),
-              title: 'Agent Capabilities (Ctrl+A)',
-              ariaLabel: 'Agent capabilities',
-            }}
           />
       </header>
 

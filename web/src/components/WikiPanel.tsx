@@ -98,11 +98,11 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
           />
 
           <motion.div
-            initial={{ x: '-100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '-100%', opacity: 0 }}
-            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed inset-y-0 left-0 z-50 flex w-[min(960px,90vw)] flex-col overflow-hidden bg-(--bg-card) shadow-2xl"
+            initial={{ opacity: 0, scale: 0.97, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 8 }}
+            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+            className="fixed left-1/2 top-1/2 z-50 flex h-[min(860px,calc(100vh-40px))] w-[min(1180px,calc(100vw-40px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--bg-card) shadow-2xl"
           >
             <header className="flex items-center justify-between border-b border-(--color-border) px-4 py-3">
               <div className="flex items-center gap-2">
