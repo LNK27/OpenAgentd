@@ -13,6 +13,7 @@ from app.cli.commands.doctor import cmd_doctor
 from app.cli.commands.init import cmd_init
 from app.cli.commands.logs import cmd_logs
 from app.cli.commands.migrate import cmd_migrate
+from app.cli.commands.serve import _add_serve_subparser
 from app.cli.commands.start import cmd_start
 from app.cli.commands.status import cmd_status
 from app.cli.commands.stop import cmd_stop
@@ -118,6 +119,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("start", help="Start the background server").set_defaults(
         func=cmd_start
     )
+
+    # ── serve (foreground; for desktop / embedding) ───────────────────────────
+    _add_serve_subparser(sub)
 
     # ── stop ──────────────────────────────────────────────────────────────────
     sub.add_parser("stop", help="Stop background server and web UI").set_defaults(

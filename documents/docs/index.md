@@ -21,6 +21,7 @@ Quick start: `Makefile` (`make run` for the backend on :8000; `cd web && bun dev
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | [Architecture](./architecture.md)                    | C4 diagrams, in-memory SSE streaming, SSE protocol, agent loop                                       |
 | [Configuration](./configuration.md)                  | Env vars, agent `.md` files, sandbox, skills, settings UI                                            |
+| [Desktop distribution](./desktop.md)                 | Tauri v2 packaging, sidecar bundle, token auth, release pipeline, signing                            |
 | [Guidelines](./guidelines.md)                        | Dev commands, code style, testing, conventions                                                       |
 | [Logging](./logging.md)                              | Two-tier logging: app log, per-session logs, JSONL events, log levels                                |
 | [Observability](./observability.md)                  | OpenTelemetry spans, metrics, JSONL partitions, export-tier sampling, DuckDB HTTP API, `/telemetry` UI |

@@ -1,0 +1,112 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenAgentd",
+  "version": "0.6.0",
+  "identifier": "com.openagentd.desktop",
+  "build": {
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": {
+      "cwd": "../../web",
+      "script": "bun install --frozen-lockfile && bun run build"
+    },
+    "frontendDist": "../../web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "create": false,
+        "label": "main",
+        "title": "OpenAgentd",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 760,
+        "minHeight": 560,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "visible": false,
+        "transparent": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 16, "y": 18 }
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self' http://127.0.0.1:* http://localhost:*",
+        "connect-src": "'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* ipc: https://ipc.localhost",
+        "script-src": "'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*",
+        "style-src": "'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*",
+        "img-src": "'self' data: blob: http://127.0.0.1:* http://localhost:*",
+        "font-src": "'self' data: http://127.0.0.1:* http://localhost:*",
+        "media-src": "'self' blob: http://127.0.0.1:* http://localhost:*",
+        "frame-src": "'none'",
+        "object-src": "'none'",
+        "worker-src": "'self' blob:"
+      },
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/*", "$APPLOCALDATA/*", "$APPCACHE/*", "$APPLOG/*"]
+      }
+    },
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true
+    }
+  },
+  "bundle": {
+    "active": true,
+    "category": "Productivity",
+    "copyright": "Copyright (c) 2025 OpenAgentd contributors",
+    "shortDescription": "On-machine AI agents — streaming chat, tool use, persistent memory.",
+    "longDescription": "OpenAgentd is a self-hosted AI agent platform. The desktop app runs everything locally — your data, your keys, your machine.",
+    "targets": ["dmg", "app", "msi", "deb", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../sidecar-bundle/": "sidecar/",
+      "../scripts/install.sh": "install.sh",
+      "../scripts/INSTALL.md": "INSTALL.md"
+    },
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "11.0",
+      "exceptionDomain": "",
+      "signingIdentity": null,
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.plist"
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "wix": {
+        "language": "en-US"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/lthoangg/openagentd/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_ME_WITH_TAURI_UPDATER_PUBLIC_KEY",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
