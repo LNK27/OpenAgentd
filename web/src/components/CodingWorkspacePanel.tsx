@@ -205,7 +205,7 @@ function DiffFileSection({ file }: { file: ParsedDiffFile }) {
   const [open, setOpen] = useState(true)
   const lineCount = file.additions + file.deletions
   return (
-    <section className="overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-page)">
+    <section className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-page)">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
