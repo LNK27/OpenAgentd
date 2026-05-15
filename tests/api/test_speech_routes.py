@@ -134,26 +134,6 @@ def test_transcribe_rejects_empty_file() -> None:
     assert "empty" in resp.json()["detail"].lower()
 
 
-def test_transcribe_returns_503_when_faster_whisper_missing() -> None:
-    """When faster-whisper is not installed a clear setup error is returned."""
-    from app.agent.speech._config import VoiceConfig
-
-    cfg = VoiceConfig(provider="local", model="base", language="auto", max_file_mb=25)
-
-    with patch("app.api.routes.speech.get_voice_config", return_value=cfg):
-        with patch.dict("sys.modules", {"faster_whisper": None}):
-            client = TestClient(_make_app())
-            resp = client.post(
-                "/api/speech/transcribe",
-                files={"file": ("rec.webm", b"fake audio bytes", "audio/webm")},
-            )
-
-    assert resp.status_code == 503
-    detail = resp.json()["detail"]
-    assert "voice-local" in detail
-    assert "openagentd[voice-local]" in detail
-
-
 @pytest.mark.asyncio
 async def test_transcribe_returns_text_on_success() -> None:
     """Successful local transcription returns {text: '...'}."""

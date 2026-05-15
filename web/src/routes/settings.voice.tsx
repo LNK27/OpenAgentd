@@ -167,8 +167,9 @@ export function VoiceSettingsPage() {
                 </label>
                 <p className="text-xs text-(--color-text-muted)">
                   When disabled the mic button in the chat input is shown but inactive.
-                  Requires the <code className="rounded bg-(--bg-key) px-1 font-mono">voice-local</code> extra:{' '}
-                  <code className="rounded bg-(--bg-key) px-1 font-mono">uv sync --extra voice-local</code>
+                  Transcription runs locally via{' '}
+                  <code className="rounded bg-(--bg-key) px-1 font-mono">faster-whisper</code>{' '}
+                  and ships with every install — no extras needed.
                 </p>
               </section>
 

@@ -191,8 +191,8 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       const onKeyDown = (e: KeyboardEvent) => {
         // ``e.key`` is the printed character so the check is layout
         // safe; we accept upper- and lower-case to cover Caps Lock.
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'i' || e.key === 'I')) {
-          // Don't fight with browser-native Ctrl+I in editable
+        if (e.ctrlKey && !e.metaKey && (e.key === 'i' || e.key === 'I')) {
+          // Don't fight with browser-native Ctrl/⌘+I in editable
           // surfaces *outside* our composer (e.g. a Markdown editor
           // mounted somewhere on the page). The composer's textarea
           // doesn't use italics so summoning while focus is already

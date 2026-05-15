@@ -7,6 +7,7 @@ import io
 import threading
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from faster_whisper import WhisperModel
 from loguru import logger
 
 from app.agent.speech._config import (
@@ -33,7 +34,7 @@ _DISABLED_MODEL = "local:base"
 # Loading model weights is expensive (~seconds). Cache the instance
 # process-wide so repeated calls reuse the same loaded model.
 # Key: (model_name, device, compute_type).
-_whisper_cache: dict[tuple[str, str, str], object] = {}
+_whisper_cache: dict[tuple[str, str, str], WhisperModel] = {}
 _whisper_lock = threading.Lock()  # guards first-load initialisation per key
 
 
@@ -156,29 +157,15 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscribeResponse:
 
 
 async def _transcribe_local(audio_bytes: bytes, model: str, language: str) -> str:
-    """Transcribe using faster-whisper (``voice-local`` optional extra).
+    """Transcribe using faster-whisper (bundled by default).
 
-    Lazy-imports ``faster_whisper`` so the base server starts without it.
     The ``WhisperModel`` instance is cached process-wide to avoid reloading
-    weights on every request.
+    weights on every request — first-call latency is ~seconds, subsequent
+    calls are sub-second.
     """
-    try:
-        import faster_whisper  # noqa: F401 — availability probe
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Local speech-to-text requires the 'voice-local' extra. "
-                "Install it with: uv sync --extra voice-local  "
-                "or: uv tool install 'openagentd[voice-local]'"
-            ),
-        ) from exc
-
     cache_key = (model, "cpu", "int8")
 
     def _run() -> str:
-        from faster_whisper import WhisperModel
-
         wmodel = _whisper_cache.get(cache_key)
         if wmodel is None:
             with _whisper_lock:
@@ -189,7 +176,7 @@ async def _transcribe_local(audio_bytes: bytes, model: str, language: str) -> st
                     _whisper_cache[cache_key] = wmodel
 
         whisper_language = None if language == "auto" else language
-        segments, _ = wmodel.transcribe(  # ty: ignore[unresolved-attribute]
+        segments, _ = wmodel.transcribe(
             io.BytesIO(audio_bytes),
             language=whisper_language,
             beam_size=5,

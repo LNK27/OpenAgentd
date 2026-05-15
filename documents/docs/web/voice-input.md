@@ -43,22 +43,9 @@ Rules:
 - `language: auto` lets the transcription backend detect the language.
 - `max_file_mb` caps uploaded recording size before transcription.
 
-Local transcription dependencies are optional. The base install must not import
-or require `faster-whisper`. Users who enable `model: local:base` install the
-extra explicitly:
-
-```bash
-uv sync --extra voice-local
-```
-
-For package/tool installs:
-
-```bash
-uv tool install "openagentd[voice-local]"
-```
-
-If local voice is configured without the extra, the backend returns a setup
-error explaining that `openagentd[voice-local]` is required.
+Local transcription via `faster-whisper` ships with every install. There is no
+extra to enable, no fallback path for "dependency missing" — toggle voice on
+in Settings and it works.
 
 ## Settings UI
 
@@ -89,7 +76,6 @@ Expected errors:
 
 - Voice disabled: mic button shown disabled with tooltip; direct `POST /transcribe` calls get a clear 503 error.
 - Unsupported or oversized audio: request rejected before provider execution.
-- Missing optional dependency for `local:*`: setup error with the `openagentd[voice-local]` install hint.
 - Empty transcript: return `{text: ""}` so the UI can avoid modifying the input.
 
 ## Frontend Flow
@@ -115,6 +101,4 @@ than discarding the typed draft. Sending remains the existing typed-message path
 - Starting/stopping recording is controlled only by mic-button clicks.
 - A successful transcription inserts text into the input and does not auto-send.
 - Permission denial and transcription failure leave the existing input unchanged.
-- Base backend startup works without `faster-whisper` installed.
-- Configured local voice without the optional extra returns the documented setup error.
 - `PUT /api/speech/config` with `enabled: true` is reflected immediately in the UI without a page reload.

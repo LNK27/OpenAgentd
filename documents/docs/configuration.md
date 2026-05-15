@@ -81,16 +81,17 @@ What lives where:
 
 ## Optional dependency extras
 
-The base install should stay small. Features that require heavy local runtimes
-use optional extras instead of default dependencies.
+Most features ship by default — voice transcription (`faster-whisper`), office
+document conversion (`markitdown[pdf,docx,pptx,xlsx,xls]`), and everything else
+required to make the desktop app "just work" out of the box.
+
+A few heavier or specialised features remain opt-in:
 
 | Extra | Enables | Install |
 |-------|---------|---------|
-| `voice-local` | Local browser voice-input transcription via `voice.model: local:base` | `uv sync --extra voice-local` or `uv tool install "openagentd[voice-local]"` |
-
-When `voice.model` is `local:*`, the backend lazy-imports `faster_whisper` from
-`speech.yaml`. A server with voice disabled or the file absent must start without
-the `voice-local` extra installed.
+| `audio` | File-attached audio transcription via markitdown's audio backend (`speech_recognition` + `pydub`). Distinct from the always-bundled microphone path which uses `faster-whisper`. | `uv sync --extra audio` |
+| `azure-doc-intel` | Azure Document Intelligence server-side OCR fallback inside markitdown. | `uv sync --extra azure-doc-intel` |
+| `full` | All optional extras (`audio,azure-doc-intel`). | `uv sync --extra full` |
 
 ---
 
