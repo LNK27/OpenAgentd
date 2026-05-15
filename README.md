@@ -73,20 +73,25 @@ Full breakdown: [`documents/docs/comparison.md`](https://github.com/lthoangg/ope
 | Windows | `OpenAgentd_*_x64-setup.exe` | SmartScreen warns on first run — click **More info → Run anyway**. |
 | Linux | `OpenAgentd_*_amd64.AppImage` | `chmod +x` the AppImage, or run the bundled `install.sh --install` for a launcher entry. |
 
+macOS — after mounting the `.dmg`:
+
+```bash
+cd /Volumes/OpenAgentd*
+./install.sh --install            # ad-hoc signs + copies to /Applications
+```
+
+Then right-click **OpenAgentd.app → Open** the first time (single-click won't work).
+
 **CLI / API server** (terminal install — ships the same UI on `http://localhost:4082`):
 
 ```bash
 # macOS / Linux
 uv tool install openagentd        # recommended
 brew tap lthoangg/tap && brew install openagentd
-curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh   # zero-setup: bootstraps uv, then installs
 
 # Windows
 irm https://raw.githubusercontent.com/lthoangg/openagentd/main/install.ps1 | iex
-
-# Docker (self-hosting)
-git clone https://github.com/lthoangg/openagentd.git
-cd openagentd && cp .env.example .env && docker compose up -d
 ```
 
 ```bash
