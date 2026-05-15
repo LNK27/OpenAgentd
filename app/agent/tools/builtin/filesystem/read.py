@@ -5,7 +5,7 @@ Supports multimodal file types:
 - **Images** (.png, .jpg, .gif, .webp, ...): base64-encoded and returned as
   ``ToolResult`` with ``ImageDataBlock`` parts for vision-capable models.
   Non-vision models receive a text notice instead.
-- **Documents** (.pdf, .docx, .pptx, .xlsx, ...): converted to markdown text via
+- **Documents** (.pdf, .docx, .html): converted to markdown text via
   markitdown. If conversion fails, PDFs are sent as raw bytes to vision models.
 - **Text** (everything else): read as UTF-8/Latin-1 text (original behaviour).
 """
@@ -55,7 +55,7 @@ async def _read_file(
 
     For text files, prepends "[X-Y/N]" header when offset/limit active. Max 5 MB.
     For images, returns base64-encoded image data for visual analysis.
-    For documents (PDF, DOCX, etc.), extracts text content.
+    For documents (PDF, DOCX, HTML), extracts text content.
     """
     sandbox = get_sandbox()
     resolved = sandbox.validate_path(path)

@@ -3,7 +3,7 @@
 Detects file type by extension and dispatches to the appropriate handler:
 
 - **Image** (.png, .jpg, .jpeg, .gif, .webp, .bmp, .svg): base64-encode → ImageDataBlock
-- **Document** (.pdf, .docx, .pptx, .xlsx): markitdown conversion → TextBlock
+- **Document** (.pdf, .docx, .html): markitdown conversion → TextBlock
 - **Text** (everything else): read as UTF-8/Latin-1 text (existing behaviour)
 
 Each handler returns a :class:`~app.agent.schemas.chat.ToolResult` whose
@@ -48,15 +48,8 @@ _DOCUMENT_EXTENSIONS: frozenset[str] = frozenset(
     {
         ".pdf",
         ".docx",
-        ".pptx",
-        ".xlsx",
-        ".doc",
-        ".xls",
-        ".ppt",
-        ".rtf",
-        ".odt",
-        ".ods",
-        ".odp",
+        ".html",
+        ".htm",
     }
 )
 

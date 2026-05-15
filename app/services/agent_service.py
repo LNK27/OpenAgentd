@@ -51,6 +51,8 @@ MIME_CATEGORY: dict[str, str] = {
     "text/markdown": "text",
     "application/json": "text",
     "application/x-ndjson": "text",
+    "text/html": "document",
+    "application/xhtml+xml": "document",
     "image/jpeg": "image",
     "image/png": "image",
     "image/gif": "image",
@@ -59,7 +61,6 @@ MIME_CATEGORY: dict[str, str] = {
     "image/tiff": "image",
     "application/pdf": "document",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document",
-    "application/msword": "document",
 }
 EXT_CATEGORY: dict[str, str] = {
     ".txt": "text",
@@ -80,7 +81,8 @@ EXT_CATEGORY: dict[str, str] = {
     ".tiff": "image",
     ".pdf": "document",
     ".docx": "document",
-    ".doc": "document",
+    ".html": "document",
+    ".htm": "document",
 }
 # First N bytes must match at least one signature for the declared MIME.
 MAGIC_BYTES: dict[str, list[tuple[bytes, int]]] = {
@@ -93,7 +95,6 @@ MAGIC_BYTES: dict[str, list[tuple[bytes, int]]] = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
         (b"PK", 0)
     ],
-    "application/msword": [(b"\xd0\xcf\x11\xe0", 0)],
 }
 MAX_FILENAME_LEN = 200
 MARKITDOWN_TIMEOUT_SECS = 30

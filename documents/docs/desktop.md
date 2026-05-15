@@ -159,7 +159,8 @@ The bundler:
 
 1. Fetches python-build-standalone via `uv python install`.
 2. `uv pip install --target` of `openagentd` (the local project) into
-   `site-packages/`. Includes `markitdown[pdf,docx,pptx,xlsx,xls]` by default.
+   `site-packages/`. Includes `markitdown[pdf,docx]` by default; HTML conversion
+   uses markitdown core.
 3. Strips `__pycache__`, `tests/`, `.pyc`, locale `.mo` files.
 4. Runs a smoke test: starts `serve --handshake`, parses the handshake,
    SIGTERMs.

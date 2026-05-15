@@ -93,7 +93,7 @@ class TestClassifyFile:
         assert classify_file(Path("f.JPG")) == "image"
 
     def test_classify_document_extensions(self):
-        for ext in (".pdf", ".docx", ".pptx", ".xlsx", ".doc", ".xls", ".ppt"):
+        for ext in (".pdf", ".docx", ".html", ".htm"):
             assert classify_file(Path(f"f{ext}")) == "document", ext
 
     def test_classify_text_extensions(self):

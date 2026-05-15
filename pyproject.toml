@@ -34,12 +34,10 @@ dependencies = [
     "rich>=14.3.3",
     "prompt-toolkit>=3.0.52",
     "ddgs>=9.12.0",
-    # Office document conversion (PDF/DOCX/PPTX/XLSX/XLS) ships by default —
-    # users expect file-attach and web_fetch to handle these formats out of
-    # the box. Heavier features (Azure Doc Intel, file-attached audio
-    # transcription) stay behind the ``azure-doc-intel`` / ``audio`` optional
-    # extras to keep the desktop bundle from ballooning unnecessarily.
-    "markitdown[pdf,docx,pptx,xlsx,xls]>=0.1.5",
+    # Document conversion ships with only the formats used by the slim sidecar:
+    # PDF and DOCX via extras, plus HTML through markitdown core. Heavier
+    # features stay behind optional extras to keep the desktop bundle small.
+    "markitdown[pdf,docx]>=0.1.5",
     "pyyaml>=6.0.3",
     "fastapi>=0.135.2",
     "uvicorn[standard]>=0.42.0",

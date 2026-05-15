@@ -86,7 +86,7 @@ Summarization thresholds, title-generation timeout, tool-result offload sizes, a
 
 ## Optional extras
 
-Most features ship by default — voice transcription (`faster-whisper`), office-document conversion (`markitdown[pdf,docx,pptx,xlsx,xls]`), and everything else needed to make the desktop app "just work" out of the box.
+Most features ship by default — voice transcription (`faster-whisper`), document conversion for PDF, DOCX, and HTML (`markitdown[pdf,docx]` plus markitdown core), and everything else needed to make the desktop app "just work" out of the box.
 
 A few heavier features remain opt-in:
 
