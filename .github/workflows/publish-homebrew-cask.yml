@@ -1,0 +1,188 @@
+# Publishes the macOS desktop ``.dmg`` to ``lthoangg/homebrew-tap`` as a
+# Cask so users can install the GUI with::
+#
+#     brew install --cask openagentd
+#
+# Pairs with ``publish-homebrew.yml`` (which publishes the CLI Formula
+# from PyPI). The two artefacts coexist in the same tap repo and can be
+# installed independently.
+#
+# Trigger model:
+#   - ``workflow_run`` on **Release Desktop** completion: a desktop
+#     release just produced ``v<version>-desktop`` with the ``.dmg``
+#     attached, so the cask can pick it up immediately.
+#   - ``workflow_dispatch``: manual re-run, e.g. after fixing the cask
+#     template without cutting a fresh release.
+#
+# Scope (intentional, see documents/techdebts/distribution-coverage.md):
+#   - Apple Silicon only. ``release-desktop.yml`` does not build an
+#     Intel ``.dmg``, so the cask is ``arch: :arm64``-gated. Intel users
+#     fall back to the CLI Formula (``brew install openagentd``) or
+#     downloading the desktop release manually.
+#   - Unsigned bundle. A ``postflight`` block runs the same ad-hoc
+#     signing dance as ``desktop/scripts/install.sh`` so the user
+#     never sees the Gatekeeper "damaged" dialog.
+
+name: Update Homebrew Cask
+
+on:
+  workflow_run:
+    workflows: ["Release Desktop"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  update-cask:
+    name: Update homebrew-tap cask
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Resolve latest desktop release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the most recent ``v*-desktop`` tag. We deliberately ignore
+          # the rolling ``latest-desktop`` tag because the cask must pin to
+          # an immutable version.
+          RELEASE=$(gh release list --repo lthoangg/openagentd --limit 20 --json tagName,publishedAt \
+            --jq '[.[] | select(.tagName | endswith("-desktop") and (. != "latest-desktop"))]
+                  | sort_by(.publishedAt) | last')
+          TAG=$(echo "$RELEASE" | jq -r '.tagName')
+          VERSION=$(echo "$TAG" | sed 's/^v//; s/-desktop$//')
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "::error::Could not resolve a desktop release tag."
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download the aarch64 .dmg
+        id: artefact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          # File names follow the Tauri template
+          # ``OpenAgentd_<version>_aarch64.dmg``. Glob via ``gh`` so a
+          # future rename (e.g. dropping the version from the file name)
+          # still surfaces here as a hard failure rather than silently
+          # producing an empty cask.
+          gh release download "$TAG" --repo lthoangg/openagentd \
+            --pattern '*aarch64.dmg' --dir _dmg
+          DMG=$(ls _dmg/*.dmg | head -n1)
+          if [ -z "$DMG" ]; then
+            echo "::error::No aarch64 .dmg found in release $TAG"
+            exit 1
+          fi
+          echo "path=${DMG}" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$DMG")" >> "$GITHUB_OUTPUT"
+
+      - name: Compute SHA-256
+        id: hash
+        run: |
+          echo "sha256=$(sha256sum '${{ steps.artefact.outputs.path }}' | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: lthoangg/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Write Casks/openagentd.rb
+        run: |
+          mkdir -p homebrew-tap/Casks
+          VERSION="${{ steps.release.outputs.version }}"
+          SHA256="${{ steps.hash.outputs.sha256 }}"
+          DMG_NAME="${{ steps.artefact.outputs.name }}"
+
+          # Reconstruct the download URL from the release tag and the
+          # Tauri-emitted file name. We don't store the URL from the
+          # ``gh release download`` step because that includes a short-
+          # lived auth token redirect.
+          DOWNLOAD_URL="https://github.com/lthoangg/openagentd/releases/download/v${VERSION}-desktop/${DMG_NAME}"
+
+          cat > homebrew-tap/Casks/openagentd.rb <<CASK
+          cask "openagentd" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+
+            url "${DOWNLOAD_URL}"
+            name "OpenAgentd"
+            desc "On-machine multi-agent AI assistant with a web cockpit"
+            homepage "https://github.com/lthoangg/openagentd"
+
+            # Apple Silicon only. ``release-desktop.yml`` does not build an
+            # Intel ``.dmg`` today; Intel Mac users should install the CLI
+            # Formula instead (``brew install openagentd``).
+            depends_on arch: :arm64
+            depends_on macos: ">= :big_sur"
+
+            livecheck do
+              url :url
+              regex(/^v?(\d+(?:\.\d+)+)-desktop\$/i)
+              strategy :github_latest
+            end
+
+            auto_updates true
+
+            app "OpenAgentd.app"
+
+            # The bundle ships unsigned (no paid Apple Developer ID). On
+            # first launch macOS would otherwise reject it with the
+            # ``"OpenAgentd.app" is damaged`` error. We replicate the
+            # exact workaround from ``desktop/scripts/install.sh``:
+            # strip the quarantine xattr, ad-hoc sign the bundle, done.
+            #
+            # ``postflight`` runs once per ``brew install --cask`` /
+            # ``brew upgrade --cask``, so the dance happens automatically
+            # on every version bump.
+            postflight do
+              app_path = "#{appdir}/OpenAgentd.app"
+              system_command "/usr/bin/xattr",
+                             args: ["-dr", "com.apple.quarantine", app_path],
+                             must_succeed: false
+              system_command "/usr/bin/codesign",
+                             args: ["--force", "--deep", "--sign", "-",
+                                    "--options", "runtime",
+                                    "--timestamp=none", app_path],
+                             must_succeed: false
+            end
+
+            # Intentionally no ``zap`` block. ``brew uninstall --cask``
+            # removes the .app and leaves user data (agents, SQLite DB,
+            # wiki, workspaces, logs) in place so a subsequent
+            # ``brew install --cask openagentd`` is a true upgrade, not
+            # a fresh start. Users who want a full wipe should remove
+            # ``~/.config/openagentd``, ``~/.local/share/openagentd*``,
+            # ``~/.local/state/openagentd`` and ``~/.cache/openagentd``
+            # manually — see ``documents/docs/configuration/paths.md``.
+
+            caveats <<~EOS
+              OpenAgentd is unsigned (no paid Apple Developer ID).
+              The cask ad-hoc signs the bundle on install, so Gatekeeper
+              should accept it. If macOS still complains, right-click
+              the app in Finder and choose "Open" once.
+
+              Apple Silicon only. Intel Mac users: install the CLI with
+              "brew install openagentd" instead, and open the cockpit at
+              http://localhost:4082.
+
+              Uninstall keeps your data. ``brew uninstall --cask
+              openagentd`` removes the app only; agents, sessions, and
+              wiki under ~/.config/openagentd and ~/.local/share/openagentd*
+              are preserved.
+            EOS
+          end
+          CASK
+
+      - name: Commit and push
+        working-directory: homebrew-tap
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/openagentd.rb
+          git diff --cached --quiet && echo "No changes, skipping" || \
+            (git commit -m "openagentd ${{ steps.release.outputs.tag }} (cask)" && git push)
