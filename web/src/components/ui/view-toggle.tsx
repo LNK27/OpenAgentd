@@ -1,23 +1,9 @@
 /**
- * ViewToggle — two-state icon-only segmented control for chat view modes.
- *
- * Pencil component `T9nydm` (ViewToggle): equally-sized 28×28 icon-only
- * buttons. The active button has a `--color-surface-2` fill; others are
- * transparent. Pencil uses Material Symbols `person` / `view_column`;
- * we map to the closest lucide equivalents to preserve semantics.
- *
- * Border note — the pencil mock draws a thin outer border, but in the
- * real header that border collides with the bordered status pill and
- * the chip dropdown trigger right next to it. We omit it so the
- * toggle reads as part of the same toolbar cluster as its neighbours.
- *
- * Modes:
- *   - "agent" → focus a single agent (User    ↔ person)
- *   - "split" → side-by-side panes  (Columns2 ↔ view_column)
- *
- * Labels live on `aria-label` and `title` only — the control is too
- * dense to fit both labels on the topbar. Tooltips surface them on
- * hover for sighted users.
+ * ViewToggle — icon-only segmented control: Agent (focused) vs Split
+ * (side-by-side panes). Labels live on `aria-label` / `title` because
+ * the topbar is too dense for inline text. The pencil mock draws an
+ * outer border; we drop it so the toggle reads as part of the same
+ * cluster as the bordered status pill and chip dropdown next to it.
  */
 
 import { User, Columns2, type LucideIcon } from 'lucide-react'

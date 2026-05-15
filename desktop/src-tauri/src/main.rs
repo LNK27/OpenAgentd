@@ -17,36 +17,20 @@ struct AppState {
     sidecar: Arc<Mutex<Option<Sidecar>>>,
 }
 
-/// Apply platform-specific window chrome to a [`WebviewWindowBuilder`].
+/// Apply platform-specific window chrome.
 ///
-/// On macOS we use the **overlay** title-bar style: the system keeps
-/// rendering the traffic-light buttons (close/minimize/zoom) but the
-/// WebView extends edge-to-edge under them. The React app is then
-/// responsible for laying out a custom header strip and reserving
-/// ~70 pt of empty space at the top-left so the buttons don't sit on
-/// top of any clickable controls. A ``useTauriDrag`` mousedown handler
-/// inside that header turns the bar into a window-drag handle.
+/// macOS uses the **overlay** title-bar style — the WebView extends
+/// under the OS-drawn traffic-lights and the React app reserves a
+/// 70 pt left inset for them. ``traffic_light_position`` must be set
+/// here because the JSON config value is ignored when the window is
+/// built from Rust via ``WebviewWindowBuilder``.
 ///
-/// ``traffic_light_position`` is applied programmatically here because
-/// the JSON config value is ignored when the window is created from
-/// Rust via ``WebviewWindowBuilder``. ``y`` controls the **bottom**
-/// inset of the buttons within the resized native title-bar container
-/// (Tao's ``inset_traffic_lights`` in
-/// ``tao-0.35.x/src/platform_impl/macos/view.rs:1152`` does
-/// ``title_bar_height = button_height + y`` and pins the buttons to
-/// the *top* of that container).
+/// ``y`` is a *bottom* inset: Tao resizes the native title-bar to
+/// ``button_height + y`` (tao 0.35.x, macos/view.rs:1152). Empirical
+/// tuning for our 40 pt header: 14 → too high, 22 → centred, 26 →
+/// too low.
 ///
-/// Empirical tuning for our 40 pt header:
-///   - ``y = 14`` → buttons sit near the top (visibly above centre).
-///   - ``y = 20`` → still slightly above centre.
-///   - ``y = 22`` → visually centred.
-///   - ``y = 24-26`` → buttons sit below centre.
-/// ``x = 12`` keeps the standard macOS left margin.
-///
-/// On Windows and Linux we keep the default OS chrome — those
-/// platforms have native title bars that integrate well with their
-/// window managers, and there's no equivalent of macOS's overlay mode
-/// without going full-CSD which we don't want to maintain.
+/// Windows and Linux keep their native chrome.
 fn configure_window_chrome(builder: WebviewWindowBuilder<'_, tauri::Wry, AppHandle>) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
     #[cfg(target_os = "macos")]
     {

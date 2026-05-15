@@ -355,43 +355,22 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    // h-dvh: accounts for iOS Safari's dynamic toolbar (h-screen is too tall).
-    // flex-col so the header spans the full viewport width and the sidebar
-    // sits below it — matches the wireframe layout (header above the
-    // sidebar/content row).
+    // h-dvh handles iOS Safari's dynamic toolbar.
     <div className="flex h-dvh flex-col bg-(--bg-page)">
-      {/* Header — full-width 40 px bar above sidebar and content. On
-          macOS Tauri the header carries an onMouseDown handler that
-          starts a window drag only when the user pressed on the bare
-          header (not on a child button). ``pl-[70px]`` reserves room
-          for the OS-overlaid traffic-light buttons. The buttons are
-          12 pt tall and positioned at (12, 14) by Rust
-          (configure_window_chrome in main.rs), centring them in the
-          40 pt header: y = (40 - 12) / 2 = 14. */}
+      {/* 40 px header above the sidebar/content row. On macOS Tauri it
+          doubles as the window drag region via useTauriDrag, with a
+          70 px left inset reserved for the OS traffic-lights. */}
       <header
         {...dragHandlers}
         className={`flex h-10 items-center border-b border-(--color-border) bg-(--bg-page) ${
           isMacOverlay ? 'select-none pl-[70px]' : ''
         }`}
       >
-
-          {/* Home — pinned to a 56 px column so it sits vertically aligned
-              with the collapsed sidebar (which is also 56 px wide). On
-              mobile the column shrinks to the natural button size since
-              the sidebar is a position:fixed overlay, not a column.
-              On macOS the header itself adds 70 px inset so this
-              column drops to its natural width to sit flush against
-              the inset. The wrapper carries no drag handler — clicks
-              flow naturally to the <Link>. */}
+          {/* Home — 56 px column on desktop to line up with the
+              collapsed sidebar; shrinks on mobile and macOS overlay
+              (where the parent already provides inset padding). */}
           <div
             className={`flex h-full shrink-0 items-center justify-center ${
-              // On macOS the parent header already pads 70 px for the
-              // traffic-light overlay, so the column shrinks to the
-              // button's natural width and adds ``pl-2`` (8 px) of
-              // breathing room to mirror ``AppHeader`` on the settings
-              // page. On other platforms we keep the 56 px column so
-              // the Home button sits vertically aligned with the
-              // collapsed sidebar.
               isMacOverlay ? 'pl-2' : 'md:w-14'
             }`}
           >
@@ -405,14 +384,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             </Link>
           </div>
 
-          {/* Hamburger + optional session title. ``gap-1`` keeps the two
-              affordances tight; ``mr-2`` pushes content away on the right.
-              Hamburger target depends on mode: coding sidebar toggle, mobile
-              drawer, or a synthetic Ctrl+B for the normal sidebar (whose
-              collapse state is owned by ``Sidebar``).
-              The wrapper itself stays un-tagged so the button inside
-              receives clicks; the title <span> is the only inert child
-              and carries the drag attribute. */}
+          {/* Hamburger target depends on mode: coding sidebar toggle,
+              mobile drawer, or synthetic Ctrl+B for the normal sidebar
+              (whose collapse state is owned by Sidebar). */}
           <div className="mr-2 flex shrink-0 items-center gap-1 pl-2 md:pl-0">
             <button
               type="button"
@@ -442,13 +416,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             )}
           </div>
 
-          {/* Active-agent chip + dropdown switcher. We show only the
-              currently active agent in the header to keep the bar
-              compact and predictable across team sizes; clicking the
-              chip opens a menu of all members so users can switch
-              focus without leaving the header. In ``split`` view the
-              header is collapsed to a status pill instead — the split
-              grid itself surfaces each agent. */}
+          {/* Active-agent chip → dropdown of all members. Split view
+              collapses to a count pill — each pane already shows its
+              own agent. */}
           <div className="flex min-w-0 flex-1 justify-start">
             {effectiveViewMode === 'agent' && activeAgent && (
               <ActiveAgentSwitcher
@@ -466,12 +436,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             )}
           </div>
 
-          {/* Right: tokens, dream, split-pane, view toggle, panel toggles —
-              owned by the reusable ``AgentTopbar`` composite so this header
-              stays in sync with single-agent surfaces and Pencil's
-              ``AgentTopbar`` (`E8lml9`). No drag attribute on the
-              wrapper — every direct child is a button or popover
-              trigger. */}
+          {/* Right cluster — tokens, dream, view toggle, panel
+              toggles via the shared AgentTopbar composite. */}
           <div className="flex shrink-0 items-center">
           <AgentTopbar
             isMobile={isMobile}
@@ -651,6 +617,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
 }
 
 // ─── ActiveAgentSwitcher ───────────────────────────────────────────────────
+//
+// Single chip → dropdown of all members. Replaces the horizontal chip
+// carousel that didn't scale past ~4 agents. ``data-no-drag`` on the
+// trigger opts it out of ``useTauriDrag``'s interactive guard so the
+// chip-as-trigger doesn't race the window-drag handler.
 
 interface ActiveAgentSwitcherProps {
   activeAgent: string
@@ -659,8 +630,6 @@ interface ActiveAgentSwitcherProps {
   onSelect: (agent: string) => void
 }
 
-/** Role → marker-colour utility class. Mirrors ``AgentChip`` so the
- *  dropdown dots match the chip in the header. */
 const DOT_BY_ROLE: Record<AgentRole, string> = {
   openagentd: 'bg-(--color-marker-mint)',
   executor: 'bg-(--color-marker-orange)',
@@ -668,9 +637,6 @@ const DOT_BY_ROLE: Record<AgentRole, string> = {
   explorer: 'bg-(--color-text-muted)',
 }
 
-/** Status dot class for an agent stream — error / working / offline
- *  override the role colour; ``undefined`` falls back to the role
- *  marker (or ``--color-success`` for arbitrary agent names). */
 function dotClassFor(agent: string, stream: AgentStream | undefined): string {
   if (stream?.status === 'error') return 'bg-(--color-error)'
   if (stream?.status === 'working') return 'animate-pulse bg-(--color-accent)'
@@ -679,22 +645,6 @@ function dotClassFor(agent: string, stream: AgentStream | undefined): string {
   return 'bg-(--color-success)'
 }
 
-/**
- * Single chip representing the currently active agent, with a
- * ``DropdownMenu`` of all team members. Replaces the horizontal chip
- * carousel that used to live here — it scaled poorly past ~4 agents
- * and competed with the header's drag region for top-bar real estate.
- *
- * The trigger renders as a plain ``<button>`` styled to match
- * ``AgentChip``'s active variant (mono label, rounded-md, role dot).
- * We inline the styling rather than reusing ``AgentChip`` because
- * Base UI's Menu trigger forwards props to the underlying element,
- * and ``AgentChip`` already manages its own ``<button>`` shell.
- *
- * ``data-no-drag`` on the trigger tells ``useTauriDrag`` to ignore
- * mousedowns here — without it, the chip-as-trigger could
- * occasionally race the window-drag handler on the parent header.
- */
 function ActiveAgentSwitcher({
   activeAgent,
   agents,
@@ -713,49 +663,32 @@ function ActiveAgentSwitcher({
           aria-hidden="true"
         />
         <span className="min-w-0 truncate">{activeAgent}</span>
-        <ChevronDown
-          size={12}
-          className="shrink-0 text-(--color-text-muted)"
-          aria-hidden="true"
-        />
+        <ChevronDown size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
       </DropdownMenuTrigger>
 
-      {/* ``w-auto`` overrides the default ``w-(--anchor-width)`` so
-          the menu sizes to its content instead of the (narrow)
-          trigger chip. ``max-w-[min(90vw,24rem)]`` keeps it sane on
-          tiny windows. */}
+      {/* w-auto overrides w-(--anchor-width) so the menu sizes to its
+          content rather than the (narrow) trigger. */}
       <DropdownMenuContent
         align="start"
         sideOffset={6}
         className="w-auto max-w-[min(90vw,24rem)]"
       >
-        {agents.map((name) => {
-          const isActive = name === activeAgent
-          return (
-            <DropdownMenuItem
-              key={name}
-              onClick={() => onSelect(name)}
-              // ``whitespace-nowrap`` lets the menu grow horizontally
-              // to fit the longest agent name rather than truncating.
-              // ``min-w-40`` keeps a comfortable gap between the
-              // longest name and the trailing check on the right.
-              className="flex min-w-40 items-center gap-2 font-mono text-xs whitespace-nowrap"
-            >
-              <span
-                className={`h-2 w-2 shrink-0 rounded-full ${dotClassFor(name, streams[name])}`}
-                aria-hidden="true"
-              />
-              <span>{name}</span>
-              {isActive && (
-                <Check
-                  size={12}
-                  className="ml-auto shrink-0 text-(--color-accent)"
-                  aria-hidden="true"
-                />
-              )}
-            </DropdownMenuItem>
-          )
-        })}
+        {agents.map((name) => (
+          <DropdownMenuItem
+            key={name}
+            onClick={() => onSelect(name)}
+            className="flex min-w-40 items-center gap-2 font-mono text-xs whitespace-nowrap"
+          >
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${dotClassFor(name, streams[name])}`}
+              aria-hidden="true"
+            />
+            <span>{name}</span>
+            {name === activeAgent && (
+              <Check size={12} className="ml-auto shrink-0 text-(--color-accent)" aria-hidden="true" />
+            )}
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -1,21 +1,10 @@
 /**
- * AgentTopbar — reusable right-cluster composite for the chat header.
+ * AgentTopbar — right-cluster composite for the chat header.
  *
- * Mirrors the right side of the `TeamChatView` header and the design
- * source `AgentTopbar` (`E8lml9` → right cluster section `BbrKe`) in
- * `.diagrams/OpenAgentd-ui.pen`. The left side of the header varies a
- * lot per view mode (agent tabs, split label, unified strip), so this
- * component encapsulates only the parts that are consistent across all
- * surfaces:
- *
- *   • Optional "Dream…" running indicator
- *   • TokenMeter (desktop only, shown when totals > 0)
- *   • ViewToggle (desktop only)
- *   • TopbarAction group — Todos / Files
- *
- * Keeping this composite props-driven (rather than reading global state
- * directly) makes it usable in previews, screenshots, and future
- * single-agent surfaces — not just `TeamChatView`.
+ * Layout: dream pulse · tokens · view toggle · todos/files/wiki etc.
+ * Props-driven so previews and future single-agent surfaces can reuse
+ * it without pulling in TeamChatView's stores. Design source:
+ * `AgentTopbar` (`E8lml9`) in `.diagrams/OpenAgentd-ui.pen`.
  */
 
 import {

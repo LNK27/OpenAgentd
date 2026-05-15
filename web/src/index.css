@@ -99,13 +99,9 @@
     --radius-3xl: 32px;
     --radius-4xl: 40px;
 
-    /* App header — shared across browser and Tauri WebView.
-     * Compact 40 px bar so the chrome stays out of the way; the
-     * macOS traffic-light buttons sit vertically centered at
-     * y = (40 - 12) / 2 = 14 (see tauri.conf.json:trafficLightPosition.y).
-     * The mac-overlay inset clears the buttons (x=12 origin + ~58 group
-     * width = 70 px). */
-    --spacing-app-header: 2.5rem;       /* 40px */
+    /* App header — 40 px shared bar. The 70 px inset clears the
+     * macOS traffic-light overlay (x=12 origin + ~58 button group). */
+    --spacing-app-header: 2.5rem;
     --spacing-mac-traffic-inset: 70px;
 }
 
@@ -415,8 +411,6 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
-
-
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -645,5 +639,4 @@
 }
 .oa-prose strong { color: var(--color-text); font-weight: 600; }
 .oa-prose em     { color: var(--color-text-2); font-style: italic; }
-
 
