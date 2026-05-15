@@ -103,13 +103,13 @@ Runs a series of health checks and exits with code 1 if any fail:
 | Check | Pass | Fail |
 |---|---|---|
 | Python version | ≥ 3.14 | < 3.14 |
-| API key configured | Any provider key set | No key found |
-| Provider/key match | Lead agent's provider has a matching key | Provider set but key missing |
+| API key / OAuth | Any provider key set, or OAuth-only provider (`copilot`, `codex`, `vertexai`, `cliproxy`, `router9`, `ollama`) configured | No key and no OAuth provider found |
+| Provider/key match | Lead agent's provider has a matching key (or is OAuth-only) | Provider set but key missing |
 | Database | `openagentd.db` exists | Not found (warning only — created on first run) |
-| Alembic config | Bundled in package | Missing (reinstall) |
+| Alembic config | `alembic.ini` next to `app/core/db.py` | Missing (reinstall) |
 | Port 4082 | Available | In use |
 | Web UI | Bundled `_web_dist/` present | Missing (warning only) |
-| Agents directory | At least one `.md` in config dir | Missing (run `openagentd init`) |
+| Agents directory | At least one `.md` in `{OPENAGENTD_CONFIG_DIR}/agents/` | Missing (run `openagentd init`) |
 
 Warnings (degraded but bootable) don't affect the exit code. Run this first when something looks wrong.
 

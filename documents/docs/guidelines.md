@@ -1,8 +1,8 @@
 ---
 title: Developer Guidelines
-description: Dev commands, code style, testing patterns, performance optimizations, and team protocol conventions.
+description: Dev commands, code style, testing patterns, GitHub conventions.
 status: stable
-updated: 2026-05-05
+updated: 2026-05-16
 ---
 
 # openagentd — Developer Guidelines
@@ -121,23 +121,24 @@ Tests strictly mirror `app/` structure (with the redundant `app/` prefix dropped
 tests/
 ├── conftest.py                      # in-memory SQLite, redirects app.core.db
 ├── agent/                           # mirrors app/agent/
-│   ├── agent_loop/                  # tool_executor (sanitize_error memory-path normalisation)
+│   ├── agent_loop/                  # core loop, retry, streaming, tool_dispatch, tool_executor
 │   ├── hooks/                       # per-hook tests
 │   ├── mcp/                         # config, manager, tools, installer_script
-│   ├── mode/team/                   # member, mailbox, team tests
-│   ├── providers/                   # per-provider tests + openai/{routing,
-│   │                                #   completions_handler, responses_handler,
-│   │                                #   responses_streaming, provider}.py
-│   ├── schemas/
-│   ├── tools/                       # shell, filesystem, web_tools, registry,
-│   │   └── multimodalities/         # generate_image/video backend tests
-│   └── test_*.py                    # loader, agent_loop, sandbox (denylist), permission
+│   ├── mode/team/                   # member, mailbox, team, manage, lazy spawn
+│   ├── plugins/                     # plugin loader, role contextvar
+│   ├── providers/                   # per-provider tests
+│   ├── schemas/                     # chat / agent / events wire types
+│   ├── tools/                       # shell, filesystem, web, registry, multimodalities/
+│   └── test_*.py                    # loader, drift, sandbox, permission, multimodal
 ├── api/                             # mirrors app/api/
-│   └── routes/                      # chat, team, mcp, speech route tests
-├── cli/                             # mirrors app/cli/
+│   └── routes/                      # one test file per route module
+├── cli/                             # mirrors app/cli/ (init, auth, doctor, upgrade …)
 ├── core/                            # config, db, paths, otel
+├── desktop/                         # desktop_auth contract
 ├── models/                          # SQLModel schema tests
-└── services/                        # stream_store, chat_service, title_service
+├── scheduler/                       # scheduled task runtime
+├── services/                        # stream_store, chat_service, title_service, dream, wiki
+└── test_server.py                   # FastAPI app factory
 ```
 
 **Key patterns:**
@@ -174,16 +175,23 @@ Tests use **Bun test + Happy DOM** — no browser needed.
 web/src/__tests__/
 ├── setup.ts                         # GlobalRegistrator.register() for Happy DOM
 ├── bun-test.d.ts                    # bun:test type declarations
-├── api/sse.test.ts                  # SSE parser
-├── stores/useTeamStore.test.ts      # Zustand store state + event handlers
-└── utils/blocks.test.ts             # ContentBlock helpers
+├── api/                             # client, sse parser, auth
+├── components/                      # one test file per non-trivial component
+│   └── settings/                    # Settings page forms (Agent, McpServer, …)
+├── hooks/                           # use-mobile, useProximity, useKeyboardShortcuts, …
+├── lib/                             # framework-level helpers
+├── queries/                         # TanStack Query hooks (scheduler, mcp, mutations)
+├── routes/                          # route-level integration tests
+├── stores/                          # Zustand stores (useTeamStore variants, useUIStore)
+├── utils/                           # markdown, blocks, format, telemetry helpers
+└── *.test.tsx                       # top-level tests (quote, sandbox)
 ```
 
 **Key patterns:**
-- Import from `@/` — tsconfig paths resolve to `src/`
-- `useStore.setState(partial)` to seed state; `useStore.getState().action()` to invoke
-- No `require()` — use static ESM imports only
-- No React render in unit tests — test store logic and pure utils directly
+- Import from `@/` — tsconfig paths resolve to `src/`.
+- `useStore.setState(partial)` to seed state; `useStore.getState().action()` to invoke.
+- No `require()` — static ESM imports only.
+- Component tests use `render` from `@testing-library/react` + `user-event`; pure utils and store logic are tested directly without React renders.
 
 ---
 
@@ -200,46 +208,23 @@ See [`documents/architecture.md`](architecture.md) for:
 
 ## Performance
 
-Optimizations applied to the backend for low-effort, high-impact gains:
+Backend performance work lives close to the code it affects. Highlights:
 
-| Optimization | Where | Impact |
-|-------------|-------|--------|
-| **UUIDv7** | All PKs, session/run/message IDs | Time-ordered, B-tree-friendly. Sorting by ID = sorting by creation time. stdlib `uuid7()` (Python 3.14). |
-| **SQLite WAL** | `app/core/db.py` connect listener | 5-10x write throughput. Concurrent reads during writes. `synchronous=NORMAL` for durability/speed balance. |
-| **Composite indexes** | `session_messages` table | `(session_id, created_at)` covers sorted message queries. `(session_id, is_summary)` covers summary lookups. |
-| **Pool sizing** | `app/core/db.py` engine config | `pool_size=20, max_overflow=10`. Prevents connection starvation under concurrent SSE streams. |
-| **`discover_skills()` cache** | `app/agent/tools/builtin/skill.py` | `lru_cache` by directory path. Avoids subdirectory walk per `/api/team/agents` request. |
-| **`exclude_none` responses** | `app/api/schemas.py` | Pydantic `model_serializer(mode='wrap')` strips nulls. ~10-20% smaller JSON. |
-| **Message pagination** | All session detail endpoints | `offset` + `limit` params (default 200, max 1000). Prevents unbounded responses. |
-| **Session list cursor pagination** | `GET /api/team/sessions` | `created_at`-keyed cursor (`?before=<ISO8601>`, default 20/page). No `COUNT(*)` — efficient on large tables; lazy-loads in sidebar via `IntersectionObserver`. |
+- **UUIDv7** on all PKs (time-ordered, B-tree-friendly — `app/models/`).
+- **SQLite WAL** + `synchronous=NORMAL` for ~5–10× write throughput (`app/core/db.py`).
+- **Composite indexes** on `session_messages` for sorted message queries and summary lookups.
+- **Connection pool** sized `pool_size=20, max_overflow=10` to absorb concurrent SSE streams (`app/core/db.py`).
+- **`exclude_none`** Pydantic serializer trims ~10–20 % off JSON payloads (`app/api/schemas.py`).
+- **Pagination** on session detail (`limit`/`offset`) and **cursor pagination** on the session list (`?before=<ISO8601>`) — no `COUNT(*)` on the hot path.
+- **`discover_skills()` `lru_cache`** avoids a subdirectory walk per `/api/team/agents` request.
+
+For deeper context see [`architecture.md`](./architecture.md).
 
 ---
 
-## Team Protocol
+## Team protocol
 
-Multi-agent team behavior is controlled by `AgentTeamProtocolHook` (in `app/agent/mode/team/hooks/team_prompt.py`), tool descriptions (`app/agent/mode/team/tools.py`), and per-agent system prompts (`.md` body in `OPENAGENTD_CONFIG_DIR/agents/`).
-
-### Key design decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| **`send_message` = work output only** | Free-tier LLMs will endlessly ping-pong pleasantries if allowed to "coordinate" via messages. Members may only send research findings, drafted text, or data. |
-| **`message_leader(stop=true)` preferred** | Members should finish fast. Default `stop=false` caused members to linger and send "ready" spam. Protocol now says: prefer `stop=true`, only use `false` if you have concrete remaining work. |
-| **No synthetic `[DONE]` message** | Team early-exit breaks the loop directly via `member._replied`. No `AssistantMessage(content="[DONE]")` appended — it polluted history and required provider-specific filters. |
-| **Lead ignores status-only messages** | "OK", "ready", "waiting" messages from members carry no deliverable. Lead must not reply — it just creates noise loops. |
-| **Members collaborate directly** | Members may message each other for help, to pass work output, or to request input — without routing through the lead. The lead sets initial direction; members self-coordinate from there. Social chatter and status pings are still banned — peer messages must carry substance. |
-
-### Member lifecycle
-
-```
-1. get_tasks()
-2. claim_task(task_id)
-3. Do actual work (search, write, etc.)
-4. update_task_status(task_id, "completed")
-5. message_leader(content="<results>", stop=true)
-```
-
-If no tasks assigned: `message_leader(content="No tasks assigned", stop=true)` immediately.
+Multi-agent behaviour is controlled by `AgentTeamProtocolHook`, the `team_message` / `team_manage` / `team_configure` tool descriptions, and per-agent system prompts. The full design (member lifecycle, lead delegation rules, drift detection, lazy spawn) lives in [`agent/teams.md`](./agent/teams.md) and [`agent/team-lazy-spawn.md`](./agent/team-lazy-spawn.md). Manual smoke tests: [`testing/team.md`](./testing/team.md).
 
 ---
 
