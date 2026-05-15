@@ -136,14 +136,19 @@ describe("AgentPane — pending dots indicator", () => {
     expect(workingText).toBeNull()
   })
 
-  it("shows 'Waiting…' text when idle with no blocks", () => {
+  it("renders an empty body with no bounce dots when idle with no blocks", () => {
+    // The cockpit redesign dropped the 'Waiting…' placeholder copy in
+    // favour of a quiet empty pane until the agent emits its first
+    // block. This test pins the new contract: the pane mounts cleanly
+    // (header + agent name still render, asserted in other cases),
+    // there are no bounce dots, and no error surface.
     const stream = makeStream({
       status: "idle",
       currentBlocks: [],
     })
-    renderPanel(stream)
-    const idleText = screen.getByText("Waiting…")
-    expect(idleText).toBeTruthy()
+    const { container } = renderPanel(stream)
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
+    expect(screen.queryByText(/error/i)).toBeNull()
   })
 
   it("shows agent name in header", () => {

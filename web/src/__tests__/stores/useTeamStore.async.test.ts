@@ -11,7 +11,7 @@ import { mock, describe, it, expect, beforeEach, spyOn } from "bun:test"
 // ── Mock @/api/client BEFORE importing the store ──────────────────────────────
 // NOTE: Bun mock types require explicit `any` assertions for compatibility
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 const mockPostTeamChat = mock(() =>
   Promise.resolve({ status: "ok", session_id: "team-sid" })
 ) as any
@@ -39,7 +39,7 @@ const mockTeamHistory = mock(() =>
     members: [],
   })
 ) as any
-/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 (mock as any).module("@/api/client", () => ({

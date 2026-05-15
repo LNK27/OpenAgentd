@@ -95,51 +95,119 @@ def fetch_python(version: str, out: Path) -> Path:
     Returns the path to the python executable inside the install dir.
     """
     out.mkdir(parents=True, exist_ok=True)
-    # ``uv python install --install-dir`` puts a relocatable install
-    # under <dir>/<triple>/ on disk. We then resolve the binary path
-    # platform-by-platform.
+    # ``uv python install --install-dir`` places one or more directories
+    # under ``out``. As of uv 0.5+ the layout is:
+    #
+    #   <out>/cpython-<version>-<triple>/        ← real install root
+    #     bin/python3.14                         (POSIX) or python.exe (Windows)
+    #     lib/python3.14/
+    #     ...
+    #   <out>/cpython-<major>-<triple>           ← *symlink* to the versioned dir
+    #
+    # We must find the real directory, not the major-version symlink, or
+    # ``shutil.move()`` later will move the symlink and leave us with a
+    # broken pointer at the destination.
     run([
         "uv", "python", "install",
         "--install-dir", str(out),
         version,
     ])
-    # Find the python binary.
-    candidates: list[Path] = []
-    if os.name == "nt":
-        candidates = list(out.rglob("python.exe"))
-    else:
-        candidates = list(out.rglob("bin/python3"))
-        candidates += list(out.rglob("bin/python3.14"))
-    candidates = [c for c in candidates if c.is_file()]
-    if not candidates:
-        raise SystemExit(f"no python binary found under {out}")
-    return candidates[0]
+    binary = _find_python_binary(out, version)
+    if binary is None:
+        listing = "\n  ".join(sorted(str(p) for p in out.iterdir()))
+        raise SystemExit(
+            f"no python binary found under {out}. Contents:\n  {listing}"
+        )
+    return binary
 
 
-def normalise_python_dir(install_root: Path, target: Path) -> None:
-    """Move uv's <hash>/install/ tree to a flat ``target/`` directory.
+def _find_python_binary(root: Path, version: str) -> Path | None:
+    """Locate the python interpreter inside a uv install root.
 
-    uv lays out installs under ``<install-dir>/<triple-or-hash>/[install/]``
-    with extra metadata. The Tauri side wants a flat ``python/`` directory
-    so paths in the Rust resolver are stable.
+    Walks ``root`` looking for the canonical executable name(s) and
+    returns the first hit that is a *real file* (not a broken symlink).
     """
-    # Look for the actual python install root — the dir containing
-    # either bin/ or python.exe.
-    found: Path | None = None
-    for path in install_root.rglob("*"):
-        if path.is_dir() and (path / "bin").is_dir():
-            found = path
-            break
-        if path.name == "python.exe" and path.is_file():
-            found = path.parent
-            break
-    if found is None:
-        raise SystemExit(f"could not locate python install dir under {install_root}")
+    names: list[str]
+    if os.name == "nt":
+        names = ["python.exe"]
+    else:
+        # ``python3.X`` is the canonical name in python-build-standalone;
+        # ``python3`` is a symlink to it. Prefer the versioned name so
+        # the rest of the script doesn't follow a symlink it then has to
+        # rewrite during normalisation.
+        names = [f"python{version}", "python3"]
+    for name in names:
+        for candidate in root.rglob(name):
+            # ``is_file()`` follows symlinks — we want both that the
+            # symlink resolves *and* that the target exists. ``rglob``
+            # already excludes broken symlinks on most platforms, but
+            # be defensive.
+            try:
+                if candidate.is_file():
+                    return candidate.resolve()
+            except OSError:
+                continue
+    return None
+
+
+def normalise_python_dir(install_root: Path, target: Path, python_bin: Path) -> Path:
+    """Move uv's install tree to a flat ``target/`` directory.
+
+    ``python_bin`` is the resolved (symlink-free) path to the interpreter
+    inside ``install_root``. The Python install root is ``python_bin``'s
+    grandparent (``bin/python`` → install root). We move *that* directory
+    to ``target`` so the layout becomes::
+
+        <target>/bin/python3.14
+        <target>/lib/python3.14/
+        ...
+
+    Returns the new path of the python binary inside ``target``.
+    """
+    if os.name == "nt":
+        # On Windows the binary lives directly in the install root.
+        source = python_bin.parent
+    else:
+        # POSIX: <install_root>/bin/python3.X → parent.parent is the root.
+        source = python_bin.parent.parent
+
+    # Sanity check: the source must actually contain bin/ (or python.exe).
+    if os.name == "nt":
+        if not (source / "python.exe").is_file():
+            raise SystemExit(
+                f"resolved install root {source} missing python.exe"
+            )
+    else:
+        if not (source / "bin").is_dir():
+            raise SystemExit(
+                f"resolved install root {source} missing bin/"
+            )
 
     if target.exists():
         shutil.rmtree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(found), str(target))
+    # ``shutil.move`` on a directory works across filesystems by falling
+    # back to copy + remove. The source might be inside a directory uv
+    # also created symlinks into; that's fine — we only move *this*
+    # directory, leaving siblings intact.
+    shutil.move(str(source), str(target))
+
+    # Compute the new binary path inside ``target`` and verify.
+    if os.name == "nt":
+        new_bin = target / "python.exe"
+    else:
+        new_bin = target / "bin" / python_bin.name
+        if not new_bin.is_file():
+            # Fall back to ``python3`` if the rglob picked the versioned
+            # name on Linux but only ``python3`` exists at the target.
+            alt = target / "bin" / "python3"
+            if alt.is_file():
+                new_bin = alt
+    if not new_bin.is_file():
+        raise SystemExit(
+            f"normalisation moved tree but binary not at {new_bin}"
+        )
+    return new_bin
 
 
 def install_packages(
@@ -380,19 +448,10 @@ def main() -> int:
 
     # ── 1. Fetch python-build-standalone ─────────────────────────────────
     install_root = out / "_python_install"
-    fetch_python(args.python_version, install_root)
+    uv_python_bin = fetch_python(args.python_version, install_root)
     python_target = out / "python"
-    normalise_python_dir(install_root, python_target)
+    python_bin = normalise_python_dir(install_root, python_target, uv_python_bin)
     shutil.rmtree(install_root, ignore_errors=True)
-
-    if os.name == "nt":
-        python_bin = python_target / "python.exe"
-    else:
-        python_bin = python_target / "bin" / "python3"
-        if not python_bin.is_file():
-            python_bin = python_target / "bin" / f"python{args.python_version}"
-    if not python_bin.is_file():
-        raise SystemExit(f"python binary not found at {python_bin}")
     print(f"python binary: {python_bin}")
 
     # ── 2. Install openagentd + deps into site-packages ───────────────────

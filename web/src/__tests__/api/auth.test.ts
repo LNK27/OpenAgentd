@@ -35,7 +35,7 @@
  * ``installed`` flag and any monkey-patched globals don't leak between
  * cases. Originals are restored in ``afterEach``.
  */
-import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach } from "bun:test"
 
 type AuthModule = typeof import("@/api/auth")
 
