@@ -79,7 +79,18 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libssl-dev
+            libssl-dev \
+            libfuse2
+
+      # ``linuxdeploy`` and the AppImage runtime use a FUSE-mounted
+      # squashfs by default. GitHub-hosted ubuntu-22.04 runners don't
+      # allow FUSE mounts inside the action environment, so we tell the
+      # AppImage tools to extract-and-run instead. Without this the
+      # bundle step dies with a bare 'failed to run linuxdeploy' and
+      # Tauri swallows the actual error message.
+      - name: Configure AppImage extract-and-run mode
+        if: matrix.platform == 'linux'
+        run: echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
 
       - uses: astral-sh/setup-uv@v5
         with:

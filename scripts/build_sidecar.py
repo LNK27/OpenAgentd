@@ -272,9 +272,18 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
     import urllib.request
 
     smoke_root = site_packages.parent / "_smoke"
+    # PYTHONHOME must point at the python-build-standalone install root
+    # — the directory containing ``Lib/`` (Windows) or ``lib/`` (POSIX).
+    # On POSIX the interpreter lives at ``<root>/bin/python3.X`` so the
+    # root is parent.parent. On Windows it lives at ``<root>/python.exe``
+    # so the root is just parent.
+    if os.name == "nt":
+        python_home = python_bin.parent
+    else:
+        python_home = python_bin.parent.parent
     env = {
         **os.environ,
-        "PYTHONHOME": str(python_bin.parent.parent),
+        "PYTHONHOME": str(python_home),
         "PYTHONPATH": str(site_packages),
         "PYTHONUNBUFFERED": "1",
         "APP_ENV": "production",
