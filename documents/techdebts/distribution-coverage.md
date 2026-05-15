@@ -87,6 +87,26 @@ releases directly.
 - If we receive a PR or AUR submission request, we should help review
   but not block on it.
 
+### Linux AppImage (regression at 1.0.3)
+
+**What's missing:** `.AppImage` is currently disabled in
+`release-desktop.yml` because `linuxdeploy` reliably fails on
+GitHub-hosted ubuntu-22.04 runners with a bare "failed to run
+linuxdeploy" error that Tauri swallows. The `.deb` bundle covers
+Debian/Ubuntu users in the meantime.
+
+**Cost to restore:** likely 1–2 hours of debugging. Options:
+- Switch the Linux runner to ubuntu-24.04 (linuxdeploy issues are
+  partly glibc-version-dependent).
+- Run `linuxdeploy` standalone in a verbose step before/after the
+  Tauri bundle call so the underlying error surfaces in CI logs.
+- Use `mksquashfs --comp xz` directly to assemble the AppImage,
+  bypassing the linuxdeploy plugin chain entirely.
+
+**When worth doing:** before the next minor release (1.1) — restoring
+AppImage gives us coverage of non-Debian Linux distros (Arch, Fedora,
+openSUSE without rpm conversion) that `.deb` doesn't reach.
+
 ### Snap / Flatpak
 
 **Skip.** Both require separate publisher accounts and review queues.

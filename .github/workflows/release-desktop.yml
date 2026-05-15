@@ -54,17 +54,22 @@ jobs:
             arch: aarch64
             runner: macos-14
             rust_target: aarch64-apple-darwin
-            tauri_args: "--target aarch64-apple-darwin"
+            tauri_args: "--target aarch64-apple-darwin --verbose"
           - platform: windows
             arch: x86_64
             runner: windows-latest
             rust_target: x86_64-pc-windows-msvc
-            tauri_args: ""
+            tauri_args: "--verbose"
           - platform: linux
             arch: x86_64
             runner: ubuntu-22.04
             rust_target: x86_64-unknown-linux-gnu
-            tauri_args: ""
+            # Skip the AppImage bundle on CI for now: linuxdeploy reliably
+            # fails on GitHub-hosted Ubuntu 22.04 runners and Tauri swallows
+            # the underlying error so we can't actually diagnose it from CI
+            # output. The .deb covers Debian/Ubuntu users; tracking AppImage
+            # restoration in documents/techdebts/distribution-coverage.md.
+            tauri_args: "--bundles deb --verbose"
 
     steps:
       - uses: actions/checkout@v4
