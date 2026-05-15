@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'framer-motion'
-import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 import { useProximityTracker, useProximityIntensity } from '@/hooks/useProximity'
 import { useIsMobile } from '@/hooks/use-mobile'
 
@@ -9,7 +8,6 @@ import {
   Plus,
   Trash2,
   RefreshCw,
-  PanelLeftClose,
   Search,
   Settings,
   HelpCircle,
@@ -19,7 +17,6 @@ import { useTeamSessionsQuery, useDeleteTeamSessionMutation } from '@/queries'
 import { formatRelativeDate } from '@/utils/format'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
-import { BrandHeader } from '@/components/ui/brand-header'
 import { SidebarItem } from '@/components/ui/sidebar-item'
 import {
   Dialog,
@@ -210,47 +207,20 @@ export function Sidebar({
       style={isMobile ? undefined : { minWidth: desktopWidth }}
     >
       {/* showIconOnly: desktop collapsed icon-only mode.
-          On mobile the drawer is always fully expanded. */}
+          On mobile the drawer is always fully expanded.
+
+          No brand block — Home lives in the topbar, sidebar toggle is
+          owned by the topbar hamburger + Ctrl+B (see wireframe ``mmhQL``
+          which starts directly with the search input). */}
       {(() => {
         const showIconOnly = !isMobile && collapsed
         return (
           <>
-            {/* Brand header — full BrandHeader when expanded, mascot + expand toggle when collapsed */}
-            {showIconOnly ? (
-              <div className="flex flex-col items-center gap-1 px-2 pt-2">
-                <button
-                  onClick={() => navigate({ to: '/' })}
-                  className="flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key)"
-                  title="Home"
-                  aria-label="Home"
-                >
-                  <img src={OpenAgentdAppIcon} width={32} height={32} alt="" className="select-none" draggable={false} />
-                </button>
-                <button
-                  onClick={toggleCollapse}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                  aria-label="Expand sidebar"
-                  title="Expand sidebar (Ctrl+B)"
-                >
-                  <PanelLeftClose className="rotate-180" size={15} />
-                </button>
-              </div>
-            ) : (
-              <div className="px-3">
-                <BrandHeader
-                  expanded
-                  onBrandClick={() => navigate({ to: '/' })}
-                  onToggle={isMobile ? onMobileClose : toggleCollapse}
-                  hideToggle={false}
-                />
-              </div>
-            )}
-
             {/* Search trigger — opens the command palette. Styled as an
                 input field per the wireframe; clicking anywhere fires the
                 palette open. */}
             {!showIconOnly && onCommandPalette && (
-              <div className="px-3 pt-2">
+              <div className="px-3 pt-3">
                 <button
                   type="button"
                   onClick={onCommandPalette}
@@ -266,7 +236,7 @@ export function Sidebar({
             )}
 
             {/* Nav action buttons */}
-            <nav aria-label="Primary" className={`space-y-0.5 pb-2 ${showIconOnly ? 'flex flex-col items-center px-1 pt-1' : 'px-2 pt-2'}`}>
+            <nav aria-label="Primary" className={`space-y-0.5 pb-2 ${showIconOnly ? 'flex flex-col items-center px-1 pt-3' : 'px-2 pt-2'}`}>
               {showIconOnly && onCommandPalette && (
                 <SidebarItem
                   Icon={Search}
