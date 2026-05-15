@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { ChevronRight, FileText, Folder, GitCompare, RefreshCw, X } from 'lucide-react'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles } from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -88,7 +88,98 @@ function diffLineClass(line: string) {
   return 'text-(--color-text-2)'
 }
 
+interface ParsedDiffLine {
+  kind: 'meta' | 'hunk' | 'add' | 'delete' | 'context'
+  content: string
+}
+
+interface ParsedDiffFile {
+  path: string
+  additions: number
+  deletions: number
+  lines: ParsedDiffLine[]
+}
+
+function parseUnifiedDiff(diff: string): ParsedDiffFile[] {
+  const files: ParsedDiffFile[] = []
+  let current: ParsedDiffFile | null = null
+
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      const match = /^diff --git a\/(.*) b\/(.*)$/.exec(line)
+      current = {
+        path: match?.[2] ?? line.replace('diff --git ', ''),
+        additions: 0,
+        deletions: 0,
+        lines: [{ kind: 'meta', content: line }],
+      }
+      files.push(current)
+      continue
+    }
+
+    if (!current) continue
+
+    if (line.startsWith('@@')) {
+      current.lines.push({ kind: 'hunk', content: line })
+    } else if (line.startsWith('+') && !line.startsWith('+++')) {
+      current.additions += 1
+      current.lines.push({ kind: 'add', content: line })
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      current.deletions += 1
+      current.lines.push({ kind: 'delete', content: line })
+    } else if (line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
+      current.lines.push({ kind: 'meta', content: line })
+    } else {
+      current.lines.push({ kind: 'context', content: line || ' ' })
+    }
+  }
+
+  return files
+}
+
+function diffLineClassName(kind: ParsedDiffLine['kind']) {
+  if (kind === 'add') return 'bg-emerald-500/10 text-emerald-300'
+  if (kind === 'delete') return 'bg-red-500/10 text-red-300'
+  if (kind === 'hunk') return 'bg-(--color-accent)/10 text-(--color-accent)'
+  if (kind === 'meta') return 'text-(--color-text-muted)'
+  return 'text-(--color-text-2)'
+}
+
+function DiffChanges({ additions, deletions }: { additions: number; deletions: number }) {
+  return (
+    <span className="flex shrink-0 items-center gap-2 font-mono text-xs">
+      {additions > 0 && <span className="text-emerald-400">+{additions}</span>}
+      {deletions > 0 && <span className="text-red-400">-{deletions}</span>}
+    </span>
+  )
+}
+
 function DiffPreview({ diff }: { diff: string }) {
+  const files = parseUnifiedDiff(diff)
+  if (files.length > 0) {
+    return (
+      <div className="space-y-3">
+        {files.map((file) => (
+          <section key={file.path} className="overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-page)">
+            <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-3 py-2">
+              <span className="min-w-0 truncate font-mono text-xs font-medium text-(--color-text)" title={file.path}>
+                {file.path}
+              </span>
+              <DiffChanges additions={file.additions} deletions={file.deletions} />
+            </div>
+            <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed">
+              {file.lines.map((line, index) => (
+                <span key={index} className={cn('block whitespace-pre px-3', diffLineClassName(line.kind))}>
+                  {line.content}
+                </span>
+              ))}
+            </pre>
+          </section>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <pre className="overflow-x-auto rounded bg-(--bg-page) p-2 font-mono text-[11px] leading-relaxed">
       {diff.split('\n').map((line, index) => (
@@ -126,25 +217,15 @@ export function CodingWorkspacePanel({
   })
   const tree = buildTree(files.data?.files ?? [])
 
+  if (!open) return null
+
   return (
-    <AnimatePresence>
-      {open && <>
-        <motion.button
-          type="button"
-          aria-label="Close workspace panel"
-          className="fixed inset-0 z-40 cursor-default bg-transparent"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-        />
-        <motion.aside
-          initial={{ x: '100%', opacity: 0.6 }}
-          animate={{ x: 0, opacity: 1 }}
-          exit={{ x: '100%', opacity: 0.6 }}
-          transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-          className="fixed inset-y-0 right-0 z-50 flex w-[min(720px,96vw)] flex-col border-l border-(--color-border) bg-(--bg-sidebar) shadow-2xl"
-        >
+    <motion.aside
+      initial={{ width: 0, opacity: 0 }}
+      animate={{ width: 440, opacity: 1 }}
+      transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+      className="flex min-h-0 w-[440px] shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-sidebar)"
+    >
       <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-3">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">Workspace</p>
@@ -203,8 +284,6 @@ export function CodingWorkspacePanel({
       >
         <RefreshCw size={12} /> Refresh
       </button>
-        </motion.aside>
-      </>}
-    </AnimatePresence>
+    </motion.aside>
   )
 }

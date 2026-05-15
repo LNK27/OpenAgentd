@@ -598,6 +598,15 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           voiceEnabled={voiceEnabled}
         />
         </div>
+        {mode === 'coding' && workspace && (
+          <CodingWorkspacePanel
+            key={codingPanel ?? 'closed'}
+            workspace={workspace}
+            open={codingPanel !== null}
+            initialTab={codingPanel ?? 'files'}
+            onClose={() => setCodingPanel(null)}
+          />
+        )}
       </div>
 
       <AgentCapabilities
@@ -614,15 +623,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       />
       <WikiPanel open={wikiOpen} onClose={closeWiki} />
       <SchedulerPanel open={schedulerOpen} onClose={closeScheduler} />
-      {mode === 'coding' && workspace && (
-        <CodingWorkspacePanel
-          key={codingPanel ?? 'closed'}
-          workspace={workspace}
-          open={codingPanel !== null}
-          initialTab={codingPanel ?? 'files'}
-          onClose={() => setCodingPanel(null)}
-        />
-      )}
       {!isMobile && showPalette && (
         <CommandPalette commands={commands} onClose={() => setShowPalette(false)} />
       )}
