@@ -39,6 +39,9 @@ afterEach(() => {
   // Always strip the attribute so cases don't leak into each other,
   // regardless of whether MacTitleBar mounted/unmounted cleanly.
   document.documentElement.removeAttribute("data-platform")
+  // Also clear the Tauri marker we set per-test.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (window as any).__TAURI_INTERNALS__
   cleanup()
 })
 
@@ -70,6 +73,14 @@ function setPlatform(platform: string, uaChPlatform?: string): void {
   }
 }
 
+/** Pretend the bundle is running inside the Tauri WebView. The marker is
+ *  read once at module load (see ``MacTitleBar``), so callers MUST set it
+ *  BEFORE ``freshMacTitleBar`` re-imports the module. */
+function enableTauri(): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(window as any).__TAURI_INTERNALS__ = { __mock: true }
+}
+
 /**
  * Dynamic import wrapper that bypasses Bun's module cache so each
  * test gets a fresh ``IS_MAC`` evaluation against the current
@@ -93,9 +104,10 @@ beforeEach(() => {
   document.documentElement.removeAttribute("data-platform")
 })
 
-describe("MacTitleBar — macOS", () => {
+describe("MacTitleBar — macOS in Tauri", () => {
   it("renders a fixed 28 px drag strip with the tauri-drag-region attr", async () => {
     setPlatform("MacIntel")
+    enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const { container } = render(<MacTitleBar />)
     const strip = container.firstElementChild as HTMLElement | null
@@ -111,6 +123,7 @@ describe("MacTitleBar — macOS", () => {
 
   it("reserves 78 px left padding to clear the traffic lights", async () => {
     setPlatform("MacIntel")
+    enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const { container } = render(<MacTitleBar />)
     const strip = container.firstElementChild as HTMLElement
@@ -120,6 +133,7 @@ describe("MacTitleBar — macOS", () => {
 
   it("sets aria-hidden so AT ignores the empty strip", async () => {
     setPlatform("MacIntel")
+    enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const { container } = render(<MacTitleBar />)
     const strip = container.firstElementChild as HTMLElement
@@ -128,6 +142,7 @@ describe("MacTitleBar — macOS", () => {
 
   it("sets html[data-platform=mac-overlay] for the global CSS hook", async () => {
     setPlatform("MacIntel")
+    enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     render(<MacTitleBar />)
     expect(document.documentElement.getAttribute("data-platform")).toBe("mac-overlay")
@@ -135,6 +150,7 @@ describe("MacTitleBar — macOS", () => {
 
   it("removes the data-platform attribute on unmount", async () => {
     setPlatform("MacIntel")
+    enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const view = render(<MacTitleBar />)
     expect(document.documentElement.getAttribute("data-platform")).toBe("mac-overlay")
@@ -144,6 +160,7 @@ describe("MacTitleBar — macOS", () => {
 
   it("detects modern Macs reporting 'MacIntel'", async () => {
     setPlatform("MacIntel")
+    enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const { container } = render(<MacTitleBar />)
     expect(container.firstElementChild).not.toBeNull()
@@ -151,6 +168,7 @@ describe("MacTitleBar — macOS", () => {
 
   it("detects Macs reporting just 'Mac'", async () => {
     setPlatform("Mac")
+    enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const { container } = render(<MacTitleBar />)
     expect(container.firstElementChild).not.toBeNull()
@@ -158,10 +176,28 @@ describe("MacTitleBar — macOS", () => {
 
   it("falls back to userAgentData.platform when navigator.platform is empty", async () => {
     setPlatform("", "macOS")
+    enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const { container } = render(<MacTitleBar />)
     expect(container.firstElementChild).not.toBeNull()
     expect(document.documentElement.getAttribute("data-platform")).toBe("mac-overlay")
+  })
+})
+
+describe("MacTitleBar — macOS in browser", () => {
+  it("renders nothing when on Mac but not inside Tauri", async () => {
+    setPlatform("MacIntel")
+    // Note: enableTauri() intentionally NOT called.
+    const { MacTitleBar } = await freshMacTitleBar()
+    const { container } = render(<MacTitleBar />)
+    expect(container.firstElementChild).toBeNull()
+  })
+
+  it("does not set html[data-platform] when on Mac but not inside Tauri", async () => {
+    setPlatform("MacIntel")
+    const { MacTitleBar } = await freshMacTitleBar()
+    render(<MacTitleBar />)
+    expect(document.documentElement.getAttribute("data-platform")).toBeNull()
   })
 })
 
@@ -214,6 +250,7 @@ describe("MacTitleBar — non-macOS", () => {
 describe("MacTitleBar — module-level memoization", () => {
   it("re-renders cheaply: IS_MAC is computed once per module load", async () => {
     setPlatform("MacIntel")
+    enableTauri()
     const { MacTitleBar } = await freshMacTitleBar()
     const view = render(<MacTitleBar />)
     expect(document.documentElement.getAttribute("data-platform")).toBe("mac-overlay")

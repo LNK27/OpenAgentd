@@ -46,7 +46,22 @@ function detectMac(): boolean {
   return uaData?.platform === 'macOS'
 }
 
+/** Detect whether we're running inside the Tauri WebView (vs a plain
+ *  browser). The marker ``window.__TAURI_INTERNALS__`` is set by Tauri 2.x
+ *  on the global ``window`` before any app code runs. In a regular
+ *  browser tab (e.g. ``bun dev``) the marker is absent, so we can skip
+ *  the title-bar chrome — there are no traffic-light buttons to clear. */
+function detectTauri(): boolean {
+  if (typeof window === 'undefined') return false
+  return '__TAURI_INTERNALS__' in window
+}
+
 const IS_MAC = detectMac()
+const IS_TAURI = detectTauri()
+// Only the Tauri WebView paints native traffic-light buttons over the
+// content, so the 28 px overlay strip + body padding are only needed
+// there. In a browser, leave the layout untouched.
+const SHOULD_RENDER = IS_MAC && IS_TAURI
 
 export function MacTitleBar() {
   // Sync the platform attribute so the global stylesheet's
@@ -56,14 +71,14 @@ export function MacTitleBar() {
   // adjust for the strip (e.g. a sticky sidebar header) can read
   // it without re-detecting the platform.
   useEffect(() => {
-    if (!IS_MAC) return
+    if (!SHOULD_RENDER) return
     document.documentElement.setAttribute('data-platform', 'mac-overlay')
     return () => {
       document.documentElement.removeAttribute('data-platform')
     }
   }, [])
 
-  if (!IS_MAC) return null
+  if (!SHOULD_RENDER) return null
 
   return (
     <div
@@ -74,15 +89,17 @@ export function MacTitleBar() {
       // Fixed strip across the very top. ``inset-x-0 top-0`` pins
       // horizontally; ``h-7`` (28 px) leaves room for the standard
       // 14 pt traffic lights. ``z-50`` keeps it above any app
-      // overlays; the strip itself is empty + transparent so it
-      // never obscures content underneath while still catching the
-      // drag.
-      className="fixed inset-x-0 top-0 z-50 h-7 select-none bg-transparent"
+      // overlays; the strip itself stays visually empty (rgba with
+      // alpha 0) but carries an explicit ``backgroundColor`` so the
+      // Tauri/WKWebView hit-tester registers it as an opaque target
+      // for drag events. ``bg-transparent`` alone has been reported
+      // to fail drag detection on macOS Overlay windows.
+      className="fixed inset-x-0 top-0 z-50 h-7 select-none"
       // The pl-[78px] mirrors the trafficLightPosition.x (16) + button
       // group width (~62 px) so anything we ever decide to render
       // *inside* the strip starts to the right of the buttons. Empty
       // for now — the strip is just a drag handle.
-      style={{ paddingLeft: 78 }}
+      style={{ paddingLeft: 78, backgroundColor: 'rgba(0,0,0,0)' }}
       aria-hidden="true"
     />
   )
