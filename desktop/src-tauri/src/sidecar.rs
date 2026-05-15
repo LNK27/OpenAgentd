@@ -112,20 +112,15 @@ impl Sidecar {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        // Point the backend at platform-native data dirs so user data
-        // lives in the right place per OS.
-        if let Ok(data) = app.path().app_data_dir() {
-            cmd.env("OPENAGENTD_DATA_DIR", data);
-        }
-        if let Ok(config) = app.path().app_config_dir() {
-            cmd.env("OPENAGENTD_CONFIG_DIR", config);
-        }
-        if let Ok(cache) = app.path().app_cache_dir() {
-            cmd.env("OPENAGENTD_CACHE_DIR", cache);
-        }
-        if let Ok(log) = app.path().app_log_dir() {
-            cmd.env("OPENAGENTD_STATE_DIR", log);
-        }
+        // Path resolution is delegated to the Python backend
+        // (app.core.paths). It already resolves the XDG-spec directories
+        // — ~/.config/openagentd, ~/.local/share/openagentd, etc. — that
+        // the CLI uses, with $OPENAGENTD_*_DIR env-var overrides for
+        // anyone who wants different paths. Setting Tauri's per-app
+        // app_data_dir / app_config_dir here would silently bifurcate
+        // the desktop from a terminal ``openagentd`` install — same
+        // product, different data, different agents, different DB.
+        // Keep them unified.
 
         #[cfg(windows)]
         {
