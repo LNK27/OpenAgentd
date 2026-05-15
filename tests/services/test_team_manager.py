@@ -18,7 +18,10 @@ def _make_team(name: str = "lead") -> MagicMock:
     team.stop = AsyncMock()
     team.lead = MagicMock()
     team.lead.name = name
+    team.lead.state = "idle"
     team.members = {}
+    # ``all_members`` is consumed by ``_team_is_idle`` during eviction sweeps.
+    team.all_members = [team.lead]
     # Snapshot helpers used by _team_snapshot
     agent = MagicMock()
     agent.name = name
@@ -39,28 +42,28 @@ async def reset_team_manager():
     await team_manager.stop()
 
 
-# ── start() ───────────────────────────────────────────────────────────────────
+# ── get_or_start_team() ───────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_start_returns_none_when_no_agents(tmp_path, monkeypatch):
+async def test_get_or_start_team_returns_none_when_no_agents(tmp_path, monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path / "empty"))
-    result = await team_manager.start()
+    result = await team_manager.get_or_start_team()
     assert result is None
     assert team_manager.current_team() is None
 
 
 @pytest.mark.asyncio
-async def test_start_loads_and_starts_team(monkeypatch):
+async def test_get_or_start_team_loads_and_starts_team(monkeypatch):
     fake_team = _make_team()
 
     monkeypatch.setattr(
         "app.services.team_manager.load_team_from_dir", lambda _: fake_team
     )
 
-    result = await team_manager.start()
+    result = await team_manager.get_or_start_team()
 
     assert result is fake_team
     fake_team.start.assert_awaited_once()
@@ -68,19 +71,97 @@ async def test_start_loads_and_starts_team(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_start_is_idempotent(monkeypatch):
-    """Second call to start() while team is running returns the same team."""
+async def test_get_or_start_team_is_idempotent(monkeypatch):
+    """Second call returns the same cached team and does not re-load."""
     fake_team = _make_team()
     monkeypatch.setattr(
         "app.services.team_manager.load_team_from_dir", lambda _: fake_team
     )
 
-    first = await team_manager.start()
-    second = await team_manager.start()
+    first = await team_manager.get_or_start_team()
+    second = await team_manager.get_or_start_team()
 
     assert first is second
     # start() on the underlying team should only have been called once
     fake_team.start.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_or_start_team_evicts_after_idle(monkeypatch):
+    """Team evicts when idle for longer than _DEFAULT_TEAM_IDLE_SECONDS."""
+    fake_team = _make_team()
+    new_team = _make_team("new-lead")
+
+    teams = iter([fake_team, new_team])
+    monkeypatch.setattr(
+        "app.services.team_manager.load_team_from_dir", lambda _: next(teams)
+    )
+    # Force an aggressive eviction window so the test runs instantly.
+    monkeypatch.setattr(team_manager, "_DEFAULT_TEAM_IDLE_SECONDS", 0)
+
+    first = await team_manager.get_or_start_team()
+    assert first is fake_team
+
+    # Idle eviction applies on the next call (opportunistic sweep).
+    second = await team_manager.get_or_start_team()
+    fake_team.stop.assert_awaited_once()
+    assert second is new_team
+
+
+@pytest.mark.asyncio
+async def test_get_or_start_team_skips_eviction_when_working(monkeypatch):
+    """Working teams are not evicted even past the idle window."""
+    fake_team = _make_team()
+    fake_team.lead.state = "working"
+
+    monkeypatch.setattr(
+        "app.services.team_manager.load_team_from_dir", lambda _: fake_team
+    )
+    monkeypatch.setattr(team_manager, "_DEFAULT_TEAM_IDLE_SECONDS", 0)
+
+    first = await team_manager.get_or_start_team()
+    second = await team_manager.get_or_start_team()
+    assert first is second
+    fake_team.stop.assert_not_called()
+
+
+# ── validate_agents_dir() ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_validate_agents_dir_false_when_empty(tmp_path, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path / "empty"))
+    monkeypatch.setattr("app.services.team_manager.load_team_from_dir", lambda _: None)
+
+    assert team_manager.validate_agents_dir() is False
+    # Does not cache a team.
+    assert team_manager.current_team() is None
+
+
+@pytest.mark.asyncio
+async def test_validate_agents_dir_true_when_loadable(monkeypatch):
+    fake_team = _make_team()
+    monkeypatch.setattr(
+        "app.services.team_manager.load_team_from_dir", lambda _: fake_team
+    )
+
+    assert team_manager.validate_agents_dir() is True
+    # Validation does NOT start the team — that happens lazily on first request.
+    fake_team.start.assert_not_called()
+    assert team_manager.current_team() is None
+
+
+@pytest.mark.asyncio
+async def test_validate_agents_dir_raises_on_parse_error(monkeypatch):
+    def fail(_):
+        raise ValueError("malformed agent.md")
+
+    monkeypatch.setattr("app.services.team_manager.load_team_from_dir", fail)
+
+    with pytest.raises(ValueError, match="malformed agent.md"):
+        team_manager.validate_agents_dir()
 
 
 # ── stop() ────────────────────────────────────────────────────────────────────
@@ -93,7 +174,7 @@ async def test_stop_clears_team(monkeypatch):
         "app.services.team_manager.load_team_from_dir", lambda _: fake_team
     )
 
-    await team_manager.start()
+    await team_manager.get_or_start_team()
     assert team_manager.current_team() is not None
 
     await team_manager.stop()
@@ -137,7 +218,7 @@ async def test_stop_swallows_exception_from_team_stop(monkeypatch):
     monkeypatch.setattr(
         "app.services.team_manager.load_team_from_dir", lambda _: fake_team
     )
-    await team_manager.start()
+    await team_manager.get_or_start_team()
 
     # Should not raise even though team.stop() blows up
     await team_manager.stop()
@@ -174,7 +255,7 @@ async def test_reload_swaps_in_new_team(monkeypatch):
 
     monkeypatch.setattr("app.services.team_manager.load_team_from_dir", fake_load)
 
-    await team_manager.start()
+    await team_manager.get_or_start_team()
     assert team_manager.current_team() is old_team
 
     diff = await team_manager.reload()
@@ -201,7 +282,7 @@ async def test_reload_keeps_new_team_even_when_old_stop_raises(monkeypatch):
 
     monkeypatch.setattr("app.services.team_manager.load_team_from_dir", fake_load)
 
-    await team_manager.start()
+    await team_manager.get_or_start_team()
 
     # Should not raise; new team should be live
     diff = await team_manager.reload()
@@ -226,7 +307,7 @@ async def test_reload_leaves_old_team_on_validation_failure(monkeypatch):
 
     monkeypatch.setattr("app.services.team_manager.load_team_from_dir", fake_load)
 
-    await team_manager.start()
+    await team_manager.get_or_start_team()
 
     with pytest.raises(ValueError, match="bad config file"):
         await team_manager.reload()

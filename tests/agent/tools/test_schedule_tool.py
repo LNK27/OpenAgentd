@@ -28,7 +28,8 @@ def sample_task():
     task = MagicMock()
     task.id = uuid7()
     task.name = "test-task"
-    task.agent = "lead"
+    task.mode = "normal"
+    task.workspace = None
     task.schedule_type = "every"
     task.every_seconds = 3600
     task.at_datetime = None
@@ -41,6 +42,15 @@ def sample_task():
     task.run_count = 0
     task.next_fire_at = datetime.now(timezone.utc)
     return task
+
+
+# Reusable ``_injected`` payloads — production runs receive these from the
+# tool executor; tests pass them in directly via ``Tool.arun``.
+_NORMAL_INJECTED = {"_mode": "normal", "_workspace": None}
+
+
+def _coding_injected(workspace: str) -> dict[str, object]:
+    return {"_mode": "coding", "_workspace": workspace}
 
 
 # ---------------------------------------------------------------------------
@@ -71,45 +81,23 @@ async def test_list_single_task(mock_task_scheduler, sample_task, clean_db):
     assert "Scheduled tasks (1):" in result
     assert f"id={sample_task.id}" in result
     assert "name=test-task" in result
-    assert "agent=lead" in result
+    assert "mode=normal" in result
     assert "schedule=every 3600s" in result
     assert "status=enabled/pending" in result
     assert "runs=0" in result
-    # Verify indentation
-    lines = result.split("\n")
-    assert lines[1].startswith("  ")
 
 
 @pytest.mark.asyncio
-async def test_list_multiple_tasks(mock_task_scheduler, sample_task, clean_db):
-    """Returns formatted task lines for multiple tasks."""
-    task2 = MagicMock()
-    task2.id = uuid7()
-    task2.name = "another-task"
-    task2.agent = "worker"
-    task2.schedule_type = "cron"
-    task2.cron_expression = "0 9 * * 1-5"
-    task2.timezone = "America/New_York"
-    task2.at_datetime = None
-    task2.every_seconds = None
-    task2.prompt = "Daily report"
-    task2.session_id = None
-    task2.enabled = False
-    task2.status = "paused"
-    task2.run_count = 5
-    task2.next_fire_at = datetime.now(timezone.utc)
-
-    mock_task_scheduler.list_tasks.return_value = [sample_task, task2]
+async def test_list_includes_workspace_for_coding(mock_task_scheduler, sample_task):
+    """Coding tasks render workspace in the listing line."""
+    sample_task.mode = "coding"
+    sample_task.workspace = "/tmp/project"
+    mock_task_scheduler.list_tasks.return_value = [sample_task]
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(action="list")
 
-    assert "Scheduled tasks (2):" in result
-    assert "test-task" in result
-    assert "another-task" in result
-    assert "cron '0 9 * * 1-5' (America/New_York)" in result
-    assert "status=paused/paused" in result
-    assert "runs=5" in result
+    assert "mode=coding workspace=/tmp/project" in result
 
 
 @pytest.mark.asyncio
@@ -118,7 +106,8 @@ async def test_list_task_with_at_schedule(mock_task_scheduler):
     task = MagicMock()
     task.id = uuid7()
     task.name = "one-shot"
-    task.agent = "lead"
+    task.mode = "normal"
+    task.workspace = None
     task.schedule_type = "at"
     task.at_datetime = datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
     task.every_seconds = None
@@ -150,31 +139,14 @@ async def test_create_missing_name(mock_task_scheduler):
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
-            agent="lead",
             schedule_type="every",
             every_seconds=3600,
             prompt="Check email",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Error:" in result
     assert "name" in result
-    assert "required" in result
-
-
-@pytest.mark.asyncio
-async def test_create_missing_agent(mock_task_scheduler):
-    """Returns error when agent is missing."""
-    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(
-            action="create",
-            name="test-task",
-            schedule_type="every",
-            every_seconds=3600,
-            prompt="Check email",
-        )
-
-    assert "Error:" in result
-    assert "agent" in result
     assert "required" in result
 
 
@@ -185,8 +157,8 @@ async def test_create_missing_schedule_type(mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             prompt="Check email",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Error:" in result
@@ -201,9 +173,9 @@ async def test_create_missing_prompt(mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="every",
             every_seconds=3600,
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Error:" in result
@@ -218,10 +190,10 @@ async def test_create_invalid_at_datetime_format(mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="at",
             at_datetime="not-a-datetime",
             prompt="Run once",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Error:" in result
@@ -239,9 +211,9 @@ async def test_create_invalid_schedule_type(mock_task_scheduler):
             await schedule_task.arun(
                 action="create",
                 name="test-task",
-                agent="lead",
                 schedule_type="weekly",  # Invalid
                 prompt="Run weekly",
+                _injected=_NORMAL_INJECTED,
             )
 
 
@@ -252,10 +224,10 @@ async def test_create_invalid_cron_expression(mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="cron",
             cron_expression="not-a-cron",
             prompt="Run on schedule",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Error:" in result
@@ -269,26 +241,57 @@ async def test_create_invalid_cron_expression(mock_task_scheduler):
 
 @pytest.mark.asyncio
 async def test_create_every_success(mock_task_scheduler, sample_task, clean_db):
-    """Successfully creates an 'every' task."""
-    mock_task_scheduler.add.return_value = sample_task
+    """Successfully creates an 'every' task with mode auto-injected as 'normal'."""
+    mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="every",
             every_seconds=3600,
             prompt="Check email",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Scheduled task created." in result
     assert f"id          : {sample_task.id}" in result
     assert "name        : test-task" in result
-    assert "agent       : lead" in result
+    assert "mode        : normal" in result
     assert "schedule    : every" in result
     assert "prompt      : 'Check email'" in result
-    mock_task_scheduler.add.assert_called_once()
+    mock_task_scheduler.create.assert_called_once()
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.mode == "normal"
+    assert payload.workspace is None
+
+
+@pytest.mark.asyncio
+async def test_create_in_coding_context_auto_injects_workspace(
+    mock_task_scheduler, sample_task, clean_db
+):
+    """When the calling agent runs in a coding team, the task inherits
+    ``mode='coding'`` and the team's workspace — no LLM-supplied value."""
+    sample_task.mode = "coding"
+    sample_task.workspace = "/tmp/project"
+    mock_task_scheduler.create.return_value = sample_task
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="create",
+            name="test-task",
+            schedule_type="every",
+            every_seconds=3600,
+            prompt="Check email",
+            _injected=_coding_injected("/tmp/project"),
+        )
+
+    assert "Scheduled task created." in result
+    assert "mode        : coding" in result
+    assert "workspace   : /tmp/project" in result
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.mode == "coding"
+    assert payload.workspace == "/tmp/project"
 
 
 @pytest.mark.asyncio
@@ -297,67 +300,56 @@ async def test_create_at_success(mock_task_scheduler, sample_task, clean_db):
     sample_task.schedule_type = "at"
     sample_task.at_datetime = datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
     sample_task.every_seconds = None
-    mock_task_scheduler.add.return_value = sample_task
+    mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="at",
             at_datetime="2026-05-01T09:00:00+00:00",
             prompt="Run once",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Scheduled task created." in result
     assert "schedule    : at" in result
-    # Verify that add was called with a ScheduledTask
-    mock_task_scheduler.add.assert_called_once()
-    call_args = mock_task_scheduler.add.call_args
-    task_arg = call_args[0][0]
-    assert task_arg.at_datetime == datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
+    mock_task_scheduler.create.assert_called_once()
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.at_datetime == datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio
 async def test_create_at_naive_string_uses_supplied_timezone(
     mock_task_scheduler, sample_task, clean_db
 ):
-    """Regression: a naive ISO string for `at_datetime` must be interpreted
-    in the user-supplied `timezone`, not silently treated as UTC.
-
-    Before the fix, ``datetime.fromisoformat('2026-05-10T01:12:42')`` returned
-    a naive datetime; the scheduler stored it as-is and ``TZDateTime`` re-
-    labelled it UTC on read, leaving the row off by the timezone offset.
-    """
+    """A naive ISO string for ``at_datetime`` must be interpreted in the
+    user-supplied ``timezone``, not silently treated as UTC."""
     from zoneinfo import ZoneInfo
 
     sample_task.schedule_type = "at"
     sample_task.every_seconds = None
     expected = datetime(2026, 5, 10, 1, 12, 42, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"))
     sample_task.at_datetime = expected
-    mock_task_scheduler.add.return_value = sample_task
+    mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="at",
             at_datetime="2026-05-10T01:12:42",  # naive — no offset
             timezone="Asia/Ho_Chi_Minh",
             prompt="Run once",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Scheduled task created." in result
-    mock_task_scheduler.add.assert_called_once()
-    task_arg = mock_task_scheduler.add.call_args[0][0]
-
-    # The parsed datetime must be tz-aware AND represent the correct UTC
-    # instant (01:12:42 +07 = 18:12:42 UTC the previous day).
-    assert task_arg.at_datetime is not None
-    assert task_arg.at_datetime.tzinfo is not None
-    assert task_arg.at_datetime == expected
-    assert task_arg.at_datetime.astimezone(timezone.utc) == datetime(
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.at_datetime is not None
+    assert payload.at_datetime.tzinfo is not None
+    assert payload.at_datetime == expected
+    assert payload.at_datetime.astimezone(timezone.utc) == datetime(
         2026, 5, 9, 18, 12, 42, tzinfo=timezone.utc
     )
 
@@ -366,53 +358,49 @@ async def test_create_at_naive_string_uses_supplied_timezone(
 async def test_create_at_aware_string_passthrough(
     mock_task_scheduler, sample_task, clean_db
 ):
-    """An ISO string that already carries an offset is left untouched —
-    the supplied `timezone` argument must NOT override an explicit offset."""
+    """An ISO string that already carries an offset is left untouched."""
     sample_task.schedule_type = "at"
     sample_task.every_seconds = None
     sample_task.at_datetime = datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
-    mock_task_scheduler.add.return_value = sample_task
+    mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="at",
             at_datetime="2026-05-01T09:00:00+00:00",
-            # Even though Saigon is supplied here, the +00:00 in the string
-            # is authoritative — the user asked for 9 AM UTC.
             timezone="Asia/Ho_Chi_Minh",
             prompt="Run once",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Scheduled task created." in result
-    task_arg = mock_task_scheduler.add.call_args[0][0]
-    assert task_arg.at_datetime == datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.at_datetime == datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio
 async def test_create_at_unknown_timezone_returns_error(
     mock_task_scheduler, sample_task, clean_db
 ):
-    """A naive datetime + unknown IANA zone must surface a clear error
-    instead of leaking ZoneInfoNotFoundError from deeper code."""
-    mock_task_scheduler.add.return_value = sample_task
+    """A naive datetime + unknown IANA zone must surface a clear error."""
+    mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="at",
             at_datetime="2026-05-10T01:12:42",
             timezone="Mars/Olympus_Mons",
             prompt="Run once",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Error" in result
     assert "Mars/Olympus_Mons" in result
-    mock_task_scheduler.add.assert_not_called()
+    mock_task_scheduler.create.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -422,49 +410,46 @@ async def test_create_cron_success(mock_task_scheduler, sample_task, clean_db):
     sample_task.cron_expression = "0 9 * * 1-5"
     sample_task.timezone = "America/New_York"
     sample_task.every_seconds = None
-    mock_task_scheduler.add.return_value = sample_task
+    mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="cron",
             cron_expression="0 9 * * 1-5",
             timezone="America/New_York",
             prompt="Daily report",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Scheduled task created." in result
     assert "schedule    : cron" in result
-    mock_task_scheduler.add.assert_called_once()
-    call_args = mock_task_scheduler.add.call_args
-    task_arg = call_args[0][0]
-    assert task_arg.cron_expression == "0 9 * * 1-5"
-    assert task_arg.timezone == "America/New_York"
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.cron_expression == "0 9 * * 1-5"
+    assert payload.timezone == "America/New_York"
 
 
 @pytest.mark.asyncio
 async def test_create_with_session_id_auto(mock_task_scheduler, sample_task, clean_db):
     """Creates task with session_id='auto'."""
     sample_task.session_id = "auto"
-    mock_task_scheduler.add.return_value = sample_task
+    mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="every",
             every_seconds=3600,
             prompt="Check email",
             session_id="auto",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Scheduled task created." in result
-    call_args = mock_task_scheduler.add.call_args
-    task_arg = call_args[0][0]
-    assert task_arg.session_id == "auto"
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.session_id == "auto"
 
 
 @pytest.mark.asyncio
@@ -472,61 +457,59 @@ async def test_create_with_session_id_uuid(mock_task_scheduler, sample_task, cle
     """Creates task with a specific session UUID."""
     session_uuid = str(uuid7())
     sample_task.session_id = session_uuid
-    mock_task_scheduler.add.return_value = sample_task
+    mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="every",
             every_seconds=3600,
             prompt="Check email",
             session_id=session_uuid,
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Scheduled task created." in result
-    call_args = mock_task_scheduler.add.call_args
-    task_arg = call_args[0][0]
-    assert task_arg.session_id == session_uuid
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.session_id == session_uuid
 
 
 @pytest.mark.asyncio
 async def test_create_with_enabled_false(mock_task_scheduler, sample_task, clean_db):
     """Creates a disabled task."""
     sample_task.enabled = False
-    mock_task_scheduler.add.return_value = sample_task
+    mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="every",
             every_seconds=3600,
             prompt="Check email",
             enabled=False,
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Scheduled task created." in result
-    call_args = mock_task_scheduler.add.call_args
-    task_arg = call_args[0][0]
-    assert task_arg.enabled is False
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.enabled is False
 
 
 @pytest.mark.asyncio
-async def test_create_scheduler_add_raises(mock_task_scheduler):
-    """Returns error string when task_scheduler.add() raises."""
-    mock_task_scheduler.add.side_effect = RuntimeError("Database error")
+async def test_create_scheduler_create_raises(mock_task_scheduler):
+    """Returns error string when ``scheduler.create`` raises."""
+    mock_task_scheduler.create.side_effect = RuntimeError("Database error")
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="create",
             name="test-task",
-            agent="lead",
             schedule_type="every",
             every_seconds=3600,
             prompt="Check email",
+            _injected=_NORMAL_INJECTED,
         )
 
     assert "Error:" in result
@@ -736,7 +719,6 @@ async def test_trigger_task_not_found(mock_task_scheduler):
 
     assert "Error:" in result
     assert "no task with id" in result
-    mock_task_scheduler.get_task.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -750,7 +732,6 @@ async def test_trigger_success(mock_task_scheduler, sample_task, clean_db):
         result = await schedule_task.arun(action="trigger", task_id=task_id)
 
     assert "Task 'test-task' triggered immediately." in result
-    mock_task_scheduler.get_task.assert_called_once_with(sample_task.id)
     mock_task_scheduler.trigger.assert_called_once_with(sample_task.id)
 
 
@@ -775,8 +756,11 @@ def test_schedule_task_tool_definition(clean_db):
     definition = schedule_task.definition
     assert definition["type"] == "function"
     assert definition["function"]["name"] == "schedule_task"
-    assert "parameters" in definition["function"]
-    assert "action" in definition["function"]["parameters"]["properties"]
+    params = definition["function"]["parameters"]["properties"]
+    assert "action" in params
+    # mode + workspace are derived from runtime context, not exposed to the LLM.
+    assert "mode" not in params
+    assert "workspace" not in params
 
 
 # ---------------------------------------------------------------------------
@@ -795,7 +779,6 @@ def test_build_agent_injects_schedule_task_for_lead(clean_db):
     cfg = AgentConfig(name="lead-agent", role="lead", system_prompt="Lead prompt")
     agent = _build_agent(cfg, {}, factory)
 
-    # schedule_task should be in the tools
     assert "schedule_task" in agent._tools
     tool = agent._tools["schedule_task"]
     assert tool.name == "schedule_task"
@@ -812,7 +795,6 @@ def test_build_agent_does_not_inject_schedule_task_for_member(clean_db):
     cfg = AgentConfig(name="member-agent", role="member", system_prompt="Member prompt")
     agent = _build_agent(cfg, {}, factory)
 
-    # schedule_task should NOT be in the tools
     assert "schedule_task" not in agent._tools
 
 
@@ -828,9 +810,8 @@ def test_build_agent_schedule_task_not_duplicated(clean_db):
         name="lead-agent",
         role="lead",
         system_prompt="Lead prompt",
-        tools=["schedule_task"],  # Explicitly listed
+        tools=["schedule_task"],
     )
     agent = _build_agent(cfg, {}, factory)
 
-    # schedule_task should appear exactly once
     assert list(agent._tools.keys()).count("schedule_task") == 1

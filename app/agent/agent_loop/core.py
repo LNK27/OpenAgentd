@@ -242,6 +242,13 @@ class Agent(Generic[TContext]):
             state.metadata["session_id"] = ctx.session_id
         state.metadata["agent_name"] = ctx.agent_name
 
+        # Surface caller-supplied per-run metadata to tools/hooks.  Used by
+        # team leads to pass ``mode`` and ``workspace`` so the schedule tool
+        # can derive routing targets without trusting LLM-supplied values.
+        if config is not None and config.metadata:
+            for key, value in config.metadata.items():
+                state.metadata.setdefault(key, value)
+
         # Me seed last_prompt_tokens from checkpointer so SummarizationHook
         # fires on session resume without call-site workaround
         if checkpointer is not None and ctx.session_id is not None:

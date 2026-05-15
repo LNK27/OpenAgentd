@@ -123,18 +123,24 @@ async def lifespan(app: FastAPI):
     setup_otel(service_name="openagentd")
     start_otel_retention()
 
-    # Start MCP servers and wait for them to finish initializing before the
-    # team loads — otherwise the loader resolves agents' `mcp:` lists against
-    # not-yet-ready runners and they end up with zero MCP tools forever.
-    # Servers still pending after the timeout fall back to graceful empty.
+    # Start MCP servers and wait for them to finish initializing before any
+    # team builds lazily — otherwise the loader resolves agents' `mcp:` lists
+    # against not-yet-ready runners and they end up with zero MCP tools
+    # forever.  Servers still pending after the timeout fall back to graceful
+    # empty.
     await mcp_manager.start()
     await mcp_manager.wait_until_ready()
 
-    team = await team_manager.start()
-    if team is None:
-        logger.warning("agents_dir_empty_or_missing path={}", settings.AGENTS_DIR)
-    else:
-        logger.info("team_started")
+    # Parse-only validation at boot: surfaces malformed agent ``.md`` files
+    # immediately instead of waiting for the first request to fail.  The
+    # team itself is built lazily on the first chat / scheduler fire — see
+    # ``app.services.team_manager.get_or_start_team``.
+    try:
+        if not team_manager.validate_agents_dir():
+            logger.warning("agents_dir_empty_or_missing path={}", settings.AGENTS_DIR)
+    except ValueError as exc:
+        logger.error("agents_dir_invalid path={} error={}", settings.AGENTS_DIR, exc)
+        raise
 
     await task_scheduler.start()
 

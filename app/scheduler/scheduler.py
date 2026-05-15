@@ -25,31 +25,85 @@ if TYPE_CHECKING:
 _utc = timezone.utc
 
 
-class AgentNotInTeamError(Exception):
-    """Raised when the requested agent does not exist in the current team."""
-
-
 class TaskNotFoundError(Exception):
     """Raised when a scheduled task lookup by id has no matching row."""
 
 
-def _require_agent_in_team(agent_name: str) -> None:
-    """Raise :exc:`AgentNotInTeamError` if *agent_name* is not in the current team."""
-    # TODO: ``app.services.team_manager`` imports from ``app.scheduler`` indirectly,
-    # so a top-level import here would cycle.  Resolve by extracting the
-    # team-membership predicate into a leaf module (e.g. ``app.team.lookup``) so
-    # both layers can import it without going through ``team_manager``.
+class InvalidTaskTargetError(Exception):
+    """Raised when a task's mode/workspace combination is invalid.
+
+    Examples: ``mode='coding'`` with a workspace path that does not exist
+    or is not a directory.
+    """
+
+
+def _validate_target(mode: str, workspace: str | None) -> None:
+    """Raise :exc:`InvalidTaskTargetError` if (mode, workspace) cannot route.
+
+    Cheap on-disk check only — no team is loaded.  Pairs with the Pydantic
+    ``mode``/``workspace`` cross-field validator (which only checks
+    presence) by adding the filesystem-existence check.
+    """
     from app.services import team_manager
 
-    team = team_manager.current_team()
-    if team is None:
-        raise AgentNotInTeamError("No team configured.")
-    members = {team.lead.name} | set(team.members.keys())
-    if agent_name not in members:
-        raise AgentNotInTeamError(
-            f"Agent '{agent_name}' not found in the current team. "
-            f"Available: {sorted(members)}"
-        )
+    if mode == "coding":
+        if not workspace:
+            raise InvalidTaskTargetError("workspace is required when mode='coding'")
+        try:
+            team_manager.validate_workspace(workspace)
+        except ValueError as exc:
+            raise InvalidTaskTargetError(str(exc)) from exc
+
+
+async def _validate_session_compat(
+    db_factory: DbFactory,
+    *,
+    session_id: str | None,
+    mode: str,
+    workspace: str | None,
+) -> None:
+    """Ensure ``session_id`` (if explicit) matches the task's (mode, workspace).
+
+    Skipped for:
+
+    * ``session_id is None`` — scheduler mints a new uuid per fire.
+    * ``session_id == 'auto'`` — deterministic uuid5 per task; the row is
+      created by the scheduler under the task's own mode/workspace, so
+      mismatch is impossible by construction.
+    * Explicit UUID that does not yet exist in the DB — first fire will
+      create it under the task's mode/workspace.
+
+    Raises :exc:`InvalidTaskTargetError` when an existing session row
+    disagrees with the requested target.  Mirrors the workspace-mismatch
+    check in ``POST /team/chat`` (``app/api/routes/team/chat.py:135-148``).
+    """
+    if not session_id or session_id == "auto":
+        return
+    try:
+        sid_uuid = UUID(session_id)
+    except ValueError:
+        raise InvalidTaskTargetError(
+            f"session_id must be a UUID or 'auto'; got {session_id!r}"
+        ) from None
+
+    # Late import — chat models import from app.core which already imports
+    # scheduler indirectly, so keeping this scoped avoids a cycle.
+    from app.models.chat import ChatSession
+
+    async with db_factory() as db:
+        row = await db.get(ChatSession, sid_uuid)
+        if row is None:
+            return  # session doesn't exist yet; first fire creates it
+        if row.mode != mode:
+            raise InvalidTaskTargetError(
+                f"Session {session_id} has mode='{row.mode}', "
+                f"but task has mode='{mode}'."
+            )
+        if mode == "coding" and row.workspace != workspace:
+            raise InvalidTaskTargetError(
+                f"Session {session_id} is bound to workspace "
+                f"'{row.workspace}', but task targets '{workspace}'."
+            )
 
 
 class TaskScheduler:
@@ -124,14 +178,24 @@ class TaskScheduler:
         """Validate *body*, build a ``ScheduledTask``, persist, and start timer.
 
         Raises:
-            AgentNotInTeamError: If ``body.agent`` is not in the current team.
+            InvalidTaskTargetError: If ``body.mode``/``body.workspace`` is
+                not a routable target (e.g. workspace path missing), or
+                if ``body.session_id`` references an existing session whose
+                mode/workspace disagrees with the task.
             sqlalchemy.exc.IntegrityError: On duplicate task name.
         """
-        _require_agent_in_team(body.agent)
+        _validate_target(body.mode, body.workspace)
+        await _validate_session_compat(
+            self._db,
+            session_id=body.session_id,
+            mode=body.mode,
+            workspace=body.workspace,
+        )
 
         task = ScheduledTask(
             name=body.name,
-            agent=body.agent,
+            mode=body.mode,
+            workspace=body.workspace,
             schedule_type=body.schedule_type,
             at_datetime=body.at_datetime,
             every_seconds=body.every_seconds,
@@ -148,19 +212,41 @@ class TaskScheduler:
     ) -> ScheduledTask:
         """Apply a partial update from *body* onto an existing task.
 
-        Validates agent membership if ``body.agent`` is set.
+        Re-validates the routing target if ``mode`` or ``workspace`` change.
 
         Raises:
             TaskNotFoundError: If *task_id* does not exist.
-            AgentNotInTeamError: If ``body.agent`` is not in the current team.
+            InvalidTaskTargetError: If the merged (mode, workspace) is invalid.
         """
         task = await self.get_task(task_id)
         if task is None:
             raise TaskNotFoundError(str(task_id))
 
-        if body.agent is not None:
-            _require_agent_in_team(body.agent)
-            task.agent = body.agent
+        new_mode = body.mode if body.mode is not None else task.mode
+        new_workspace = body.workspace if body.workspace is not None else task.workspace
+        new_session_id = (
+            body.session_id if body.session_id is not None else task.session_id
+        )
+        if body.mode is not None or body.workspace is not None:
+            _validate_target(new_mode, new_workspace)
+            task.mode = new_mode
+            task.workspace = new_workspace
+
+        # Re-validate the session pairing whenever any of (mode, workspace,
+        # session_id) change.  A mode-only change can newly conflict with an
+        # already-stored session_id, so we always check against the merged
+        # state.
+        if (
+            body.mode is not None
+            or body.workspace is not None
+            or body.session_id is not None
+        ):
+            await _validate_session_compat(
+                self._db,
+                session_id=new_session_id,
+                mode=new_mode,
+                workspace=new_workspace,
+            )
 
         if body.schedule_type is not None:
             task.schedule_type = body.schedule_type
@@ -361,21 +447,36 @@ class TaskScheduler:
         else:
             resolved_sid = raw_sid
 
-        # 3. Dispatch
+        # 3. Dispatch — route to the lead of the matching team.
         error: str | None = None
         fired_sid: str | None = None
         try:
-            team = team_manager.current_team()
-            if team is None:
-                raise NoTeamConfigured("No team configured.")
+            if task.mode == "coding":
+                if not task.workspace:
+                    raise NoTeamConfigured(
+                        "Task has mode='coding' but no workspace configured."
+                    )
+                team = await team_manager.get_or_start_coding_team(task.workspace)
+            else:
+                team = await team_manager.get_or_start_team()
+                if team is None:
+                    raise NoTeamConfigured("No team configured.")
             fired_sid, _ = await dispatch_user_message(
                 team,
                 content=f"[Scheduled Task: {task.name}]\n{task.prompt}",
                 session_id=resolved_sid,
+                mode=task.mode,
+                workspace=task.workspace,
             )
-        except NoTeamConfigured:
-            error = "No team configured"
-            logger.warning("scheduler_no_team task_id={} name={}", task.id, task.name)
+        except NoTeamConfigured as exc:
+            error = str(exc)
+            logger.warning(
+                "scheduler_no_team task_id={} name={} mode={} error={}",
+                task.id,
+                task.name,
+                task.mode,
+                exc,
+            )
         except Exception as exc:
             error = str(exc)
             logger.error(

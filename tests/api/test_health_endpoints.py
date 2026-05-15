@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -10,10 +10,9 @@ from fastapi.testclient import TestClient
 from app.api.routes.health import router
 from app.core.db import get_session
 from app.core.version import VERSION
-from app.services import team_manager
 
 
-def _make_app(*, db_ok: bool = True, team_present: bool = True) -> FastAPI:
+def _make_app(*, db_ok: bool = True) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/health")
 
@@ -29,20 +28,13 @@ def _make_app(*, db_ok: bool = True, team_present: bool = True) -> FastAPI:
         yield session
 
     app.dependency_overrides[get_session] = fake_session
-
-    # Patch team_manager.current_team()
-    if team_present:
-        team_manager._team = MagicMock()  # type: ignore[attr-defined]
-    else:
-        team_manager._team = None  # type: ignore[attr-defined]
-
     return app
 
 
 class TestLive:
     def test_live_always_returns_200(self):
-        # Even with DB down + no team.
-        client = TestClient(_make_app(db_ok=False, team_present=False))
+        # Even with DB down.
+        client = TestClient(_make_app(db_ok=False))
         resp = client.get("/api/health/live")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok", "version": VERSION}
@@ -50,8 +42,10 @@ class TestLive:
 
 class TestReady:
     def test_ready_ok_when_db_and_team_healthy(self):
-        client = TestClient(_make_app(db_ok=True, team_present=True))
-        resp = client.get("/api/health/ready")
+        # ``validate_agents_dir`` returns True → agents dir is loadable.
+        with patch("app.services.team_manager.validate_agents_dir", return_value=True):
+            client = TestClient(_make_app(db_ok=True))
+            resp = client.get("/api/health/ready")
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "ok"
@@ -59,18 +53,31 @@ class TestReady:
         assert body["checks"]["team"] == "ok"
 
     def test_ready_ok_when_db_healthy_but_team_missing(self):
-        """Team absent (empty agents dir) is tolerable — degraded but ready."""
-        client = TestClient(_make_app(db_ok=True, team_present=False))
-        resp = client.get("/api/health/ready")
-        # Current logic: team "missing" still reports ready=True.
+        """Empty agents dir is tolerable — reported but still ready."""
+        with patch("app.services.team_manager.validate_agents_dir", return_value=False):
+            client = TestClient(_make_app(db_ok=True))
+            resp = client.get("/api/health/ready")
         assert resp.status_code == 200
         body = resp.json()
         assert body["checks"]["team"] == "missing"
+
+    def test_ready_marks_team_invalid_on_parse_error(self):
+        """A malformed agent .md surfaces as ``team=invalid``."""
+        with patch(
+            "app.services.team_manager.validate_agents_dir",
+            side_effect=ValueError("bad yaml"),
+        ):
+            client = TestClient(_make_app(db_ok=True))
+            resp = client.get("/api/health/ready")
+        # Team validation failure does not flip overall readiness — DB is
+        # the gate.  But the per-check value must reflect the parse error.
+        body = resp.json()
+        assert body["checks"]["team"] == "invalid"
 
 
 class TestLegacyAliasRemoved:
     def test_bare_health_returns_404(self):
         """The legacy ``GET /api/health`` alias was removed."""
-        client = TestClient(_make_app(db_ok=True, team_present=True))
+        client = TestClient(_make_app(db_ok=True))
         resp = client.get("/api/health")
         assert resp.status_code == 404

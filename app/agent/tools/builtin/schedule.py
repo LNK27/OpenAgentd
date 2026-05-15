@@ -43,13 +43,18 @@ def _fmt_task(task: Any) -> str:
     run_count = getattr(task, "run_count", 0)
     next_fire = getattr(task, "next_fire_at", None)
     name = getattr(task, "name", "?")
-    agent = getattr(task, "agent", "?")
+    mode = getattr(task, "mode", "normal")
+    workspace = getattr(task, "workspace", None)
     task_id = getattr(task, "id", "?")
+
+    target = f"mode={mode}"
+    if mode == "coding" and workspace:
+        target += f" workspace={workspace}"
 
     parts = [
         f"id={task_id}",
         f"name={name}",
-        f"agent={agent}",
+        target,
         f"schedule={schedule}",
         f"status={'enabled' if enabled else 'paused'}/{status}",
         f"runs={run_count}",
@@ -89,13 +94,6 @@ async def _schedule_task(
                 "Pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$. "
                 "Required for create."
             ),
-        ),
-    ] = None,
-    agent: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description="[create] Agent name that will receive the prompt. Required for create.",
         ),
     ] = None,
     schedule_type: Annotated[
@@ -155,7 +153,7 @@ async def _schedule_task(
         str | None,
         Field(
             default=None,
-            description="[create] Message to send to the agent when the task fires. Required for create.",
+            description="[create] Message to send to the team lead when the task fires. Required for create.",
         ),
     ] = None,
     session_id: Annotated[
@@ -186,7 +184,12 @@ async def _schedule_task(
         ),
     ] = None,
     # ── injected ─────────────────────────────────────────────────────────────
+    # ``_mode`` / ``_workspace`` are derived from the calling agent's runtime
+    # context by the tool executor — never accepted from LLM-supplied args.
+    # See ``app.agent.agent_loop.tool_executor.make_tool_executor``.
     _state: Annotated[Any, InjectedArg()] = None,
+    _mode: Annotated[Literal["normal", "coding"], InjectedArg()] = "normal",
+    _workspace: Annotated[str | None, InjectedArg()] = None,
 ) -> str:
     """Manage scheduled tasks: create recurring or one-shot agent prompts, list, pause, resume, delete, or trigger tasks.
 
@@ -250,7 +253,6 @@ async def _schedule_task(
             f
             for f, v in [
                 ("name", name),
-                ("agent", agent),
                 ("schedule_type", schedule_type),
                 ("prompt", prompt),
             ]
@@ -259,13 +261,13 @@ async def _schedule_task(
         if missing:
             return f"Error: the following fields are required for create: {', '.join(missing)}."
         # Narrow Optional → required for the type checker (the loop above
-        # already guaranteed all four are truthy).
+        # already guaranteed all three are truthy).
         assert name is not None
-        assert agent is not None
         assert schedule_type is not None
         assert prompt is not None
 
         from app.scheduler.models import ScheduledTask
+        from app.scheduler.scheduler import task_scheduler as _scheduler
         from app.scheduler.schemas import ScheduledTaskCreate
 
         # Parse at_datetime string → datetime. If the string is naive (no
@@ -288,7 +290,8 @@ async def _schedule_task(
         try:
             payload = ScheduledTaskCreate(
                 name=name,
-                agent=agent,
+                mode=_mode,
+                workspace=_workspace,
                 schedule_type=schedule_type,
                 at_datetime=at_dt,
                 every_seconds=every_seconds,
@@ -301,37 +304,34 @@ async def _schedule_task(
         except Exception as exc:
             return f"Error: invalid task configuration — {exc}"
 
-        task = ScheduledTask(
-            name=payload.name,
-            agent=payload.agent,
-            schedule_type=payload.schedule_type,
-            at_datetime=payload.at_datetime,
-            every_seconds=payload.every_seconds,
-            cron_expression=payload.cron_expression,
-            timezone=payload.timezone,
-            prompt=payload.prompt,
-            session_id=payload.session_id,
-            enabled=payload.enabled,
-        )
-
+        # Go through ``scheduler.create`` (not ``add``) so the workspace/
+        # session compatibility validators run.
         try:
-            created = await task_scheduler.add(task)
+            created = await _scheduler.create(payload)
         except Exception as exc:
             return f"Error: failed to create task — {exc}"
 
+        # ScheduledTask is only used implicitly via _scheduler.create; keep
+        # the import for type narrowing in callers that consume `created`.
+        _ = ScheduledTask
+
         logger.info(
-            "schedule_tool_create name={} agent={} schedule_type={} next_fire={}",
+            "schedule_tool_create name={} mode={} workspace={} schedule_type={} next_fire={}",
             created.name,
-            created.agent,
+            created.mode,
+            created.workspace,
             created.schedule_type,
             created.next_fire_at,
+        )
+        target_line = f"  mode        : {created.mode}\n" + (
+            f"  workspace   : {created.workspace}\n" if created.workspace else ""
         )
         return (
             f"Scheduled task created.\n"
             f"  id          : {created.id}\n"
             f"  name        : {created.name}\n"
-            f"  agent       : {created.agent}\n"
-            f"  schedule    : {created.schedule_type}\n"
+            + target_line
+            + f"  schedule    : {created.schedule_type}\n"
             f"  next fire   : {created.next_fire_at}\n"
             f"  prompt      : {created.prompt!r}"
         )

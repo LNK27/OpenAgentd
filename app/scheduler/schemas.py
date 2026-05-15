@@ -4,18 +4,30 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
 
+TaskMode = Literal["normal", "coding"]
+
 
 class ScheduledTaskCreate(BaseModel):
     """Payload for POST /scheduler/tasks."""
 
     name: str = Field(description="Unique task name.")
-    agent: str = Field(description="Agent name (must exist in the loaded team).")
+    mode: TaskMode = Field(
+        default="normal",
+        description="'normal' delivers to the default team lead; "
+        "'coding' delivers to the lead of the coding team for ``workspace``.",
+    )
+    workspace: str | None = Field(
+        default=None,
+        description="Absolute path to a workspace directory. "
+        "Required when mode='coding'.",
+    )
 
     schedule_type: str = Field(description='"at" | "every" | "cron"')
     at_datetime: datetime | None = Field(default=None)
@@ -23,7 +35,7 @@ class ScheduledTaskCreate(BaseModel):
     cron_expression: str | None = Field(default=None)
     timezone: str = Field(default="UTC")
 
-    prompt: str = Field(description="Message to send to the agent.")
+    prompt: str = Field(description="Message to send to the team lead.")
     session_id: str | None = Field(
         default=None,
         description='None=new each time, "auto"=persistent per task name, uuid=continue specific session.',
@@ -34,6 +46,11 @@ class ScheduledTaskCreate(BaseModel):
     def _validate_schedule(self) -> "ScheduledTaskCreate":
         if not _NAME_RE.match(self.name):
             raise ValueError("name must match ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
+
+        if self.mode == "coding" and not self.workspace:
+            raise ValueError("workspace is required when mode='coding'")
+        if self.mode == "normal" and self.workspace:
+            raise ValueError("workspace must be empty when mode='normal'")
 
         st = self.schedule_type
         if st == "at":
@@ -70,7 +87,8 @@ class ScheduledTaskCreate(BaseModel):
 class ScheduledTaskUpdate(BaseModel):
     """Payload for PUT /scheduler/tasks/{task_id} — all fields optional."""
 
-    agent: str | None = None
+    mode: TaskMode | None = None
+    workspace: str | None = None
     schedule_type: str | None = None
     at_datetime: datetime | None = None
     every_seconds: int | None = Field(default=None, gt=0)
@@ -82,6 +100,14 @@ class ScheduledTaskUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_schedule(self) -> "ScheduledTaskUpdate":
+        # Cross-field validation for mode/workspace: only enforce when both
+        # parts of the pair are present in the payload.  Otherwise the
+        # service layer validates against the merged row state.
+        if self.mode == "coding" and self.workspace == "":
+            raise ValueError("workspace is required when mode='coding'")
+        if self.mode == "normal" and self.workspace:
+            raise ValueError("workspace must be empty when mode='normal'")
+
         st = self.schedule_type
         if st is None:
             return self  # partial update — schedule fields validated at service layer
@@ -121,7 +147,8 @@ class ScheduledTaskResponse(BaseModel):
 
     id: UUID
     name: str
-    agent: str
+    mode: TaskMode
+    workspace: str | None
     schedule_type: str
     at_datetime: datetime | None
     every_seconds: int | None

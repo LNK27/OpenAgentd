@@ -19,7 +19,16 @@ class ScheduledTask(SQLModel, table=True):
     name: str = Field(
         sa_column=Column(sa.String(100), nullable=False, unique=True, index=True)
     )
-    agent: str = Field(sa_column=Column(sa.String(100), nullable=False))
+    # Routing target — every task delivers to the lead of the chosen team.
+    # ``normal`` → default team; ``coding`` → per-workspace team. ``workspace``
+    # is required when ``mode == 'coding'`` (validated in the API schema).
+    mode: str = Field(
+        default="normal",
+        sa_column=Column(sa.String(20), nullable=False, server_default="normal"),
+    )
+    workspace: str | None = Field(
+        default=None, sa_column=Column(sa.String, nullable=True)
+    )
 
     # Schedule — exactly one of these must be set
     schedule_type: str = Field(sa_column=Column(sa.String(20), nullable=False))

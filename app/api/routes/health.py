@@ -46,7 +46,14 @@ async def _check_ready(session: AsyncSession) -> dict:
         checks["db"] = "fail"
 
     # ── Team ──────────────────────────────────────────────────────────────
-    checks["team"] = "ok" if team_manager.current_team() is not None else "missing"
+    # Teams build lazily on first use, so an in-memory team is not a useful
+    # readiness signal.  Report on whether the agents directory is loadable
+    # (parses + has a lead) instead.
+    try:
+        checks["team"] = "ok" if team_manager.validate_agents_dir() else "missing"
+    except ValueError as exc:
+        logger.warning("health_ready_team_invalid error={}", exc)
+        checks["team"] = "invalid"
 
     ready = checks["db"] == "ok"  # team "missing" is tolerable (empty agents dir)
     return {

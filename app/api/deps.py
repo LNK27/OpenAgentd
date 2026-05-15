@@ -43,15 +43,17 @@ DbSessionFactory = Annotated[
 ]
 
 
-# ── Team (optional — None when no team is configured) ────────────────────────
-# The team's lifecycle and state live in ``app.services.team_manager``; this
-# dependency simply exposes the currently-loaded team to route handlers.
+# ── Team (optional — None when no agents are configured) ─────────────────────
+# The team is built lazily on first use and evicted after an idle window;
+# see ``app.services.team_manager``.  Route handlers receive whatever the
+# manager hands back at request time (typically a live team, or ``None``
+# when the agents directory is empty/missing).
 
 
-def get_team() -> "AgentTeam | None":
+async def get_team() -> "AgentTeam | None":
     from app.services import team_manager
 
-    return team_manager.current_team()
+    return await team_manager.get_or_start_team()
 
 
 TeamDep = Annotated["AgentTeam | None", Depends(get_team)]

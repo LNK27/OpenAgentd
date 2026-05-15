@@ -76,8 +76,25 @@ def make_tool_executor(
             if tc.function.name not in run_tools:
                 raise ToolNotFoundError(f"Tool '{tc.function.name}' not found.")
 
+            # Surface team routing context as first-class injected args so
+            # tools (e.g. schedule_task) don't have to fish through
+            # ``state.metadata`` themselves.  Falls back to defaults when the
+            # caller did not populate ``RunConfig.metadata`` (non-team runs).
+            team_mode_raw = s.metadata.get("team_mode", "normal")
+            injected_mode = "coding" if team_mode_raw == "coding" else "normal"
+            team_workspace_raw = s.metadata.get("team_workspace")
+            injected_workspace = (
+                str(team_workspace_raw)
+                if isinstance(team_workspace_raw, str) and team_workspace_raw
+                else None
+            )
+
             result_raw = await run_tools[tc.function.name].arun(
-                _injected={"_state": s},
+                _injected={
+                    "_state": s,
+                    "_mode": injected_mode,
+                    "_workspace": injected_workspace,
+                },
                 **args,
             )
 

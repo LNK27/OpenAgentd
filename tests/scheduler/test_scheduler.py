@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -41,22 +41,23 @@ def scheduler(db_factory):
 
 @pytest.fixture
 def mock_dispatch():
-    """Patch agent_service.dispatch_user_message + team_manager.current_team()."""
+    """Patch agent_service.dispatch_user_message + team_manager.get_or_start_team()."""
+    sid = str(uuid4())
+
+    async def _get_team():
+        return MagicMock()  # truthy team
+
+    async def _disp(*_a, **_kw):
+        return (sid, 0)
+
     with (
-        patch("app.services.team_manager.current_team") as mock_team,
-        patch("app.services.agent_service.dispatch_user_message") as mock_disp,
+        patch(
+            "app.services.team_manager.get_or_start_team", side_effect=_get_team
+        ) as mock_team,
+        patch(
+            "app.services.agent_service.dispatch_user_message", side_effect=_disp
+        ) as mock_disp,
     ):
-        mock_team.return_value = MagicMock()  # truthy team
-        sid = str(uuid4())
-        mock_disp.side_effect = AsyncMock(return_value=(sid, 0))
-        # AsyncMock pattern via side_effect
-        mock_disp.return_value = (sid, 0)
-
-        # Wrap as awaitable
-        async def _disp(*_a, **_kw):
-            return (sid, 0)
-
-        mock_disp.side_effect = _disp
         yield {"team": mock_team, "dispatch": mock_disp, "sid": sid}
 
 
@@ -72,7 +73,8 @@ def _make_task(
 ) -> ScheduledTask:
     return ScheduledTask(
         name=name,
-        agent="bot",
+        mode="normal",
+        workspace=None,
         schedule_type=schedule_type,
         every_seconds=every_seconds,
         at_datetime=at_datetime,
@@ -356,7 +358,10 @@ class TestFireTaskErrors:
         await scheduler.add(task)
         await scheduler.stop()  # cancel timer so we drive _fire_task directly
 
-        with patch("app.services.team_manager.current_team", return_value=None):
+        async def _no_team():
+            return None
+
+        with patch("app.services.team_manager.get_or_start_team", side_effect=_no_team):
             await scheduler._fire_task(task)
 
         async with db_factory() as session:
@@ -366,7 +371,7 @@ class TestFireTaskErrors:
             row = result.one()
 
         assert row.status == "failed"
-        assert row.last_error == "No team configured"
+        assert row.last_error == "No team configured."
         assert row.run_count == 1
 
     async def test_dispatch_exception_marks_failed(self, scheduler, db_factory):
@@ -377,8 +382,11 @@ class TestFireTaskErrors:
         async def _explode(*_a, **_kw):
             raise RuntimeError("kaboom")
 
+        async def _get_team():
+            return MagicMock()
+
         with (
-            patch("app.services.team_manager.current_team", return_value=MagicMock()),
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_explode,
@@ -454,12 +462,15 @@ class TestSessionResolution:
 
         captured: dict[str, object] = {}
 
-        async def _capture(team, *, content, session_id, attachments=None):
+        async def _capture(team, *, content, session_id, attachments=None, **_kw):
             captured["session_id"] = session_id
             return (session_id, 0)
 
+        async def _get_team():
+            return MagicMock()
+
         with (
-            patch("app.services.team_manager.current_team", return_value=MagicMock()),
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_capture,
@@ -485,12 +496,15 @@ class TestSessionResolution:
 
         captured: dict[str, object] = {}
 
-        async def _capture(team, *, content, session_id, attachments=None):
+        async def _capture(team, *, content, session_id, attachments=None, **_kw):
             captured["session_id"] = session_id
             return (session_id, 0)
 
+        async def _get_team():
+            return MagicMock()
+
         with (
-            patch("app.services.team_manager.current_team", return_value=MagicMock()),
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_capture,
@@ -508,12 +522,15 @@ class TestSessionResolution:
 
         captured: dict[str, object] = {"session_id": "sentinel"}
 
-        async def _capture(team, *, content, session_id, attachments=None):
+        async def _capture(team, *, content, session_id, attachments=None, **_kw):
             captured["session_id"] = session_id
             return (str(uuid4()), 0)
 
+        async def _get_team():
+            return MagicMock()
+
         with (
-            patch("app.services.team_manager.current_team", return_value=MagicMock()),
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_capture,

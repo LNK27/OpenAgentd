@@ -174,6 +174,14 @@ async def diagnostics(tail: int = 200) -> dict[str, Any]:
     state_dir = Path(settings.OPENAGENTD_STATE_DIR)
     log_path = state_dir / "logs" / "app" / "app.log"
 
+    def _agents_dir_loadable() -> bool | None:
+        """``True`` if the agents directory parses, ``False`` if missing/empty,
+        ``None`` if it raises (treated as a soft 'unknown' in diagnostics)."""
+        try:
+            return team_manager.validate_agents_dir()
+        except Exception:
+            return None
+
     return {
         "version": VERSION,
         "runtime": {
@@ -202,7 +210,12 @@ async def diagnostics(tail: int = 200) -> dict[str, Any]:
         "providers": _provider_status(),
         "env": _safe_env_keys(("OPENAGENTD_", "APP_", "PYTHON")),
         "team": {
+            # Teams build lazily on first use.  ``loaded`` reflects current
+            # in-memory state — ``loadable`` reflects whether the agents
+            # directory parses (the useful indicator for "is the system
+            # configured correctly?").
             "loaded": team_manager.current_team() is not None,
+            "loadable": _agents_dir_loadable(),
         },
         "mcp": {
             "servers": len(mcp_manager.server_names()),

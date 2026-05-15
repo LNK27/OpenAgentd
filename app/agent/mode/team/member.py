@@ -716,7 +716,15 @@ class TeamMemberBase(abc.ABC):
         # Inject team tools
         injected = self._team.get_injected_tools(self.name)
 
-        config = RunConfig(session_id=self.session_id)
+        # Surface team routing context to tools via state.metadata.  The
+        # schedule tool reads these as injected args so the LLM never has
+        # to specify (or could lie about) the routing target.
+        run_metadata: dict[str, object] = {
+            "team_mode": self._team.mode,
+        }
+        if self._team.workspace:
+            run_metadata["team_workspace"] = self._team.workspace
+        config = RunConfig(session_id=self.session_id, metadata=run_metadata)
 
         # Coding mode uses the exact project workspace for every team member.
         workspace = str(session_workspace_dir(lead_session_id, self._team.workspace))

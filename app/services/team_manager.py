@@ -1,12 +1,31 @@
 """Team lifecycle manager.
 
-Wraps the global ``AgentTeam`` instance.  ``app.api.deps.get_team``
-reads ``current_team()`` so route handlers always see the latest value.
+Teams are loaded lazily on first use and evicted after an idle window.
 
 Usage::
 
-    await team_manager.start()                       # startup
+    team_manager.validate_agents_dir()               # startup (parse-only)
+    team = await team_manager.get_or_start_team()    # on demand
     await team_manager.stop()                        # shutdown
+
+Lazy lifecycle
+--------------
+
+The default team (and per-workspace coding teams) are not built on
+server startup.  ``get_or_start_team()`` and ``get_or_start_coding_team()``
+build them on the first incoming request (chat, scheduler fire,
+``/team/agents``, etc.) and cache them in module state.
+
+After an idle window with no working members, teams are evicted on the
+next ``get_or_start_*`` call:
+
+* Default team — ``_DEFAULT_TEAM_IDLE_SECONDS`` (1 hour)
+* Coding teams — ``_CODING_TEAM_IDLE_SECONDS`` (30 minutes)
+
+Eviction is opportunistic (no background timer); the cost of an
+evicted-then-re-requested team is one ``load_team_from_dir`` + ``team.start()``
+on the next request (~10–100 ms), which is below user-perceptible
+latency on a chat send.
 
 Live-config refresh — no team reload
 ------------------------------------
@@ -68,9 +87,11 @@ class TeamDiff:
 # ── Module-level state ───────────────────────────────────────────────────────
 
 _team: "AgentTeam | None" = None
+_team_last_used: float = 0.0
 _coding_teams: dict[str, "AgentTeam"] = {}
 _coding_team_last_used: dict[str, float] = {}
-_CODING_TEAM_IDLE_SECONDS = 2 * 60 * 60
+_DEFAULT_TEAM_IDLE_SECONDS = 60 * 60
+_CODING_TEAM_IDLE_SECONDS = 30 * 60
 _lock = asyncio.Lock()
 
 
@@ -94,8 +115,33 @@ def validate_workspace(workspace: str) -> str:
     return str(resolved)
 
 
-def _coding_team_is_idle(team: "AgentTeam") -> bool:
+def _team_is_idle(team: "AgentTeam") -> bool:
     return all(member.state != "working" for member in team.all_members)
+
+
+# Back-compat alias — older call sites (tests) may import the coding-specific name.
+_coding_team_is_idle = _team_is_idle
+
+
+def _maybe_pop_idle_default_team_locked(
+    now: float,
+) -> "AgentTeam | None":
+    """Return the default team for eviction, or ``None`` if it should stay.
+
+    Caller must release the lock before stopping the returned team to avoid
+    holding ``_lock`` across the team's shutdown work.
+    """
+    global _team, _team_last_used
+    if _team is None:
+        return None
+    if now - _team_last_used <= _DEFAULT_TEAM_IDLE_SECONDS:
+        return None
+    if not _team_is_idle(_team):
+        return None
+    expired = _team
+    _team = None
+    _team_last_used = 0.0
+    return expired
 
 
 def _pop_idle_coding_teams_locked(now: float) -> list[tuple[str, "AgentTeam"]]:
@@ -140,37 +186,87 @@ def set_team(team: "AgentTeam | None") -> None:
 
     Intended for tests that need to inject a pre-built ``AgentTeam`` into
     the FastAPI dependency without starting the real team.  Production
-    code should use :func:`start` / :func:`reload` / :func:`stop`.
+    code should use :func:`get_or_start_team` / :func:`reload` / :func:`stop`.
     """
-    global _team
+    global _team, _team_last_used
     _team = team
+    _team_last_used = time.monotonic() if team is not None else 0.0
 
 
 # ── Lifecycle ────────────────────────────────────────────────────────────────
 
 
-async def start() -> "AgentTeam | None":
-    """Load and start the team on server startup.  Idempotent."""
-    global _team
-    async with _lock:
-        if _team is not None:
-            return _team
+def validate_agents_dir() -> bool:
+    """Parse-only check that the agents directory is loadable.
 
-        agents_dir = _resolve_agents_dir()
+    Called from the FastAPI lifespan at startup so a malformed config
+    surfaces immediately (server fails to boot) instead of on the first
+    chat request.  Does **not** build or cache an ``AgentTeam`` — that
+    happens lazily on the first call to :func:`get_or_start_team`.
+
+    Returns ``True`` when the directory contains a valid lead, ``False``
+    when it is empty or missing.  Re-raises ``ValueError`` from the loader
+    on parse errors.
+    """
+    agents_dir = _resolve_agents_dir()
+    try:
         team = load_team_from_dir(agents_dir)
-        if team is None:
-            logger.warning("team_manager_no_agents path={}", agents_dir)
-            return None
+    except ValueError:
+        raise
+    if team is None:
+        logger.warning("team_manager_agents_dir_empty path={}", agents_dir)
+        return False
+    logger.info(
+        "team_manager_agents_dir_validated path={} lead={}", agents_dir, team.lead.name
+    )
+    return True
 
-        await team.start()
-        _team = team
-        logger.info("team_manager_started lead={}", team.lead.name)
-        return team
+
+async def get_or_start_team() -> "AgentTeam | None":
+    """Return the cached default team, building it on first use.
+
+    Evicts the cached team if it has been idle for longer than
+    ``_DEFAULT_TEAM_IDLE_SECONDS`` and has no working members.  Returns
+    ``None`` when the agents directory is empty or missing (mirroring
+    the legacy ``start()`` behaviour so callers can render a friendly
+    "no agents configured" response).
+    """
+    global _team, _team_last_used
+
+    async with _lock:
+        now = time.monotonic()
+        expired = _maybe_pop_idle_default_team_locked(now)
+
+        if _team is not None:
+            _team_last_used = now
+            result: "AgentTeam | None" = _team
+        else:
+            agents_dir = _resolve_agents_dir()
+            candidate = load_team_from_dir(agents_dir)
+            if candidate is None:
+                logger.warning("team_manager_no_agents path={}", agents_dir)
+                result = None
+            else:
+                await candidate.start()
+                _team = candidate
+                _team_last_used = now
+                logger.info("team_manager_started lead={}", candidate.lead.name)
+                result = candidate
+
+    if expired is not None:
+        try:
+            await expired.stop()
+        except Exception:
+            logger.exception("team_manager_idle_stop_error")
+        else:
+            logger.info("team_manager_idle_stopped")
+
+    return result
 
 
 async def stop() -> None:
     """Stop the current team (if any) on server shutdown."""
-    global _team
+    global _team, _team_last_used
     async with _lock:
         if _team is not None:
             try:
@@ -178,6 +274,7 @@ async def stop() -> None:
             except Exception:
                 logger.exception("team_manager_stop_error")
             _team = None
+            _team_last_used = 0.0
         for workspace, team in list(_coding_teams.items()):
             try:
                 await team.stop()
@@ -270,7 +367,7 @@ async def reload() -> TeamDiff:
     Raises ``ValueError`` (from :func:`load_team_from_dir`) on any validation
     failure — the running team is untouched in that case.
     """
-    global _team
+    global _team, _team_last_used
     async with _lock:
         agents_dir = _resolve_agents_dir()
 
@@ -296,6 +393,7 @@ async def reload() -> TeamDiff:
         #    via :func:`current_team` on the next request.
         await candidate.start()
         _team = candidate
+        _team_last_used = time.monotonic()
 
         diff = _compute_diff(before_snapshot, candidate)
         logger.info(
