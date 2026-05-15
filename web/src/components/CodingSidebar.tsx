@@ -23,6 +23,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { motion } from 'framer-motion'
 import {
   Folder,
   HelpCircle,
@@ -229,7 +230,13 @@ export function CodingSidebar({
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-sidebar)">
+    <motion.aside
+      initial={{ width: 0, opacity: 0 }}
+      animate={{ width: 256, opacity: 1 }}
+      exit={{ width: 0, opacity: 0 }}
+      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+      className="flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)"
+    >
       {/* Search trigger — opens the command palette (Ctrl+P). */}
       {onCommandPalette && (
         <div className="px-3 pt-3">
@@ -458,6 +465,6 @@ export function CodingSidebar({
           )}
         </DialogContent>
       </Dialog>
-    </aside>
+    </motion.aside>
   )
 }

@@ -21,6 +21,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
+import { AnimatePresence } from 'framer-motion'
 
 import { Link, useNavigate } from '@tanstack/react-router'
 import { AgentCapabilities } from '../AgentCapabilities'
@@ -506,15 +507,17 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           takes no space here and the main column is always full-width. */}
       <div className="flex min-h-0 flex-1">
         {mode === 'coding' ? (
-          !codingSidebarCollapsed && (
-            <CodingSidebar
-              currentSessionId={sessionIdState || undefined}
-              workspace={workspace}
-              onCollapse={() => setCodingSidebarCollapsed(true)}
-              openWorkspaceDialogKey={openWorkspaceDialogKey}
-              onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
-            />
-          )
+          <AnimatePresence initial={false}>
+            {!codingSidebarCollapsed && (
+              <CodingSidebar
+                currentSessionId={sessionIdState || undefined}
+                workspace={workspace}
+                onCollapse={() => setCodingSidebarCollapsed(true)}
+                openWorkspaceDialogKey={openWorkspaceDialogKey}
+                onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
+              />
+            )}
+          </AnimatePresence>
         ) : (
           <Sidebar
             currentSessionId={sessionIdState || undefined}
@@ -599,15 +602,17 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           voiceEnabled={voiceEnabled}
         />
         </div>
-        {mode === 'coding' && workspace && (
-          <CodingWorkspacePanel
-            key={codingPanel ?? 'closed'}
-            workspace={workspace}
-            open={codingPanel !== null}
-            initialTab={codingPanel ?? 'files'}
-            onClose={() => setCodingPanel(null)}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {mode === 'coding' && workspace && codingPanel !== null && (
+            <CodingWorkspacePanel
+              key={codingPanel}
+              workspace={workspace}
+              open
+              initialTab={codingPanel}
+              onClose={() => setCodingPanel(null)}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
       <AgentCapabilities
