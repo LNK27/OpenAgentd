@@ -211,3 +211,15 @@ documents/assets/scripts/
 
 # Diagram source files
 .diagrams/
+
+# ── Desktop build artefacts ────────────────────────────────────────────────
+# Tauri target dir, Cargo lockfile is committed (Cargo.lock) but build
+# outputs are not. The sidecar bundle is regenerated on every release; do
+# not commit the 400 MB output.
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/sidecar-bundle/
+# Updater signing keys — see scripts/generate_updater_keys.sh.
+.tauri-keys/
+desktop/openagentd.key
+desktop/openagentd.key.pub

@@ -60,6 +60,7 @@ Start at [`documents/docs/index.md`](documents/docs/index.md).
 | C4 diagrams, agent loop, SSE protocol | [`docs/architecture.md`](documents/docs/architecture.md) |
 | Env vars, agent `.md` config, providers, sandbox | [`docs/configuration.md`](documents/docs/configuration.md) |
 | Logging (app log, per-session, JSONL) | [`docs/logging.md`](documents/docs/logging.md) |
+| Desktop distribution (Tauri shell, sidecar, release) | [`docs/desktop.md`](documents/docs/desktop.md) |
 | Observability (OTel, DuckDB, `/telemetry`) | [`docs/observability.md`](documents/docs/observability.md) |
 | Agent engine (loop, hooks, tools, teams, memory, plugins) | [`docs/agent/`](documents/docs/agent/) |
 | HTTP routes, SSE events, file handling | [`docs/api/index.md`](documents/docs/api/index.md) |

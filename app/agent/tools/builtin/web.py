@@ -151,7 +151,7 @@ async def web_fetch(
         if mime in ("text/markdown", "text/x-markdown"):
             return content_bytes.decode("utf-8", errors="replace")
 
-        # For all other types (html, text, pdf, etc.) let MarkItDown convert
+        # For all other types (html, text, pdf, etc.) let MarkItDown convert.
         def _convert() -> str:
             md = MarkItDown()
             result = md.convert_stream(

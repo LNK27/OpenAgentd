@@ -73,11 +73,11 @@ jobs:
             def caveats
               <<~EOS
                 This formula installs the base package only. Optional extras are not
-                supported by Homebrew. To enable voice input (local Whisper transcription):
+                supported by Homebrew. To install with every optional extra:
 
-                  uv tool install "openagentd[voice-local]"
+                  uv tool install "openagentd[full]"
                   # or
-                  pip install "openagentd[voice-local]"
+                  pip install "openagentd[full]"
               EOS
             end
 

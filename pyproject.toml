@@ -34,7 +34,12 @@ dependencies = [
     "rich>=14.3.3",
     "prompt-toolkit>=3.0.52",
     "ddgs>=9.12.0",
-    "markitdown[pdf,docx,pptx,xlsx,xls,az-doc-intel,audio-transcription]>=0.1.5",
+    # Office document conversion (PDF/DOCX/PPTX/XLSX/XLS) ships by default —
+    # users expect file-attach and web_fetch to handle these formats out of
+    # the box. Heavier features (Azure Doc Intel, file-attached audio
+    # transcription) stay behind the ``azure-doc-intel`` / ``audio`` optional
+    # extras to keep the desktop bundle from ballooning unnecessarily.
+    "markitdown[pdf,docx,pptx,xlsx,xls]>=0.1.5",
     "pyyaml>=6.0.3",
     "fastapi>=0.135.2",
     "uvicorn[standard]>=0.42.0",
@@ -49,6 +54,10 @@ dependencies = [
     "boto3>=1.35.0",
     "botocore[crt]>=1.43.0",
     "duckdb>=1.1.0",
+    # Local speech-to-text. Pulls onnxruntime (~70 MB) via transitive deps so
+    # voice input works out of the box on the desktop app — no extras to opt
+    # into, no missing-feature pages on first launch.
+    "faster-whisper>=1.1.1",
 ]
 
 [project.urls]
@@ -84,7 +93,19 @@ packages = ["app"]
 artifacts = ["app/_web_dist/**"]
 
 [project.optional-dependencies]
-voice-local = ["faster-whisper>=1.1.1"]
+# Azure Document Intelligence routing in markitdown — server-side OCR fallback.
+# Brings in the azure-ai-* SDK family. Adds ~30 MB.
+azure-doc-intel = ["markitdown[az-doc-intel]>=0.1.5"]
+
+# Audio transcription via markitdown's audio backend
+# (speech_recognition + pydub). Adds ~50 MB. Distinct from `faster-whisper`
+# which ships by default: this backend handles file-attached audio,
+# whereas faster-whisper powers the live microphone /api/speech path.
+audio = ["markitdown[audio-transcription]>=0.1.5"]
+
+# Convenience: everything-but-the-kitchen-sink. Used by
+# ``uv tool install openagentd[full]`` for users who don't care about size.
+full = ["openagentd[audio,azure-doc-intel]"]
 
 [tool.uv]
 package = true
@@ -92,11 +113,6 @@ package = true
 [tool.ty.src]
 include = ["app"]
 exclude = ["tests", "**/__pycache__", ".venv"]
-
-[tool.ty.rules]
-# faster-whisper is an optional extra (voice-local) — not installed in the base
-# venv or on CI. Imports are guarded by try/except ImportError at runtime.
-unresolved-import = "warn"
 
 [tool.ruff]
 target-version = "py313"

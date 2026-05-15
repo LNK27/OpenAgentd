@@ -210,16 +210,7 @@ The **dream agent** runs on a cron schedule, reads unprocessed session notes, sy
 
 Click the mic button in the chat input to record. Click again to stop. The recording is transcribed on-device using [Whisper](https://github.com/openai/whisper) and inserted into the input for review — you still press Send manually. Nothing leaves your machine.
 
-**Enable it:**
-
-1. Open **Settings → Voice** and toggle it on (or edit `~/.config/openagentd/speech.yaml` directly).
-2. Install the local transcription extra once:
-
-```bash
-uv sync --extra voice-local
-# or, for tool installs:
-uv tool install "openagentd[voice-local]"
-```
+**Enable it:** open **Settings → Voice** and toggle it on (or edit `~/.config/openagentd/speech.yaml` directly). `faster-whisper` ships with the default install — no extra to enable.
 
 **`speech.yaml` reference:**
 

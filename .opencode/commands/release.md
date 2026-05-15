@@ -108,12 +108,12 @@ Sections:
   pip install openagentd
   ```
 
-  `brew install openagentd` installs the base package only; optional extras (e.g. `openagentd[voice-local]`) must be installed via `uv` or `pip`:
+  `brew install openagentd` installs the base package only; optional extras (e.g. `openagentd[full]`) must be installed via `uv` or `pip`:
 
   ```
-  uv tool install "openagentd[voice-local]"
+  uv tool install "openagentd[full]"
   # or
-  pip install "openagentd[voice-local]"
+  pip install "openagentd[full]"
   ```
   ````
 
