@@ -40,7 +40,7 @@ struct AppState {
 ///   - ``y = 14`` → buttons sit near the top (visibly above centre).
 ///   - ``y = 20`` → still slightly above centre.
 ///   - ``y = 22`` → visually centred.
-///   - ``y = 26`` → buttons sit near the bottom (visibly below centre).
+///   - ``y = 24-26`` → buttons sit below centre.
 /// ``x = 12`` keeps the standard macOS left margin.
 ///
 /// On Windows and Linux we keep the default OS chrome — those
