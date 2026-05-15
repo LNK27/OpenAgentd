@@ -26,6 +26,8 @@ import {
 
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { getPlatform } from '@/hooks/use-platform'
+import { useDesktopUpdateCheck, useDesktopUpdateInstall } from '@/hooks/use-desktop-update'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -94,16 +96,32 @@ function SettingsNavCard({ to, icon: Icon, title, description, count, countLabel
 }
 
 export function SystemUpdateCard() {
+  const { isTauri } = getPlatform()
   const healthQ = useHealthQuery()
-  const updateQ = useUpdateStatusQuery()
-  const installMut = useInstallUpdateMutation()
+  // Two parallel update sources, only one is "live" at a time:
+  //   - Inside the Tauri desktop bundle → the Tauri auto-updater (signed
+  //     bundle from ``v<version>-desktop`` GitHub releases).
+  //   - Anywhere else (CLI server, browser) → the PyPI-backed flow which
+  //     spawns ``openagentd update`` on the host.
+  // Both queries are ``enabled: false`` so neither auto-fires; the
+  // active branch is chosen by ``isTauri`` in ``handleCheck`` /
+  // ``handleInstall``.
+  const pypiUpdateQ = useUpdateStatusQuery()
+  const pypiInstallMut = useInstallUpdateMutation()
+  const desktopUpdateQ = useDesktopUpdateCheck()
+  const desktopInstallMut = useDesktopUpdateInstall()
+
   const push = useToastStore((s) => s.push)
-  const status = updateQ.data
+
+  const isChecking = isTauri ? desktopUpdateQ.isFetching : pypiUpdateQ.isFetching
+  const isInstalling = isTauri ? desktopInstallMut.isPending : pypiInstallMut.isPending
+  const status = isTauri ? desktopUpdateQ.data : pypiUpdateQ.data
+  const error = isTauri ? desktopUpdateQ.error : pypiUpdateQ.error
   const currentVersion = status?.current_version ?? healthQ.data?.version
 
   const handleCheck = async () => {
     try {
-      const result = await updateQ.refetch()
+      const result = isTauri ? await desktopUpdateQ.refetch() : await pypiUpdateQ.refetch()
       if (result.error) throw result.error
       const data = result.data
       if (!data) return
@@ -123,12 +141,24 @@ export function SystemUpdateCard() {
 
   const handleInstall = async () => {
     try {
-      await installMut.mutateAsync()
-      push({
-        tone: 'success',
-        title: 'Update started',
-        description: 'OpenAgentd will install the update and restart in the background.',
-      }, 8000)
+      if (isTauri) {
+        await desktopInstallMut.mutateAsync()
+        // Tauri ``relaunch()`` should fire before this toast is read, but
+        // queue it anyway so the user sees confirmation if the relaunch
+        // is delayed (e.g. macOS Gatekeeper prompt on first signed run).
+        push({
+          tone: 'success',
+          title: 'Update installed',
+          description: 'OpenAgentd is restarting to apply the update.',
+        }, 8000)
+      } else {
+        await pypiInstallMut.mutateAsync()
+        push({
+          tone: 'success',
+          title: 'Update started',
+          description: 'OpenAgentd will install the update and restart in the background.',
+        }, 8000)
+      }
     } catch (err) {
       push({
         tone: 'error',
@@ -151,11 +181,11 @@ export function SystemUpdateCard() {
           size="sm"
           variant="outline"
           onClick={handleCheck}
-          disabled={updateQ.isFetching || installMut.isPending}
+          disabled={isChecking || isInstalling}
           className="justify-self-start sm:justify-self-end"
         >
-          <RefreshCw size={13} className={cn(updateQ.isFetching && 'animate-spin')} aria-hidden="true" />
-          {updateQ.isFetching ? 'Checking...' : 'Check for updates'}
+          <RefreshCw size={13} className={cn(isChecking && 'animate-spin')} aria-hidden="true" />
+          {isChecking ? 'Checking...' : 'Check for updates'}
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -172,9 +202,9 @@ export function SystemUpdateCard() {
               </>
             )}
           </div>
-          {updateQ.error && (
+          {error && (
             <p className="mt-2 text-(--color-error)">
-              {updateQ.error instanceof Error ? updateQ.error.message : String(updateQ.error)}
+              {error instanceof Error ? error.message : String(error)}
             </p>
           )}
           {status?.install_blocked_reason && (
@@ -190,10 +220,10 @@ export function SystemUpdateCard() {
             <Button
               size="sm"
               onClick={handleInstall}
-              disabled={!status.can_install || installMut.isPending}
+              disabled={!status.can_install || isInstalling}
             >
               <Download size={13} aria-hidden="true" />
-              {installMut.isPending ? 'Starting...' : 'Install'}
+              {isInstalling ? 'Starting...' : 'Install'}
             </Button>
           </div>
         )}

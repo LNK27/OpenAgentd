@@ -462,6 +462,15 @@ fn main() {
         .plugin(log_plugin)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // The updater plugin reads ``plugins.updater`` from
+        // ``tauri.conf.json`` — endpoint, public key, and the per-platform
+        // install mode. The frontend drives the actual check/install via
+        // ``@tauri-apps/plugin-updater``; this just makes the plugin
+        // reachable from the webview. ``tauri-plugin-process`` is needed
+        // so the JS side can call ``relaunch()`` after the new bundle is
+        // staged.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(state)
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
