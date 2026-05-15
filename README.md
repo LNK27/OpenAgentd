@@ -99,7 +99,7 @@ openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5
 openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5
 ```
 
-Existing agent files are not overwritten unless `--force` is passed. See [`documents/docs/configuration.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md#agent-configuration) for supported source files.
+Existing agent files are not overwritten unless `--force` is passed. See [`documents/docs/configuration/agents.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/agents.md#importing-from-other-systems) for supported source files.
 
 ---
 
@@ -296,21 +296,61 @@ OpenAgentd ships with [Context7](https://context7.com) pre-configured. Add any M
 
 ## Documentation
 
+Full documentation index: [`documents/docs/index.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md).
+
+### Getting started
+
 | Section | Contents |
 |---------|----------|
 | [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | pip, uv, Homebrew, Docker, source |
 | [CLI reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/cli.md) | Every `openagentd` subcommand |
-| [Configuration](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md) | Env vars, agent `.md` files, providers, tools, skills, sandbox |
-| [Architecture](https://github.com/lthoangg/openagentd/blob/main/documents/docs/architecture.md) | C4 diagrams, agent loop, SSE protocol |
-| [API reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/api/index.md) | HTTP endpoints, SSE events, file handling |
-| [Agent engine](https://github.com/lthoangg/openagentd/tree/main/documents/docs/agent) | Loop, hooks, tools, teams, context, summarization |
+| [Configuration overview](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md) | Hub — links into the focused subpages below |
+| [Environment variables](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/env.md) | `Settings` fields, provider keys, optional extras |
+| [Paths & XDG roots](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/paths.md) | DATA / CONFIG / STATE / CACHE / WORKSPACE / WIKI |
+| [LLM providers](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/providers.md) | Every registered prefix, OAuth flows, capability YAML |
+| [Agent files](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/agents.md) | `.md` frontmatter schema, validation, editing workflow |
+| [Built-in tools](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/tools.md) | Filesystem, shell, web, multimodal, memory |
+| [Skills](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/skills.md) | `SKILL.md` format, seeded skill catalog |
+| [Sandbox & permissions](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/sandbox.md) | Denylist paths, user `sandbox.yaml`, permission services |
+| [Comparison](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent |
+| [Troubleshooting](https://github.com/lthoangg/openagentd/blob/main/documents/docs/troubleshooting.md) | Common install and runtime issues |
+
+### Architecture & internals
+
+| Section | Contents |
+|---------|----------|
+| [Architecture](https://github.com/lthoangg/openagentd/blob/main/documents/docs/architecture.md) | C4 diagrams, in-memory SSE streaming, SSE event protocol |
+| [Agent engine](https://github.com/lthoangg/openagentd/tree/main/documents/docs/agent) | Loop, hooks, tools, teams, plugins, context, memory, summarization |
 | [Lazy team members](https://github.com/lthoangg/openagentd/blob/main/documents/docs/agent/team-lazy-spawn.md) | Spawn/dismiss member instances, `blueprint#N` handles, history restore |
+| [API reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/api/index.md) | HTTP endpoints, SSE events, file handling |
+
+### Operations
+
+| Section | Contents |
+|---------|----------|
+| [Logging](https://github.com/lthoangg/openagentd/blob/main/documents/docs/logging.md) | App log + per-session JSONL, rotation, console format |
+| [Observability](https://github.com/lthoangg/openagentd/blob/main/documents/docs/observability.md) | OTel spans, DuckDB-backed `/api/observability/*`, `/telemetry` UI |
+| [Desktop distribution](https://github.com/lthoangg/openagentd/blob/main/documents/docs/desktop.md) | Tauri v2 shell, Python sidecar, token auth, release pipeline |
+| [Title generation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/title-generation.md) | LLM-generated session titles, SSE event, config |
+
+### Frontend (`web/`)
+
+| Section | Contents |
+|---------|----------|
+| [App chrome](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/chrome.md) | Shared header, platform detection, Tauri drag, macOS overlay |
 | [Workspace Files](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/workspace-files.md) | Session files, coding Files & Diff, previews, downloads |
 | [Todos popover](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/todos.md) | Task board, assignments, claims, dependencies, live updates |
 | [Tool rendering](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/tool-results.md) | Tool call/result UI and custom renderers |
-| [Comparison](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent |
-| [Troubleshooting](https://github.com/lthoangg/openagentd/blob/main/documents/docs/troubleshooting.md) | Common install and runtime issues |
-| [Guidelines](https://github.com/lthoangg/openagentd/blob/main/documents/docs/guidelines.md) | Code style, testing patterns, workflow (contributors) |
+| [Chat input & queue](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/chat-input.md) | Consecutive message queuing, `PendingMessageQueue` |
+| [Voice input](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/voice-input.md) | Browser mic, local STT, transcript insertion, settings |
+| [Mobile layout](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/mobile.md) | Phone-first responsive design — breakpoints, safe areas |
+
+### Contributing
+
+| Section | Contents |
+|---------|----------|
+| [Guidelines](https://github.com/lthoangg/openagentd/blob/main/documents/docs/guidelines.md) | Dev commands, code style, testing patterns, GitHub conventions |
+| [Team testing](https://github.com/lthoangg/openagentd/blob/main/documents/docs/testing/team.md) | Manual smoke-test recipes for the multi-agent team |
 
 ---
 
