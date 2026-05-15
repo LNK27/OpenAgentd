@@ -5,16 +5,42 @@ Credentials live in ``{CACHE_DIR}/copilot_oauth.json``.
 Called by ``app.cli.commands.auth`` central dispatcher::
 
     openagentd auth copilot
+
+For UI-driven login, ``app.api.routes.auth`` passes an ``event_sink``
+that turns user-facing print calls into structured SSE events so the
+desktop/web UI can render a "Connect with GitHub Copilot" modal with
+live device-code display.
 """
 
 from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import httpx
 from pydantic import BaseModel, SecretStr
+
+# Callable invoked at every user-visible milestone. ``event`` is the
+# short discriminator (e.g. "device_code", "polling", "success",
+# "failed") and ``data`` is the JSON-serialisable payload.
+EventSink = Callable[[str, dict[str, Any]], None]
+
+
+def _say(event_sink: EventSink | None, event: str, message: str, **data: Any) -> None:
+    """Either pretty-print to stdout (CLI) or push a typed event (UI).
+
+    The dual behaviour keeps the CLI experience unchanged while letting
+    the HTTP route consume structured events without parsing stdout.
+    """
+    if event_sink is None:
+        print(message)
+        return
+    payload = {"message": message, **data}
+    event_sink(event, payload)
+
 
 # -- Persistence --------------------------------------------------------------
 
@@ -86,10 +112,36 @@ def _request_device_code() -> dict:
     return r.json()
 
 
-def _poll_for_token(device_code: str, interval: int, expires_in: int) -> str:
+def _poll_for_token(
+    device_code: str,
+    interval: int,
+    expires_in: int,
+    *,
+    event_sink: EventSink | None = None,
+) -> str:
+    """Poll GitHub for the access token; emit ``polling`` events while waiting.
+
+    Raises ``RuntimeError`` on terminal failures when ``event_sink`` is set
+    (so the HTTP route can return a proper 4xx instead of the CLI's
+    ``sys.exit``). The CLI path keeps the ``sys.exit`` behaviour because
+    interactive users expect the process to terminate on these errors.
+    """
     deadline = time.time() + expires_in
+    # ``started`` is only used by the heartbeat emission, which is gated
+    # on ``event_sink is not None``. Computing it conditionally keeps the
+    # CLI path's ``time.time()`` call count stable so existing tests that
+    # mock the clock keep working without modification.
+    started = time.time() if event_sink is not None else 0.0
     while time.time() < deadline:
         time.sleep(interval)
+        # Per-iteration heartbeat so the UI's timer doesn't appear frozen.
+        if event_sink is not None:
+            _say(
+                event_sink,
+                "polling",
+                f"Waiting for authorization… {int(time.time() - started)}s",
+                elapsed_s=int(time.time() - started),
+            )
         r = httpx.post(
             _ACCESS_TOKEN_URL,
             headers=_HEADERS,
@@ -113,16 +165,35 @@ def _poll_for_token(device_code: str, interval: int, expires_in: int) -> str:
             interval += 5
             continue
         elif error == "expired_token":
-            print("Device code expired. Run again.")
+            _say(
+                event_sink,
+                "failed",
+                "Device code expired. Run again.",
+                reason="expired",
+            )
+            if event_sink is not None:
+                raise RuntimeError("device_code_expired")
             sys.exit(1)
         elif error == "access_denied":
-            print("User denied access.")
+            _say(event_sink, "failed", "User denied access.", reason="denied")
+            if event_sink is not None:
+                raise RuntimeError("access_denied")
             sys.exit(1)
         else:
-            print(f"Unexpected error: {error}")
+            _say(
+                event_sink,
+                "failed",
+                f"Unexpected error: {error}",
+                reason="unexpected",
+                detail=error,
+            )
+            if event_sink is not None:
+                raise RuntimeError(f"unexpected:{error}")
             sys.exit(1)
 
-    print("Timed out waiting for authorization.")
+    _say(event_sink, "failed", "Timed out waiting for authorization.", reason="timeout")
+    if event_sink is not None:
+        raise RuntimeError("timeout")
     sys.exit(1)
 
 
@@ -160,25 +231,39 @@ def _verify_copilot_access(token: str) -> bool:
 # -- Public login function ----------------------------------------------------
 
 
-def login(oauth_path: Path | None = None) -> None:
-    """Run the full GitHub Copilot device-flow login."""
+def login(
+    oauth_path: Path | None = None, *, event_sink: EventSink | None = None
+) -> None:
+    """Run the full GitHub Copilot device-flow login.
+
+    When ``event_sink`` is ``None`` (the CLI default), prints user-visible
+    messages to stdout. When supplied, emits structured events via the
+    callback so the HTTP/SSE route can render a live login modal.
+    """
     oauth_path = oauth_path or _default_oauth_file()
 
-    print("=== GitHub Copilot Device Login ===\n")
+    _say(event_sink, "started", "=== GitHub Copilot Device Login ===\n")
 
     # Me check if already logged in
     existing = CopilotOAuth.load(oauth_path)
     if existing:
-        print(f"Existing token found in {oauth_path}")
-        print("Verifying...")
+        _say(event_sink, "checking_existing", f"Existing token found in {oauth_path}")
         if _verify_copilot_access(existing.github_token.get_secret_value()):
-            print("\nExisting token still valid. No action needed.")
-            print("To force re-login, delete the file and run again.")
+            _say(
+                event_sink,
+                "success",
+                "Existing token still valid. No action needed.",
+                already_authenticated=True,
+            )
             return
-        print("\nExisting token invalid. Re-authenticating...\n")
+        _say(
+            event_sink,
+            "reauthenticating",
+            "Existing token invalid. Re-authenticating...",
+        )
 
     # Step 1: get device code
-    print("Requesting device code...")
+    _say(event_sink, "requesting_device_code", "Requesting device code...")
     data = _request_device_code()
     device_code = data["device_code"]
     user_code = data["user_code"]
@@ -186,24 +271,43 @@ def login(oauth_path: Path | None = None) -> None:
     interval = data.get("interval", 5)
     expires_in = data.get("expires_in", 900)
 
-    print(f"\n  Open:  {verification_uri}")
-    print(f"  Code:  {user_code}\n")
-    print("Waiting for authorization...\n")
+    _say(
+        event_sink,
+        "device_code",
+        f"Open: {verification_uri}  Code: {user_code}",
+        verification_uri=verification_uri,
+        user_code=user_code,
+        expires_in=expires_in,
+    )
 
     # Step 2: poll for token
-    token = _poll_for_token(device_code, interval, expires_in)
-    print(f"GitHub token acquired: {token[:8]}...{token[-4:]}\n")
+    token = _poll_for_token(device_code, interval, expires_in, event_sink=event_sink)
+    _say(
+        event_sink,
+        "token_acquired",
+        f"GitHub token acquired: {token[:8]}...{token[-4:]}",
+    )
 
     # Step 3: verify Copilot access
-    print("Verifying Copilot access...")
+    _say(event_sink, "verifying", "Verifying Copilot access...")
     ok = _verify_copilot_access(token)
     if not ok:
-        print("\nWARNING: Token obtained but Copilot access failed.")
-        print("Make sure you have an active GitHub Copilot subscription.\n")
-        print("Saving token anyway — you can retry later.\n")
+        _say(
+            event_sink,
+            "warning",
+            "Token obtained but Copilot access failed. "
+            "Make sure you have an active GitHub Copilot subscription. "
+            "Saving token anyway — you can retry later.",
+            copilot_access_ok=False,
+        )
 
     # Step 4: save
     oauth = CopilotOAuth(github_token=SecretStr(token))
     oauth.save(oauth_path)
-    print(f"\nSaved to {oauth_path}")
-    print("Use model: copilot:gpt-5.4-mini")
+    _say(
+        event_sink,
+        "success",
+        f"Saved to {oauth_path}. Use model: copilot:gpt-5.4-mini",
+        oauth_path=str(oauth_path),
+        suggested_model="copilot:gpt-5.4-mini",
+    )

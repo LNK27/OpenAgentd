@@ -1,0 +1,161 @@
+"""Tests for app/api/routes/auth.py — UI-driven OAuth SSE endpoint."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from typing import Any
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.routes.auth import router
+
+
+def _make_app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(router, prefix="/api/auth")
+    return app
+
+
+def test_unknown_provider_returns_404() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    response = client.get("/api/auth/notreal/login")
+    assert response.status_code == 404
+    assert "notreal" in response.json()["detail"]
+
+
+def test_sse_stream_emits_events_from_stubbed_login(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stubbed login() pushes events; the SSE response surfaces them in order.
+
+    Verifies the contract: events arrive with the right ``event`` field
+    and JSON-encoded ``data``, terminating after the final ``success``.
+    """
+    fake_module = type("M", (), {})()
+
+    def fake_login(event_sink: Any = None, **_kwargs: Any) -> None:
+        # Simulate the real login flow without hitting GitHub.
+        assert event_sink is not None
+        event_sink("started", {"message": "starting"})
+        event_sink(
+            "device_code",
+            {
+                "message": "Open https://x/device",
+                "verification_uri": "https://x/device",
+                "user_code": "ABCD-1234",
+            },
+        )
+        event_sink("polling", {"message": "waiting", "elapsed_s": 1})
+        # Tiny sleep so the queue drains in order through the loop.
+        time.sleep(0.01)
+        event_sink(
+            "success",
+            {"message": "done", "oauth_path": "/tmp/x.json"},
+        )
+
+    fake_module.login = fake_login
+
+    # Replace the provider's login module with our fake. The route looks
+    # up the module via importlib using the path stored in _PROVIDERS.
+    import app.api.routes.auth as auth_route
+
+    monkeypatch.setattr(
+        auth_route,
+        "_PROVIDERS",
+        {"copilot": ("test_auth_routes_fake_module", "fake")},
+    )
+
+    def fake_import(_name: str) -> Any:
+        return fake_module
+
+    monkeypatch.setattr(auth_route.importlib, "import_module", fake_import)
+
+    app = _make_app()
+    client = TestClient(app)
+    with client.stream("GET", "/api/auth/copilot/login") as response:
+        assert response.status_code == 200
+        # Collect all SSE messages from the stream. Each message is one
+        # or more lines like ``event: foo\ndata: {...}\n\n``.
+        raw = b""
+        for chunk in response.iter_bytes():
+            raw += chunk
+        text = raw.decode("utf-8")
+
+    # Parse the event/data pairs out of the raw SSE text.
+    events: list[tuple[str, dict[str, Any]]] = []
+    cur_event: str | None = None
+    for line in text.splitlines():
+        if line.startswith("event:"):
+            cur_event = line.removeprefix("event:").strip()
+        elif line.startswith("data:") and cur_event is not None:
+            payload = json.loads(line.removeprefix("data:").strip())
+            events.append((cur_event, payload))
+            cur_event = None
+
+    event_names = [e[0] for e in events]
+    assert event_names == ["started", "device_code", "polling", "success"]
+
+    # The device_code event carries enough for the client to render the
+    # modal — verification URL + user code.
+    device_payload = next(p for n, p in events if n == "device_code")
+    assert device_payload["verification_uri"] == "https://x/device"
+    assert device_payload["user_code"] == "ABCD-1234"
+
+
+def test_sse_stream_surfaces_exception_from_login(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If login() raises, the stream emits a ``failed`` event and closes."""
+    fake_module = type("M", (), {})()
+
+    def fake_login(event_sink: Any = None, **_kwargs: Any) -> None:
+        event_sink("started", {"message": "starting"})
+        raise RuntimeError("synthetic failure")
+
+    fake_module.login = fake_login
+
+    import app.api.routes.auth as auth_route
+
+    monkeypatch.setattr(
+        auth_route,
+        "_PROVIDERS",
+        {"copilot": ("fake", "fake")},
+    )
+    monkeypatch.setattr(
+        auth_route.importlib, "import_module", lambda _name: fake_module
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    with client.stream("GET", "/api/auth/copilot/login") as response:
+        text = b"".join(response.iter_bytes()).decode("utf-8")
+
+    # Should contain both ``started`` and a ``failed`` terminating event.
+    assert "event: started" in text
+    assert "event: failed" in text
+    assert "synthetic failure" in text
+
+
+async def test_event_sink_pushes_via_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Smoke test: the _sink closure puts items on the queue via the loop.
+
+    Mirrors the contract used by the SSE route. Built standalone so the
+    test doesn't have to bring up a full FastAPI server.
+    """
+    queue: asyncio.Queue[tuple[str, dict[str, Any]] | object] = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def sink(event: str, data: dict[str, Any]) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, (event, data))
+
+    # Drive it from a thread the way the real route does.
+    await asyncio.to_thread(sink, "hello", {"k": "v"})
+
+    item = await asyncio.wait_for(queue.get(), timeout=1.0)
+    assert isinstance(item, tuple)
+    assert item == ("hello", {"k": "v"})

@@ -19,6 +19,7 @@ import time
 import urllib.parse
 import webbrowser
 from base64 import urlsafe_b64encode
+from collections.abc import Callable
 from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -34,6 +35,22 @@ CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 ISSUER = "https://auth.openai.com"
 OAUTH_PORT = 1455
 _USER_AGENT = "openagentd/1.0.0"
+
+
+# Mirrors app.agent.providers.copilot.oauth.EventSink — kept duplicated
+# rather than imported because they're independent flows that happen to
+# share a callback shape.
+EventSink = Callable[[str, dict[str, Any]], None]
+
+
+def _say(event_sink: EventSink | None, event: str, message: str, **data: Any) -> None:
+    """Dual stdout/event-sink emitter — see copilot/oauth.py._say."""
+    if event_sink is None:
+        print(message)
+        return
+    payload = {"message": message, **data}
+    event_sink(event, payload)
+
 
 # -- Persistence --------------------------------------------------------------
 
@@ -276,7 +293,9 @@ def _pkce_login(oauth_path: Path | None = None) -> None:
 # -- Device-code headless flow ------------------------------------------------
 
 
-def _device_login(oauth_path: Path | None = None) -> None:
+def _device_login(
+    oauth_path: Path | None = None, *, event_sink: EventSink | None = None
+) -> None:
     """Headless device-code flow (no browser required on this machine)."""
     oauth_path = oauth_path or _default_oauth_file()
 
@@ -296,12 +315,26 @@ def _device_login(oauth_path: Path | None = None) -> None:
     user_code: str = device_data["user_code"]
     interval: int = max(int(device_data.get("interval", 5)), 1)
 
-    print(f"\n  Open:  {ISSUER}/codex/device")
-    print(f"  Code:  {user_code}\n")
-    print("Polling for authorization...\n")
+    verification_uri = f"{ISSUER}/codex/device"
+    _say(
+        event_sink,
+        "device_code",
+        f"Open: {verification_uri}  Code: {user_code}",
+        verification_uri=verification_uri,
+        user_code=user_code,
+    )
+    _say(event_sink, "polling_started", "Polling for authorization...")
 
+    started = time.time()
     while True:
         time.sleep(interval + 3)  # +3s safety margin
+        if event_sink is not None:
+            _say(
+                event_sink,
+                "polling",
+                f"Waiting for authorization… {int(time.time() - started)}s",
+                elapsed_s=int(time.time() - started),
+            )
         poll = httpx.post(
             f"{ISSUER}/api/accounts/deviceauth/token",
             headers={
@@ -330,16 +363,24 @@ def _device_login(oauth_path: Path | None = None) -> None:
                 timeout=30.0,
             )
             token_r.raise_for_status()
-            _save_tokens(token_r.json(), oauth_path)
+            _save_tokens(token_r.json(), oauth_path, event_sink=event_sink)
             return
 
         if poll.status_code not in (403, 404):
-            print(f"Unexpected poll response: {poll.status_code}")
+            msg = f"Unexpected poll response: {poll.status_code}"
+            _say(event_sink, "failed", msg, status=poll.status_code)
+            if event_sink is not None:
+                raise RuntimeError(msg)
             sys.exit(1)
         # 403/404 → still pending, keep polling
 
 
-def _save_tokens(tokens: dict[str, Any], oauth_path: Path) -> None:
+def _save_tokens(
+    tokens: dict[str, Any],
+    oauth_path: Path,
+    *,
+    event_sink: EventSink | None = None,
+) -> None:
     account_id = _extract_account_id(tokens)
     oauth = CodexOAuth(
         access_token=SecretStr(tokens["access_token"]),
@@ -348,36 +389,68 @@ def _save_tokens(tokens: dict[str, Any], oauth_path: Path) -> None:
         account_id=account_id,
     )
     oauth.save(oauth_path)
-    print(f"Saved to {oauth_path}")
-    if account_id:
-        print(f"Account: {account_id}")
-    print("Use model: codex:gpt-5.4")
+    suffix = f" (account: {account_id})" if account_id else ""
+    _say(
+        event_sink,
+        "success",
+        f"Saved to {oauth_path}{suffix}. Use model: codex:gpt-5.4",
+        oauth_path=str(oauth_path),
+        account_id=account_id or "",
+        suggested_model="codex:gpt-5.4",
+    )
 
 
 # -- Public login function ----------------------------------------------------
 
 
-def login(oauth_path: Path | None = None, *, device: bool = False) -> None:
-    """Run the OpenAI Codex OAuth login."""
+def login(
+    oauth_path: Path | None = None,
+    *,
+    device: bool = False,
+    event_sink: EventSink | None = None,
+) -> None:
+    """Run the OpenAI Codex OAuth login.
+
+    When ``event_sink`` is provided, the device-code flow is always used —
+    PKCE requires a local HTTP callback that the SSE-driven UI can't
+    consume directly. The ``device`` argument is ignored in that case.
+    """
     oauth_path = oauth_path or _default_oauth_file()
 
-    print("=== OpenAI Codex OAuth Login ===\n")
+    _say(event_sink, "started", "=== OpenAI Codex OAuth Login ===")
 
     existing = CodexOAuth.load(oauth_path)
     if existing and not existing.is_expired():
-        print(f"Valid token found in {oauth_path}")
-        print("To force re-login, delete the file and run again.")
+        _say(
+            event_sink,
+            "success",
+            f"Valid token found in {oauth_path}",
+            already_authenticated=True,
+        )
         return
     if existing and existing.is_expired():
-        print("Token expired. Refreshing...")
+        _say(event_sink, "refreshing", "Token expired. Refreshing...")
         try:
             existing.refresh(oauth_path)
-            print("Token refreshed successfully.")
+            _say(event_sink, "success", "Token refreshed successfully.")
             return
         except Exception as e:
-            print(f"Refresh failed ({e}), re-authenticating...\n")
+            _say(
+                event_sink,
+                "refresh_failed",
+                f"Refresh failed ({e}), re-authenticating...",
+                detail=str(e),
+            )
 
-    if device:
-        _device_login(oauth_path)
+    # SSE flow forces device path — PKCE needs a local HTTP listener that
+    # the UI can't reach.
+    use_device = device or event_sink is not None
+    if use_device:
+        # Pass ``event_sink`` only when set so the CLI call signature
+        # exactly matches the existing tests (``_device_login(path)``).
+        if event_sink is None:
+            _device_login(oauth_path)
+        else:
+            _device_login(oauth_path, event_sink=event_sink)
     else:
         _pkce_login(oauth_path)
