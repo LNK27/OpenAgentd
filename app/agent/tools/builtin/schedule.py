@@ -1,10 +1,19 @@
-"""schedule_task tool — create, list, pause, resume, or delete scheduled tasks.
+"""schedule_task tool — the team lead's personal reminder / future-self queue.
 
-The agent can call this tool to manage the scheduler on behalf of the user,
-e.g. "remind me every hour to check email" or "run the daily-report agent at 9 AM".
+Scheduling is **first-person**: every task the lead schedules fires back to
+*itself* (same mode, same workspace) at the target time. There is no
+cross-team or cross-workspace surface — the tool only ever sees and acts on
+tasks bound to the calling lead's routing context. Think of it as a sticky
+note the agent leaves for its future self.
 
-All operations proxy through the in-process :data:`~app.scheduler.scheduler.task_scheduler`
-singleton so no HTTP round-trip is needed.
+Typical uses:
+  * "Remind me to follow up with Alice next Monday at 9 AM"
+  * "Check the build status every 10 minutes for the next hour"
+  * "Run the daily standup-prep prompt every weekday at 8:30 AM"
+
+All operations proxy through the in-process
+:data:`~app.scheduler.scheduler.task_scheduler` singleton so no HTTP
+round-trip is needed.
 """
 
 from __future__ import annotations
@@ -74,13 +83,13 @@ async def _schedule_task(
         Literal["create", "list", "pause", "resume", "delete", "trigger"],
         Field(
             description=(
-                "Action to perform: "
-                "'create' a new task, "
-                "'list' all tasks, "
-                "'pause' a running task, "
-                "'resume' a paused task, "
-                "'delete' a task, "
-                "'trigger' a task immediately."
+                "Action to perform on your own reminders: "
+                "'create' a new reminder, "
+                "'list' your pending reminders, "
+                "'pause' a running reminder, "
+                "'resume' a paused reminder, "
+                "'delete' a reminder, "
+                "'trigger' a reminder immediately (deliver its prompt now)."
             )
         ),
     ],
@@ -153,7 +162,12 @@ async def _schedule_task(
         str | None,
         Field(
             default=None,
-            description="[create] Message to send to the team lead when the task fires. Required for create.",
+            description=(
+                "[create] The message you will receive when the reminder "
+                "fires. Write it in the second person, addressed to your "
+                "future self — e.g. 'Check whether the deployment "
+                "completed and report any failures'. Required for create."
+            ),
         ),
     ] = None,
     session_id: Annotated[
@@ -191,17 +205,53 @@ async def _schedule_task(
     _mode: Annotated[Literal["normal", "coding"], InjectedArg()] = "normal",
     _workspace: Annotated[str | None, InjectedArg()] = None,
 ) -> str:
-    """Manage scheduled tasks: create recurring or one-shot agent prompts, list, pause, resume, delete, or trigger tasks.
+    """Set a reminder for your future self — a prompt that will be
+    delivered back to you (same team, same workspace) at a future time or
+    on a recurring schedule.
 
-    Use this when the user asks to automate something on a schedule —
-    e.g. "check my email every hour", "run a report at 9 AM every weekday",
-    "remind me tomorrow at 3 PM".
+    Use this whenever the user wants you to do something later, or to
+    keep doing something on a cadence — e.g.
+      * "remind me tomorrow at 3 PM to follow up with the client"
+      * "check my email every hour and summarize anything urgent"
+      * "every weekday at 8:30 AM, draft the standup summary"
+      * "in 30 minutes, ask me how the build went"
+
+    The scheduled prompt is delivered to *you* — the same lead that
+    scheduled it — not to a different agent or another workspace.
+
+    Use ``list`` to see your own pending reminders, ``pause`` / ``resume``
+    to toggle one, ``trigger`` to fire it now, ``delete`` to drop it.
+    Reminders from other teams or other coding workspaces are invisible
+    to you; you can only manage your own.
     """
     from app.scheduler.scheduler import task_scheduler
+
+    # ── scope helpers ────────────────────────────────────────────────────────
+    # Every action other than ``create`` operates on tasks that already
+    # exist in the DB. The agent calling this tool is bound to a specific
+    # routing context (``_mode`` + ``_workspace``), and must only see /
+    # touch tasks that belong to that same context:
+    #
+    #   * Default-team lead (``_mode='normal'``)  → only ``mode='normal'``
+    #     tasks.
+    #   * Coding-team lead   (``_mode='coding'``) → only ``mode='coding'``
+    #     tasks with a matching ``workspace``.
+    #
+    # Cross-scope IDs are reported as "no task with id …" (not "forbidden")
+    # so the agent has no way to enumerate or probe tasks outside its
+    # scope — the surface is identical to a missing row.
+    def _in_scope(task: Any) -> bool:
+        t_mode = getattr(task, "mode", "normal")
+        if t_mode != _mode:
+            return False
+        if _mode == "coding":
+            return getattr(task, "workspace", None) == _workspace
+        return True
 
     # ── list ─────────────────────────────────────────────────────────────────
     if action == "list":
         tasks = await task_scheduler.list_tasks()
+        tasks = [t for t in tasks if _in_scope(t)]
         if not tasks:
             return "No scheduled tasks."
         lines = [f"Scheduled tasks ({len(tasks)}):"]
@@ -221,6 +271,13 @@ async def _schedule_task(
         except ValueError:
             return f"Error: '{task_id}' is not a valid UUID."
 
+        # Scope check happens before any mutation. ``pause``/``resume``
+        # would otherwise mutate via the scheduler before we could inspect
+        # the row's mode/workspace.
+        existing = await task_scheduler.get_task(uid)
+        if existing is None or not _in_scope(existing):
+            return f"Error: no task with id '{task_id}'."
+
         if action == "pause":
             task = await task_scheduler.pause(uid)
             logger.info("schedule_tool_pause task_id={} name={}", uid, task.name)
@@ -232,17 +289,11 @@ async def _schedule_task(
             return f"Task '{task.name}' resumed. Next fire: {task.next_fire_at}"
 
         if action == "delete":
-            # Fetch name before deleting for the confirmation message
-            existing = await task_scheduler.get_task(uid)
-            task_name = existing.name if existing else str(uid)
             await task_scheduler.remove(uid)
-            logger.info("schedule_tool_delete task_id={} name={}", uid, task_name)
-            return f"Task '{task_name}' deleted."
+            logger.info("schedule_tool_delete task_id={} name={}", uid, existing.name)
+            return f"Task '{existing.name}' deleted."
 
         if action == "trigger":
-            existing = await task_scheduler.get_task(uid)
-            if existing is None:
-                return f"Error: no task with id '{task_id}'."
             await task_scheduler.trigger(uid)
             logger.info("schedule_tool_trigger task_id={} name={}", uid, existing.name)
             return f"Task '{existing.name}' triggered immediately."

@@ -432,29 +432,29 @@ For team work, spawn members before assigning their todos and use the returned c
 
 | Tool | What it does |
 |------|-------------|
-| `schedule_task` | Create, list, pause, resume, delete, or trigger scheduled tasks via the in-process `TaskScheduler` singleton |
+| `schedule_task` | The lead's **personal reminder queue** — schedules prompts that fire back to the same lead later. Create, list, pause, resume, delete, trigger. |
 
-`schedule_task` is the primary interface for the lead agent to manage the scheduler on the user's behalf, e.g. *"remind me every hour"*, *"run the daily-report report at 9 AM every weekday"*. Every fired task delivers to the **team lead** — there is no per-agent routing.
+Semantically a future-self note: every reminder the lead schedules fires back to *itself* (same mode, same workspace). There is no cross-team or cross-workspace surface — the tool only ever sees and acts on reminders bound to the calling lead's routing context.
 
-When a task fires, the dispatched message is prefixed with the task name:
+When a reminder fires, the dispatched message is prefixed with the task name:
 ```
 [Scheduled Task: daily-report]
 Generate the daily report and send it to Slack.
 ```
-This makes it clear to the agent (and visible in session history) that the turn is automated and which task triggered it.
+This signals to the agent (and is visible in session history) that the turn is automated and which reminder triggered it.
 
 #### Actions
 
 | Action | Required args | Notes |
 |--------|--------------|-------|
 | `create` | `name`, `schedule_type`, `prompt` + schedule fields | Validates via `ScheduledTaskCreate`; starts timer immediately |
-| `list` | — | Returns all tasks with id, status, next fire time |
-| `pause` | `task_id` (UUID) | Disables task, cancels timer |
+| `list` | — | Returns the **caller's own** reminders (scope-filtered, see below) |
+| `pause` | `task_id` (UUID) | Disables, cancels timer |
 | `resume` | `task_id` (UUID) | Re-enables, recomputes next fire |
 | `delete` | `task_id` (UUID) | Cancels timer, removes from DB |
 | `trigger` | `task_id` (UUID) | Fires immediately without affecting schedule |
 
-#### Routing target — auto-injected
+#### Routing target — auto-injected & enforced
 
 `mode` (`"normal"` | `"coding"`) and `workspace` are **not** part of the
 LLM-visible tool schema. The tool executor injects them from the calling
@@ -465,6 +465,13 @@ the LLM cannot specify or lie about the target. Fires route to:
 
 * `mode="normal"` → `team_manager.get_or_start_team()` (default lead)
 * `mode="coding"` → `team_manager.get_or_start_coding_team(workspace)`
+
+The same `(_mode, _workspace)` is also the **scope filter** for every
+non-create action. `list` returns only in-scope reminders;
+`pause` / `resume` / `delete` / `trigger` reject out-of-scope task IDs
+with the same `"no task with id …"` surface as truly missing rows — so
+cross-scope existence cannot be probed and no mutation reaches the
+scheduler. See `_in_scope` in `app/agent/tools/builtin/schedule.py`.
 
 When `session_id` is an explicit UUID that already exists, `scheduler.create` / `apply_update` reject mismatched `(mode, workspace)` pairs with `InvalidTaskTargetError` (HTTP 422).
 

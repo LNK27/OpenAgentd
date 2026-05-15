@@ -89,13 +89,16 @@ async def test_list_single_task(mock_task_scheduler, sample_task, clean_db):
 
 @pytest.mark.asyncio
 async def test_list_includes_workspace_for_coding(mock_task_scheduler, sample_task):
-    """Coding tasks render workspace in the listing line."""
+    """Coding tasks render workspace in the listing line when listed by the
+    matching coding-team lead."""
     sample_task.mode = "coding"
     sample_task.workspace = "/tmp/project"
     mock_task_scheduler.list_tasks.return_value = [sample_task]
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="list")
+        result = await schedule_task.arun(
+            action="list", _injected=_coding_injected("/tmp/project")
+        )
 
     assert "mode=coding workspace=/tmp/project" in result
 
@@ -545,8 +548,11 @@ async def test_pause_invalid_uuid(mock_task_scheduler):
 
 @pytest.mark.asyncio
 async def test_pause_success(mock_task_scheduler, sample_task, clean_db):
-    """Successfully pauses a task."""
+    """Successfully pauses a task that is in the caller's scope."""
     task_id = str(sample_task.id)
+    # ``pause`` now goes through ``get_task`` first to enforce scope —
+    # tests must seed the lookup as well as the mutation.
+    mock_task_scheduler.get_task.return_value = sample_task
     mock_task_scheduler.pause.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
@@ -557,11 +563,15 @@ async def test_pause_success(mock_task_scheduler, sample_task, clean_db):
 
 
 @pytest.mark.asyncio
-async def test_pause_scheduler_raises(mock_task_scheduler):
-    """Raises ToolExecutionError when task_scheduler.pause() raises."""
+async def test_pause_scheduler_raises(mock_task_scheduler, sample_task):
+    """Raises ToolExecutionError when task_scheduler.pause() raises after a
+    successful scope check."""
     from app.agent.errors import ToolExecutionError
 
-    task_id = str(uuid7())
+    task_id = str(sample_task.id)
+    # In-scope lookup so we reach the mutation path; the mutation then
+    # blows up and the registry wraps the error.
+    mock_task_scheduler.get_task.return_value = sample_task
     mock_task_scheduler.pause.side_effect = RuntimeError("Task not found")
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
@@ -597,10 +607,11 @@ async def test_resume_invalid_uuid(mock_task_scheduler):
 
 @pytest.mark.asyncio
 async def test_resume_success(mock_task_scheduler, sample_task, clean_db):
-    """Successfully resumes a task."""
+    """Successfully resumes a task that is in the caller's scope."""
     task_id = str(sample_task.id)
     next_fire = datetime.now(timezone.utc)
     sample_task.next_fire_at = next_fire
+    mock_task_scheduler.get_task.return_value = sample_task
     mock_task_scheduler.resume.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
@@ -612,11 +623,13 @@ async def test_resume_success(mock_task_scheduler, sample_task, clean_db):
 
 
 @pytest.mark.asyncio
-async def test_resume_scheduler_raises(mock_task_scheduler):
-    """Raises ToolExecutionError when task_scheduler.resume() raises."""
+async def test_resume_scheduler_raises(mock_task_scheduler, sample_task):
+    """Raises ToolExecutionError when task_scheduler.resume() raises after a
+    successful scope check."""
     from app.agent.errors import ToolExecutionError
 
-    task_id = str(uuid7())
+    task_id = str(sample_task.id)
+    mock_task_scheduler.get_task.return_value = sample_task
     mock_task_scheduler.resume.side_effect = RuntimeError("Task not found")
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
@@ -666,20 +679,25 @@ async def test_delete_success(mock_task_scheduler, sample_task, clean_db):
 
 
 @pytest.mark.asyncio
-async def test_delete_task_not_found_uses_uuid_as_fallback(mock_task_scheduler):
-    """When task not found, still calls remove and uses UUID as fallback name."""
+async def test_delete_task_not_found_reports_error_and_skips_remove(
+    mock_task_scheduler,
+):
+    """When the task does not exist, delete returns an error and never calls
+    ``scheduler.remove`` — the previous "use UUID as fallback name and
+    delete anyway" behavior was wrong because (a) it leaked task existence
+    to out-of-scope callers and (b) it issued a write for a non-existent
+    row. The scope-check refactor unifies "missing" and "out of scope"
+    into a single short-circuit before any mutation."""
     task_id = str(uuid7())
     mock_task_scheduler.get_task.return_value = None
-    mock_task_scheduler.remove.return_value = None
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(action="delete", task_id=task_id)
 
-    assert "Task '" in result
-    assert "deleted." in result
-    assert task_id in result
+    assert "Error:" in result
+    assert f"no task with id '{task_id}'" in result
     mock_task_scheduler.get_task.assert_called_once()
-    mock_task_scheduler.remove.assert_called_once()
+    mock_task_scheduler.remove.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -815,3 +833,228 @@ def test_build_agent_schedule_task_not_duplicated(clean_db):
     agent = _build_agent(cfg, {}, factory)
 
     assert list(agent._tools.keys()).count("schedule_task") == 1
+
+
+# ---------------------------------------------------------------------------
+# Scope filtering
+#
+# The scheduler tool is the calling agent's *personal* reminder queue —
+# a coding-team lead bound to ``/repo/a`` must never see, mutate, or even
+# learn about tasks owned by another workspace or by the default team.
+# These tests pin the cross-scope isolation contract: out-of-scope ids
+# present the same "not found" surface as truly missing ids, and
+# out-of-scope mutations are never issued to the scheduler.
+# ---------------------------------------------------------------------------
+
+
+def _make_task(mode: str, workspace: str | None, name: str = "t") -> MagicMock:
+    """Build a minimal mock task with controllable mode/workspace.
+
+    The default ``sample_task`` fixture hard-codes ``mode='normal'``, so
+    scope tests need a parameterized factory to mint coding tasks for
+    arbitrary workspaces and assert the filter against multiple
+    fixtures in the same scenario.
+    """
+    task = MagicMock()
+    task.id = uuid7()
+    task.name = name
+    task.mode = mode
+    task.workspace = workspace
+    task.schedule_type = "every"
+    task.every_seconds = 60
+    task.at_datetime = None
+    task.cron_expression = None
+    task.timezone = "UTC"
+    task.prompt = "do thing"
+    task.session_id = None
+    task.enabled = True
+    task.status = "pending"
+    task.run_count = 0
+    task.next_fire_at = datetime.now(timezone.utc)
+    return task
+
+
+@pytest.mark.asyncio
+async def test_list_default_team_only_sees_normal_tasks(mock_task_scheduler):
+    """The default-team lead (``_mode='normal'``) must filter out every
+    coding task, regardless of workspace. This prevents the
+    user-facing 'normal' chat lead from leaking the existence of any
+    workspace-scoped reminder."""
+    normal_a = _make_task("normal", None, name="normal-a")
+    coding_a = _make_task("coding", "/repo/a", name="coding-a")
+    coding_b = _make_task("coding", "/repo/b", name="coding-b")
+    mock_task_scheduler.list_tasks.return_value = [normal_a, coding_a, coding_b]
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(action="list", _injected=_NORMAL_INJECTED)
+
+    assert "Scheduled tasks (1):" in result
+    assert "name=normal-a" in result
+    # Critical: no leak of the existence of coding tasks — neither the
+    # name nor the workspace path may appear in the rendered output.
+    assert "coding-a" not in result
+    assert "coding-b" not in result
+    assert "/repo/a" not in result
+    assert "/repo/b" not in result
+
+
+@pytest.mark.asyncio
+async def test_list_coding_lead_only_sees_matching_workspace(mock_task_scheduler):
+    """A coding-team lead bound to ``/repo/a`` must filter out:
+       1. all normal tasks (different mode),
+       2. coding tasks for any *other* workspace.
+    Only ``mode='coding' AND workspace='/repo/a'`` survives the filter."""
+    normal_a = _make_task("normal", None, name="normal-a")
+    coding_a = _make_task("coding", "/repo/a", name="coding-a")
+    coding_a2 = _make_task("coding", "/repo/a", name="coding-a2")
+    coding_b = _make_task("coding", "/repo/b", name="coding-b")
+    mock_task_scheduler.list_tasks.return_value = [
+        normal_a,
+        coding_a,
+        coding_a2,
+        coding_b,
+    ]
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="list", _injected=_coding_injected("/repo/a")
+        )
+
+    assert "Scheduled tasks (2):" in result
+    assert "name=coding-a" in result
+    assert "name=coding-a2" in result
+    # Confirm the cross-workspace and cross-mode rows are invisible.
+    assert "normal-a" not in result
+    assert "coding-b" not in result
+    assert "/repo/b" not in result
+
+
+@pytest.mark.asyncio
+async def test_list_filters_to_empty_string_when_all_out_of_scope(
+    mock_task_scheduler,
+):
+    """When the DB has tasks but none match scope, the tool returns the
+    empty-state line — not a misleading "Scheduled tasks (0)" header."""
+    coding_b = _make_task("coding", "/repo/b")
+    mock_task_scheduler.list_tasks.return_value = [coding_b]
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="list", _injected=_coding_injected("/repo/a")
+        )
+
+    assert result == "No scheduled tasks."
+
+
+@pytest.mark.asyncio
+async def test_coding_lead_workspace_is_required_for_scope_match(
+    mock_task_scheduler,
+):
+    """Defensive: a coding-team lead with ``_workspace=None`` (a
+    misconfiguration the injection layer should never produce, but worth
+    pinning) must not accidentally match every coding task — it must
+    match nothing, because the workspace comparison is strict equality."""
+    coding_a = _make_task("coding", "/repo/a")
+    mock_task_scheduler.list_tasks.return_value = [coding_a]
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="list", _injected={"_mode": "coding", "_workspace": None}
+        )
+
+    assert result == "No scheduled tasks."
+
+
+@pytest.mark.parametrize("action", ["pause", "resume", "delete", "trigger"])
+@pytest.mark.asyncio
+async def test_mutation_out_of_scope_returns_not_found_and_never_mutates(
+    action, mock_task_scheduler
+):
+    """For every mutating action: if the row exists but belongs to a
+    different mode or workspace, the tool returns the same "no task with
+    id" surface as for a genuinely missing row, AND must NOT call the
+    underlying scheduler mutation. This is the core security property —
+    callers can neither probe existence nor influence cross-scope tasks."""
+    # Target row is owned by a *different* coding workspace than the caller.
+    cross_scope = _make_task("coding", "/repo/other", name="cross")
+    mock_task_scheduler.get_task.return_value = cross_scope
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action=action,
+            task_id=str(cross_scope.id),
+            _injected=_coding_injected("/repo/mine"),
+        )
+
+    # Same wording as a missing row — no information leak.
+    assert "Error:" in result
+    assert f"no task with id '{cross_scope.id}'" in result
+    # And no mutation reached the scheduler.
+    getattr(mock_task_scheduler, action).assert_not_called()
+
+
+@pytest.mark.parametrize("action", ["pause", "resume", "delete", "trigger"])
+@pytest.mark.asyncio
+async def test_mutation_normal_caller_cannot_touch_coding_task(
+    action, mock_task_scheduler
+):
+    """The default-team lead must not be able to pause/delete a coding
+    task by id-guessing, even though it has no concept of workspaces."""
+    coding_row = _make_task("coding", "/repo/a", name="coding-a")
+    mock_task_scheduler.get_task.return_value = coding_row
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action=action,
+            task_id=str(coding_row.id),
+            _injected=_NORMAL_INJECTED,
+        )
+
+    assert "Error:" in result
+    assert "no task with id" in result
+    getattr(mock_task_scheduler, action).assert_not_called()
+
+
+@pytest.mark.parametrize("action", ["pause", "resume", "delete", "trigger"])
+@pytest.mark.asyncio
+async def test_mutation_coding_caller_cannot_touch_normal_task(
+    action, mock_task_scheduler
+):
+    """Symmetric to the previous test: a coding-team lead must not be
+    able to mutate a default-team reminder by id-guessing."""
+    normal_row = _make_task("normal", None, name="normal-a")
+    mock_task_scheduler.get_task.return_value = normal_row
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action=action,
+            task_id=str(normal_row.id),
+            _injected=_coding_injected("/repo/a"),
+        )
+
+    assert "Error:" in result
+    assert "no task with id" in result
+    getattr(mock_task_scheduler, action).assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mutation_in_scope_passes_through_to_scheduler(
+    mock_task_scheduler,
+):
+    """Positive control for the parameterized scope tests above: the
+    same call shape that gets rejected cross-scope must succeed when
+    the caller's context matches the row. This guards against
+    over-restriction (e.g. accidentally rejecting all mutations)."""
+    row = _make_task("coding", "/repo/a", name="my-reminder")
+    mock_task_scheduler.get_task.return_value = row
+    mock_task_scheduler.pause.return_value = row
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="pause",
+            task_id=str(row.id),
+            _injected=_coding_injected("/repo/a"),
+        )
+
+    assert "Task 'my-reminder' paused." in result
+    mock_task_scheduler.pause.assert_called_once_with(row.id)

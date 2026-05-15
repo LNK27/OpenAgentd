@@ -179,7 +179,7 @@ return HTTP 422 on mismatch.
 
 `PUT` accepts a partial body (`ScheduledTaskUpdate`) — all fields optional. On update the backend cancels the existing timer, recalculates `next_fire_at`, persists to DB, and restarts the timer if `enabled=true`. See [`agent/tools.md`](../agent/tools.md#scheduler-builtinschedulepy) for field semantics and schedule types.
 
-The web UI (`SchedulerPanel`, toggled with `Ctrl+S`) exposes all eight operations. Task detail view includes an **Edit** button that opens an inline edit form pre-populated with current values.
+`GET /api/scheduler/tasks` returns **all** tasks unfiltered — the HTTP surface has no per-caller scope. The web UI (`SchedulerPanel`, toggled with `Ctrl+S`) filters the list client-side to the active chat's `(mode, workspace)` so users see only the lead's own reminders, mirroring the [`schedule_task` tool's scope rule](../agent/tools.md#routing-target--auto-injected--enforced). Task detail view includes an **Edit** button that opens an inline edit form pre-populated with current values.
 
 ## Speech endpoints
 
