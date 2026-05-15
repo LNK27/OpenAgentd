@@ -2,7 +2,7 @@
 title: Workspace Files Panel
 description: Right-side drawer for browsing, previewing, and downloading agent-generated files with live invalidation.
 status: stable
-updated: 2026-05-12
+updated: 2026-05-16
 ---
 
 # Workspace Files panel
@@ -174,6 +174,28 @@ splits each `path` on the last `/` and buckets by directory:
 Each `FileRow` shows a type-aware icon (`FileImage` / `FileCode` /
 `FileText` / generic `File`), the basename in monospace, and the size via
 `formatBytes()`.
+
+---
+
+## Coding Diff view
+
+The `/coding` **Diff** tab in `CodingWorkspacePanel.tsx` renders the workspace's
+unified `git diff` (from `GET /api/team/workspace/git-diff/view`) with an
+IDE-style layout:
+
+- **Per-file sections** — each file is a collapsible card (header row toggles,
+  defaults to expanded) showing the file path and `+N/-N` change counts.
+- **Single line-number gutter** — one 4-ch left column shows the *displayed*
+  line sequence: new-file number for context/additions, old-file number for
+  deletions (so a delete-then-add block reads `…→132→123→133→…`). The gutter
+  is `select-none` + `aria-hidden`, so copy/paste yields code only.
+- **Wrapped content** — long source lines use `whitespace-pre-wrap` +
+  `break-all` to wrap inside the 440 px sidebar instead of overflowing.
+- **Color coding** — additions on emerald, deletions on red, hunk headers on
+  the accent color, meta lines muted. Same palette as the rest of the panel.
+
+Source of truth: `web/src/components/CodingWorkspacePanel.tsx` (`parseUnifiedDiff`,
+`DiffFileSection`, `DiffGutter`).
 
 ---
 

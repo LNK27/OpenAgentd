@@ -91,6 +91,10 @@ function diffLineClass(line: string) {
 interface ParsedDiffLine {
   kind: 'meta' | 'hunk' | 'add' | 'delete' | 'context'
   content: string
+  /** Old-file (left gutter) line number. Null for additions, hunk, meta. */
+  oldLine: number | null
+  /** New-file (right gutter) line number. Null for deletions, hunk, meta. */
+  newLine: number | null
 }
 
 interface ParsedDiffFile {
@@ -100,9 +104,14 @@ interface ParsedDiffFile {
   lines: ParsedDiffLine[]
 }
 
+const HUNK_HEADER_RE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/
+
 function parseUnifiedDiff(diff: string): ParsedDiffFile[] {
   const files: ParsedDiffFile[] = []
   let current: ParsedDiffFile | null = null
+  // Running counters seeded from each `@@` hunk header.
+  let oldLineNo = 0
+  let newLineNo = 0
 
   for (const line of diff.split('\n')) {
     if (line.startsWith('diff --git ')) {
@@ -111,26 +120,37 @@ function parseUnifiedDiff(diff: string): ParsedDiffFile[] {
         path: match?.[2] ?? line.replace('diff --git ', ''),
         additions: 0,
         deletions: 0,
-        lines: [{ kind: 'meta', content: line }],
+        lines: [{ kind: 'meta', content: line, oldLine: null, newLine: null }],
       }
       files.push(current)
+      oldLineNo = 0
+      newLineNo = 0
       continue
     }
 
     if (!current) continue
 
     if (line.startsWith('@@')) {
-      current.lines.push({ kind: 'hunk', content: line })
+      const match = HUNK_HEADER_RE.exec(line)
+      if (match) {
+        oldLineNo = Number(match[1])
+        newLineNo = Number(match[2])
+      }
+      current.lines.push({ kind: 'hunk', content: line, oldLine: null, newLine: null })
     } else if (line.startsWith('+') && !line.startsWith('+++')) {
       current.additions += 1
-      current.lines.push({ kind: 'add', content: line })
+      current.lines.push({ kind: 'add', content: line, oldLine: null, newLine: newLineNo })
+      newLineNo += 1
     } else if (line.startsWith('-') && !line.startsWith('---')) {
       current.deletions += 1
-      current.lines.push({ kind: 'delete', content: line })
+      current.lines.push({ kind: 'delete', content: line, oldLine: oldLineNo, newLine: null })
+      oldLineNo += 1
     } else if (line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
-      current.lines.push({ kind: 'meta', content: line })
+      current.lines.push({ kind: 'meta', content: line, oldLine: null, newLine: null })
     } else {
-      current.lines.push({ kind: 'context', content: line || ' ' })
+      current.lines.push({ kind: 'context', content: line || ' ', oldLine: oldLineNo, newLine: newLineNo })
+      oldLineNo += 1
+      newLineNo += 1
     }
   }
 
@@ -154,27 +174,84 @@ function DiffChanges({ additions, deletions }: { additions: number; deletions: n
   )
 }
 
+/** Width of the gutter column in `ch` units. Fits up to 4-digit line numbers. */
+const GUTTER_WIDTH_CH = 4
+
+/**
+ * Pick the single number to display for a diff line. Adds/context follow the
+ * new-file numbering; deletes use the old-file number (they don't exist in
+ * the new file), producing IDE-style sequences like `130 → 131 → 132 → 123
+ * (delete) → 133 → 134`.
+ */
+function displayLineNumber(line: ParsedDiffLine): number | null {
+  if (line.kind === 'add' || line.kind === 'context') return line.newLine
+  if (line.kind === 'delete') return line.oldLine
+  return null
+}
+
+function DiffGutter({ value }: { value: number | null }) {
+  return (
+    <span
+      className="inline-block shrink-0 select-none text-right tabular-nums text-(--color-text-subtle)"
+      style={{ width: `${GUTTER_WIDTH_CH}ch` }}
+      aria-hidden="true"
+    >
+      {value ?? ''}
+    </span>
+  )
+}
+
+function DiffFileSection({ file }: { file: ParsedDiffFile }) {
+  const [open, setOpen] = useState(true)
+  const lineCount = file.additions + file.deletions
+  return (
+    <section className="overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-page)">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-label={`${open ? 'Collapse' : 'Expand'} diff for ${file.path}`}
+        className="flex w-full items-center gap-3 border-b border-(--color-border) px-3 py-2 text-left hover:bg-(--bg-key)"
+      >
+        <span
+          className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-(--color-text)"
+          title={file.path}
+        >
+          {file.path}
+        </span>
+        <DiffChanges additions={file.additions} deletions={file.deletions} />
+      </button>
+      {open ? (
+        <pre className="font-mono text-[11px] leading-relaxed">
+          {file.lines.map((line, index) => (
+            <span
+              key={index}
+              className={cn(
+                'flex items-start gap-2 whitespace-pre-wrap break-all px-2',
+                diffLineClassName(line.kind),
+              )}
+            >
+              <DiffGutter value={displayLineNumber(line)} />
+              <span className="min-w-0 flex-1">{line.content}</span>
+            </span>
+          ))}
+        </pre>
+      ) : (
+        <p className="px-3 py-1.5 text-[11px] text-(--color-text-subtle)">
+          {lineCount} line{lineCount === 1 ? '' : 's'} hidden
+        </p>
+      )}
+    </section>
+  )
+}
+
 function DiffPreview({ diff }: { diff: string }) {
   const files = parseUnifiedDiff(diff)
   if (files.length > 0) {
     return (
       <div className="space-y-3">
         {files.map((file) => (
-          <section key={file.path} className="overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-page)">
-            <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-3 py-2">
-              <span className="min-w-0 truncate font-mono text-xs font-medium text-(--color-text)" title={file.path}>
-                {file.path}
-              </span>
-              <DiffChanges additions={file.additions} deletions={file.deletions} />
-            </div>
-            <pre className="font-mono text-[11px] leading-relaxed">
-              {file.lines.map((line, index) => (
-                <span key={index} className={cn('block whitespace-pre-wrap break-all px-3', diffLineClassName(line.kind))}>
-                  {line.content}
-                </span>
-              ))}
-            </pre>
-          </section>
+          <DiffFileSection key={file.path} file={file} />
         ))}
       </div>
     )
