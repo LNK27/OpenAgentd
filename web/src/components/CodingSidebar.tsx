@@ -5,8 +5,7 @@
  *
  *   • Search input at the top — opens the command palette (Ctrl+P).
  *   • Flat list of workspaces. Each row is a collapsible tree node:
- *       ``▷/⏷`` chevron · 📁 · workspace label · `+` new
- *     The active workspace has an accent left-border (3 px).
+ *       📁 · workspace label · `+` new
  *     Expanding a row reveals the nested coding sessions belonging
  *     to that workspace, with the same delete-on-hover affordance as
  *     the cockpit sidebar.
@@ -25,8 +24,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
-  ChevronDown,
-  ChevronRight,
   Folder,
   HelpCircle,
   Loader2,
@@ -265,30 +262,14 @@ export function CodingSidebar({
           const workspaceSessions = codingSessions.filter((s) => s.workspace === path)
           return (
             <div key={path} className="relative">
-              {/* Active accent — 3 px left border that runs the full row height. */}
-              {isActive && (
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-(--color-accent)"
-                />
-              )}
-
               {/* Workspace row */}
               <div className="group flex h-8 items-center pl-3 pr-2">
                 <button
                   type="button"
                   onClick={() => toggleWorkspaceExpanded(path)}
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-md px-1.5 py-1 text-left text-xs transition-colors hover:bg-(--bg-key)"
                   aria-expanded={isExpanded}
                   aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${workspaceLabel(path)}`}
-                  title={isExpanded ? 'Collapse' : 'Expand'}
-                >
-                  {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => selectWorkspace(path)}
-                  className="ml-1 flex min-w-0 flex-1 items-center gap-1.5 truncate text-left text-xs"
                   title={path}
                 >
                   <Folder size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
@@ -312,7 +293,7 @@ export function CodingSidebar({
 
               {/* Nested sessions — only when expanded */}
               {isExpanded && (
-                <div className="space-y-0.5 pb-2 pl-7 pr-2">
+                <div className="space-y-0.5 pb-2 pl-4 pr-2">
                   {workspaceSessions.length === 0 && (
                     <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
                   )}
