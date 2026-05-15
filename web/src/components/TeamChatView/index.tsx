@@ -64,7 +64,7 @@ import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
-import { saveCodingWorkspace } from '@/utils/workspace'
+import { saveCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -628,7 +628,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               : isTeamWorking
                 ? 'Team working… type to interrupt'
                 : mode === 'coding' && workspace
-                  ? `Coding in ${workspace}`
+                  ? `Coding in ${workspaceLabel(workspace)}`
                   : mode === 'coding'
                     ? 'Choose a workspace to start coding…'
                     : 'Message the team…'
