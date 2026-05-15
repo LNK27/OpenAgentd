@@ -533,6 +533,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               workspace={workspace}
               onCollapse={() => setCodingSidebarCollapsed(true)}
               openWorkspaceDialogKey={openWorkspaceDialogKey}
+              onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
             />
           )
         ) : (

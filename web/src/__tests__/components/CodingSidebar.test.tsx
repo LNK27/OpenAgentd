@@ -29,12 +29,23 @@ mock.module('@tanstack/react-router', () => ({
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
-  FolderCode: Icon,
-  Home: Icon,
+  ChevronDown: Icon,
+  ChevronRight: Icon,
+  Folder: Icon,
+  HelpCircle: Icon,
   Loader2: Icon,
-  PanelLeftClose: Icon,
   Plus: Icon,
-  RefreshCw: Icon,
+  Search: Icon,
+  Settings: Icon,
+  Trash2: Icon,
+}))
+
+mock.module('@/components/ThemeToggle', () => ({
+  ThemeToggle: () => <button aria-label="Theme: System. Click to cycle." />,
+}))
+
+mock.module('@/components/HealthDot', () => ({
+  HealthDot: () => <div aria-label="Connected" />,
 }))
 
 mock.module('@/components/ui/button', () => ({

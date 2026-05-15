@@ -1,38 +1,108 @@
+/**
+ * CodingSidebar — VSCode-explorer style workspace + session tree for
+ * the ``/coding`` route. Mirrors the wireframe sidebar ``Q4zeZN`` in
+ * ``.diagrams/OpenAgentd-ui.pen``:
+ *
+ *   • Search input at the top — opens the command palette (Ctrl+P).
+ *   • Flat list of workspaces. Each row is a collapsible tree node:
+ *       ``▷/⏷`` chevron · 📁 · workspace label · status dot · `+` new
+ *     The active workspace has an accent left-border (3 px).
+ *     Expanding a row reveals the nested coding sessions belonging
+ *     to that workspace, with the same delete-on-hover affordance as
+ *     the cockpit sidebar.
+ *   • ``+ Open folder…`` row at the bottom of the workspace list
+ *     surfaces the trusted-workspace dialog.
+ *   • Footer trio: ⚙ Settings · ❔ Help (palette) · 🌙 ThemeToggle.
+ *
+ * The 64 px icon rail from the previous design is gone — workspace
+ * navigation now lives inline so the sidebar matches the cockpit's
+ * single-column shape. ``activeWorkspace`` is the workspace driving
+ * the current chat (loaded from the route's ``w=`` search param);
+ * ``expandedWorkspace`` is local UI state for which tree node is
+ * currently showing its sessions. Switching the active workspace
+ * auto-expands it.
+ */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { AnimatePresence, motion } from 'framer-motion'
-import { FolderCode, Home, Loader2, PanelLeftClose, Plus, RefreshCw } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  HelpCircle,
+  Loader2,
+  Plus,
+  Search,
+  Settings,
+  Trash2,
+} from 'lucide-react'
 import { useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries/useSessionsQuery'
 import { browseWorkspaces, validateWorkspace } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { formatRelativeDate } from '@/utils/format'
-import { codingSessionSearch, loadCodingWorkspaceEntries, loadCodingWorkspaces, saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import {
+  codingSessionSearch,
+  loadCodingWorkspaceEntries,
+  loadCodingWorkspaces,
+  saveLastCodingWorkspace,
+  workspaceLabel,
+} from '@/utils/workspace'
+import { ThemeToggle } from './ThemeToggle'
+import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import type { SessionResponse } from '@/api/types'
 
 interface CodingSidebarProps {
   currentSessionId?: string
   workspace?: string | null
   onCollapse?: () => void
+  /** Bump this counter to programmatically open the workspace dialog
+   *  (e.g. from a "no workspace attached" CTA). */
   openWorkspaceDialogKey?: number
+  /** Open the command palette (search input + footer help). */
+  onCommandPalette?: () => void
 }
 
-export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWorkspaceDialogKey = 0 }: CodingSidebarProps) {
+export function CodingSidebar({
+  currentSessionId,
+  workspace,
+  onCollapse,
+  openWorkspaceDialogKey = 0,
+  onCommandPalette,
+}: CodingSidebarProps) {
+  // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
+  // We don't render an inline collapse toggle anymore — the topbar
+  // hamburger and Ctrl+B own that surface.
+  void onCollapse
   const navigate = useNavigate()
   const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
   const isTeamWorking = useTeamStore((state) => state.isTeamWorking)
+
   const allSessions = sessions.data?.pages.flatMap((page) => page.data) ?? []
-  const codingSessions = allSessions.filter((session) => session.mode === 'coding' && session.workspace)
+  const codingSessions = allSessions.filter(
+    (session) => session.mode === 'coding' && session.workspace,
+  )
+
+  // Saved workspaces (localStorage) come first, sorted by creation time;
+  // workspaces that only exist via session history are appended.
   const [workspaces, setWorkspaces] = useState<string[]>(() => loadCodingWorkspaces())
-  const savedWorkspaceCreatedAt = new Map(loadCodingWorkspaceEntries().map((entry) => [entry.path, Date.parse(entry.createdAt)]))
+  const savedEntries = loadCodingWorkspaceEntries()
+  const savedWorkspaceCreatedAt = new Map(
+    savedEntries.map((entry) => [entry.path, Date.parse(entry.createdAt)]),
+  )
   const savedWorkspaceTime = (path: string) => {
     const value = savedWorkspaceCreatedAt.get(path) ?? Number.MAX_SAFE_INTEGER
     return Number.isNaN(value) ? Number.MAX_SAFE_INTEGER : value
   }
-  const savedWorkspaces = [...workspaces].sort((a, b) => {
-    return savedWorkspaceTime(a) - savedWorkspaceTime(b)
-  })
+  const savedWorkspaces = [...workspaces].sort((a, b) => savedWorkspaceTime(a) - savedWorkspaceTime(b))
   const sessionWorkspaces = Array.from(
     codingSessions.reduce((items, session) => {
       const path = session.workspace
@@ -45,14 +115,16 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
   )
     .sort(([, a], [, b]) => a - b)
     .map(([path]) => path)
-  const visibleWorkspaces = [
-    ...savedWorkspaces,
-    ...sessionWorkspaces,
-  ]
+  const visibleWorkspaces = [...savedWorkspaces, ...sessionWorkspaces]
   const activeWorkspace = workspace ?? null
-  const activeSessions = activeWorkspace
-    ? codingSessions.filter((session) => session.workspace === activeWorkspace)
-    : []
+
+  // ``expandedWorkspace`` is local UI state — it auto-tracks the active
+  // workspace but the user can also expand any other to peek at its
+  // sessions.
+  const [expandedWorkspace, setExpandedWorkspace] = useState<string | null>(activeWorkspace)
+  useEffect(() => {
+    if (activeWorkspace) setExpandedWorkspace(activeWorkspace)
+  }, [activeWorkspace])
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [browserPath, setBrowserPath] = useState<string | null>(null)
@@ -126,120 +198,209 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
     selectWorkspace(workspaceToOpen)
   }
 
+  const handleSessionSelect = (session: SessionResponse, workspacePath: string) => {
+    const search = codingSessionSearch(session.workspace, workspacePath)
+    if (!search) return
+    navigate({
+      to: '/coding/$sessionId',
+      params: { sessionId: session.id },
+      search,
+    })
+  }
+
+  const handleSessionDelete = (e: React.MouseEvent, session: SessionResponse) => {
+    e.stopPropagation()
+    deleteSession.mutate(session.id)
+    if (session.id === currentSessionId) navigate({ to: '/coding' })
+  }
+
   return (
-    <aside className="flex shrink-0 border-r border-(--color-border) bg-(--bg-sidebar)">
-      <div className="flex w-16 flex-col items-center gap-2 border-r border-(--color-border) px-2 py-3">
-        <button
-          type="button"
-          onClick={() => navigate({ to: '/' })}
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-          title="Home"
-          aria-label="Home"
-        >
-          <Home size={16} />
-        </button>
+    <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-sidebar)">
+      {/* Search trigger — opens the command palette (Ctrl+P). */}
+      {onCommandPalette && (
+        <div className="px-3 pt-3">
+          <button
+            type="button"
+            onClick={onCommandPalette}
+            className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+            aria-label="Open command palette"
+            title="Open command palette (Ctrl+P)"
+          >
+            <Search size={13} aria-hidden="true" />
+            <span className="flex-1">Search…</span>
+            <kbd className="font-mono text-[10px] text-(--color-text-subtle)">^P</kbd>
+          </button>
+        </div>
+      )}
+
+      {/* Workspace + sessions tree */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-2">
+        {visibleWorkspaces.length === 0 && (
+          <p className="px-3 py-4 text-xs text-(--color-text-subtle)">
+            No workspaces yet. Use “Open folder…” below to add one.
+          </p>
+        )}
+
+        {visibleWorkspaces.map((path) => {
+          const isActive = path === activeWorkspace
+          const isExpanded = expandedWorkspace === path
+          const isPending = pendingWorkspace === path
+          const workspaceSessions = codingSessions.filter((s) => s.workspace === path)
+          return (
+            <div key={path} className="relative">
+              {/* Active accent — 3 px left border that runs the full row height. */}
+              {isActive && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-(--color-accent)"
+                />
+              )}
+
+              {/* Workspace row */}
+              <div className="group flex h-8 items-center pl-3 pr-2">
+                <button
+                  type="button"
+                  onClick={() => setExpandedWorkspace((current) => (current === path ? null : path))}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                  aria-expanded={isExpanded}
+                  aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${workspaceLabel(path)}`}
+                  title={isExpanded ? 'Collapse' : 'Expand'}
+                >
+                  {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => selectWorkspace(path)}
+                  className="ml-1 flex min-w-0 flex-1 items-center gap-1.5 truncate text-left text-xs"
+                  title={path}
+                >
+                  <Folder size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+                  <span className={`truncate ${isActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2)'}`}>
+                    {workspaceLabel(path)}
+                  </span>
+                  {isPending && (
+                    <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
+                  )}
+                  {!isPending && (
+                    <span
+                      aria-hidden
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                        isActive ? 'bg-(--color-accent)' : 'bg-(--color-success)'
+                      }`}
+                    />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => selectWorkspace(path)}
+                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) group-hover:opacity-100"
+                  aria-label={`New session in ${workspaceLabel(path)}`}
+                  title={`New session in ${workspaceLabel(path)}`}
+                >
+                  <Plus size={11} aria-hidden="true" />
+                </button>
+              </div>
+
+              {/* Nested sessions — only when expanded */}
+              {isExpanded && (
+                <div className="space-y-0.5 pb-2 pl-7 pr-2">
+                  {workspaceSessions.length === 0 && (
+                    <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
+                  )}
+                  {workspaceSessions.map((session) => {
+                    const isCurrent = session.id === currentSessionId
+                    return (
+                      <div key={session.id} className="group relative">
+                        <button
+                          type="button"
+                          onClick={() => handleSessionSelect(session, path)}
+                          className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+                            isCurrent
+                              ? 'bg-(--bg-key) text-(--color-text)'
+                              : 'text-(--color-text-2) hover:bg-(--bg-key)'
+                          }`}
+                        >
+                          <p className="truncate font-medium">{session.title || 'Untitled'}</p>
+                          <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
+                            {formatRelativeDate(session.created_at)}
+                          </p>
+                          {isCurrent && isTeamWorking && (
+                            <span
+                              className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)"
+                              aria-label="Session running"
+                            >
+                              <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleSessionDelete(e, session)}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
+                          aria-label={`Delete session ${session.title || 'Untitled'}`}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {/* + Open folder… */}
         <button
           type="button"
           onClick={() => setDialogOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-accent) hover:opacity-90"
-          title="Add workspace"
-          aria-label="Add workspace"
+          className="mt-1 flex h-8 items-center gap-2 px-3 text-left text-xs italic text-(--color-accent) transition-colors hover:bg-(--bg-key)"
+          aria-label="Open folder"
+          title="Open a new workspace folder"
         >
-          <Plus size={16} />
+          <Plus size={13} aria-hidden="true" />
+          <span>Open folder…</span>
         </button>
-        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-          {visibleWorkspaces.map((path) => (
-            <button
-              type="button"
-              key={path}
-              onClick={() => selectWorkspace(path)}
-              className={`flex h-10 w-10 items-center justify-center rounded-xl text-xs transition-colors ${path === activeWorkspace ? 'bg-(--color-accent) text-(--color-text-on-accent)' : 'bg-(--bg-key) text-(--color-text-muted) hover:text-(--color-text)'}`}
-              title={path}
-            >
-              {pendingWorkspace === path ? <Loader2 size={14} className="animate-spin" /> : workspaceLabel(path).slice(0, 2).toUpperCase()}
-            </button>
-          ))}
-        </div>
       </div>
 
-      <div className="flex w-64 flex-col">
-        <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-3">
-          <p className="min-w-0 flex-1 truncate font-mono text-sm font-medium text-(--color-text)" title={activeWorkspace ?? undefined}>
-            {pendingWorkspace ? `Opening ${workspaceLabel(pendingWorkspace)}…` : activeWorkspace ? workspaceLabel(activeWorkspace) : 'No workspace'}
-          </p>
+      {/* Footer trio — Settings · Help · HealthDot + ThemeToggle. Mirrors
+          the cockpit sidebar so both feel like the same shell. */}
+      <div className="flex items-center justify-between gap-2 border-t border-(--color-border) px-3 py-2 pb-safe">
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={onCollapse}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-            title="Collapse session list (Ctrl+B)"
-            aria-label="Collapse session list"
-            aria-expanded="true"
+            onClick={() => navigate({ to: '/settings' })}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            aria-label="Settings"
+            title="Settings"
           >
-            <PanelLeftClose size={15} />
+            <Settings size={14} aria-hidden="true" />
           </button>
-        </div>
-        <div className="flex items-center justify-between px-3 py-2">
-          <span className="text-xs font-medium text-(--color-text-muted)">Sessions</span>
-          <div className="flex gap-1">
-            <button type="button" onClick={() => sessions.refetch()} className="rounded p-1 text-(--color-text-subtle) hover:bg-(--bg-key)" aria-label="Refresh sessions">
-              <RefreshCw size={12} className={sessions.isFetching ? 'animate-spin' : ''} />
+          {onCommandPalette && (
+            <button
+              type="button"
+              onClick={onCommandPalette}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              aria-label="Help and shortcuts"
+              title="Help and shortcuts (Ctrl+P)"
+            >
+              <HelpCircle size={14} aria-hidden="true" />
             </button>
-            <button type="button" disabled={!activeWorkspace} onClick={() => activeWorkspace && selectWorkspace(activeWorkspace)} className="rounded p-1 text-(--color-text-subtle) hover:bg-(--bg-key) disabled:opacity-40" aria-label="New coding session">
-              <Plus size={12} />
-            </button>
-          </div>
+          )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          {!activeWorkspace && <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Add a workspace to start.</p>}
-          {activeWorkspace && activeSessions.length === 0 && <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No sessions yet</p>}
-          {activeSessions.map((session) => (
-            <div key={session.id} className="group relative">
-              <button
-                type="button"
-                onClick={() => {
-                  const search = codingSessionSearch(session.workspace, activeWorkspace)
-                  if (!search) return
-                  navigate({
-                    to: '/coding/$sessionId',
-                    params: { sessionId: session.id },
-                    search,
-                  })
-                }}
-                className={`w-full rounded-md px-2.5 py-2 text-left transition-colors ${session.id === currentSessionId ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-2) hover:bg-(--bg-key)'}`}
-              >
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.p
-                    key={session.title ?? 'untitled'}
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 6 }}
-                    transition={{ duration: 0.18, ease: 'easeOut' }}
-                    className="truncate text-xs font-medium"
-                  >
-                    {session.title || 'Untitled'}
-                  </motion.p>
-                </AnimatePresence>
-                {session.id === currentSessionId && isTeamWorking && (
-                  <span className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)" aria-label="Session running">
-                    <Loader2 size={12} className="animate-spin" aria-hidden="true" />
-                  </span>
-                )}
-                <p className="mt-0.5 text-xs text-(--color-text-subtle)">{formatRelativeDate(session.created_at)}</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => { deleteSession.mutate(session.id); if (session.id === currentSessionId) navigate({ to: '/coding' }) }}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
-                aria-label={`Delete session ${session.title || 'Untitled'}`}
-              >
-                ×
-              </button>
-            </div>
-          ))}
+        <div className="flex items-center gap-2">
+          <HealthDot />
+          <ThemeToggle collapsed />
         </div>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setTrustWorkspace(null) }}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open)
+          if (!open) setTrustWorkspace(null)
+        }}
+      >
         <DialogContent showCloseButton={false}>
           {trustWorkspace ? (
             <>
@@ -265,13 +426,37 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
               </DialogHeader>
               <div className="space-y-2">
                 <div className="rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
-                  <p className="truncate font-mono text-xs text-(--color-text-muted)" title={browserPath ?? undefined}>{browserPath ?? 'Loading folders…'}</p>
+                  <p className="truncate font-mono text-xs text-(--color-text-muted)" title={browserPath ?? undefined}>
+                    {browserPath ?? 'Loading folders…'}
+                  </p>
                 </div>
                 <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-(--color-border) p-1">
-                  {parentPath && <button type="button" className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)" onClick={() => void loadBrowser(parentPath)}>..</button>}
-                  {loading && dirs.length === 0 && <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">Loading folders…</p>}
-                  {!loading && dirs.length === 0 && <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">No folders here</p>}
-                  {dirs.map((dir) => <button type="button" key={dir.path} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)" onClick={() => void loadBrowser(dir.path)}><FolderCode size={14} /><span className="truncate">{dir.name}</span></button>)}
+                  {parentPath && (
+                    <button
+                      type="button"
+                      className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
+                      onClick={() => void loadBrowser(parentPath)}
+                    >
+                      ..
+                    </button>
+                  )}
+                  {loading && dirs.length === 0 && (
+                    <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">Loading folders…</p>
+                  )}
+                  {!loading && dirs.length === 0 && (
+                    <p className="px-2 py-4 text-center text-xs text-(--color-text-subtle)">No folders here</p>
+                  )}
+                  {dirs.map((dir) => (
+                    <button
+                      type="button"
+                      key={dir.path}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
+                      onClick={() => void loadBrowser(dir.path)}
+                    >
+                      <Folder size={14} />
+                      <span className="truncate">{dir.name}</span>
+                    </button>
+                  ))}
                 </div>
                 {error && <p className="text-xs text-(--color-error)">{error}</p>}
               </div>
