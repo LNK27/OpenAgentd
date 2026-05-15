@@ -277,7 +277,7 @@ export function AgentPane({
 
   return (
     <div
-      className={`flex h-full flex-col overflow-hidden rounded-xl border bg-(--bg-page) transition-all duration-150 ${borderClass}`}
+      className={`flex h-full flex-col overflow-hidden rounded-lg border bg-(--bg-page) transition-all duration-150 ${borderClass}`}
     >
       {/* Header */}
       <div className={`flex items-center gap-2 border-b px-3 py-2.5 ${headerAccent}`}>
