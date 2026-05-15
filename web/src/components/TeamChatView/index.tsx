@@ -292,18 +292,29 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
 
   // Push the active session/workspace label to the desktop tray. The
   // command is a no-op outside Tauri so this is safe to fire from the
-  // web build too. Label format: ``"Coding: <ws>"`` in coding mode,
-  // ``"Chat: <title>"`` once the team has named the session, or an
-  // empty string to fall back to the tray's idle placeholder.
+  // web build too.
+  //
+  // Label priority — the tray reflects *liveness first*, then identity:
+  //   - team currently responding → ``"Working: <ws-or-title>"``
+  //     (falls back to ``"Working…"`` when no title yet — e.g. the
+  //     team is generating the first message of a brand-new chat)
+  //   - coding mode with workspace → ``"Coding: <ws>"``
+  //   - chat with server-named session → ``"Chat: <title>"``
+  //   - everything else → empty (tray shows ``No active session``)
   useEffect(() => {
     let label = ''
-    if (mode === 'coding' && workspace) {
+    const identity = mode === 'coding' && workspace
+      ? workspaceLabel(workspace)
+      : sessionTitle ?? ''
+    if (isTeamWorking) {
+      label = identity ? `Working: ${identity}` : 'Working…'
+    } else if (mode === 'coding' && workspace) {
       label = `Coding: ${workspaceLabel(workspace)}`
     } else if (sessionTitle) {
       label = `Chat: ${sessionTitle}`
     }
     void setTraySession(label)
-  }, [mode, workspace, sessionTitle])
+  }, [mode, workspace, sessionTitle, isTeamWorking])
 
   // Slash commands for the input bar (type / to trigger)
   const slashCommands: SlashCommand[] = [

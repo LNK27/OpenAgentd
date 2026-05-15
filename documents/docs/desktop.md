@@ -98,7 +98,14 @@ Closing the main window hides it to the tray instead of stopping the backend. Se
 
 The tray status starts at `Status: Starting`, changes to `Status: Running` once the backend is healthy, and changes to `Status: Error` if sidecar startup fails. In dev mode it reports `Status: Running (dev)`.
 
-The tray **Session** line below status mirrors the user's active context. It reads `No active session` when no chat session or coding workspace is open, `Coding: <workspace-name>` when a coding workspace is active, and `Chat: <session-title>` once a chat session has a title. The frontend pushes the label via the `set_tray_session` Tauri command (see `web/src/lib/tray.ts`) whenever the active mode/workspace/session-title changes; the command silently truncates labels longer than 60 characters so the tray menu width stays sane.
+The tray **Session** line below status mirrors the user's active context with liveness taking priority over identity:
+
+- `Working: <workspace-or-title>` (or just `Working…` if the session has no title yet) — the team is currently generating a response.
+- `Coding: <workspace-name>` — a coding workspace is open but idle.
+- `Chat: <session-title>` — a chat session has a server-named title and is idle.
+- `No active session` — fallback when nothing is open.
+
+The frontend pushes the label via the `set_tray_session` Tauri command (see `web/src/lib/tray.ts`) whenever the active mode/workspace/session-title or the team's working flag changes; the command silently truncates labels longer than 60 characters so the tray menu width stays sane.
 
 ## Window chrome
 
