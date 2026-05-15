@@ -328,3 +328,98 @@ async def get_coding_workspace_git_diff(workspace: str) -> dict:
         "diff": diff,
         "truncated": truncated,
     }
+
+
+async def _run_git(cwd: str, *args: str, timeout: float = 5.0) -> str | None:
+    """Run a git command, returning stdout on success or None on any failure."""
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["git", "-C", cwd, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    # ``text=True`` above guarantees a str
+    return str(result.stdout)
+
+
+def _parse_porcelain_v2(stdout: str) -> tuple[str | None, dict[str, int]]:
+    """Parse ``git status --porcelain=v2 --branch`` output.
+
+    Returns ``(branch, counts)`` where ``counts`` has keys ``staged``,
+    ``unstaged``, ``untracked``. ``branch`` is ``None`` for detached HEAD.
+    """
+    branch: str | None = None
+    staged = unstaged = untracked = 0
+    for line in stdout.splitlines():
+        if line.startswith("# branch.head "):
+            head = line[len("# branch.head ") :].strip()
+            branch = None if head == "(detached)" else head
+        elif line.startswith(("1 ", "2 ")):
+            # XY status code in field 2 (e.g. "M.", ".M", "MM")
+            parts = line.split(" ", 2)
+            if len(parts) >= 2 and len(parts[1]) == 2:
+                if parts[1][0] != ".":
+                    staged += 1
+                if parts[1][1] != ".":
+                    unstaged += 1
+        elif line.startswith("? "):
+            untracked += 1
+    return branch, {"staged": staged, "unstaged": unstaged, "untracked": untracked}
+
+
+@router.get("/workspace/status")
+async def get_coding_workspace_status(workspace: str) -> dict:
+    """Lightweight workspace overview for the coding-mode empty state.
+
+    Returns workspace path + name (always), and git metadata (branch, dirty
+    counts, last commit) when the folder is a git repo. Failures degrade
+    gracefully — missing git / dirty parse errors yield ``is_git_repo: false``
+    rather than 500.
+    """
+    try:
+        resolved = team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    root = Path(resolved)
+    name = root.name or resolved
+    payload: dict = {"workspace": resolved, "name": name, "is_git_repo": False}
+
+    if not (root / ".git").exists():
+        return payload
+
+    status_out = await _run_git(resolved, "status", "--porcelain=v2", "--branch")
+    if status_out is None:
+        return payload
+    branch, counts = _parse_porcelain_v2(status_out)
+
+    head: dict | None = None
+    log_out = await _run_git(resolved, "log", "-1", "--format=%h%x00%s%x00%ct")
+    if log_out:
+        parts = log_out.rstrip("\n").split("\x00")
+        if len(parts) == 3:
+            try:
+                head = {
+                    "sha": parts[0],
+                    "subject": parts[1],
+                    "timestamp": int(parts[2]),
+                }
+            except ValueError:
+                head = None
+
+    payload.update(
+        {
+            "is_git_repo": True,
+            "branch": branch,
+            "dirty": counts,
+            "head": head,
+        }
+    )
+    return payload

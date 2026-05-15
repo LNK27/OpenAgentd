@@ -382,6 +382,53 @@ class TestTeamAgentsRouteExtra:
         assert resp.json()["diff"] == "x" * 10
         assert resp.json()["truncated"] is True
 
+    def test_workspace_status_non_repo(self, app_without_team, tmp_path):
+        client = TestClient(app_without_team)
+
+        resp = client.get(
+            "/api/team/workspace/status", params={"workspace": str(tmp_path)}
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["is_git_repo"] is False
+        assert body["workspace"] == str(tmp_path.resolve())
+        assert body["name"] == tmp_path.name
+
+    def test_workspace_status_git_repo(self, app_without_team, tmp_path, monkeypatch):
+        (tmp_path / ".git").mkdir()
+
+        # Two git calls: status (porcelain v2) then log. Order matches the
+        # endpoint's call order so a queue is the simplest fake.
+        outputs = [
+            # status --porcelain=v2 --branch
+            "# branch.head main\n1 M. N... 100644 100644 100644 a a fileA\n? newfile.txt\n",
+            # log -1
+            "abc1234\x00fix scroll\x001700000000\n",
+        ]
+
+        def fake_run(*args, **kwargs):
+            stdout = outputs.pop(0) if outputs else ""
+            return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+        monkeypatch.setattr("app.api.routes.team.files.subprocess.run", fake_run)
+
+        client = TestClient(app_without_team)
+        resp = client.get(
+            "/api/team/workspace/status", params={"workspace": str(tmp_path)}
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["is_git_repo"] is True
+        assert body["branch"] == "main"
+        assert body["dirty"] == {"staged": 1, "unstaged": 0, "untracked": 1}
+        assert body["head"] == {
+            "sha": "abc1234",
+            "subject": "fix scroll",
+            "timestamp": 1700000000,
+        }
+
 
 # ---------------------------------------------------------------------------
 # GET /team/sessions (lines 163-215)

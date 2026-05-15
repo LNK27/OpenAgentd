@@ -16,6 +16,7 @@ import type {
   WorkspaceValidationResponse,
   WorkspaceBrowseResponse,
   WorkspaceGitDiffResponse,
+  WorkspaceStatusResponse,
   TeamStatusResponse,
   WikiTree,
   WikiFile,
@@ -133,6 +134,13 @@ export async function getCodingWorkspaceGitDiff(workspace: string): Promise<Work
   const params = new URLSearchParams({ workspace })
   const res = await fetch(`${API}/team/workspace/git-diff/view?${params}`)
   if (!res.ok) throw new Error(`getCodingWorkspaceGitDiff failed: ${res.status}`)
+  return res.json()
+}
+
+export async function getCodingWorkspaceStatus(workspace: string): Promise<WorkspaceStatusResponse> {
+  const params = new URLSearchParams({ workspace })
+  const res = await fetch(`${API}/team/workspace/status?${params}`)
+  if (!res.ok) throw new Error(`getCodingWorkspaceStatus failed: ${res.status}`)
   return res.json()
 }
 

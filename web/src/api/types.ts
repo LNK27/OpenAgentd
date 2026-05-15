@@ -71,6 +71,15 @@ export interface WorkspaceGitDiffResponse {
   truncated?: boolean
 }
 
+export interface WorkspaceStatusResponse {
+  workspace: string
+  name: string
+  is_git_repo: boolean
+  branch?: string | null
+  dirty?: { staged: number; unstaged: number; untracked: number }
+  head?: { sha: string; subject: string; timestamp: number } | null
+}
+
 export interface CodingWorkspaceFilesResponse {
   workspace: string
   files: WorkspaceFileInfo[]

@@ -49,6 +49,8 @@ interface AgentViewProps {
   isError?: boolean
   /** Error message to display when isError is true. */
   lastError?: string | null
+  /** Optional slot rendered in place of the default mascot empty state. */
+  emptyState?: React.ReactNode
 }
 
 const USER_COLLAPSE_LINES = 10
@@ -211,7 +213,7 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
   }
 }
 
-export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, emptyState }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -283,19 +285,21 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-4 py-6">
         {isEmpty && (
-           <div className="flex select-none flex-col items-center justify-center gap-4 py-16">
-             <img
-               src={OctobotMascot}
-               className="opacity-90"
-               width={120}
-               height={120}
-               alt=""
-               aria-hidden="true"
-             />
-             <h2 className="font-hand text-4xl font-bold text-(--color-text)">
-               what&rsquo;s on your mind?
-             </h2>
-           </div>
+           emptyState ?? (
+             <div className="flex select-none flex-col items-center justify-center gap-4 py-16">
+               <img
+                 src={OctobotMascot}
+                 className="opacity-90"
+                 width={120}
+                 height={120}
+                 alt=""
+                 aria-hidden="true"
+               />
+               <h2 className="font-hand text-4xl font-bold text-(--color-text)">
+                 what&rsquo;s on your mind?
+               </h2>
+             </div>
+           )
          )}
 
          <div className="space-y-3">

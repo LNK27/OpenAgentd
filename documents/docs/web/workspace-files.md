@@ -24,6 +24,8 @@ are fetched on demand from the media proxy (`/media/{path}`).
 
 Normal sessions list the per-session workspace. `/coding` uses **Files & Diff** for the selected project: a recursive tree plus current git diff. New folders require a trust confirmation before opening, and `/coding` restores the last opened workspace from local browser storage. The coding session list shows a small running indicator on the active session while that turn is streaming. Dot entries, common generated directories, and root `.gitignore` matches are hidden in both views. Large git diffs are capped and marked as truncated.
 
+In coding mode, the chat empty state replaces the default mascot with a `WorkspaceInfoCard` (`web/src/components/WorkspaceInfoCard.tsx`) showing workspace name + path, current git branch, dirty counts, and last commit. Backed by `GET /api/team/workspace/status`; refetched on every new-chat open (component re-mount).
+
 ```
 WorkspaceFilesPanel.tsx                (right drawer, w-[min(960px,95vw)])
   ├── Header                           (back button on mobile + title + Refresh + Close)

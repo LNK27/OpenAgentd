@@ -24,6 +24,7 @@ FastAPI backend running on `:4082`. All routes are served under the `/api` prefi
 | `GET` | `/api/team/workspace/browse` | `{path, parent, directories}` — browse server-local folders for coding mode |
 | `GET` | `/api/team/workspace/files/list` | `{workspace, files, truncated}` for a selected coding workspace |
 | `GET` | `/api/team/workspace/git-diff/view` | `{workspace, is_git_repo, diff, truncated}` for the selected coding workspace |
+| `GET` | `/api/team/workspace/status` | `{workspace, name, is_git_repo, branch?, dirty?, head?}` — lightweight overview for the coding-mode empty state |
 | `GET` | `/api/team/sessions` | `SessionPageResponse` — cursor-paginated, newest-first |
 | `GET` | `/api/team/sessions/{id}` | `SessionDetailResponse` — includes `mode` and `workspace` for direct `/coding/{id}` loads |
 | `DELETE` | `/api/team/sessions/{id}` | 204 — deletes the session row and uploads; coding workspace directories are kept |

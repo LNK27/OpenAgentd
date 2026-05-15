@@ -26,6 +26,7 @@ import { AnimatePresence } from 'framer-motion'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { AgentCapabilities } from '../AgentCapabilities'
 import { AgentView } from '../AgentView'
+import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
 import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
 import { Sidebar } from '../Sidebar'
@@ -595,6 +596,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             isWorking={(activeStatus ?? agentStreams[activeAgent].status) === 'working'}
             isError={(activeStatus ?? agentStreams[activeAgent].status) === 'error'}
             lastError={agentStreams[activeAgent].lastError}
+            emptyState={
+              mode === 'coding' && workspace ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <WorkspaceInfoCard workspace={workspace} />
+                </div>
+              ) : undefined
+            }
           />
         ) : (
           <div className="flex flex-1 select-none flex-col items-center justify-center gap-3">
