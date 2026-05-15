@@ -101,9 +101,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/lthoangg/openagentd/releases/latest/download/latest.json"
+        "https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json"
       ],
-      "pubkey": "REPLACE_ME_WITH_TAURI_UPDATER_PUBLIC_KEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZBODEyQUU4RjBFMjJFOEIKUldTTEx1THc2Q3FCYXE5L3VCTUlTZ1VwRHF2bXlIQ1BHdjVtZHpGUlBjZE1SaGkvYUFjclJJbEkK",
       "windows": {
         "installMode": "passive"
       }

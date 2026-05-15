@@ -210,3 +210,26 @@ jobs:
               --title "OpenAgentd Desktop ${{ needs.prepare.outputs.version }}" \
               --generate-notes
           fi
+
+      # The Tauri updater (configured in tauri.conf.json) fetches
+      # ``releases/download/latest-desktop/latest.json``. That URL must
+      # always resolve to the most recent desktop release's manifest, so
+      # we maintain a rolling ``latest-desktop`` release that mirrors
+      # only ``latest.json``. The artefact URLs *inside* latest.json
+      # still point at the immutable ``v{X.Y.Z}-desktop`` release above,
+      # so old clients keep working and downloads are cacheable.
+      - name: Update rolling latest-desktop release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ROLLING_TAG="latest-desktop"
+          # Delete the old rolling release (and its tag) so we can
+          # re-create it pointing at the latest manifest. ``gh release
+          # delete --cleanup-tag`` is idempotent: it succeeds with a
+          # non-zero exit only when the release exists and the delete
+          # call itself fails, which is what we want.
+          gh release delete "$ROLLING_TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$ROLLING_TAG" _release/latest.json \
+            --title "Desktop updater manifest (rolling)" \
+            --notes "Auto-generated. Points at OpenAgentd Desktop ${{ needs.prepare.outputs.version }}. Do not download artefacts from this release directly — use the versioned release instead." \
+            --prerelease
