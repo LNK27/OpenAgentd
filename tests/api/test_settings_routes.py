@@ -294,3 +294,137 @@ async def test_install_update_starts_background_restart(
     # *after* the response — at this point the test client has already
     # received the response, so the mock should have been invoked.
     self_terminate.assert_called_once()
+
+
+# ── Providers (Settings → Providers tab) ────────────────────────────────────
+
+
+def test_list_providers_returns_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /providers returns one entry per catalog row with config state."""
+    # Clear any ambient env so the test is deterministic.
+    for name in ("GOOGLE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.get("/api/settings/providers")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data["providers"], list)
+    assert len(data["providers"]) > 5  # we ship many
+    ids = {p["id"] for p in data["providers"]}
+    assert {"googlegenai", "openai", "openrouter", "copilot", "codex"} <= ids
+    # Nothing in the env → no provider should be flagged as configured.
+    assert data["has_any_configured"] is False or any(
+        p["kind"] == "local" and p["is_configured"] for p in data["providers"]
+    )
+
+
+def test_list_providers_marks_configured_when_env_var_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An env var with a value flips is_configured to True."""
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.get("/api/settings/providers")
+    assert response.status_code == 200
+    data = response.json()
+    google = next(p for p in data["providers"] if p["id"] == "googlegenai")
+    assert google["is_configured"] is True
+    assert data["has_any_configured"] is True
+
+
+def test_test_provider_returns_404_for_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/notreal/test",
+        json={"api_key": "x", "model": "y"},
+    )
+    assert response.status_code == 404
+
+
+def test_test_provider_reports_failure_without_crashing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider chat error → 200 OK with ok=False rather than 500.
+
+    The test endpoint catches every exception so the UI never has to
+    distinguish "the test API itself broke" from "your key is wrong."
+    """
+
+    # Force a deterministic failure by stubbing build_provider — real
+    # provider chat() behaviour varies by SDK version and would make this
+    # test flaky against the live network.
+    def _explode(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("synthetic auth failure")
+
+    monkeypatch.setattr(settings_routes, "build_provider", None, raising=False)
+    monkeypatch.setattr(
+        "app.agent.providers.factory.build_provider", _explode, raising=True
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/googlegenai/test",
+        json={"api_key": "ignored-because-stub", "model": "gemini-3-flash-preview"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False
+    assert "synthetic auth failure" in (body["error"] or "")
+
+
+def test_save_provider_writes_env_and_mutates_environ(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PUT /providers/{id} persists creds and mirrors them into os.environ."""
+    # Redirect CONFIG_DIR to a temp dir so the test doesn't touch real config.
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.put(
+        "/api/settings/providers/googlegenai",
+        json={"api_key": "fresh-key-123", "default_model": "gemini-3-flash-preview"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["saved"] is True
+    assert body["is_first_provider"] is True
+
+    # .env should now contain the key.
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "GOOGLE_API_KEY=fresh-key-123" in env_text
+
+    # os.environ should be mutated so the next build_provider call works
+    # without restarting the server.
+    import os
+
+    assert os.environ.get("GOOGLE_API_KEY") == "fresh-key-123"
+
+    # A second save flips is_first_provider to False — the user is past
+    # the initial setup so the frontend shouldn't trigger seed install
+    # again.
+    response2 = client.put(
+        "/api/settings/providers/googlegenai",
+        json={"api_key": "another-key", "default_model": "gemini-3-flash-preview"},
+    )
+    assert response2.status_code == 200
+    assert response2.json()["is_first_provider"] is False
+
+
+def test_save_provider_404_for_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = _make_app()
+    client = TestClient(app)
+    response = client.put(
+        "/api/settings/providers/notreal",
+        json={"api_key": "x"},
+    )
+    assert response.status_code == 404
