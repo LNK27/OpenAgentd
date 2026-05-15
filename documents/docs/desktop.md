@@ -46,6 +46,8 @@ The Tauri shell:
 6. The bundled React UI's `installDesktopAuth()` patches `window.fetch`
    to attach `Authorization: Bearer <token>` to every same-origin
    `/api/*` request.
+7. Installs native app-menu and tray-menu actions for opening the window,
+   navigating to common routes, hiding to tray, and quitting cleanly.
 
 The Python sidecar:
 
@@ -76,6 +78,19 @@ agent tools). The token mitigates that.
 
 See `app/core/desktop_auth.py` for the implementation and
 `tests/core/test_desktop_auth.py` for the contract.
+
+## Native menus and tray
+
+The shell installs both native app menus and a system tray menu in `desktop/src-tauri/src/main.rs`.
+
+| Surface | Actions |
+|---------|---------|
+| App menu / menu bar | Show OpenAgentd, Chat, Coding, Settings, Telemetry, Hide to Tray, Quit OpenAgentd. |
+| System tray | Status, Show OpenAgentd, Chat, Coding, Settings, Telemetry, Quit OpenAgentd. |
+
+Closing the main window hides it to the tray instead of stopping the backend. Selecting **Quit OpenAgentd** from the app menu or tray marks the app as quitting, exits Tauri, and lets the existing shutdown path terminate the Python sidecar cleanly.
+
+The tray status starts at `Status: Starting`, changes to `Status: Running` once the backend is healthy, and changes to `Status: Error` if sidecar startup fails. In dev mode it reports `Status: Running (dev)`.
 
 ## Window chrome
 

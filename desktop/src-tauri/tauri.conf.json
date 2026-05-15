@@ -49,10 +49,6 @@
         "enable": true,
         "scope": ["$APPDATA/*", "$APPLOCALDATA/*", "$APPCACHE/*", "$APPLOG/*"]
       }
-    },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true
     }
   },
   "bundle": {

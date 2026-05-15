@@ -5,9 +5,13 @@ mod sidecar;
 
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
-use std::sync::Arc;
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
+};
 use tokio::sync::Mutex;
 
 use crate::sidecar::{Handshake, Sidecar};
@@ -15,7 +19,18 @@ use crate::sidecar::{Handshake, Sidecar};
 /// Shared application state.
 struct AppState {
     sidecar: Arc<Mutex<Option<Sidecar>>>,
+    quitting: Arc<AtomicBool>,
+    tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
 }
+
+const MAIN_WINDOW: &str = "main";
+const MENU_SHOW: &str = "show";
+const MENU_CHAT: &str = "chat";
+const MENU_CODING: &str = "coding";
+const MENU_SETTINGS: &str = "settings";
+const MENU_TELEMETRY: &str = "telemetry";
+const MENU_STATUS: &str = "status";
+const MENU_QUIT: &str = "quit";
 
 /// Apply platform-specific window chrome.
 ///
@@ -92,6 +107,136 @@ fn open_macos_microphone_settings() -> Result<(), String> {
     }
 }
 
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn navigate_main_window(app: &AppHandle, path: &str) {
+    show_main_window(app);
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        let path_json = serde_json::to_string(path).unwrap_or_else(|_| "\"/\"".into());
+        let _ = window.eval(format!("window.location.assign({path_json});"));
+    }
+}
+
+fn quit_app(app: &AppHandle) {
+    let state: tauri::State<'_, AppState> = app.state();
+    state.quitting.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
+
+fn handle_desktop_menu(app: &AppHandle, id: &str) {
+    match id {
+        MENU_SHOW => show_main_window(app),
+        MENU_CHAT => navigate_main_window(app, "/"),
+        MENU_CODING => navigate_main_window(app, "/coding"),
+        MENU_SETTINGS => navigate_main_window(app, "/settings"),
+        MENU_TELEMETRY => navigate_main_window(app, "/telemetry"),
+        MENU_QUIT => quit_app(app),
+        _ => {}
+    }
+}
+
+fn install_desktop_menus(app: &tauri::App) -> Result<()> {
+    let app_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
+    let app_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
+    let app_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
+    let app_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, None::<&str>)?;
+    let file_chat = MenuItem::with_id(app, MENU_CHAT, "Chat", true, None::<&str>)?;
+    let file_coding = MenuItem::with_id(app, MENU_CODING, "Coding", true, None::<&str>)?;
+    let file_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, None::<&str>)?;
+    let view_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
+    let view_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
+    let app_menu = SubmenuBuilder::new(app, "OpenAgentd")
+        .item(&app_show)
+        .separator()
+        .item(&app_settings)
+        .item(&app_telemetry)
+        .separator()
+        .item(&app_quit)
+        .build()?;
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&file_chat)
+        .item(&file_coding)
+        .separator()
+        .item(&file_quit)
+        .build()?;
+    let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&view_settings)
+        .item(&view_telemetry)
+        .build()?;
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .minimize()
+        .close_window_with_text("Hide to Tray")
+        .build()?;
+    let menu = Menu::with_items(app, &[&app_menu, &file_menu, &view_menu, &window_menu])?;
+    app.set_menu(menu)?;
+
+    let status = MenuItem::with_id(app, MENU_STATUS, "Status: Starting", false, None::<&str>)?;
+    let tray_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
+    let tray_chat = MenuItem::with_id(app, MENU_CHAT, "Chat", true, None::<&str>)?;
+    let tray_coding = MenuItem::with_id(app, MENU_CODING, "Coding", true, None::<&str>)?;
+    let tray_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
+    let tray_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
+    let tray_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, None::<&str>)?;
+    let tray_menu = Menu::with_items(
+        app,
+        &[
+            &status,
+            &PredefinedMenuItem::separator(app)?,
+            &tray_show,
+            &tray_chat,
+            &tray_coding,
+            &tray_settings,
+            &tray_telemetry,
+            &PredefinedMenuItem::separator(app)?,
+            &tray_quit,
+        ],
+    )?;
+    let mut tray = TrayIconBuilder::new()
+        .menu(&tray_menu)
+        .show_menu_on_left_click(false)
+        .tooltip("OpenAgentd")
+        .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
+        .on_tray_icon_event(|tray, event| match event {
+            TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            }
+            | TrayIconEvent::DoubleClick {
+                button: MouseButton::Left,
+                ..
+            } => show_main_window(tray.app_handle()),
+            _ => {}
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone()).icon_as_template(true);
+    }
+    tray.build(app)?;
+
+    let state: tauri::State<'_, AppState> = app.state();
+    tauri::async_runtime::block_on(async {
+        state.tray_status.lock().await.replace(status);
+    });
+    Ok(())
+}
+
+fn update_tray_status(app: &AppHandle, text: &str) {
+    let state: tauri::State<'_, AppState> = app.state();
+    let text = text.to_string();
+    let status = state.tray_status.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Some(item) = status.lock().await.as_ref() {
+            let _ = item.set_text(text);
+        }
+    });
+}
+
 async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Result<()> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
@@ -139,6 +284,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
         let win = builder.build().context("build webview window")?;
         win.show().context("show window")?;
         win.set_focus().ok();
+        update_tray_status(&app, "Status: Running (dev)");
         app.emit(
             "backend-ready",
             BackendReady {
@@ -190,6 +336,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
 
     win.show().context("show window")?;
     win.set_focus().ok();
+    update_tray_status(&app, "Status: Running");
 
     // Stash the sidecar so we can clean it up on exit.
     let _ = state.sidecar.lock().await.replace(sidecar);
@@ -209,6 +356,8 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
 fn main() {
     let state = AppState {
         sidecar: Arc::new(Mutex::new(None)),
+        quitting: Arc::new(AtomicBool::new(false)),
+        tray_status: Arc::new(Mutex::new(None)),
     };
 
     let log_plugin = tauri_plugin_log::Builder::new()
@@ -220,16 +369,19 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(state)
+        .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             backend_health,
             backend_logs_path,
             open_macos_microphone_settings
         ])
         .setup(|app| {
+            install_desktop_menus(app)?;
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = start_backend_and_window(handle.clone()).await {
                     log::error!("failed to start backend: {e:#}");
+                    update_tray_status(&handle, "Status: Error");
                     handle
                         .emit(
                             "backend-error",
@@ -245,6 +397,19 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| match event {
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { api, .. },
+                ..
+            } if label == MAIN_WINDOW => {
+                let state: tauri::State<'_, AppState> = app.state();
+                if !state.quitting.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+                        let _ = window.hide();
+                    }
+                }
+            }
             RunEvent::ExitRequested { .. } => {
                 let state: tauri::State<'_, AppState> = app.state();
                 let sidecar = state.sidecar.clone();
