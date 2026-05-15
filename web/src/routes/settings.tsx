@@ -1,72 +1,89 @@
 /**
- * Settings shell — responsive two-column layout.
+ * Settings shell — responsive two-column layout below a shared header.
  *
  * Desktop (≥768px):
- *   ┌──────────────┬─────────────────────────────┐
- *   │ ← Back        │                             │
- *   │               │                             │
- *   │ CONFIGURATION │  Detail / list / editor     │
- *   │ ▌ Agents  6   │  (rendered by route Outlet) │
- *   │   Skills 12   │                             │
- *   │   …           │                             │
- *   │ ABOUT         │                             │
- *   │   Telemetry   │                             │
- *   │   About       │                             │
- *   └──────────────┴─────────────────────────────┘
+ *   ┌──────────────────────────────────────────────────────┐
+ *   │ AppHeader (Home · ☰ · "Settings" · ● local)          │
+ *   ├──────────────┬───────────────────────────────────────┤
+ *   │ Sidebar      │ Detail / list / editor (Outlet)       │
+ *   │ (240 px)     │                                       │
+ *   └──────────────┴───────────────────────────────────────┘
  *
- * Mobile (<768px): single column — the sidebar is replaced by the
- * settings hub at /settings, and detail routes render full-screen.
+ * Mobile (<768px):
+ *   ┌──────────────────────────────────────────────────────┐
+ *   │ AppHeader (Home · ☰ · "Settings" · ● local)          │
+ *   ├──────────────────────────────────────────────────────┤
+ *   │ Outlet — full width                                   │
+ *   └──────────────────────────────────────────────────────┘
  *
- * The legacy three-column layout with a middle list column has been
- * replaced: list pages (agents/skills/MCP) now render cards inline in
- * the right pane via `SettingsListView`.
+ * The list pages (agents/skills/MCP) render cards inline in the right
+ * pane via `SettingsListView`; there is no middle list column.
  */
-import { Outlet, useLocation } from '@tanstack/react-router'
+import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 
+import { AppHeader } from '@/components/AppHeader'
 import { SettingsSidebar } from '@/components/settings/SettingsSidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
 
-/** Returns true when the pathname points at a detail/editor route (not the list root). */
-function isDetailRoute(pathname: string): boolean {
-  return (
-    pathname.startsWith('/settings/agents/') ||
-    pathname.startsWith('/settings/skills/') ||
-    pathname.startsWith('/settings/mcp/') ||
-    pathname === '/settings/sandbox' ||
-    pathname === '/settings/dream' ||
-    pathname === '/settings/voice' ||
-    pathname === '/settings'
-  )
+/** Page title shown in the AppHeader based on the current pathname. */
+function pageTitleFor(pathname: string): string {
+  if (pathname.startsWith('/settings/agents')) return 'Agents'
+  if (pathname.startsWith('/settings/skills')) return 'Skills'
+  if (pathname.startsWith('/settings/mcp')) return 'MCP servers'
+  if (pathname === '/settings/sandbox') return 'Sandbox'
+  if (pathname === '/settings/dream') return 'Dream'
+  if (pathname === '/settings/voice') return 'Voice'
+  return 'Settings'
 }
 
 export function SettingsLayout() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const isMobile = useIsMobile()
-  const onDetail = isDetailRoute(pathname)
+  // Mobile-only drawer state for the sidebar. On desktop the sidebar
+  // is permanently visible so the hamburger acts as a back-to-settings
+  // shortcut (navigates the outlet to /settings).
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
-  // Mobile layout: at /settings show the hub (which lists categories);
-  // detail and list routes render full-screen via the Outlet.
-  if (isMobile) {
-    return (
-      <div className="flex h-dvh flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
-        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {onDetail || pathname.startsWith('/settings/') ? (
-            <Outlet />
-          ) : (
-            <Outlet />
-          )}
-        </main>
-      </div>
-    )
+  const handleToggleSidebar = () => {
+    if (isMobile) {
+      setMobileSidebarOpen((v) => !v)
+    } else {
+      navigate({ to: '/settings' })
+    }
   }
 
-  // Desktop layout: sidebar + outlet.
   return (
-    <div className="flex h-dvh overflow-hidden bg-(--bg-page) text-(--color-text)">
-      <SettingsSidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <Outlet />
-      </main>
+    <div className="flex h-dvh flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
+      <AppHeader
+        title={pageTitleFor(pathname)}
+        onToggleSidebar={handleToggleSidebar}
+      />
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Desktop sidebar — always visible. Mobile renders the same
+            sidebar inside a slide-over so the hamburger has somewhere
+            meaningful to open. */}
+        {!isMobile && <SettingsSidebar />}
+
+        {isMobile && mobileSidebarOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-30 bg-black/40"
+              onClick={() => setMobileSidebarOpen(false)}
+              aria-hidden="true"
+            />
+            <div className="fixed inset-y-0 left-0 z-40 flex">
+              <SettingsSidebar hideBackLink />
+            </div>
+          </>
+        )}
+
+        <main className="flex min-w-0 flex-1 flex-col">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }
