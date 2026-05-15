@@ -108,6 +108,8 @@ Keep prompt bodies **tool-agnostic**. Don't hardcode tool names like `` `shell` 
 
 ## Importing from other systems
 
+Use the dedicated migration guide for setup-level migration from other agent harnesses: [`../../../MIGRATION.md`](../../../MIGRATION.md).
+
 ```bash
 openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5
 openagentd migrate hermes --from ~/.hermes --model openai:gpt-5

@@ -59,7 +59,7 @@ openagentd migrate hermes --model openai:gpt-5.5
 
 Imports OpenClaw or Hermes identity/context Markdown files into one OpenAgentd lead agent. Use `--from`, `--name`, `--config-dir`, and `--force` to override defaults.
 
-See [Configuration — Agent configuration](configuration.md#agent-configuration) for supported source files and output location.
+See [`../../MIGRATION.md`](../../MIGRATION.md) for source files, output paths, and manual migration notes for Claude Code and Codex CLI.
 
 ---
 

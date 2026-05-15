@@ -22,6 +22,7 @@ Connects to LLM providers (Gemini, Vertex AI, OpenAI, OpenRouter, Copilot OAuth,
 | Doc | What it covers |
 |-----|----------------|
 | [Install](./install.md) | uv tool / pipx / pip / Homebrew / Docker / source. First-run wizard. |
+| [Migration](../../MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs. |
 | [CLI reference](./cli.md) | Every `openagentd` subcommand (`init`, `auth`, `stop`, `doctor`, `upgrade`, …). |
 | [Configuration](./configuration.md) | Env vars, XDG paths, agent `.md` files, providers, tools, skills, sandbox, hooks. |
 | [Troubleshooting](./troubleshooting.md) | Common install & runtime issues. |

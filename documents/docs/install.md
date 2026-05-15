@@ -179,6 +179,8 @@ Requires [uv](https://docs.astral.sh/uv/) and [Bun](https://bun.sh).
 
 Open the app, then go to **Settings → Providers**. Add an API-key provider or click **Connect** for OAuth providers such as GitHub Copilot or OpenAI Codex. After the first provider is saved, OpenAgentd installs the default agent team and skills automatically.
 
+Existing OpenAgentd CLI users do not need to uninstall or migrate before installing the desktop app. The desktop sidecar uses the same XDG config and data paths as the CLI; see [`../../MIGRATION.md`](../../MIGRATION.md) for details.
+
 ### CLI / server
 
 Run the setup wizard once:

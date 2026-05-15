@@ -11,7 +11,7 @@
 
 **Your on-machine multi-agent system.** A long-running local service with a web cockpit, persistent memory, and a team of agents that coordinate to get real work done. Everything stays on your hardware.
 
-[Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md)
+[Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md) · [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md)
 
 ![OpenAgentd annotated multi-agent cockpit](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-hero-annotated.png)
 
@@ -109,7 +109,7 @@ openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5
 openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5
 ```
 
-Existing agent files are not overwritten unless `--force` is passed. See [`documents/docs/configuration/agents.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/agents.md#importing-from-other-systems) for supported source files.
+Existing agent files are not overwritten unless `--force` is passed. See [`MIGRATION.md`](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md) for setup migration from OpenClaw, Hermes, Claude Code, and Codex CLI.
 
 ---
 
@@ -313,6 +313,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | Section | Contents |
 |---------|----------|
 | [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | pip, uv, Homebrew, Docker, source |
+| [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs |
 | [CLI reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/cli.md) | Every `openagentd` subcommand |
 | [Configuration overview](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md) | Hub — links into the focused subpages below |
 | [Environment variables](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/env.md) | `Settings` fields, provider keys, optional extras |

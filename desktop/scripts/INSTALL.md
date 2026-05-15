@@ -109,11 +109,14 @@ The expected hashes are also pinned in the GitHub release notes.
 | Linux    | Delete `~/.local/bin/openagentd` and `~/.local/share/applications/openagentd.desktop`. Or `sudo apt remove openagentd` / `sudo rpm -e openagentd` if you used the system package. |
 | Windows  | *Settings → Apps → OpenAgentd → Uninstall*.                          |
 
-Application data lives under (these survive uninstall by design):
+Application data lives under the same XDG paths used by the CLI (these survive uninstall by design):
 
-- macOS:   `~/Library/Application Support/openagentd/`
-- Linux:   `~/.local/share/openagentd/`  and  `~/.config/openagentd/`
-- Windows: `%APPDATA%\openagentd\`
+- Config: `~/.config/openagentd/`
+- Data: `~/.local/share/openagentd/`
+- Wiki: `~/.local/share/openagentd-wiki/`
+- Workspace: `~/.local/share/openagentd-workspace/`
+- State/logs: `~/.local/state/openagentd/`
+- Cache/OAuth: `~/.cache/openagentd/`
 
 Delete those directories manually if you want a clean slate.
 

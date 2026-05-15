@@ -135,7 +135,7 @@ works without prompting.
 ```
 /usr/lib/openagentd/sidecar/python/
 /usr/lib/openagentd/sidecar/site-packages/
-/usr/bin/openagentd-desktop      ← Tauri executable, .deb only
+/usr/bin/OpenAgentd              ← Tauri executable, .deb only
 ```
 
 AppImage is self-contained and the recommended Linux artefact.
