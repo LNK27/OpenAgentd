@@ -247,7 +247,8 @@ bundled inside every artefact via `tauri.conf.json` →
 | **1d** | Tauri v2 shell + sidecar supervisor + Job Object cleanup                                    | ✅ scaffolded   |
 | **1e** | `scripts/build_sidecar.py` — python-build-standalone + `uv pip install --target` + smoke    | ✅ done         |
 | **1f** | `.github/workflows/release-desktop.yml` — matrix build → signed artefacts → GitHub Release  | ✅ scaffolded   |
-| **2**  | First-run UX inside the desktop shell (provider picker, workspace picker, key entry)        | UI work — Phase 2 |
+| **2**  | First-run provider setup inside the desktop shell (Settings → Providers, API keys + OAuth)  | ✅ done         |
+| **2**  | Workspace picker / trust flow for coding mode                                               | ✅ done         |
 | **2**  | `/api/diagnostics` endpoint + "Copy diagnostics" button                                     | ✅ done         |
 | **3**  | macOS notarization, Windows Authenticode, Tauri updater public-key wiring                   | scaffold ready; needs certificates |
 | **3**  | Update channels (stable / beta / nightly) → distinct `latest.json` URLs                     | partial         |

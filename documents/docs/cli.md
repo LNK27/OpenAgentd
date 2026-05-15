@@ -46,6 +46,8 @@ openagentd auth --list          # list available OAuth providers
 
 Authenticates with an OAuth-based provider. Only needed for providers that don't use an API key (GitHub Copilot, OpenAI Codex). Token is cached locally and reused on subsequent runs.
 
+In the desktop/web UI, the same OAuth setup is available from **Settings → Providers**.
+
 ---
 
 ## migrate

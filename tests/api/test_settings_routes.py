@@ -337,6 +337,25 @@ def test_list_providers_marks_configured_when_env_var_set(
     assert data["has_any_configured"] is True
 
 
+def test_list_providers_marks_oauth_file_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OAuth providers persist token files directly under CACHE_DIR."""
+    monkeypatch.setattr(settings_routes.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path))
+    (tmp_path / "codex_oauth.json").write_text("{}", encoding="utf-8")
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.get("/api/settings/providers")
+
+    assert response.status_code == 200
+    data = response.json()
+    codex = next(p for p in data["providers"] if p["id"] == "codex")
+    copilot = next(p for p in data["providers"] if p["id"] == "copilot")
+    assert codex["is_configured"] is True
+    assert copilot["is_configured"] is False
+
+
 def test_test_provider_returns_404_for_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     app = _make_app()
     client = TestClient(app)

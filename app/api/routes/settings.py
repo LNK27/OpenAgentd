@@ -239,13 +239,13 @@ def _provider_is_configured(entry: "ProviderEntry") -> bool:
     if kind == "local":
         return True
     if kind == "oauth":
-        # OAuth tokens land in CACHE_DIR/<provider>/oauth.json — exact
-        # filename is per-provider. We check for the directory's
-        # existence as a coarse signal; the auth route surfaces precise
-        # state.
         cache_dir = Path(settings.OPENAGENTD_CACHE_DIR or "")
-        token_dir = cache_dir / entry["id"]
-        return token_dir.is_dir() and any(token_dir.iterdir())
+        token_files = {
+            "codex": cache_dir / "codex_oauth.json",
+            "copilot": cache_dir / "copilot_oauth.json",
+        }
+        token_file = token_files.get(entry["id"])
+        return bool(token_file and token_file.is_file())
     if kind == "cloud_creds":
         # Vertex AI: need project + location *and* gcloud ADC. We can't
         # check gcloud from here without shelling out, so the UI's

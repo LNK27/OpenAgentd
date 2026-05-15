@@ -141,6 +141,35 @@ def test_sse_stream_surfaces_exception_from_login(
     assert "synthetic failure" in text
 
 
+def test_sse_stream_does_not_duplicate_provider_failed_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Providers may emit ``failed`` before raising to stop their flow."""
+    fake_module = type("M", (), {})()
+
+    def fake_login(event_sink: Any = None, **_kwargs: Any) -> None:
+        event_sink("failed", {"message": "device expired", "reason": "expired"})
+        raise RuntimeError("device_code_expired")
+
+    fake_module.login = fake_login
+
+    import app.api.routes.auth as auth_route
+
+    monkeypatch.setattr(auth_route, "_PROVIDERS", {"codex": ("fake", "fake")})
+    monkeypatch.setattr(
+        auth_route.importlib, "import_module", lambda _name: fake_module
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    with client.stream("GET", "/api/auth/codex/login") as response:
+        text = b"".join(response.iter_bytes()).decode("utf-8")
+
+    assert text.count("event: failed") == 1
+    assert "device expired" in text
+    assert "device_code_expired" not in text
+
+
 async def test_event_sink_pushes_via_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     """Smoke test: the _sink closure puts items on the queue via the loop.
 

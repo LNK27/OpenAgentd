@@ -7,9 +7,16 @@ updated: 2026-05-16
 
 # LLM Providers
 
-**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/capabilities.py`, `app/agent/providers/capabilities.yaml`
+**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/catalog.py`, `app/api/routes/settings.py`, `app/agent/providers/capabilities.py`, `app/agent/providers/capabilities.yaml`
 
 A model is selected by setting `model: <prefix>:<model-id>` in an agent's `.md` frontmatter. The prefix selects the provider; the rest is passed verbatim to that provider's API.
+
+## Setup paths
+
+- **Desktop/web UI:** open **Settings → Providers**. API-key providers write to `{OPENAGENTD_CONFIG_DIR}/.env`; OAuth providers use the in-app device flow and store tokens under `{OPENAGENTD_CACHE_DIR}`.
+- **CLI/server:** run `openagentd init` for first setup, or `openagentd auth copilot|codex` for OAuth-only providers.
+
+On first provider setup, the UI/CLI installs the default agents and skills without overwriting existing files.
 
 ## Registered prefixes
 

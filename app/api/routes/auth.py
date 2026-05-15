@@ -78,8 +78,12 @@ async def oauth_login(provider_id: str, request: Request):
 
     queue: asyncio.Queue[tuple[str, dict[str, Any]] | object] = asyncio.Queue()
     loop = asyncio.get_running_loop()
+    failed_emitted = False
 
     def _sink(event: str, data: dict[str, Any]) -> None:
+        nonlocal failed_emitted
+        if event == "failed":
+            failed_emitted = True
         # Called from the worker thread — bounce through the loop so
         # asyncio.Queue.put_nowait isn't called cross-thread.
         loop.call_soon_threadsafe(queue.put_nowait, (event, data))
@@ -93,10 +97,11 @@ async def oauth_login(provider_id: str, request: Request):
             mod.login(event_sink=_sink)
         except Exception as exc:  # noqa: BLE001 — surface everything to UI
             logger.warning("oauth_login_failed provider={} error={}", provider_id, exc)
-            loop.call_soon_threadsafe(
-                queue.put_nowait,
-                ("failed", {"message": str(exc), "reason": "exception"}),
-            )
+            if not failed_emitted:
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    ("failed", {"message": str(exc), "reason": "exception"}),
+                )
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, _DONE)
 
