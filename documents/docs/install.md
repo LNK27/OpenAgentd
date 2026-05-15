@@ -60,7 +60,7 @@ Grab the latest installer from the [desktop releases](https://github.com/lthoang
 
 ### Why is it unsigned? <a id="desktop-unsigned"></a>
 
-OpenAgentd ships **without** an Apple Developer ID signature or a Windows Authenticode certificate. Both are paid subscriptions ($99/yr Apple, $300+ Windows EV) that we've chosen not to buy for a side-project at v0.x. The binary is exactly what came out of CI — reproducible from the [`release-desktop.yml`](https://github.com/lthoangg/openagentd/blob/main/.github/workflows/release-desktop.yml) workflow on a public GitHub-hosted runner — but the OS treats it the same as any unsigned executable.
+OpenAgentd ships **without** an Apple Developer ID signature or a Windows Authenticode certificate. Both are paid subscriptions ($99/yr Apple, $300+ Windows EV) that we've chosen not to buy yet. The binary is exactly what came out of CI — reproducible from the [`release-desktop.yml`](https://github.com/lthoangg/openagentd/blob/main/.github/workflows/release-desktop.yml) workflow on a public GitHub-hosted runner — but the OS treats it the same as any unsigned executable.
 
 That means:
 
