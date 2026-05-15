@@ -201,8 +201,8 @@ export function Sidebar({
       transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={
         isMobile
-          ? 'fixed inset-y-0 left-0 z-40 flex w-[272px] shrink-0 flex-col overflow-hidden bg-(--bg-page) shadow-xl'
-          : 'relative flex shrink-0 flex-col overflow-hidden bg-(--bg-page)'
+          ? 'fixed inset-y-0 left-0 z-40 flex w-[272px] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
+          : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)'
       }
       style={isMobile ? undefined : { minWidth: desktopWidth }}
     >
