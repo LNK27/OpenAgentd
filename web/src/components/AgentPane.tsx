@@ -1,9 +1,9 @@
 /**
- * AgentPane — compact single-agent pane used by split and unified views.
+ * AgentPane — compact single-agent pane used by the split view.
  *
  * Renders the same ContentBlock[] stream as `AgentView` (see that file for
- * block types) but in a denser layout with header chrome (status, drag handle,
- * close button) for tiling alongside other panes.
+ * block types) but in a denser layout with a small header (status, lead
+ * badge, token totals) for tiling alongside other panes.
  *
  * Blocks are grouped into "turns" via `partitionTurns` (see `utils/turns.ts`):
  * a turn is a contiguous run of non-user blocks. Each finalized turn renders a
@@ -15,7 +15,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { MarkdownBlock } from '@/utils/markdown'
-import { ChevronDown, ChevronUp, X, Copy, Check, GripVertical } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { InboxBubble } from './InboxBubble'
@@ -33,18 +33,6 @@ interface AgentPaneProps {
   name: string
   stream: AgentStream
   isLead: boolean
-  // Unified view
-  isFocused?: boolean
-  onClose?: () => void
-  onFocus?: () => void
-  // Shared drag state
-  isDropTarget?: boolean
-  isDragging?: boolean
-  onDragStart?: (e: React.DragEvent) => void
-  onDragEnd?: () => void
-  // Split-grid drag (index-based)
-  onDragOver?: (e: React.DragEvent<HTMLDivElement>) => void
-  onDrop?: () => void
 }
 
 const USER_COLLAPSE_LINES = 10
@@ -212,15 +200,6 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
 
 export function AgentPane({
   name, stream, isLead,
-  isFocused = false,
-  isDropTarget = false,
-  isDragging = false,
-  onClose,
-  onFocus,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDrop,
 }: AgentPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
@@ -289,48 +268,19 @@ export function AgentPane({
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [isEmpty])
 
-  const borderClass  = isError
+  const borderClass = isError
     ? 'border-(--color-error)'
-    : isDropTarget
-    ? 'border-(--color-info) bg-(--accent-blue-soft)'
-    : isFocused
-    ? 'border-(--color-accent)'
     : isLead
     ? 'border-(--color-border-strong)'
     : 'border-(--color-border)'
   const headerAccent = isError ? 'border-b-(--color-error)' : isWorking ? 'border-b-(--color-accent)' : isOffline ? 'border-b-(--color-text-subtle)' : isLead ? 'border-b-(--color-border-strong)' : 'border-b-(--color-border)'
 
-  // Drag model (both split-grid and unified modes):
-  //   • Only the GripVertical handle initiates drag (draggable lives on the handle).
-  //   • The whole panel is a drop target (onDragOver + onDrop on the root).
-  // This avoids conflicts with text selection inside the markdown body and
-  // prevents the floating input from stealing mousedowns on full-height panes.
-  const hasDragHandle = !!onDragStart
-
   return (
     <div
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      className={`flex h-full flex-col overflow-hidden rounded-xl border bg-(--bg-page) transition-all duration-150 ${borderClass} ${isDragging ? 'opacity-50' : ''}`}
-      onClick={onFocus}
+      className={`flex h-full flex-col overflow-hidden rounded-xl border bg-(--bg-page) transition-all duration-150 ${borderClass}`}
     >
       {/* Header */}
       <div className={`flex items-center gap-2 border-b px-3 py-2.5 ${headerAccent}`}>
-         {/* Grip handle — only element that initiates drag */}
-         {hasDragHandle && (
-           <div
-             draggable
-             onDragStart={onDragStart}
-             onDragEnd={onDragEnd}
-             className="cursor-grab text-(--color-text-subtle) hover:text-(--color-text-muted) active:cursor-grabbing"
-             onClick={(e) => e.stopPropagation()}
-             title="Drag to swap pane position"
-             aria-label={`Drag ${name} pane`}
-           >
-             <GripVertical size={14} />
-           </div>
-         )}
          <div className="flex min-w-0 flex-1 items-center gap-1.5">
            <span className={`truncate text-xs font-semibold ${isLead ? 'text-(--color-text)' : 'text-(--color-text-2)'}`}>
              {name}
@@ -363,16 +313,6 @@ export function AgentPane({
              isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
            }`} />
          </div>
-         {onClose && (
-           <button
-             onClick={(e) => { e.stopPropagation(); onClose() }}
-             className="ml-1 rounded p-0.5 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-             title="Minimize pane"
-             aria-label={`Minimize ${name} pane`}
-           >
-             <X size={12} />
-           </button>
-         )}
        </div>
 
       {/* Body */}

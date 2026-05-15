@@ -9,7 +9,6 @@
  * surfaces:
  *
  *   • Optional "Dream…" running indicator
- *   • Optional unified-view split-pane buttons (desktop only)
  *   • ViewToggle (desktop only)
  *   • TokenMeter (desktop only, shown when totals > 0)
  *   • TopbarAction quintet — Todos / Scheduler / Wiki / Files / Agents
@@ -25,8 +24,6 @@ import {
   FolderOpen,
   ListChecks,
   Moon,
-  SplitSquareHorizontal,
-  SplitSquareVertical,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -68,10 +65,6 @@ export interface AgentTopbarProps {
   /** Current view mode; when undefined the ViewToggle is hidden. */
   viewMode?: ViewMode
   onViewModeChange?: (mode: ViewMode) => void
-  /** Show split-pane buttons (only meaningful in unified mode). */
-  showSplitButtons?: boolean
-  onSplitDown?: () => void
-  onSplitRight?: () => void
   /** Force the mobile/desktop layout. Defaults to desktop. */
   isMobile?: boolean
   /**
@@ -105,9 +98,6 @@ export function AgentTopbar({
   dreamRunning = false,
   viewMode,
   onViewModeChange,
-  showSplitButtons = false,
-  onSplitDown,
-  onSplitRight,
   isMobile = false,
   todosSlot,
   todosAction,
@@ -123,8 +113,6 @@ export function AgentTopbar({
     : 0
   const showTokens = !isMobile && tokens && totalAll > 0
   const showViewToggle = !isMobile && viewMode && onViewModeChange
-  const showSplit =
-    !isMobile && showSplitButtons && (onSplitDown || onSplitRight)
 
   return (
     <div
@@ -140,33 +128,6 @@ export function AgentTopbar({
         >
           <Moon size={11} className="animate-pulse" aria-hidden="true" />
           <span className="hidden sm:inline">Dream…</span>
-        </div>
-      )}
-
-      {showSplit && (
-        <div className="flex items-center gap-0.5">
-          {onSplitDown && (
-            <button
-              type="button"
-              onClick={onSplitDown}
-              className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
-              title="Split pane down (Ctrl+J)"
-              aria-label="Split pane down"
-            >
-              <SplitSquareVertical size={12} aria-hidden="true" />
-            </button>
-          )}
-          {onSplitRight && (
-            <button
-              type="button"
-              onClick={onSplitRight}
-              className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
-              title="Split pane right (Ctrl+K)"
-              aria-label="Split pane right"
-            >
-              <SplitSquareHorizontal size={12} aria-hidden="true" />
-            </button>
-          )}
         </div>
       )}
 

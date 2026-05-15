@@ -2,7 +2,7 @@
  * TeamChatView — top-level layout for the team chat route.
  *
  * Owns:
- *   - View-mode state (``agent`` / ``split`` / ``unified``).
+ *   - View-mode state (``agent`` / ``split``).
  *   - Side panels (``Sidebar``, ``WorkspaceFilesPanel``, ``AgentCapabilities``,
  *     todos popover, command palette).
  *   - The header (token totals, view toggle, panel toggles, agent tabs).
@@ -12,9 +12,7 @@
  *   - Keyboard shortcuts and the Command Palette assembly.
  *
  * Delegates:
- *   - ``SplitGrid``     — fixed n-pane grid layout (split mode).
- *   - ``AgentTabStrip`` — unified-mode tab strip.
- *   - ``TileArea``      — recursive tile tree (unified mode).
+ *   - ``SplitGrid``       — fixed n-pane grid layout (split mode).
  *   - ``useTeamCommands`` — Command Palette command list.
  *
  * Stream subscriptions are split into the smallest selectors that work
@@ -41,7 +39,6 @@ import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
-import { useTileLayout } from '@/hooks/useTileLayout'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
@@ -55,8 +52,6 @@ import { type InputBarHandle, type SlashCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
 import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
-import { AgentTabStrip } from './AgentTabStrip'
-import { TileArea } from './TileArea'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
 import { saveCodingWorkspace } from '@/utils/workspace'
@@ -159,16 +154,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const totalAll        = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.totalTokens, 0))
 
   const abortRef = useRef<AbortController | null>(null)
-
-  // ── Tile layout (unified view only) ────────────────────────────────────────
-
-  const tileLayout = useTileLayout({
-    sessionId: sessionIdState,
-    leadName,
-    agentNames,
-  })
-
-  const { openAgents, focusedAgent, openAgent, splitRight, splitDown, closeAgent, focusAgent } = tileLayout
 
   // ── Init / reconnect ───────────────────────────────────────────────────────
 
@@ -305,29 +290,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     })
   }, [])
 
-  // Unified-mode split actions — cycle through minimized agents
-  // Ctrl+J = split down (new pane below focused)
-  // Ctrl+K = split right (new pane to the right of focused)
-  const minimizedAgents = agentNames.filter((n) => !openAgents.includes(n))
-
-  const handleSplitDown = useCallback(() => {
-    if (!focusedAgent) return
-    const target = minimizedAgents[0]
-    if (!target) return
-    splitDown(focusedAgent, target)
-  }, [focusedAgent, minimizedAgents, splitDown])
-
-  const handleSplitRight = useCallback(() => {
-    if (!focusedAgent) return
-    const target = minimizedAgents[0]
-    if (!target) return
-    splitRight(focusedAgent, target)
-  }, [focusedAgent, minimizedAgents, splitRight])
-
-  const handleClosePane = useCallback(() => {
-    if (focusedAgent) closeAgent(focusedAgent)
-  }, [focusedAgent, closeAgent])
-
   const commands = useTeamCommands({
     viewMode,
     cycleViewMode,
@@ -341,24 +303,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     handleDreamRun,
     agentNames,
     leadName,
-    openAgents,
-    focusedAgent,
     cycleActiveAgent,
     setActiveAgent,
-    focusAgent,
-    openAgent,
-    handleSplitDown,
-    handleSplitRight,
-    handleClosePane,
     navigate,
   })
 
   useKeyboardShortcuts({
     n: handleNewSession,
     v: isMobile ? undefined : cycleViewMode,
-    j: effectiveViewMode === 'unified' ? handleSplitDown  : undefined,
-    k: effectiveViewMode === 'unified' ? handleSplitRight : undefined,
-    w: effectiveViewMode === 'unified' ? handleClosePane  : undefined,
     a: () => setShowAgentSidebar((v) => !v),
     f: handleWorkspaceFiles,
     t: () => { if (sessionIdState) setShowTodos((v) => !v) },
@@ -372,25 +324,17 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     'i': () => window.dispatchEvent(new CustomEvent('focus-chat-input')),
   })
 
-  // Tab / Shift+Tab — agent view: cycle store activeAgent; unified: cycle open panes
+  // Tab / Shift+Tab — cycle the active agent in the store (agent view tabs
+  // and split-mode pane focus both follow store activeAgent).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Tab' || e.ctrlKey || e.metaKey) return
       e.preventDefault()
-      if (effectiveViewMode === 'unified') {
-        if (openAgents.length === 0) return
-        const idx = focusedAgent ? openAgents.indexOf(focusedAgent) : -1
-        const next = e.shiftKey
-          ? (idx - 1 + openAgents.length) % openAgents.length
-          : (idx + 1) % openAgents.length
-        focusAgent(openAgents[next])
-      } else {
-        cycleActiveAgent(e.shiftKey ? 'prev' : 'next')
-      }
+      cycleActiveAgent(e.shiftKey ? 'prev' : 'next')
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [effectiveViewMode, openAgents, focusedAgent, focusAgent, cycleActiveAgent])
+  }, [cycleActiveAgent])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -518,19 +462,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                 Split · {splitAgentNames.length} agents
               </span>
             )}
-
-            {effectiveViewMode === 'unified' && (
-              <AgentTabStrip
-                agentNames={agentNames}
-                agentStreams={agentStreams}
-                leadName={leadName}
-                openAgents={openAgents}
-                focusedAgent={focusedAgent}
-                onFocusOpen={focusAgent}
-                onOpenMinimized={openAgent}
-                onClose={closeAgent}
-              />
-            )}
           </div>
 
           {/* Right: tokens, dream, split-pane, view toggle, panel toggles —
@@ -552,11 +483,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             dreamRunning={dreamMutation.isPending}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
-            showSplitButtons={
-              effectiveViewMode === 'unified' && minimizedAgents.length > 0
-            }
-            onSplitDown={handleSplitDown}
-            onSplitRight={handleSplitRight}
             todosSlot={
               <TodosPopover
                 open={showTodos}
@@ -616,12 +542,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               agentStreams={agentStreams}
             />
           </div>
-        ) : effectiveViewMode === 'unified' ? (
-          <TileArea
-            tileLayout={tileLayout}
-            agentStreams={agentStreams}
-            leadName={leadName}
-          />
         ) : mode === 'coding' && workspace && teamAgentsLoading ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />

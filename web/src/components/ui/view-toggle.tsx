@@ -1,27 +1,25 @@
 /**
- * ViewToggle — three-state icon-only segmented control for chat view modes.
+ * ViewToggle — two-state icon-only segmented control for chat view modes.
  *
- * Pencil component `T9nydm` (ViewToggle): three equally-sized 28×28
- * icon-only buttons inside a rounded-md pill bordered with
- * `--color-border-subtle`. The active button has a `--color-surface-2`
- * fill; others are transparent. Pencil uses Material Symbols `person` /
- * `view_column` / `view_quilt`; we map to the closest lucide
- * equivalents to preserve semantics.
+ * Pencil component `T9nydm` (ViewToggle): equally-sized 28×28 icon-only
+ * buttons inside a rounded-md pill bordered with `--color-border-subtle`.
+ * The active button has a `--color-surface-2` fill; others are
+ * transparent. Pencil uses Material Symbols `person` / `view_column`;
+ * we map to the closest lucide equivalents to preserve semantics.
  *
  * Modes:
- *   - "agent"   → focus a single agent (User      ↔ person)
- *   - "split"   → side-by-side panes  (Columns2   ↔ view_column)
- *   - "unified" → tiled unified view  (LayoutGrid ↔ view_quilt)
+ *   - "agent" → focus a single agent (User    ↔ person)
+ *   - "split" → side-by-side panes  (Columns2 ↔ view_column)
  *
  * Labels live on `aria-label` and `title` only — the control is too
- * dense to fit all three labels on the topbar. Tooltips surface them on
+ * dense to fit both labels on the topbar. Tooltips surface them on
  * hover for sighted users.
  */
 
-import { User, Columns2, LayoutGrid, type LucideIcon } from 'lucide-react'
+import { User, Columns2, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export type ViewMode = 'agent' | 'split' | 'unified'
+export type ViewMode = 'agent' | 'split'
 
 interface ModeDef {
   mode: ViewMode
@@ -32,7 +30,6 @@ interface ModeDef {
 const MODES: readonly ModeDef[] = [
   { mode: 'agent', label: 'Agent view', Icon: User },
   { mode: 'split', label: 'Split view', Icon: Columns2 },
-  { mode: 'unified', label: 'Unified view', Icon: LayoutGrid },
 ] as const
 
 export interface ViewToggleProps {

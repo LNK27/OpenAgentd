@@ -1,10 +1,9 @@
 /**
- * AgentTopbarPreview — composite preview matching the three pencil
+ * AgentTopbarPreview — composite preview matching the two pencil
  * variants in the right-cluster section `BbrKe`:
  *
- *   1. Default   — agent view, no token meter, no dream
- *   2. Working   — agent view, token meter pulsing + Dream running
- *   3. Unified   — unified view, split-pane buttons + 3-mode ViewToggle
+ *   1. Default — agent view, no token meter, no dream
+ *   2. Working — agent view, token meter pulsing + Dream running
  *
  * The component is preview-only so it owns its own viewMode state and
  * the actions are no-ops.
@@ -37,7 +36,7 @@ function PreviewFrame({
           mirroring the production header layout. */}
       <header className="flex items-center gap-1.5 px-4">
         <div className="min-w-0 flex-1 truncate text-xs text-(--color-text-muted)">
-          ← left cluster (agent tabs / split label / unified strip)
+          ← left cluster (agent tabs / split label)
         </div>
         {children}
       </header>
@@ -48,7 +47,6 @@ function PreviewFrame({
 export function AgentTopbarPreview() {
   const [defaultMode, setDefaultMode] = useState<ViewMode>('agent')
   const [workingMode, setWorkingMode] = useState<ViewMode>('agent')
-  const [unifiedMode, setUnifiedMode] = useState<ViewMode>('unified')
 
   const todos = {
     Icon: ListChecks,
@@ -99,23 +97,6 @@ export function AgentTopbarPreview() {
             viewMode={workingMode}
             onViewModeChange={setWorkingMode}
             todosAction={{ ...todos, indicator: true }}
-            filesAction={files}
-            agentsAction={agents}
-          />
-        </PreviewFrame>
-
-        <PreviewFrame
-          title="3 · Unified"
-          description="Unified mode adds split-pane buttons before the view toggle."
-        >
-          <AgentTopbar
-            tokens={{ input: 18_900, output: 5_400, cached: 11_200 }}
-            viewMode={unifiedMode}
-            onViewModeChange={setUnifiedMode}
-            showSplitButtons
-            onSplitDown={() => undefined}
-            onSplitRight={() => undefined}
-            todosAction={todos}
             filesAction={files}
             agentsAction={agents}
           />

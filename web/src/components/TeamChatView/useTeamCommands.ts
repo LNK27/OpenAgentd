@@ -3,10 +3,10 @@
  * the team chat view.
  *
  * The palette commands are pure data, but they close over a lot of
- * parent-owned state and callbacks (current view mode, open/focused
- * agents, navigate, the various toggle/cycle handlers). Wrapping the
- * assembly in a hook keeps the parent's render body focused on layout
- * while still threading the closures naturally.
+ * parent-owned state and callbacks (current view mode, navigate, the
+ * various toggle/cycle handlers). Wrapping the assembly in a hook keeps
+ * the parent's render body focused on layout while still threading the
+ * closures naturally.
  *
  * Group conventions used by ``CommandPalette``:
  *   - ``Team``       — session lifecycle (new chat, …)
@@ -56,17 +56,8 @@ interface UseTeamCommandsArgs {
   // Agents
   agentNames: string[]
   leadName: string | null
-  openAgents: string[]
-  focusedAgent: string | null
   cycleActiveAgent: (dir: 'next' | 'prev') => void
   setActiveAgent: (name: string) => void
-  focusAgent: (name: string) => void
-  openAgent: (name: string) => void
-
-  // Unified-mode split
-  handleSplitDown: () => void
-  handleSplitRight: () => void
-  handleClosePane: () => void
 
   // Navigation
   navigate: ReturnType<typeof useNavigate>
@@ -85,15 +76,8 @@ export function useTeamCommands({
   handleDreamRun,
   agentNames,
   leadName,
-  openAgents,
-  focusedAgent,
   cycleActiveAgent,
   setActiveAgent,
-  focusAgent,
-  openAgent,
-  handleSplitDown,
-  handleSplitRight,
-  handleClosePane,
   navigate,
 }: UseTeamCommandsArgs): Command[] {
   const commands: Command[] = [
@@ -101,14 +85,9 @@ export function useTeamCommands({
     { id: 'dream-run', group: 'Team', label: 'Run Dream', description: 'Synthesise unprocessed sessions into wiki topics', action: handleDreamRun },
     {
       id: 'toggle-view', group: 'View',
-      label: viewMode === 'agent' ? 'Switch to Split View' : viewMode === 'split' ? 'Switch to Unified View' : 'Switch to Agent View',
-      description: 'Cycle: Agent → Split → Unified', shortcut: 'Ctrl+V', action: cycleViewMode,
+      label: viewMode === 'agent' ? 'Switch to Split View' : 'Switch to Agent View',
+      description: 'Cycle: Agent → Split', shortcut: 'Ctrl+V', action: cycleViewMode,
     },
-    ...(viewMode === 'unified' ? [
-      { id: 'split-down',  group: 'View', label: 'Split Pane Down',  description: 'Open next agent below focused pane',          shortcut: 'Ctrl+J', action: handleSplitDown },
-      { id: 'split-right', group: 'View', label: 'Split Pane Right', description: 'Open next agent to the right of focused pane', shortcut: 'Ctrl+K', action: handleSplitRight },
-      { id: 'close-pane',  group: 'View', label: 'Close Focused Pane', description: 'Minimize the focused agent pane',             shortcut: 'Ctrl+W', action: handleClosePane },
-    ] : []),
     { id: 'agent-info',       group: 'View',       label: 'Agent Capabilities', description: 'Show agent tools, skills and config', shortcut: 'Ctrl+A', action: () => setShowAgentSidebar((v) => !v) },
     { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: 'Ctrl+T', action: () => setShowTodos((v) => !v) },
     { id: 'workspace-files',  group: 'View',       label: mode === 'coding' ? 'Open Files & Diff' : 'Toggle Workspace Files', description: mode === 'coding' ? 'Browse workspace files and git diff' : 'Browse files the agent has produced', shortcut: 'Ctrl+F', action: handleWorkspaceFiles },
@@ -120,20 +99,14 @@ export function useTeamCommands({
     { id: 'focus-input',      group: 'View',       label: 'Focus Chat Input',  description: 'Jump cursor to the message composer', shortcut: 'Ctrl+I', action: () => window.dispatchEvent(new CustomEvent('focus-chat-input')) },
     ...agentNames.map((name) => ({
       id: `switch-${name}`, group: 'Agents',
-      label: viewMode === 'unified'
-        ? (openAgents.includes(name) ? `Focus ${name}` : `Open ${name}`)
-        : `View ${name}`,
+      label: `View ${name}`,
       description: name === leadName ? 'Lead agent' : 'Worker agent',
       action: () => {
-        if (viewMode === 'unified') {
-          if (openAgents.includes(name)) focusAgent(name); else openAgent(name)
-        } else {
-          setViewMode('agent'); setActiveAgent(name)
-        }
+        setViewMode('agent'); setActiveAgent(name)
       },
     })),
-    { id: 'next-agent', group: 'Agents', label: 'Next Agent',     description: 'Tab',       action: () => viewMode === 'unified' ? focusAgent(openAgents[(openAgents.indexOf(focusedAgent ?? '') + 1) % openAgents.length]) : cycleActiveAgent('next') },
-    { id: 'prev-agent', group: 'Agents', label: 'Previous Agent', description: 'Shift+Tab', action: () => viewMode === 'unified' ? focusAgent(openAgents[(openAgents.indexOf(focusedAgent ?? '') - 1 + openAgents.length) % openAgents.length]) : cycleActiveAgent('prev') },
+    { id: 'next-agent', group: 'Agents', label: 'Next Agent',     description: 'Tab',       action: () => cycleActiveAgent('next') },
+    { id: 'prev-agent', group: 'Agents', label: 'Previous Agent', description: 'Shift+Tab', action: () => cycleActiveAgent('prev') },
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
     ...(mode === 'normal' ? [{ id: 'go-coding', group: 'Navigation', label: 'Go to Coding Mode', description: 'Open the coding workbench', action: () => navigate({ to: '/coding' }) }] : []),
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents & skills', action: () => navigate({ to: '/settings/agents' }) },

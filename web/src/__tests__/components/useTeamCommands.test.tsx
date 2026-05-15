@@ -15,11 +15,8 @@
  *     keydown event with ``ctrlKey: true`` and ``metaKey: false``,
  *     so the global shortcut handler (which checks
  *     ``e.ctrlKey && !e.metaKey``) fires.
- *   - Commands referencing ``viewMode === 'unified'`` (split-down /
- *     split-right / close-pane) only appear in that mode.
  *   - ``mode === 'coding'`` swaps the sidebar / workspace commands.
- *   - Per-agent ``Open / Focus / View`` commands switch label by
- *     viewMode + open-agent membership.
+ *   - Per-agent ``View`` commands include each agent.
  *   - The list is *built each render* — re-running the hook with new
  *     inputs returns the new commands (no stale closures).
  */
@@ -47,15 +44,8 @@ function makeArgs(overrides: Partial<Parameters<typeof useTeamCommands>[0]> = {}
     handleDreamRun: noop,
     agentNames: [] as string[],
     leadName: null,
-    openAgents: [] as string[],
-    focusedAgent: null,
     cycleActiveAgent: noop,
     setActiveAgent: noop,
-    focusAgent: noop,
-    openAgent: noop,
-    handleSplitDown: noop,
-    handleSplitRight: noop,
-    handleClosePane: noop,
     // navigate is only called inside action lambdas; tests that need
     // it pass their own spy.
     navigate: mock(() => Promise.resolve()) as unknown as Parameters<
@@ -77,7 +67,7 @@ function byId(cmds: Command[], id: string): Command {
 // ════════════════════════════════════════════════════════════════════════════
 describe("useTeamCommands — shortcut labels", () => {
   it("all shortcut strings start with literal 'Ctrl+'", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ viewMode: "unified" })))
+    const { result } = renderHook(() => useTeamCommands(makeArgs()))
     for (const cmd of result.current) {
       if (!cmd.shortcut) continue
       expect(cmd.shortcut).toMatch(/^Ctrl\+/)
@@ -85,7 +75,7 @@ describe("useTeamCommands — shortcut labels", () => {
   })
 
   it("no shortcut uses ⌘ or 'Cmd' (Ctrl-everywhere policy)", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ viewMode: "unified" })))
+    const { result } = renderHook(() => useTeamCommands(makeArgs()))
     for (const cmd of result.current) {
       if (!cmd.shortcut) continue
       expect(cmd.shortcut).not.toContain("⌘")
@@ -106,13 +96,6 @@ describe("useTeamCommands — shortcut labels", () => {
     expect(byId(result.current, "scheduled-tasks").shortcut).toBe("Ctrl+S")
     expect(byId(result.current, "focus-input").shortcut).toBe("Ctrl+I")
     expect(byId(result.current, "collapse-sidebar").shortcut).toBe("Ctrl+B")
-  })
-
-  it("unified-mode-only commands carry Ctrl+J / Ctrl+K / Ctrl+W", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ viewMode: "unified" })))
-    expect(byId(result.current, "split-down").shortcut).toBe("Ctrl+J")
-    expect(byId(result.current, "split-right").shortcut).toBe("Ctrl+K")
-    expect(byId(result.current, "close-pane").shortcut).toBe("Ctrl+W")
   })
 })
 
@@ -207,36 +190,12 @@ describe("useTeamCommands — dispatchCtrlKey synthetic events", () => {
 //  viewMode-conditional commands
 // ════════════════════════════════════════════════════════════════════════════
 describe("useTeamCommands — viewMode-gated commands", () => {
-  it("unified-mode commands are absent in agent mode", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ viewMode: "agent" })))
-    expect(result.current.find((c) => c.id === "split-down")).toBeUndefined()
-    expect(result.current.find((c) => c.id === "split-right")).toBeUndefined()
-    expect(result.current.find((c) => c.id === "close-pane")).toBeUndefined()
-  })
-
-  it("unified-mode commands are absent in split mode", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ viewMode: "split" })))
-    expect(result.current.find((c) => c.id === "split-down")).toBeUndefined()
-    expect(result.current.find((c) => c.id === "split-right")).toBeUndefined()
-    expect(result.current.find((c) => c.id === "close-pane")).toBeUndefined()
-  })
-
-  it("unified-mode commands appear in unified mode", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ viewMode: "unified" })))
-    expect(result.current.find((c) => c.id === "split-down")).toBeDefined()
-    expect(result.current.find((c) => c.id === "split-right")).toBeDefined()
-    expect(result.current.find((c) => c.id === "close-pane")).toBeDefined()
-  })
-
-  it("toggle-view label reflects current mode (cycle: agent → split → unified)", () => {
+  it("toggle-view label reflects current mode (cycle: agent → split)", () => {
     const agent = renderHook(() => useTeamCommands(makeArgs({ viewMode: "agent" })))
     expect(byId(agent.result.current, "toggle-view").label).toBe("Switch to Split View")
 
     const split = renderHook(() => useTeamCommands(makeArgs({ viewMode: "split" })))
-    expect(byId(split.result.current, "toggle-view").label).toBe("Switch to Unified View")
-
-    const unified = renderHook(() => useTeamCommands(makeArgs({ viewMode: "unified" })))
-    expect(byId(unified.result.current, "toggle-view").label).toBe("Switch to Agent View")
+    expect(byId(split.result.current, "toggle-view").label).toBe("Switch to Agent View")
   })
 })
 
@@ -315,145 +274,46 @@ describe("useTeamCommands — per-agent commands", () => {
     expect(byId(result.current, "switch-bob").description).toBe("Worker agent")
   })
 
-  describe("unified-mode labels", () => {
-    it("uses 'Focus <name>' when agent is already open", () => {
+  it("uses 'View <name>' label in every view mode", () => {
+    for (const viewMode of ["agent", "split"] as const) {
       const args = makeArgs({
-        viewMode: "unified",
-        agentNames: ["alice"],
-        openAgents: ["alice"],
-      })
-      const { result } = renderHook(() => useTeamCommands(args))
-      expect(byId(result.current, "switch-alice").label).toBe("Focus alice")
-    })
-
-    it("uses 'Open <name>' when agent is not yet open", () => {
-      const args = makeArgs({
-        viewMode: "unified",
-        agentNames: ["alice"],
-        openAgents: [],
-      })
-      const { result } = renderHook(() => useTeamCommands(args))
-      expect(byId(result.current, "switch-alice").label).toBe("Open alice")
-    })
-
-    it("agent-switch action calls focusAgent when open, openAgent otherwise", () => {
-      let focused: string | null = null
-      let opened: string | null = null
-      const args = makeArgs({
-        viewMode: "unified",
-        agentNames: ["alice", "bob"],
-        openAgents: ["alice"],
-        focusAgent: (n: string) => {
-          focused = n
-        },
-        openAgent: (n: string) => {
-          opened = n
-        },
-      })
-      const { result } = renderHook(() => useTeamCommands(args))
-      byId(result.current, "switch-alice").action()
-      expect(focused).toBe("alice")
-      expect(opened).toBe(null)
-
-      byId(result.current, "switch-bob").action()
-      expect(opened).toBe("bob")
-    })
-  })
-
-  describe("non-unified labels", () => {
-    it("uses 'View <name>' in agent mode", () => {
-      const args = makeArgs({
-        viewMode: "agent",
+        viewMode,
         agentNames: ["alice"],
       })
       const { result } = renderHook(() => useTeamCommands(args))
       expect(byId(result.current, "switch-alice").label).toBe("View alice")
-    })
-
-    it("agent-switch action sets view + active agent in non-unified", () => {
-      const setViewMode = mock(() => {}) as unknown as (m: ViewMode) => void
-      const setActiveAgent = mock(() => {}) as unknown as (n: string) => void
-      const args = makeArgs({
-        viewMode: "split",
-        agentNames: ["alice"],
-        setViewMode,
-        setActiveAgent,
-      })
-      const { result } = renderHook(() => useTeamCommands(args))
-      byId(result.current, "switch-alice").action()
-      expect(setViewMode).toHaveBeenCalledWith("agent")
-      expect(setActiveAgent).toHaveBeenCalledWith("alice")
-    })
+      cleanup()
+    }
   })
 
-  describe("next/prev cycling", () => {
-    it("agent-mode next/prev calls cycleActiveAgent", () => {
-      const cycle = mock(() => {}) as unknown as (dir: "next" | "prev") => void
-      const args = makeArgs({
-        viewMode: "agent",
-        agentNames: ["alice", "bob"],
-        cycleActiveAgent: cycle,
-      })
-      const { result } = renderHook(() => useTeamCommands(args))
-      byId(result.current, "next-agent").action()
-      byId(result.current, "prev-agent").action()
-      expect(cycle).toHaveBeenCalledTimes(2)
-      expect(cycle).toHaveBeenNthCalledWith(1, "next")
-      expect(cycle).toHaveBeenNthCalledWith(2, "prev")
+  it("agent-switch action sets view + active agent", () => {
+    const setViewMode = mock(() => {}) as unknown as (m: ViewMode) => void
+    const setActiveAgent = mock(() => {}) as unknown as (n: string) => void
+    const args = makeArgs({
+      viewMode: "split",
+      agentNames: ["alice"],
+      setViewMode,
+      setActiveAgent,
     })
+    const { result } = renderHook(() => useTeamCommands(args))
+    byId(result.current, "switch-alice").action()
+    expect(setViewMode).toHaveBeenCalledWith("agent")
+    expect(setActiveAgent).toHaveBeenCalledWith("alice")
+  })
 
-    it("unified-mode next/prev wraps focus across openAgents", () => {
-      let focused = "bob"
-      const args = makeArgs({
-        viewMode: "unified",
-        agentNames: ["alice", "bob", "charlie"],
-        openAgents: ["alice", "bob", "charlie"],
-        focusedAgent: "bob",
-        focusAgent: (n: string) => {
-          focused = n
-        },
-      })
-      const { result } = renderHook(() => useTeamCommands(args))
-      byId(result.current, "next-agent").action()
-      expect(focused).toBe("charlie")
-      byId(result.current, "prev-agent").action()
-      // After focusing charlie, our internal `focused` is "charlie" but
-      // the args' focusedAgent is still "bob" (the hook closes over it).
-      // Verify wrap-around math: index of "bob" - 1 = "alice".
-      expect(focused).toBe("alice")
+  it("next/prev call cycleActiveAgent with the right direction", () => {
+    const cycle = mock(() => {}) as unknown as (dir: "next" | "prev") => void
+    const args = makeArgs({
+      viewMode: "agent",
+      agentNames: ["alice", "bob"],
+      cycleActiveAgent: cycle,
     })
-
-    it("unified-mode prev wraps from index 0 to last", () => {
-      let focused: string | null = null
-      const args = makeArgs({
-        viewMode: "unified",
-        agentNames: ["alice", "bob", "charlie"],
-        openAgents: ["alice", "bob", "charlie"],
-        focusedAgent: "alice",
-        focusAgent: (n: string) => {
-          focused = n
-        },
-      })
-      const { result } = renderHook(() => useTeamCommands(args))
-      byId(result.current, "prev-agent").action()
-      expect(focused).toBe("charlie")
-    })
-
-    it("unified-mode next wraps from last index to 0", () => {
-      let focused: string | null = null
-      const args = makeArgs({
-        viewMode: "unified",
-        agentNames: ["alice", "bob"],
-        openAgents: ["alice", "bob"],
-        focusedAgent: "bob",
-        focusAgent: (n: string) => {
-          focused = n
-        },
-      })
-      const { result } = renderHook(() => useTeamCommands(args))
-      byId(result.current, "next-agent").action()
-      expect(focused).toBe("alice")
-    })
+    const { result } = renderHook(() => useTeamCommands(args))
+    byId(result.current, "next-agent").action()
+    byId(result.current, "prev-agent").action()
+    expect(cycle).toHaveBeenCalledTimes(2)
+    expect(cycle).toHaveBeenNthCalledWith(1, "next")
+    expect(cycle).toHaveBeenNthCalledWith(2, "prev")
   })
 })
 
