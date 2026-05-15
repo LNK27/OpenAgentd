@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Mic, MicOff, AudioWaveform } from 'lucide-react'
 import { postTranscribe } from '@/api/client'
+import { getPlatform } from '@/hooks/use-platform'
 import { useToastStore } from '@/stores/useToastStore'
 
 export type VoiceState = 'idle' | 'recording' | 'transcribing'
@@ -29,6 +30,27 @@ interface VoiceMicButtonProps {
 
 const DISABLED_TOOLTIP =
   'Voice mode is disabled. Enable it in settings to use voice input.'
+
+async function handleDesktopMicrophoneDenied(): Promise<void> {
+  const { ask } = await import('@tauri-apps/plugin-dialog')
+  const shouldOpen = await ask(
+    'Microphone access is blocked for OpenAgentd. Enable OpenAgentd in macOS System Settings → Privacy & Security → Microphone, then restart the app.',
+    {
+      title: 'Microphone Access Required',
+      kind: 'warning',
+      okLabel: 'Open System Settings',
+      cancelLabel: 'Not Now',
+    }
+  )
+  if (shouldOpen) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('open_macos_microphone_settings')
+  }
+}
+
+function isDesktopMicrophoneDenied(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'NotAllowedError' && getPlatform().isMacOverlay
+}
 
 export function VoiceMicButton({
   voiceEnabled,
@@ -100,8 +122,18 @@ export function VoiceMicButton({
     } catch (err) {
       // Permission denied or device unavailable — preserve existing input.
       if (!mountedRef.current) return
-      const msg = err instanceof Error ? err.message : 'Microphone access denied.'
-      pushToast({ tone: 'error', title: 'Microphone error', description: msg })
+      if (isDesktopMicrophoneDenied(err)) {
+        void handleDesktopMicrophoneDenied().catch(() => {
+          pushToast({
+            tone: 'error',
+            title: 'Microphone error',
+            description: 'Open macOS System Settings → Privacy & Security → Microphone, enable OpenAgentd, then restart the app.',
+          })
+        })
+      } else {
+        const msg = err instanceof Error ? err.message : 'Microphone access denied.'
+        pushToast({ tone: 'error', title: 'Microphone error', description: msg })
+      }
       setVoiceState('idle')
     }
   }, [onTranscript, pushToast])

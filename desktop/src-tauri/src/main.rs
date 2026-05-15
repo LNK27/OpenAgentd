@@ -75,6 +75,23 @@ async fn backend_logs_path(state: tauri::State<'_, AppState>) -> Result<String, 
     }
 }
 
+#[tauri::command]
+fn open_macos_microphone_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+            .spawn()
+            .map_err(|e| format!("open System Settings: {e}"))?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("microphone settings shortcut is only available on macOS".into())
+    }
+}
+
 async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Result<()> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
@@ -203,7 +220,11 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(state)
-        .invoke_handler(tauri::generate_handler![backend_health, backend_logs_path])
+        .invoke_handler(tauri::generate_handler![
+            backend_health,
+            backend_logs_path,
+            open_macos_microphone_settings
+        ])
         .setup(|app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

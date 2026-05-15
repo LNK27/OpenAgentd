@@ -5,10 +5,16 @@ import { create } from 'zustand'
 import { VoiceMicButton } from '@/components/VoiceMicButton'
 
 const originalFetch = globalThis.fetch
+const originalPlatform = navigator.platform
 
 afterEach(() => {
   cleanup()
   globalThis.fetch = originalFetch
+  delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+  Object.defineProperty(navigator, 'platform', {
+    value: originalPlatform,
+    configurable: true,
+  })
 })
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -24,6 +30,8 @@ const pushedToasts: Toast[] = []
 const mockPush = mock((...args: unknown[]) => {
   pushedToasts.push(args[0] as Toast)
 })
+const dialogAsk = mock(async () => false)
+const invokeCalls: string[] = []
 
 const useToastStoreMock = create<{
   toasts: ToastWithId[]
@@ -49,6 +57,17 @@ const useToastStoreMock = create<{
 
 mock.module('@/stores/useToastStore', () => ({
   useToastStore: useToastStoreMock,
+}))
+
+mock.module('@tauri-apps/plugin-dialog', () => ({
+  ask: dialogAsk,
+}))
+
+mock.module('@tauri-apps/api/core', () => ({
+  invoke: (command: string) => {
+    invokeCalls.push(command)
+    return Promise.resolve()
+  },
 }))
 
 // MediaRecorder stub — not available in Happy DOM.
@@ -77,6 +96,9 @@ function makeStreamStub() {
 beforeEach(() => {
   pushedToasts.length = 0
   mockPush.mockReset()
+  dialogAsk.mockReset()
+  dialogAsk.mockImplementation(async () => false)
+  invokeCalls.length = 0
   useToastStoreMock.setState({ toasts: [] })
   transcribeMode = 'success'
   globalThis.fetch = mock(async (input: unknown) => {
@@ -281,5 +303,59 @@ describe('VoiceMicButton — error handling', () => {
 
     // Should remain in idle state
     expect(screen.getByLabelText('Start voice input')).toBeTruthy()
+  })
+
+  it('uses a native desktop dialog for macOS microphone denial', async () => {
+    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {}
+    Object.defineProperty(navigator, 'platform', {
+      value: 'MacIntel',
+      configurable: true,
+    })
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        getUserMedia: mock(async () => {
+          throw new DOMException(
+            'The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.',
+            'NotAllowedError'
+          )
+        }),
+      },
+      configurable: true,
+      writable: true,
+    })
+
+    const user = userEvent.setup()
+    render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)
+
+    await user.click(screen.getByLabelText('Start voice input'))
+
+    await waitFor(() => expect(dialogAsk).toHaveBeenCalled())
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(invokeCalls).toEqual([])
+  })
+
+  it('opens macOS Microphone settings when the native dialog is accepted', async () => {
+    dialogAsk.mockImplementation(async () => true)
+    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {}
+    Object.defineProperty(navigator, 'platform', {
+      value: 'MacIntel',
+      configurable: true,
+    })
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        getUserMedia: mock(async () => {
+          throw new DOMException('Permission denied', 'NotAllowedError')
+        }),
+      },
+      configurable: true,
+      writable: true,
+    })
+
+    const user = userEvent.setup()
+    render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)
+
+    await user.click(screen.getByLabelText('Start voice input'))
+
+    await waitFor(() => expect(invokeCalls).toEqual(['open_macos_microphone_settings']))
   })
 })
