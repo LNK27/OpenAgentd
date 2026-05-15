@@ -126,7 +126,12 @@ jobs:
       # explicitly here so the Python sidecar build below can pick up
       # app/_web_dist/ before cargo tauri build runs (which would
       # otherwise run beforeBuildCommand a second time, mid-Rust-build).
+      #
+      # ``shell: bash`` is required on Windows: GitHub's default shell
+      # there is PowerShell, which can't parse '\' line continuations
+      # and would die with 'Missing expression after unary operator'.
       - name: Build web UI
+        shell: bash
         run: |
           cd web
           bun install --frozen-lockfile
@@ -135,6 +140,7 @@ jobs:
           cp -r dist/* ../app/_web_dist/
 
       - name: Build Python sidecar bundle
+        shell: bash
         run: |
           python3 scripts/build_sidecar.py \
             --root . \
@@ -157,17 +163,51 @@ jobs:
             -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
-      - name: Build Tauri app
-        working-directory: desktop/src-tauri
+      # Tauri's signing env vars must be UNSET when there is no Apple
+      # signing identity available — passing an empty
+      # ``APPLE_SIGNING_IDENTITY`` makes Tauri try to find an identity
+      # matching the empty string and fail with 'The specified item
+      # could not be found in the keychain.'
+      #
+      # We expose the variables conditionally via a separate ``Set env``
+      # step that writes only the entries whose secrets are non-empty;
+      # ``cargo tauri build`` then sees an empty environment and falls
+      # back to the ad-hoc ``signingIdentity: "-"`` from tauri.conf.json.
+      - name: Resolve signing env
+        id: signing_env
+        shell: bash
         env:
-          # Apple notarization (set when secrets exist).
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Tauri updater key for signing release artefacts.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          # Write each non-empty secret to $GITHUB_ENV so it's available
+          # in the next step. Empty secrets are skipped entirely, so
+          # ``cargo tauri build`` doesn't see a stray empty string and
+          # try to match it against the keychain.
+          for var in APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID \
+                     TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            value="${!var:-}"
+            if [ -n "$value" ]; then
+              # Use the heredoc multiline form so values with newlines
+              # (PEM-formatted minisign key) round-trip correctly.
+              {
+                echo "${var}<<__OAD_EOF__"
+                printf '%s\n' "$value"
+                echo "__OAD_EOF__"
+              } >> "$GITHUB_ENV"
+              echo "  ${var}: set (${#value} chars)"
+            else
+              echo "  ${var}: empty — skipped"
+            fi
+          done
+
+      - name: Build Tauri app
+        working-directory: desktop/src-tauri
+        shell: bash
         run: cargo tauri build ${{ matrix.tauri_args }}
 
       - name: Collect artefacts
