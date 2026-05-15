@@ -46,6 +46,77 @@ brew upgrade openagentd
 > relinking warning — openagentd still works correctly. Run `brew update` before
 > reinstalling to ensure the latest formula is used.
 
+## Desktop app
+
+A native double-click installer for users who don't want a terminal. The desktop build is a [Tauri 2](https://tauri.app) shell that launches a bundled Python sidecar — same backend, same web UI, no port to remember.
+
+Grab the latest installer from the [desktop releases](https://github.com/lthoangg/openagentd/releases?q=desktop):
+
+| Platform | Artefact | Size |
+|---|---|---|
+| macOS (Apple Silicon, 11+) | `OpenAgentd_*_aarch64.dmg` or `OpenAgentd_*.app.tar.gz` | ~180 MB |
+| Windows 10/11 (x64) | `OpenAgentd_*_x64-setup.exe` (NSIS) or `OpenAgentd_*_x64_en-US.msi` | ~150 MB |
+| Linux (x64) | `OpenAgentd_*_amd64.AppImage` or `OpenAgentd_*_amd64.deb` | ~160 MB |
+
+### Why is it unsigned? <a id="desktop-unsigned"></a>
+
+OpenAgentd ships **without** an Apple Developer ID signature or a Windows Authenticode certificate. Both are paid subscriptions ($99/yr Apple, $300+ Windows EV) that we've chosen not to buy for a side-project at v0.x. The binary is exactly what came out of CI — reproducible from the [`release-desktop.yml`](https://github.com/lthoangg/openagentd/blob/main/.github/workflows/release-desktop.yml) workflow on a public GitHub-hosted runner — but the OS treats it the same as any unsigned executable.
+
+That means:
+
+- **macOS:** Gatekeeper rejects the bundle on first launch with `"OpenAgentd.app" is damaged and can't be opened`. The bundled `install.sh` works around this by stripping the quarantine xattr and ad-hoc signing the app *with your own machine as the signer*. This is the same workaround used by every open-source macOS app you compile yourself.
+- **Windows:** SmartScreen warns `Windows protected your PC` on first launch. Click **More info → Run anyway** once; subsequent launches are silent.
+- **Linux:** No code-signing equivalent — the AppImage / .deb just runs.
+
+The Tauri auto-updater is a separate signing chain. Update payloads are signed with a minisign key we control (public half embedded in the app, private half in GitHub secrets), so even though the OS thinks the app is unsigned, **updates themselves are cryptographically verified**.
+
+### macOS install
+
+```sh
+# Mount the .dmg, then run the bundled installer from inside the volume.
+hdiutil attach OpenAgentd_*_aarch64.dmg
+cd /Volumes/OpenAgentd*
+./install.sh               # ad-hoc signs the bundle and exits
+./install.sh --install     # also copies to /Applications
+```
+
+On first launch, **right-click `OpenAgentd.app` → Open** (single-click won't work the first time — that's by design). Subsequent launches are normal.
+
+If you skip `install.sh` and just drag-to-Applications, you'll hit the `"damaged"` error. Re-run `install.sh` against the installed bundle to fix it:
+
+```sh
+./install.sh /Applications/OpenAgentd.app --force
+```
+
+### Windows install
+
+Double-click `OpenAgentd_*_x64-setup.exe`. When SmartScreen warns:
+
+1. Click **More info**.
+2. Click **Run anyway**.
+3. Step through the NSIS installer.
+
+The MSI variant (`OpenAgentd_*_x64_en-US.msi`) is for managed deployments (group policy / `msiexec /i ... /quiet`).
+
+### Linux install
+
+```sh
+chmod +x OpenAgentd_*_amd64.AppImage
+./OpenAgentd_*_amd64.AppImage            # run directly
+```
+
+Or use the bundled `install.sh` for a launcher entry:
+
+```sh
+./install.sh --install                   # copies to ~/.local/bin, drops a .desktop file
+```
+
+The `.deb` package works on Debian/Ubuntu derivatives: `sudo dpkg -i OpenAgentd_*_amd64.deb`. AppImage is preferred — self-contained, no system-level changes, runs on any glibc 2.28+ distro.
+
+### Auto-updates
+
+The desktop app checks for updates on launch (and every 6 hours after) by fetching [`releases/download/latest-desktop/latest.json`](https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json). When a new version is available, it's downloaded in the background and applied on next restart. Update payloads are minisign-signed; an invalid signature aborts the update silently.
+
 ## Docker
 
 ```bash
