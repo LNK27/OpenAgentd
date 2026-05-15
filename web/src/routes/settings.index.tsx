@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Download,
   Info,
+  KeyRound,
   Mic,
   Moon,
   Plug,
@@ -33,6 +34,7 @@ import {
   useHealthQuery,
   useInstallUpdateMutation,
   useMcpServersQuery,
+  useProvidersQuery,
   useSandboxSettingsQuery,
   useSkillFilesQuery,
   useSpeechConfigQuery,
@@ -45,6 +47,7 @@ interface CardProps {
     | '/settings/agents'
     | '/settings/skills'
     | '/settings/mcp'
+    | '/settings/providers'
     | '/settings/sandbox'
     | '/settings/dream'
     | '/settings/voice'
@@ -213,6 +216,7 @@ export function SettingsHubPage() {
   const agentsQ = useAgentFilesQuery()
   const skillsQ = useSkillFilesQuery()
   const mcpQ = useMcpServersQuery()
+  const providersQ = useProvidersQuery()
   const sandboxQ = useSandboxSettingsQuery()
   const speechQ = useSpeechConfigQuery()
   const healthQ = useHealthQuery()
@@ -220,6 +224,7 @@ export function SettingsHubPage() {
   const agentsCount = agentsQ.data?.agents.length ?? null
   const skillsCount = skillsQ.data?.skills.length ?? null
   const mcpCount = mcpQ.data?.servers.length ?? null
+  const connectedProvidersCount = providersQ.data?.providers.filter((provider) => provider.is_configured).length ?? null
   const sandboxCount = sandboxQ.data?.denied_patterns.length ?? null
   const voiceEnabled = speechQ.data?.enabled ?? false
   const version = healthQ.data?.version
@@ -284,6 +289,14 @@ export function SettingsHubPage() {
                   description="External tool providers via Model Context Protocol"
                   count={mcpCount}
                   countLabel={mcpCount === 1 ? 'server' : 'servers'}
+                />
+                <SettingsNavCard
+                  to="/settings/providers"
+                  icon={KeyRound}
+                  title="Providers"
+                  description="Configure API keys and OAuth model providers"
+                  count={connectedProvidersCount}
+                  countLabel="connected"
                 />
               </div>
             </section>

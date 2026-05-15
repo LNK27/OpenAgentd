@@ -50,6 +50,7 @@ export const useTeamStore = create<TeamStore>()(
     isTeamWorking: false,
     isConnected: false,
     error: null,
+    setupRequired: null,
     _pendingMessages: [],
     _abortController: null,
     _sessionGeneration: 0,
@@ -64,6 +65,7 @@ export const useTeamStore = create<TeamStore>()(
         state.isTeamWorking = false
         state.isConnected = false
         state.error = null
+        state.setupRequired = null
         state._abortController = null
         state._pendingMessages = []
         state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
@@ -122,8 +124,9 @@ export const useTeamStore = create<TeamStore>()(
       }))
 
       set((draft) => {
-        draft.isTeamWorking = true
-        draft.error = null
+          draft.isTeamWorking = true
+          draft.error = null
+          draft.setupRequired = null
         // Push user message as an optimistic block into the lead's stream
         if (leadName && draft.agentStreams[leadName]) {
           draft.agentStreams[leadName].currentBlocks.push({
@@ -352,6 +355,10 @@ export const useTeamStore = create<TeamStore>()(
 
     toggleSidebar: () => {
       set((draft) => { draft.sidebarOpen = !draft.sidebarOpen })
+    },
+
+    dismissSetupRequired: () => {
+      set((draft) => { draft.setupRequired = null })
     },
 
     _drainCacheInvalidations: () => {

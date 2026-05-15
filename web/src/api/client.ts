@@ -700,6 +700,104 @@ export async function installUpdate(): Promise<{ status: string }> {
   return res.json()
 }
 
+// ── /settings/providers ──────────────────────────────────────────────────────
+
+export type ProviderInfo = {
+  id: string
+  label: string
+  description: string
+  kind: 'api_key' | 'oauth' | 'local' | 'cloud_creds'
+  env_var: string
+  env_vars: string[]
+  default_models: string[]
+  oauth_command: string
+  docs_url: string
+  is_configured: boolean
+}
+
+export type ProvidersListBody = {
+  providers: ProviderInfo[]
+  has_any_configured: boolean
+}
+
+export type ProviderSaveRequest = {
+  api_key?: string
+  default_model?: string
+  extra?: Record<string, string>
+}
+
+export type ProviderSaveResponse = {
+  saved: boolean
+  is_first_provider: boolean
+}
+
+export type SeedInstallResponse = {
+  agents_written: string[]
+  skills_written: string[]
+  configs_written: string[]
+  source: string
+}
+
+export type OAuthLoginEvent = {
+  event: string
+  message?: string
+  verification_uri?: string
+  user_code?: string
+  expires_in?: number
+  elapsed_s?: number
+  suggested_model?: string
+  reason?: string
+}
+
+export async function listProviders(): Promise<ProvidersListBody> {
+  const res = await fetch(`${API}/settings/providers`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/providers')
+  return res.json()
+}
+
+export async function saveProvider(
+  providerId: string,
+  body: ProviderSaveRequest,
+): Promise<ProviderSaveResponse> {
+  const res = await fetch(`${API}/settings/providers/${encodeURIComponent(providerId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `PUT /settings/providers/${providerId}`)
+  return res.json()
+}
+
+export async function installSeed(providerModel: string): Promise<SeedInstallResponse> {
+  const res = await fetch(`${API}/settings/seed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider_model: providerModel }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /settings/seed')
+  return res.json()
+}
+
+export function oauthLoginStream(
+  providerId: string,
+  callbacks: SSECallbacks & { onOAuthEvent?: (event: OAuthLoginEvent) => void },
+  signal?: AbortSignal,
+): void {
+  fetch(`${API}/auth/${encodeURIComponent(providerId)}/login`, { signal })
+    .then((res) => {
+      if (!res.ok) throw new Error(`GET /auth/${providerId}/login failed: ${res.status}`)
+      readSSE(res, {
+        ...callbacks,
+        onEvent: (type, data) => {
+          const payload = data as Omit<OAuthLoginEvent, 'event'>
+          callbacks.onOAuthEvent?.({ event: type, ...payload })
+          callbacks.onEvent(type, data)
+        },
+      })
+    })
+    .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
+}
+
 // ── /speech ──────────────────────────────────────────────────────────────────
 
 export type SpeechConfig = {

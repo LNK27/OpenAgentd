@@ -308,6 +308,22 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         })
         break
       }
+
+      case 'agent_not_configured': {
+        const agent = d.agent as string
+        set((draft) => {
+          ensureAgent(draft, agent)
+          draft.agentStreams[agent].status = 'error'
+          draft.agentStreams[agent].lastError = d.message as string
+          draft.setupRequired = {
+            agent,
+            message: d.message as string,
+            action: (d.action as { type?: string; tab?: string } | undefined) ?? {},
+          }
+          draft.isTeamWorking = false
+        })
+        break
+      }
     }
   }
 }

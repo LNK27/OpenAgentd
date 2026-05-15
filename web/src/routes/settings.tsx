@@ -31,6 +31,7 @@ function pageTitleFor(pathname: string): string {
   if (pathname.startsWith('/settings/agents')) return 'Agents'
   if (pathname.startsWith('/settings/skills')) return 'Skills'
   if (pathname.startsWith('/settings/mcp')) return 'MCP servers'
+  if (pathname === '/settings/providers') return 'Providers'
   if (pathname === '/settings/sandbox') return 'Sandbox'
   if (pathname === '/settings/dream') return 'Dream'
   if (pathname === '/settings/voice') return 'Voice'

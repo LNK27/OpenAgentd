@@ -25,6 +25,7 @@ import {
   ArrowLeft,
   BarChart3,
   Info,
+  KeyRound,
   Mic,
   Moon,
   Plug,
@@ -47,6 +48,7 @@ type SidebarPath =
   | '/settings/agents'
   | '/settings/skills'
   | '/settings/mcp'
+  | '/settings/providers'
   | '/settings/sandbox'
   | '/settings/dream'
   | '/settings/voice'
@@ -142,6 +144,12 @@ export function SettingsSidebar({ hideBackLink = false }: SettingsSidebarProps) 
         icon: Plug,
         matchPrefix: '/settings/mcp',
         count: mcpQ.data?.servers.length ?? null,
+      },
+      {
+        to: '/settings/providers',
+        label: 'Providers',
+        icon: KeyRound,
+        matchPrefix: '/settings/providers',
       },
       {
         to: '/settings/sandbox',

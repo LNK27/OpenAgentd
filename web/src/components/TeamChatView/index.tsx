@@ -35,7 +35,7 @@ import { TodosPopover } from '../TodosPopover'
 import { WikiPanel } from '../WikiPanel'
 import { SchedulerPanel } from '../SchedulerPanel'
 import { useTodosQuery } from '@/queries/useTodosQuery'
-import { useTriggerDreamMutation } from '@/queries'
+import { useProvidersQuery, useTriggerDreamMutation } from '@/queries'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -43,7 +43,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { Check, ChevronDown, FolderOpen, FolderCode, Home, Menu } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, FolderOpen, FolderCode, Home, Menu, X } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
@@ -108,6 +108,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const newSession     = useTeamStore((s) => s.newSession)
   const cycleActiveAgent = useTeamStore((s) => s.cycleActiveAgent)
   const setActiveAgent   = useTeamStore((s) => s.setActiveAgent)
+  const setupRequired = useTeamStore((s) => s.setupRequired)
+  const dismissSetupRequired = useTeamStore((s) => s.dismissSetupRequired)
 
   const dreamMutation = useTriggerDreamMutation()
   const pushToast = useToastStore((s) => s.push)
@@ -141,6 +143,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
+  const providersQ = useProvidersQuery()
+  const hasConfiguredModelProvider = providersQ.data?.providers.some(
+    (provider) => provider.kind !== 'local' && provider.is_configured,
+  ) ?? true
 
   // Lead capabilities — used to drive composer affordances (slash menu).
   const agentWorkspace = mode === 'coding' ? workspace : null
@@ -509,6 +515,47 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         )}
 
         <div ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
+        {setupRequired && (
+          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-xl border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--accent-blue)" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="font-medium">Configure a provider to start chatting</p>
+                <p className="mt-0.5 text-xs text-(--color-text-muted)">{setupRequired.message}</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
+              <Button
+                size="sm"
+                onClick={() => navigate({ to: '/settings/providers' })}
+              >
+                Open Providers
+              </Button>
+              <button
+                type="button"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                onClick={dismissSetupRequired}
+                aria-label="Dismiss provider setup notice"
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
+        {!setupRequired && !hasConfiguredModelProvider && (
+          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--color-accent)" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="font-medium">No model provider configured</p>
+                <p className="mt-0.5 text-xs text-(--color-text-muted)">Connect a provider once, then OpenAgentd can seed and run the default team.</p>
+              </div>
+            </div>
+            <Button size="sm" onClick={() => navigate({ to: '/settings/providers' })}>
+              Open Providers
+            </Button>
+          </div>
+        )}
         {/* Content area */}
         {effectiveViewMode === 'split' && splitAgentNames.length > 0 ? (
           <div className="min-h-0 flex-1 p-3">

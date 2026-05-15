@@ -60,6 +60,7 @@ export const queryKeys = {
   settings: {
     sandbox: () => ['settings', 'sandbox'] as const,
     update: () => ['settings', 'update'] as const,
+    providers: () => ['settings', 'providers'] as const,
   },
   speech: {
     config: () => ['speech', 'config'] as const,

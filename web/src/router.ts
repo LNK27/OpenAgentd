@@ -14,6 +14,7 @@ import { McpListPage } from './routes/settings.mcp'
 import { NewMcpServerPage } from './routes/settings.mcp.new'
 import { McpServerDetailPage } from './routes/settings.mcp.$name'
 import { SandboxSettingsPage } from './routes/settings.sandbox'
+import { ProvidersSettingsPage } from './routes/settings.providers'
 import { DreamSettingsPage } from './routes/settings.dream'
 import { VoiceSettingsPage } from './routes/settings.voice'
 import { TelemetryPage } from './routes/telemetry'
@@ -135,6 +136,13 @@ const settingsSandboxRoute = createRoute({
   component: SandboxSettingsPage,
 })
 
+// /settings/providers
+const settingsProvidersRoute = createRoute({
+  getParentRoute: () => settingsLayoutRoute,
+  path: 'providers',
+  component: ProvidersSettingsPage,
+})
+
 // /settings/dream
 const settingsDreamRoute = createRoute({
   getParentRoute: () => settingsLayoutRoute,
@@ -179,6 +187,7 @@ const routeTree = rootRoute.addChildren([
     settingsMcpNewRoute,
     settingsMcpDetailRoute,
     settingsSandboxRoute,
+    settingsProvidersRoute,
     settingsDreamRoute,
     settingsVoiceRoute,
   ]),

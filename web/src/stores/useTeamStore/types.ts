@@ -39,6 +39,12 @@ export type CacheInvalidation =
   | { kind: 'todos'; sessionId: string }
   | { kind: 'team_agents' }
 
+export interface SetupRequiredNotice {
+  agent: string
+  message: string
+  action: { type?: string; tab?: string }
+}
+
 export interface AgentStream {
   /** Finalized blocks from previous turns (flushed on each 'done' event). */
   blocks: ContentBlock[]
@@ -67,6 +73,7 @@ export interface TeamStoreState {
   isTeamWorking: boolean
   isConnected: boolean
   error: string | null
+  setupRequired: SetupRequiredNotice | null
   _pendingMessages: PendingMessage[]
   /** Bumped on every newSession() so stale async loadSession calls can be discarded. */
   _sessionGeneration: number
@@ -90,6 +97,7 @@ export interface TeamStoreActions {
   setActiveAgent: (name: string) => void
   cycleActiveAgent: (dir: 'next' | 'prev') => void
   toggleSidebar: () => void
+  dismissSetupRequired: () => void
   newSession: () => void
   /** Remove a queued message by id (user clicked ×). */
   removePendingMessage: (id: string) => void

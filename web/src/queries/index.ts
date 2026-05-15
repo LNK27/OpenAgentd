@@ -59,6 +59,11 @@ export {
   useInstallUpdateMutation,
 } from './useUpdateQuery'
 export {
+  useProvidersQuery,
+  useSaveProviderMutation,
+  useInstallSeedMutation,
+} from './useProvidersQuery'
+export {
   useSpeechConfigQuery,
   useUpdateSpeechConfigMutation,
 } from './useSpeechConfigQuery'

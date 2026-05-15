@@ -1,0 +1,32 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import {
+  installSeed,
+  listProviders,
+  saveProvider,
+  type ProviderSaveRequest,
+} from '@/api/client'
+import { queryKeys } from './keys'
+
+export function useProvidersQuery() {
+  return useQuery({
+    queryKey: queryKeys.settings.providers(),
+    queryFn: listProviders,
+    staleTime: 30_000,
+  })
+}
+
+export function useSaveProviderMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ providerId, body }: { providerId: string; body: ProviderSaveRequest }) =>
+      saveProvider(providerId, body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+    },
+  })
+}
+
+export function useInstallSeedMutation() {
+  return useMutation({ mutationFn: installSeed })
+}
