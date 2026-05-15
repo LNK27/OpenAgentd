@@ -2,10 +2,14 @@
  * ViewToggle — two-state icon-only segmented control for chat view modes.
  *
  * Pencil component `T9nydm` (ViewToggle): equally-sized 28×28 icon-only
- * buttons inside a rounded-md pill bordered with `--color-border-subtle`.
- * The active button has a `--color-surface-2` fill; others are
+ * buttons. The active button has a `--color-surface-2` fill; others are
  * transparent. Pencil uses Material Symbols `person` / `view_column`;
  * we map to the closest lucide equivalents to preserve semantics.
+ *
+ * Border note — the pencil mock draws a thin outer border, but in the
+ * real header that border collides with the bordered status pill and
+ * the chip dropdown trigger right next to it. We omit it so the
+ * toggle reads as part of the same toolbar cluster as its neighbours.
  *
  * Modes:
  *   - "agent" → focus a single agent (User    ↔ person)
@@ -48,7 +52,7 @@ export function ViewToggle({
       role="radiogroup"
       aria-label="View mode"
       className={cn(
-        'inline-flex items-center overflow-hidden rounded-md border border-(--color-border-subtle) p-0.5',
+        'inline-flex items-center overflow-hidden rounded-md p-0.5',
         className,
       )}
     >

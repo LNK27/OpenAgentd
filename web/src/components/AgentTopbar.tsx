@@ -9,8 +9,8 @@
  * surfaces:
  *
  *   • Optional "Dream…" running indicator
- *   • ViewToggle (desktop only)
  *   • TokenMeter (desktop only, shown when totals > 0)
+ *   • ViewToggle (desktop only)
  *   • TopbarAction group — Todos / Files
  *
  * Keeping this composite props-driven (rather than reading global state
@@ -132,10 +132,6 @@ export function AgentTopbar({
         </div>
       )}
 
-      {showViewToggle && viewMode && onViewModeChange && (
-        <ViewToggle value={viewMode} onValueChange={onViewModeChange} />
-      )}
-
       {showTokens && tokens && (
         <TokenMeter
           input={tokens.input}
@@ -143,6 +139,10 @@ export function AgentTopbar({
           cached={tokens.cached}
           pulsing={tokens.pulsing}
         />
+      )}
+
+      {showViewToggle && viewMode && onViewModeChange && (
+        <ViewToggle value={viewMode} onValueChange={onViewModeChange} />
       )}
 
       {todosSlot ?? (todosAction && <AgentTopbarActionButton action={todosAction} fallbackIcon={ListChecks} />)}
