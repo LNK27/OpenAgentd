@@ -124,7 +124,9 @@ impl Sidecar {
 
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
+            // ``tokio::process::Command`` exposes its own inherent
+            // ``creation_flags`` on Windows; we don't need to bring the
+            // ``std::os::windows::process::CommandExt`` trait into scope.
             // CREATE_NO_WINDOW | CREATE_SUSPENDED.
             //
             // ``CREATE_SUSPENDED`` is critical: it lets us attach the child
@@ -356,7 +358,23 @@ fn attach_to_job_object(child: &Child) -> Result<()> {
     // child attached here dies when Tauri exits — even on hard crash —
     // because closing the last handle to the job (which happens at
     // process teardown) terminates all members.
-    static JOB: OnceCell<HANDLE> = OnceCell::new();
+    //
+    // ``HANDLE`` is ``*mut c_void`` under the hood and therefore not
+    // ``Send`` / ``Sync`` by default — Rust has no way to know the Win32
+    // kernel object behind the pointer is safe to use from any thread.
+    // For a kernel job-object handle it *is* safe, so we wrap in a
+    // newtype and assert it. Standard pattern for storing Win32 handles
+    // in a ``static`` / ``OnceCell``.
+    #[repr(transparent)]
+    #[derive(Copy, Clone)]
+    struct JobHandle(HANDLE);
+    // SAFETY: Win32 job-object handles are kernel objects; the userland
+    // pointer is just an opaque token whose dereferences happen inside
+    // the kernel and are thread-safe by contract.
+    unsafe impl Send for JobHandle {}
+    unsafe impl Sync for JobHandle {}
+
+    static JOB: OnceCell<JobHandle> = OnceCell::new();
 
     let job = JOB.get_or_try_init::<_, anyhow::Error>(|| unsafe {
         let h = CreateJobObjectW(None, None)?;
@@ -368,13 +386,13 @@ fn attach_to_job_object(child: &Child) -> Result<()> {
             &info as *const _ as *const _,
             std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
         )?;
-        Ok(h)
+        Ok(JobHandle(h))
     })?;
 
     let pid = child.id().ok_or_else(|| anyhow!("child pid missing"))?;
     unsafe {
         let process = OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA, false, pid)?;
-        AssignProcessToJobObject(*job, process)?;
+        AssignProcessToJobObject(job.0, process)?;
     }
     Ok(())
 }
