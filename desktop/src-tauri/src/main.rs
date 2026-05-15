@@ -8,8 +8,8 @@ use serde::Serialize;
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 use std::time::Duration;
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
+    tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
 };
 use tokio::sync::Mutex;
@@ -21,6 +21,7 @@ struct AppState {
     sidecar: Arc<Mutex<Option<Sidecar>>>,
     quitting: Arc<AtomicBool>,
     tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
+    tray_session: Arc<Mutex<Option<MenuItem<Wry>>>>,
 }
 
 const MAIN_WINDOW: &str = "main";
@@ -30,7 +31,15 @@ const MENU_CODING: &str = "coding";
 const MENU_SETTINGS: &str = "settings";
 const MENU_TELEMETRY: &str = "telemetry";
 const MENU_STATUS: &str = "status";
+const MENU_SESSION: &str = "session";
 const MENU_QUIT: &str = "quit";
+
+/// Label shown in the tray when no chat/coding session is active.
+const TRAY_SESSION_IDLE: &str = "No active session";
+
+/// Hard cap on tray session label width. Keeps the menu from stretching
+/// uncomfortably wide when a session title or workspace name is long.
+const TRAY_SESSION_MAX_LEN: usize = 60;
 
 /// Apply platform-specific window chrome.
 ///
@@ -142,6 +151,29 @@ fn handle_desktop_menu(app: &AppHandle, id: &str) {
 }
 
 fn install_desktop_menus(app: &tauri::App) -> Result<()> {
+    // About dialog metadata — shows icon, app name, version, and copyright in
+    // the native macOS About panel. Icon falls back to ``None`` on Windows
+    // (the predefined item ignores it there). Version comes from the crate so
+    // it stays in lockstep with ``tauri.conf.json``'s ``version`` field, which
+    // is enforced at build time by ``cargo tauri build``.
+    let about_metadata = {
+        let mut builder = AboutMetadataBuilder::new()
+            .name(Some("OpenAgentd"))
+            .version(Some(env!("CARGO_PKG_VERSION")))
+            .copyright(Some("Copyright (c) 2025 OpenAgentd contributors"))
+            .website(Some("https://github.com/lthoangg/openagentd"))
+            .website_label(Some("openagentd on GitHub"));
+        if let Some(icon) = app.default_window_icon() {
+            builder = builder.icon(Some(icon.clone()));
+        }
+        builder.build()
+    };
+    let app_about = PredefinedMenuItem::about(
+        app,
+        Some("About OpenAgentd"),
+        Some(about_metadata),
+    )?;
+
     let app_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
     let app_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
     let app_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
@@ -151,7 +183,22 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let file_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, None::<&str>)?;
     let view_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
     let view_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
+
+    // Edit submenu — required on macOS for native ⌘A/⌘C/⌘V/⌘X/⌘Z to reach the
+    // webview's input fields. Without this submenu the webview never receives
+    // the corresponding keyboard events. ``undo``/``redo`` are macOS-only and
+    // silently no-op on Windows/Linux when invoked; including them keeps the
+    // menu uniform across platforms.
+    let edit_undo = PredefinedMenuItem::undo(app, None)?;
+    let edit_redo = PredefinedMenuItem::redo(app, None)?;
+    let edit_cut = PredefinedMenuItem::cut(app, None)?;
+    let edit_copy = PredefinedMenuItem::copy(app, None)?;
+    let edit_paste = PredefinedMenuItem::paste(app, None)?;
+    let edit_select_all = PredefinedMenuItem::select_all(app, None)?;
+
     let app_menu = SubmenuBuilder::new(app, "OpenAgentd")
+        .item(&app_about)
+        .separator()
         .item(&app_show)
         .separator()
         .item(&app_settings)
@@ -165,6 +212,15 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .separator()
         .item(&file_quit)
         .build()?;
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .item(&edit_undo)
+        .item(&edit_redo)
+        .separator()
+        .item(&edit_cut)
+        .item(&edit_copy)
+        .item(&edit_paste)
+        .item(&edit_select_all)
+        .build()?;
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&view_settings)
         .item(&view_telemetry)
@@ -173,10 +229,17 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .minimize()
         .close_window_with_text("Hide to Tray")
         .build()?;
-    let menu = Menu::with_items(app, &[&app_menu, &file_menu, &view_menu, &window_menu])?;
+    let menu = Menu::with_items(
+        app,
+        &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
+    )?;
     app.set_menu(menu)?;
 
     let status = MenuItem::with_id(app, MENU_STATUS, "Status: Starting", false, None::<&str>)?;
+    // ``session`` is informational only — kept disabled so the user can't
+    // click it. Updated by ``update_tray_session`` whenever the frontend
+    // reports a new active session/workspace via ``set_tray_session``.
+    let session = MenuItem::with_id(app, MENU_SESSION, TRAY_SESSION_IDLE, false, None::<&str>)?;
     let tray_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
     let tray_chat = MenuItem::with_id(app, MENU_CHAT, "Chat", true, None::<&str>)?;
     let tray_coding = MenuItem::with_id(app, MENU_CODING, "Coding", true, None::<&str>)?;
@@ -187,6 +250,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         app,
         &[
             &status,
+            &session,
             &PredefinedMenuItem::separator(app)?,
             &tray_show,
             &tray_chat,
@@ -197,23 +261,17 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             &tray_quit,
         ],
     )?;
+    // Left-click on the tray icon opens the tray menu (showing live status
+    // first) instead of summoning the main window. Users summon the window
+    // explicitly via the "Show OpenAgentd" menu entry. This mirrors the
+    // behaviour of utility menu-bar apps on macOS where the icon is a status
+    // surface, not a launcher. ``show_menu_on_left_click(true)`` is the Tauri
+    // v2 built-in for this; no custom click handler is needed.
     let mut tray = TrayIconBuilder::new()
         .menu(&tray_menu)
-        .show_menu_on_left_click(false)
+        .show_menu_on_left_click(true)
         .tooltip("OpenAgentd")
-        .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
-        .on_tray_icon_event(|tray, event| match event {
-            TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            }
-            | TrayIconEvent::DoubleClick {
-                button: MouseButton::Left,
-                ..
-            } => show_main_window(tray.app_handle()),
-            _ => {}
-        });
+        .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()));
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone()).icon_as_template(true);
     }
@@ -222,6 +280,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
     tauri::async_runtime::block_on(async {
         state.tray_status.lock().await.replace(status);
+        state.tray_session.lock().await.replace(session);
     });
     Ok(())
 }
@@ -235,6 +294,40 @@ fn update_tray_status(app: &AppHandle, text: &str) {
             let _ = item.set_text(text);
         }
     });
+}
+
+fn update_tray_session(app: &AppHandle, text: &str) {
+    let state: tauri::State<'_, AppState> = app.state();
+    let text = text.to_string();
+    let session = state.tray_session.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Some(item) = session.lock().await.as_ref() {
+            let _ = item.set_text(text);
+        }
+    });
+}
+
+/// Frontend-callable command: updates the tray's session-label item.
+///
+/// The JS layer derives the label (mode prefix + session title or workspace
+/// name) and pushes it here whenever the active session changes. Empty input
+/// is normalised to the idle placeholder so the tray never shows a blank row.
+/// Input length is hard-capped at ``TRAY_SESSION_MAX_LEN`` characters to keep
+/// the menu width sane even if the frontend forgets to truncate.
+#[tauri::command]
+fn set_tray_session(app: AppHandle, text: String) -> Result<(), String> {
+    let trimmed = text.trim();
+    let label = if trimmed.is_empty() {
+        TRAY_SESSION_IDLE.to_string()
+    } else if trimmed.chars().count() > TRAY_SESSION_MAX_LEN {
+        let mut s: String = trimmed.chars().take(TRAY_SESSION_MAX_LEN - 1).collect();
+        s.push('…');
+        s
+    } else {
+        trimmed.to_string()
+    };
+    update_tray_session(&app, &label);
+    Ok(())
 }
 
 async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Result<()> {
@@ -358,6 +451,7 @@ fn main() {
         sidecar: Arc::new(Mutex::new(None)),
         quitting: Arc::new(AtomicBool::new(false)),
         tray_status: Arc::new(Mutex::new(None)),
+        tray_session: Arc::new(Mutex::new(None)),
     };
 
     let log_plugin = tauri_plugin_log::Builder::new()
@@ -373,7 +467,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             backend_health,
             backend_logs_path,
-            open_macos_microphone_settings
+            open_macos_microphone_settings,
+            set_tray_session
         ])
         .setup(|app| {
             install_desktop_menus(app)?;

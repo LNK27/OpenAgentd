@@ -85,12 +85,20 @@ The shell installs both native app menus and a system tray menu in `desktop/src-
 
 | Surface | Actions |
 |---------|---------|
-| App menu / menu bar | Show OpenAgentd, Chat, Coding, Settings, Telemetry, Hide to Tray, Quit OpenAgentd. |
-| System tray | Status, Show OpenAgentd, Chat, Coding, Settings, Telemetry, Quit OpenAgentd. |
+| App menu / menu bar | **OpenAgentd**: About OpenAgentd, Show OpenAgentd, Settings, Telemetry, Quit OpenAgentd. **File**: Chat, Coding, Quit. **Edit**: Undo, Redo, Cut, Copy, Paste, Select All. **View**: Settings, Telemetry. **Window**: Minimize, Hide to Tray. |
+| System tray | Status, Session, Show OpenAgentd, Chat, Coding, Settings, Telemetry, Quit OpenAgentd. |
+
+The **Edit** submenu is required on macOS for native `⌘A` / `⌘C` / `⌘V` / `⌘X` / `⌘Z` to reach the webview's input fields — without it those shortcuts have no handler at the application level and the corresponding actions silently no-op inside the textarea. `Undo`/`Redo` are macOS-only and not registered on Windows/Linux; the other edit items work on all platforms.
+
+The **About OpenAgentd** item opens the native About panel populated with the app icon, name, version (from `Cargo.toml` / `tauri.conf.json`), copyright, and a link to the project repository.
+
+Clicking the tray icon opens the tray menu (showing live status first) rather than summoning the main window. The window is summoned explicitly via the "Show OpenAgentd" entry. This matches macOS menu-bar app conventions where the icon is a status surface rather than a launcher.
 
 Closing the main window hides it to the tray instead of stopping the backend. Selecting **Quit OpenAgentd** from the app menu or tray marks the app as quitting, exits Tauri, and lets the existing shutdown path terminate the Python sidecar cleanly.
 
 The tray status starts at `Status: Starting`, changes to `Status: Running` once the backend is healthy, and changes to `Status: Error` if sidecar startup fails. In dev mode it reports `Status: Running (dev)`.
+
+The tray **Session** line below status mirrors the user's active context. It reads `No active session` when no chat session or coding workspace is open, `Coding: <workspace-name>` when a coding workspace is active, and `Chat: <session-title>` once a chat session has a title. The frontend pushes the label via the `set_tray_session` Tauri command (see `web/src/lib/tray.ts`) whenever the active mode/workspace/session-title changes; the command silently truncates labels longer than 60 characters so the tray menu width stays sane.
 
 ## Window chrome
 

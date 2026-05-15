@@ -65,6 +65,7 @@ import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
 import { saveCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import { setTraySession } from '@/lib/tray'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -288,6 +289,21 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     window.addEventListener('focus-chat-input', handler)
     return () => window.removeEventListener('focus-chat-input', handler)
   }, [focusInput])
+
+  // Push the active session/workspace label to the desktop tray. The
+  // command is a no-op outside Tauri so this is safe to fire from the
+  // web build too. Label format: ``"Coding: <ws>"`` in coding mode,
+  // ``"Chat: <title>"`` once the team has named the session, or an
+  // empty string to fall back to the tray's idle placeholder.
+  useEffect(() => {
+    let label = ''
+    if (mode === 'coding' && workspace) {
+      label = `Coding: ${workspaceLabel(workspace)}`
+    } else if (sessionTitle) {
+      label = `Chat: ${sessionTitle}`
+    }
+    void setTraySession(label)
+  }, [mode, workspace, sessionTitle])
 
   // Slash commands for the input bar (type / to trigger)
   const slashCommands: SlashCommand[] = [
