@@ -322,7 +322,7 @@ function WikiEditor({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!isReadOnly && (e.ctrlKey || e.metaKey) && e.key === 's') {
+    if (!isReadOnly && e.ctrlKey && !e.metaKey && e.key === 's') {
       e.preventDefault()
       handleSave()
     }

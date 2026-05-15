@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TodoItem } from '@/api/types'
 
+const todosTitle = 'Task list (Ctrl+T)'
+
 // Mock component that simulates the Todos popover behavior
 // This allows us to test the rendering logic without the full TeamChatView
 function TodosPopoverMock({
@@ -54,7 +56,7 @@ function TodosPopoverMock({
         onClick={() => onOpenChange(!open)}
         disabled={!sessionId}
         data-testid="todos-trigger"
-        title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
+        title={sessionId ? todosTitle : 'No active session'}
       >
         Todos
         {hasInProgress && <span data-testid="in-progress-dot" className="size-1.5 rounded-full" />}
@@ -143,7 +145,7 @@ describe('Todos Popover - Rendering', () => {
         { wrapper: createWrapper() }
       )
       const button = screen.getByTestId('todos-trigger')
-      expect(button.getAttribute('title')).toBe('Task list (Ctrl+T)')
+      expect(button.getAttribute('title')).toBe(todosTitle)
     })
 
     it('shows correct title when sessionId is null', () => {

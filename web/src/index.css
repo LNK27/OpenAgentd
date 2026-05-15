@@ -634,3 +634,19 @@
 }
 .oa-prose strong { color: var(--color-text); font-weight: 600; }
 .oa-prose em     { color: var(--color-text-2); font-style: italic; }
+
+/* ─────────────────────────────────────────────────────────────
+ * macOS overlay title bar — reserve 28 px at the top so app
+ * content doesn't render under the traffic-light buttons or
+ * the draggable strip (see <MacTitleBar />).
+ *
+ * Set by ``MacTitleBar`` via ``document.documentElement.setAttribute
+ * ('data-platform', 'mac-overlay')``. Stays a no-op on Windows /
+ * Linux where the OS title bar handles its own spacing.
+ *
+ * We push the body — not html — so any ``position: fixed`` overlays
+ * (modals, toasts) can still occupy the full viewport when needed.
+ * ───────────────────────────────────────────────────────────── */
+html[data-platform="mac-overlay"] body {
+  padding-top: 28px;
+}

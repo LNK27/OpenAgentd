@@ -15,6 +15,15 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import type { ComponentType, MouseEventHandler, ReactNode } from 'react'
 
+/**
+ * Convert the shorthand ``"^N"`` (caret = primary modifier) into a
+ * ``"Ctrl+N"`` label. Anything else is rendered as-is.
+ */
+function renderKbd(kbd: string): string {
+  if (kbd.startsWith('^')) return `Ctrl+${kbd.slice(1)}`
+  return kbd
+}
+
 export interface SidebarItemProps {
   /** Lucide icon component (or any component accepting `size` prop). */
   Icon: ComponentType<{ size?: number; className?: string }>
@@ -45,7 +54,7 @@ export function SidebarItem({
     <button
       type="button"
       onClick={onClick}
-      title={title ?? (kbd ? `${label} (${kbd.replace('^', 'Ctrl+')})` : label)}
+      title={title ?? (kbd ? `${label} (${renderKbd(kbd)})` : label)}
       aria-current={active ? 'page' : undefined}
       className={cn(
         'interactive-weight flex w-full items-center gap-2.5 rounded-lg text-sm transition-colors',
@@ -76,7 +85,7 @@ export function SidebarItem({
           rightSlot
         ) : kbd ? (
           <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">
-            {kbd}
+            {renderKbd(kbd)}
           </kbd>
         ) : null)}
     </button>

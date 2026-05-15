@@ -1,8 +1,14 @@
 /**
- * useKeyboardShortcuts — registers window-level Ctrl+key handlers.
+ * useKeyboardShortcuts — registers window-level Ctrl+<key> shortcuts.
+ *
+ * Cross-platform note: we use ``Ctrl`` everywhere (Mac included). The
+ * Mac convention is ``⌘`` but the desktop shell positions itself as a
+ * tool with a power-user feel where Ctrl is the consistent modifier
+ * regardless of OS. ``e.metaKey`` (⌘ on Mac, Win-key on Windows) is
+ * explicitly excluded so the OS-level shortcuts (⌘W, ⌘Q, etc.) keep
+ * working.
  *
  * Shortcuts map: key (lowercase) → handler function.
- * All shortcuts require Ctrl (not Meta) to avoid clashing with OS shortcuts.
  *
  * Usage:
  *   useKeyboardShortcuts({

@@ -19,6 +19,23 @@ import type { useNavigate } from '@tanstack/react-router'
 import type { Command } from '../CommandPalette'
 import type { ViewMode } from './types'
 
+/**
+ * Dispatch a synthetic Ctrl+key event so the window-level shortcut
+ * handlers fire when a palette item is activated. We use Ctrl (not
+ * Cmd) on every platform — see hooks/useKeyboardShortcuts.ts for the
+ * rationale.
+ */
+function dispatchCtrlKey(key: string): void {
+  window.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key,
+      ctrlKey: true,
+      metaKey: false,
+      bubbles: true,
+    }),
+  )
+}
+
 interface UseTeamCommandsArgs {
   // View / layout
   viewMode: ViewMode
@@ -97,9 +114,9 @@ export function useTeamCommands({
     { id: 'workspace-files',  group: 'View',       label: mode === 'coding' ? 'Open Files & Diff' : 'Toggle Workspace Files', description: mode === 'coding' ? 'Browse workspace files and git diff' : 'Browse files the agent has produced', shortcut: 'Ctrl+F', action: handleWorkspaceFiles },
     mode === 'coding'
       ? { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: 'Ctrl+B', action: handleCodingSidebarToggle }
-      : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: 'Ctrl+B', action: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true })) },
-    { id: 'wiki',             group: 'View',       label: 'Wiki',              description: 'Browse and edit the agent wiki', shortcut: 'Ctrl+M', action: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', ctrlKey: true, bubbles: true })) },
-    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: 'Ctrl+S', action: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true })) },
+      : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: 'Ctrl+B', action: () => dispatchCtrlKey('b') },
+    { id: 'wiki',             group: 'View',       label: 'Wiki',              description: 'Browse and edit the agent wiki', shortcut: 'Ctrl+M', action: () => dispatchCtrlKey('m') },
+    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: 'Ctrl+S', action: () => dispatchCtrlKey('s') },
     { id: 'focus-input',      group: 'View',       label: 'Focus Chat Input',  description: 'Jump cursor to the message composer', shortcut: 'Ctrl+I', action: () => window.dispatchEvent(new CustomEvent('focus-chat-input')) },
     ...agentNames.map((name) => ({
       id: `switch-${name}`, group: 'Agents',

@@ -5,6 +5,8 @@ import type { AgentUsage } from "@/api/types"
 
 afterEach(cleanup)
 
+const newHint = "Ctrl+N new"
+
 describe("StatusBar", () => {
   it("renders session ID using shortId() when sessionId is provided", () => {
     const sessionId = "abc123def456"
@@ -15,7 +17,7 @@ describe("StatusBar", () => {
   it("does not render session ID when sessionId is null", () => {
     render(<StatusBar sessionId={null} />)
     // Should still render the component, just without the session ID
-    expect(screen.getByText("Ctrl+N new")).toBeTruthy()
+    expect(screen.getByText(newHint)).toBeTruthy()
   })
 
   it("shows 'streaming' indicator when isStreaming is true", () => {
@@ -38,7 +40,7 @@ describe("StatusBar", () => {
   it("does not show error when error is null", () => {
     render(<StatusBar sessionId={null} error={null} />)
     // Should render without error
-    expect(screen.getByText("Ctrl+N new")).toBeTruthy()
+    expect(screen.getByText(newHint)).toBeTruthy()
   })
 
   it("shows token counts when usage is provided", () => {
@@ -88,9 +90,9 @@ describe("StatusBar", () => {
     expect(cachedText).toBeNull()
   })
 
-  it("renders 'Ctrl+N new' hint text", () => {
+  it("renders the platform-correct 'New chat' hint text", () => {
     render(<StatusBar sessionId={null} />)
-    expect(screen.getByText("Ctrl+N new")).toBeTruthy()
+    expect(screen.getByText(newHint)).toBeTruthy()
   })
 
   it("renders all elements together", () => {
@@ -113,6 +115,6 @@ describe("StatusBar", () => {
     expect(screen.getByText(/500p/)).toBeTruthy()
     expect(screen.getByText(/300c/)).toBeTruthy()
     expect(screen.getByText(/50 cached/)).toBeTruthy()
-    expect(screen.getByText("Ctrl+N new")).toBeTruthy()
+    expect(screen.getByText(newHint)).toBeTruthy()
   })
 })

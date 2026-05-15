@@ -6,6 +6,7 @@ import { queryClient } from '@/lib/query-client'
 import { Home } from 'lucide-react'
 import { ToastStack } from '@/components/ToastStack'
 import { SkipLink } from '@/components/motion'
+import { MacTitleBar } from '@/components/MacTitleBar'
 
 export function Root() {
   // Theme application is handled by `initTheme()` in main.tsx and the
@@ -14,6 +15,7 @@ export function Root() {
   return (
     <QueryClientProvider client={queryClient}>
       <SkipLink />
+      <MacTitleBar />
       <Outlet />
       <ToastStack />
       {/* <ReactQueryDevtools initialIsOpen={false} /> */}
