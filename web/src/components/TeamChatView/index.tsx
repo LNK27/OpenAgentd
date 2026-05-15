@@ -345,13 +345,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     // sidebar/content row).
     <div className="flex h-dvh flex-col bg-(--bg-page)">
       {/* Header — full width, above both sidebar and content. */}
-      <header className="flex items-center gap-1 border-b border-(--color-border) bg-(--bg-page) px-2 py-0 md:gap-0 md:px-4">
+      <header className="flex items-center border-b border-(--color-border) bg-(--bg-page) py-0">
 
-          {/* Left chrome — Home + Hamburger always; Cockpit-only session title.
-              Hamburger target depends on mode: coding sidebar toggle, mobile
-              drawer, or a synthetic Ctrl+B for the normal sidebar (whose
-              collapse state is owned by ``Sidebar``). */}
-          <div className="mr-2 flex shrink-0 items-center gap-1">
+          {/* Home — pinned to a 56 px column so it sits vertically aligned
+              with the collapsed sidebar (which is also 56 px wide). On
+              mobile the column shrinks to the natural button size since
+              the sidebar is a position:fixed overlay, not a column. */}
+          <div className="flex h-full shrink-0 items-center justify-center md:w-14">
             <Link
               to="/"
               aria-label="Home"
@@ -360,6 +360,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             >
               <Home size={16} aria-hidden="true" />
             </Link>
+          </div>
+
+          {/* Hamburger + optional session title. ``gap-1`` keeps the two
+              affordances tight; ``mr-2`` pushes content away on the right.
+              Hamburger target depends on mode: coding sidebar toggle, mobile
+              drawer, or a synthetic Ctrl+B for the normal sidebar (whose
+              collapse state is owned by ``Sidebar``). */}
+          <div className="mr-2 flex shrink-0 items-center gap-1 pl-2 md:pl-0">
             <button
               type="button"
               onClick={() => {
