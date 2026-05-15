@@ -2,7 +2,7 @@
 title: Desktop distribution
 description: How OpenAgentd packages, ships, signs, and updates the native desktop app.
 status: stable
-updated: 2026-05-15
+updated: 2026-05-16
 ---
 
 # Desktop distribution
@@ -76,6 +76,14 @@ agent tools). The token mitigates that.
 
 See `app/core/desktop_auth.py` for the implementation and
 `tests/core/test_desktop_auth.py` for the contract.
+
+## Window chrome
+
+macOS uses the **Overlay** title-bar style (`tauri.conf.json` + `configure_window_chrome` in `main.rs`) — the OS keeps drawing the traffic-light buttons but the WebView extends edge-to-edge underneath. The React app reserves a 70 px left inset and provides the window-drag region itself.
+
+Windows and Linux keep their native title bars (`decorations: true`).
+
+Implementation details (header, drag hook, traffic-light position tuning) live in [`web/chrome.md`](web/chrome.md).
 
 ## Bundle layout
 

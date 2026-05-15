@@ -2,7 +2,7 @@
 title: OpenAgentd Documentation
 description: On-machine AI assistant with FastAPI backend, React web UI, multi-agent teams, and streaming SSE support.
 status: stable
-updated: 2026-04-29
+updated: 2026-05-16
 ---
 
 # OpenAgentd
@@ -27,6 +27,7 @@ Quick start: `Makefile` (`make run` for the backend on :8000; `cd web && bun dev
 | [Observability](./observability.md)                  | OpenTelemetry spans, metrics, JSONL partitions, export-tier sampling, DuckDB HTTP API, `/telemetry` UI |
 | [Agent engine](./agent/index.md)                     | Reasoning loop, hooks, tools, teams, context management                                              |
 | [API reference](./api/index.md)                      | HTTP endpoints, SSE events, file handling                                                            |
+| [App chrome](./web/chrome.md)                        | Shared header, platform detection, Tauri window-drag plumbing, macOS overlay traffic-light alignment |
 | [Workspace Files panel](./web/workspace-files.md)    | Web UI Files drawer — listing endpoint, previews, live invalidation                                  |
 | [Todos popover](./web/todos.md)                      | Web UI Todos popover — task list display, live invalidation, keyboard shortcut                       |
 | [Mobile layout](./web/mobile.md)                     | Phone-first responsive design — breakpoints, safe areas, master/detail patterns, per-component behaviour |

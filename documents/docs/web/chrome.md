@@ -1,0 +1,61 @@
+---
+title: App Chrome (Header, Sidebar, Tauri Drag)
+description: Shared header, platform detection, and window-drag plumbing across browser and Tauri desktop.
+status: stable
+updated: 2026-05-15
+---
+
+# App chrome
+
+**Sources:** `web/src/components/AppHeader.tsx`, `web/src/components/MacTitleBar.tsx`, `web/src/hooks/use-platform.ts`, `web/src/hooks/use-tauri-drag.ts`, `desktop/src-tauri/src/main.rs`
+
+---
+
+## Layout
+
+A 40 px header sits above every route. Settings uses `AppHeader` directly; `TeamChatView` renders its own header that follows the same conventions.
+
+```
+[traffic-lights]  [🏠] [☰]  Title              ● local
+```
+
+Two CSS tokens (`web/src/index.css`):
+
+- `--spacing-app-header: 2.5rem` — header height.
+- `--spacing-mac-traffic-inset: 70px` — left inset reserved for the macOS traffic-light overlay (x=12 origin + ~58 button group).
+
+## Platform detection
+
+`usePlatform()` returns `{ isTauri, os, isMacOverlay }`. Detection is recomputed on every call so tests can patch `navigator` / `window` without busting the module cache. `isMacOverlay` is the only combination that needs special chrome — Windows and Linux Tauri keep their native title bars.
+
+## Window dragging on macOS overlay
+
+`titleBarStyle: "Overlay"` removes the native title bar but keeps the traffic-light buttons. The React app provides drag manually via `useTauriDrag`:
+
+- Returns `{ onMouseDown }` only when running inside Tauri.
+- On `mousedown`, walks `event.target.closest('button, a, input, select, textarea, [role="button"], [data-no-drag]')` to skip interactive elements; bare wrappers still drag.
+- Double-click (`event.detail === 2`) calls `toggleMaximize()` for the standard macOS zoom gesture.
+
+Why not `data-tauri-drag-region`? It steals `mousedown` from interactive descendants when applied to a parent wrapper. The manual handler restores normal click flow. See the [Tauri docs](https://v2.tauri.app/learn/window-customization/#manual-implementation-of-data-tauri-drag-region).
+
+`MacTitleBar` adds a passive 70 × 40 corner pad over the empty traffic-light inset so users can also drag from there. It is **not** a full-width strip — that would catch every top-edge `mousedown` and pre-empt route header buttons.
+
+## Tauri permissions
+
+The window's capability (`desktop/src-tauri/capabilities/default.json`) must include:
+
+```
+core:window:allow-start-dragging          ← startDragging()
+core:window:allow-toggle-maximize         ← toggleMaximize() (double-click)
+core:window:allow-internal-toggle-maximize
+```
+
+`core:window:default` excludes both — calls fail silently without the explicit grants.
+
+## Traffic-light alignment
+
+The position is set programmatically in `configure_window_chrome` (`desktop/src-tauri/src/main.rs`) because Tauri ignores `tauri.conf.json` values when the window is built from Rust. `y` is a *bottom* inset — Tao resizes the native title-bar container to `button_height + y`. For our 40 px header, **`y = 22`** centres the buttons. Documented tuning notes live in the function's Rust comment.
+
+## Sidebar
+
+Both `Sidebar` and `CodingSidebar` draw `border-r border-(--color-border)` so the boundary between sidebar and content is unambiguous on dark themes.
