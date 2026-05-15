@@ -8,11 +8,11 @@
  * component encapsulates only the parts that are consistent across all
  * surfaces:
  *
- *   • TokenMeter (desktop only, shown when totals > 0)
  *   • Optional "Dream…" running indicator
  *   • Optional unified-view split-pane buttons (desktop only)
  *   • ViewToggle (desktop only)
- *   • TopbarAction triplet — Todos / Files / Agents
+ *   • TokenMeter (desktop only, shown when totals > 0)
+ *   • TopbarAction quintet — Todos / Scheduler / Wiki / Files / Agents
  *
  * Keeping this composite props-driven (rather than reading global state
  * directly) makes it usable in previews, screenshots, and future
@@ -20,6 +20,8 @@
  */
 
 import {
+  Brain,
+  CalendarClock,
   FolderOpen,
   ListChecks,
   Moon,
@@ -80,6 +82,10 @@ export interface AgentTopbarProps {
    */
   todosSlot?: React.ReactNode
   todosAction?: AgentTopbarActionDescriptor
+  /** Scheduler action — opens the scheduled-tasks drawer (Ctrl+S). */
+  schedulerAction?: AgentTopbarActionDescriptor
+  /** Wiki action — opens the wiki drawer (Ctrl+M). */
+  wikiAction?: AgentTopbarActionDescriptor
   /** Files action — typically toggles the workspace files panel. */
   filesAction?: AgentTopbarActionDescriptor
   /** Agents action — typically toggles the agent capabilities sidebar. */
@@ -105,6 +111,8 @@ export function AgentTopbar({
   isMobile = false,
   todosSlot,
   todosAction,
+  schedulerAction,
+  wikiAction,
   filesAction,
   agentsAction,
   extraActions,
@@ -125,15 +133,6 @@ export function AgentTopbar({
         className,
       )}
     >
-      {showTokens && tokens && (
-        <TokenMeter
-          input={tokens.input}
-          output={tokens.output}
-          cached={tokens.cached}
-          pulsing={tokens.pulsing}
-        />
-      )}
-
       {dreamRunning && (
         <div
           className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-(--color-text-muted)"
@@ -175,7 +174,22 @@ export function AgentTopbar({
         <ViewToggle value={viewMode} onValueChange={onViewModeChange} />
       )}
 
+      {showTokens && tokens && (
+        <TokenMeter
+          input={tokens.input}
+          output={tokens.output}
+          cached={tokens.cached}
+          pulsing={tokens.pulsing}
+        />
+      )}
+
       {todosSlot ?? (todosAction && <AgentTopbarActionButton action={todosAction} fallbackIcon={ListChecks} />)}
+      {schedulerAction && (
+        <AgentTopbarActionButton action={schedulerAction} fallbackIcon={CalendarClock} />
+      )}
+      {wikiAction && (
+        <AgentTopbarActionButton action={wikiAction} fallbackIcon={Brain} />
+      )}
       {filesAction && (
         <AgentTopbarActionButton action={filesAction} fallbackIcon={FolderOpen} />
       )}

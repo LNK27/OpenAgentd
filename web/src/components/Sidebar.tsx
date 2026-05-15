@@ -11,15 +11,11 @@ import {
   RefreshCw,
   PanelLeftClose,
   Search,
-  Brain,
   Settings,
-  CalendarClock,
 } from 'lucide-react'
 import { isToday, isYesterday } from 'date-fns'
 import { useTeamSessionsQuery, useDeleteTeamSessionMutation } from '@/queries'
 import { formatRelativeDate } from '@/utils/format'
-import { WikiPanel } from './WikiPanel'
-import { SchedulerPanel } from './SchedulerPanel'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { BrandHeader } from '@/components/ui/brand-header'
@@ -99,8 +95,6 @@ export function Sidebar({
     }
   })
 
-  const [wikiOpen, setWikiOpen] = useState(false)
-  const [schedulerOpen, setSchedulerOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
 
   const toggleCollapse = useCallback(() => {
@@ -117,14 +111,15 @@ export function Sidebar({
 
   const refetchSessions = sessions.refetch
 
-  // Ctrl+B: collapse sidebar; Ctrl+R: refresh sessions; Ctrl+M: toggle wiki; Ctrl+S: toggle scheduler
+  // Ctrl+B: collapse sidebar; Ctrl+R: refresh sessions.
+  // Ctrl+M (wiki) / Ctrl+S (scheduler) live in TeamChatView — those panels
+  // moved out of the sidebar per the topbar-redesign wireframe and their
+  // open-state is owned by useUIStore.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!e.ctrlKey || e.metaKey) return
       if (e.key === 'b') { e.preventDefault(); toggleCollapse() }
       if (e.key === 'r') { e.preventDefault(); refetchSessions() }
-      if (e.key === 'm') { e.preventDefault(); setWikiOpen((prev) => !prev) }
-      if (e.key === 's') { e.preventDefault(); setSchedulerOpen((prev) => !prev) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -269,20 +264,6 @@ export function Sidebar({
                 />
               )}
               <SidebarItem
-                Icon={Brain}
-                label="Memory wiki"
-                kbd="^M"
-                collapsed={showIconOnly}
-                onClick={() => setWikiOpen(true)}
-              />
-              <SidebarItem
-                Icon={CalendarClock}
-                label="Scheduler"
-                kbd="^S"
-                collapsed={showIconOnly}
-                onClick={() => setSchedulerOpen(true)}
-              />
-              <SidebarItem
                 Icon={Settings}
                 label="Settings"
                 collapsed={showIconOnly}
@@ -391,12 +372,6 @@ export function Sidebar({
           </>
         )
       })()}
-
-       {/* Wiki Panel */}
-       <WikiPanel open={wikiOpen} onClose={() => setWikiOpen(false)} />
-
-        {/* Scheduler Panel */}
-        <SchedulerPanel open={schedulerOpen} onClose={() => setSchedulerOpen(false)} />
 
         {/* Delete confirmation dialog */}
        <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>

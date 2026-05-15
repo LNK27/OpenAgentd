@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { AgentCapabilities } from '../AgentCapabilities'
 import { AgentView } from '../AgentView'
 import { CodingSidebar } from '../CodingSidebar'
@@ -33,16 +33,19 @@ import { Sidebar } from '../Sidebar'
 import { CommandPalette } from '../CommandPalette'
 import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
 import { TodosPopover } from '../TodosPopover'
+import { WikiPanel } from '../WikiPanel'
+import { SchedulerPanel } from '../SchedulerPanel'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useTriggerDreamMutation } from '@/queries'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTileLayout } from '@/hooks/useTileLayout'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { Users, FolderOpen, Menu, FolderCode } from 'lucide-react'
+import { Brain, CalendarClock, FolderOpen, FolderCode, Home, Menu, Users } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { AgentChip } from '@/components/ui/agent-chip'
 import { Button } from '@/components/ui/button'
@@ -56,7 +59,7 @@ import { AgentTabStrip } from './AgentTabStrip'
 import { TileArea } from './TileArea'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
-import { saveCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import { saveCodingWorkspace } from '@/utils/workspace'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -105,7 +108,17 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const agentNames     = useTeamStore((s) => s.agentNames)
   const isTeamWorking  = useTeamStore((s) => s.isTeamWorking)
   const sessionIdState = useTeamStore((s) => s.sessionId)
+  const sessionTitle   = useTeamStore((s) => s.sessionTitle)
   const leadName       = useTeamStore((s) => s.leadName)
+
+  // Wiki + Scheduler drawer state lives in useUIStore so the topbar (here)
+  // and any future consumer can open/close them through the same path.
+  const wikiOpen        = useUIStore((s) => s.wikiOpen)
+  const schedulerOpen   = useUIStore((s) => s.schedulerOpen)
+  const toggleWiki      = useUIStore((s) => s.toggleWiki)
+  const toggleScheduler = useUIStore((s) => s.toggleScheduler)
+  const closeWiki       = useUIStore((s) => s.closeWiki)
+  const closeScheduler  = useUIStore((s) => s.closeScheduler)
 
   // Subscribe to active-agent stream fields directly to avoid recomputing on
   // every other agent's tick.
@@ -351,6 +364,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     t: () => { if (sessionIdState) setShowTodos((v) => !v) },
     p: isMobile ? undefined : () => setShowPalette((v) => !v),
     b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
+    // Ctrl+M / Ctrl+S — open the wiki / scheduler drawers (state in useUIStore).
+    m: toggleWiki,
+    s: toggleScheduler,
     // Ctrl+I — focus the chat input (dispatched via CustomEvent so future
     // callers don't need a ref to the input).
     'i': () => window.dispatchEvent(new CustomEvent('focus-chat-input')),
@@ -406,32 +422,43 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         {/* Header */}
         <header className="flex items-center gap-1 border-b border-(--color-border) bg-(--bg-page) px-2 py-0 md:gap-0 md:px-4">
 
-          {/* Mobile: hamburger to open sidebar drawer */}
-          {mode === 'coding' && codingSidebarCollapsed ? (
-            <div className="mr-3 flex min-w-0 shrink-0 items-center gap-2">
-              <button
-                onClick={() => setCodingSidebarCollapsed(false)}
-                aria-label="Expand coding sidebar"
-                title="Expand coding sidebar (Ctrl+B)"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-              >
-                <Menu size={16} aria-hidden="true" />
-              </button>
-              {workspace && (
-                <span className="max-w-40 truncate font-mono text-xs font-medium text-(--color-text-muted)" title={workspace}>
-                  {workspaceLabel(workspace)}
-                </span>
-              )}
-            </div>
-          ) : isMobile && (
+          {/* Left chrome — Home + Hamburger always; Cockpit-only session title.
+              Hamburger target depends on mode: coding sidebar toggle, mobile
+              drawer, or a synthetic Ctrl+B for the normal sidebar (whose
+              collapse state is owned by ``Sidebar``). */}
+          <div className="mr-2 flex shrink-0 items-center gap-1">
+            <Link
+              to="/"
+              aria-label="Home"
+              title="Home"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            >
+              <Home size={16} aria-hidden="true" />
+            </Link>
             <button
-              onClick={() => setMobileSidebarOpen(true)}
-              aria-label="Open navigation"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              type="button"
+              onClick={() => {
+                if (mode === 'coding') {
+                  setCodingSidebarCollapsed((v) => !v)
+                } else if (isMobile) {
+                  setMobileSidebarOpen(true)
+                } else {
+                  // Ctrl+B is owned by Sidebar's window listener.
+                  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, metaKey: false, bubbles: true }))
+                }
+              }}
+              aria-label="Toggle sidebar"
+              title="Toggle sidebar (Ctrl+B)"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             >
               <Menu size={16} aria-hidden="true" />
             </button>
-          )}
+            {mode !== 'coding' && sessionTitle && (
+              <span className="ml-1 max-w-60 truncate text-sm font-semibold text-(--color-text)" title={sessionTitle}>
+                {sessionTitle}
+              </span>
+            )}
+          </div>
 
           {/* Left: agent tabs (agent view) or unified tab strip */}
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -538,6 +565,22 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                 sessionId={sessionIdState}
               />
             }
+            schedulerAction={{
+              Icon: CalendarClock,
+              label: 'Scheduler',
+              onClick: toggleScheduler,
+              title: 'Scheduled tasks (Ctrl+S)',
+              ariaLabel: 'Scheduled tasks',
+              indicator: schedulerOpen,
+            }}
+            wikiAction={{
+              Icon: Brain,
+              label: 'Wiki',
+              onClick: toggleWiki,
+              title: 'Memory wiki (Ctrl+M)',
+              ariaLabel: 'Memory wiki',
+              indicator: wikiOpen,
+            }}
             filesAction={mode === 'coding'
               ? workspace ? {
                   Icon: FolderOpen,
@@ -656,6 +699,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         sessionId={sessionIdState}
         onClose={() => setShowFilesPanel(false)}
       />
+      <WikiPanel open={wikiOpen} onClose={closeWiki} />
+      <SchedulerPanel open={schedulerOpen} onClose={closeScheduler} />
       {mode === 'coding' && workspace && (
         <CodingWorkspacePanel
           key={codingPanel ?? 'closed'}
