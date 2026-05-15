@@ -496,6 +496,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                   disabled: !sessionIdState,
                   title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
                   ariaLabel: 'Workspace files',
+                  className: 'mr-2',
                 }}
           />
       </header>
