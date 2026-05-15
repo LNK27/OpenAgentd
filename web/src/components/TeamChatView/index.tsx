@@ -339,32 +339,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    // h-dvh: accounts for iOS Safari's dynamic toolbar (h-screen is too tall)
-    <div className="flex h-dvh bg-(--bg-page)">
-      {/* On mobile the Sidebar is position:fixed (overlay drawer), so it takes
-          no space in this flex row — the main column is always full-width. */}
-      {mode === 'coding' ? (
-        !codingSidebarCollapsed && (
-          <CodingSidebar
-            currentSessionId={sessionIdState || undefined}
-            workspace={workspace}
-            onCollapse={() => setCodingSidebarCollapsed(true)}
-            openWorkspaceDialogKey={openWorkspaceDialogKey}
-          />
-        )
-      ) : (
-        <Sidebar
-          currentSessionId={sessionIdState || undefined}
-          onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
-          onNewChat={handleNewSession}
-          mobileOpen={mobileSidebarOpen}
-          onMobileClose={() => setMobileSidebarOpen(false)}
-        />
-      )}
-
-      <div ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
-        {/* Header */}
-        <header className="flex items-center gap-1 border-b border-(--color-border) bg-(--bg-page) px-2 py-0 md:gap-0 md:px-4">
+    // h-dvh: accounts for iOS Safari's dynamic toolbar (h-screen is too tall).
+    // flex-col so the header spans the full viewport width and the sidebar
+    // sits below it — matches the wireframe layout (header above the
+    // sidebar/content row).
+    <div className="flex h-dvh flex-col bg-(--bg-page)">
+      {/* Header — full width, above both sidebar and content. */}
+      <header className="flex items-center gap-1 border-b border-(--color-border) bg-(--bg-page) px-2 py-0 md:gap-0 md:px-4">
 
           {/* Left chrome — Home + Hamburger always; Cockpit-only session title.
               Hamburger target depends on mode: coding sidebar toggle, mobile
@@ -531,8 +512,32 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               ariaLabel: 'Agent capabilities',
             }}
           />
-        </header>
+      </header>
 
+      {/* Body row — sidebar (or coding rail) + main content column. On
+          mobile the Sidebar is position:fixed (overlay drawer), so it
+          takes no space here and the main column is always full-width. */}
+      <div className="flex min-h-0 flex-1">
+        {mode === 'coding' ? (
+          !codingSidebarCollapsed && (
+            <CodingSidebar
+              currentSessionId={sessionIdState || undefined}
+              workspace={workspace}
+              onCollapse={() => setCodingSidebarCollapsed(true)}
+              openWorkspaceDialogKey={openWorkspaceDialogKey}
+            />
+          )
+        ) : (
+          <Sidebar
+            currentSessionId={sessionIdState || undefined}
+            onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
+            onNewChat={handleNewSession}
+            mobileOpen={mobileSidebarOpen}
+            onMobileClose={() => setMobileSidebarOpen(false)}
+          />
+        )}
+
+        <div ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
         {/* Content area */}
         {effectiveViewMode === 'split' && splitAgentNames.length > 0 ? (
           <div className="min-h-0 flex-1 p-3">
@@ -605,6 +610,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           capabilities={leadCapabilities}
           voiceEnabled={voiceEnabled}
         />
+        </div>
       </div>
 
       <AgentCapabilities
