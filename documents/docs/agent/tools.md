@@ -434,7 +434,7 @@ For team work, spawn members before assigning their todos and use the returned c
 |------|-------------|
 | `schedule_task` | Create, list, pause, resume, delete, or trigger scheduled tasks via the in-process `TaskScheduler` singleton |
 
-`schedule_task` is the primary interface for the lead agent to manage the scheduler on the user's behalf, e.g. *"remind me every hour"*, *"run the daily-report agent at 9 AM every weekday"*.
+`schedule_task` is the primary interface for the lead agent to manage the scheduler on the user's behalf, e.g. *"remind me every hour"*, *"run the daily-report report at 9 AM every weekday"*. Every fired task delivers to the **team lead** — there is no per-agent routing.
 
 When a task fires, the dispatched message is prefixed with the task name:
 ```
@@ -447,14 +447,28 @@ This makes it clear to the agent (and visible in session history) that the turn 
 
 | Action | Required args | Notes |
 |--------|--------------|-------|
-| `create` | `name`, `agent`, `schedule_type`, `prompt` + schedule fields | Validates via `ScheduledTaskCreate`; starts timer immediately |
+| `create` | `name`, `schedule_type`, `prompt` + schedule fields | Validates via `ScheduledTaskCreate`; starts timer immediately |
 | `list` | — | Returns all tasks with id, status, next fire time |
 | `pause` | `task_id` (UUID) | Disables task, cancels timer |
 | `resume` | `task_id` (UUID) | Re-enables, recomputes next fire |
 | `delete` | `task_id` (UUID) | Cancels timer, removes from DB |
 | `trigger` | `task_id` (UUID) | Fires immediately without affecting schedule |
 
-Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (REST) or through the **Edit** button in the web UI `SchedulerPanel`. Updatable fields: `agent`, `schedule_type`, schedule value fields, `timezone`, `prompt`, `session_id`, `enabled`. See [`api/index.md`](../../docs/api/index.md#scheduler-endpoints).
+#### Routing target — auto-injected
+
+`mode` (`"normal"` | `"coding"`) and `workspace` are **not** part of the
+LLM-visible tool schema. The tool executor injects them from the calling
+agent's runtime context (`state.metadata["team_mode"]` /
+`["team_workspace"]`, populated by `TeamMemberBase` from the live team)
+so a lead in a coding workspace always schedules into that same team —
+the LLM cannot specify or lie about the target. Fires route to:
+
+* `mode="normal"` → `team_manager.get_or_start_team()` (default lead)
+* `mode="coding"` → `team_manager.get_or_start_coding_team(workspace)`
+
+When `session_id` is an explicit UUID that already exists, `scheduler.create` / `apply_update` reject mismatched `(mode, workspace)` pairs with `InvalidTaskTargetError` (HTTP 422).
+
+Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (REST) or through the **Edit** button in the web UI `SchedulerPanel`. Updatable fields: `mode`, `workspace`, `schedule_type`, schedule value fields, `timezone`, `prompt`, `session_id`, `enabled`. See [`api/index.md`](../../docs/api/index.md#scheduler-endpoints).
 
 #### Schedule types
 

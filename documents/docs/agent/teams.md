@@ -192,23 +192,31 @@ process.
 **File:** `app/services/team_manager.py`
 
 `team_manager` is the module-level wrapper around the running
-`AgentTeam`. Production routes only call `start()` / `stop()` (lifespan)
-and `invalidate_skill_cache()` (clears the `discover_skills` `lru_cache`
-after a skill write). `reload()` is retained as an admin/test escape
-hatch — it stops the team, rebuilds from disk via `load_team_from_dir`,
-and returns a `TeamDiff`. It is **not** called on file writes today;
-drift detection covers that path.
+`AgentTeam`. Teams build **lazily** on first request and evict after an
+idle window:
+
+* Default team — 1 h idle (`_DEFAULT_TEAM_IDLE_SECONDS`)
+* Coding teams — 30 min idle (`_CODING_TEAM_IDLE_SECONDS`), one per workspace
+
+`validate_agents_dir()` runs at lifespan startup so a malformed agent
+`.md` fails the server boot instead of the first chat request; it does
+**not** build a team. `reload()` is retained as an admin/test escape
+hatch — it stops the live team, rebuilds from disk via
+`load_team_from_dir`, and returns a `TeamDiff`. Drift detection covers
+hot edits to individual agent files; `reload()` is not called on writes.
 
 ```python
-await team_manager.start()              # lifespan startup
-team_manager.invalidate_skill_cache()   # after a skill write
-diff = await team_manager.reload()      # admin/test only
-await team_manager.stop()               # lifespan shutdown
+team_manager.validate_agents_dir()              # lifespan startup (parse-only)
+team = await team_manager.get_or_start_team()   # first chat / scheduler fire
+team_manager.invalidate_skill_cache()           # after a skill write
+diff = await team_manager.reload()              # admin/test only
+await team_manager.stop()                       # lifespan shutdown
 ```
 
-Serial execution is enforced via `asyncio.Lock` — concurrent calls
-cannot race on `set_team()`. The lock is also taken by `start()` and
-`stop()`.
+Eviction is opportunistic (no background timer) — the next
+`get_or_start_*` call sweeps expired teams. Working teams (any member
+in `state="working"`) are never evicted. Serial execution is enforced
+via `asyncio.Lock`.
 
 ---
 

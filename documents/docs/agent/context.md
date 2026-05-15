@@ -66,8 +66,12 @@ These are proper typed fields on `AgentState` — not entries in `metadata`. Use
 |-----|------|-----------|--------|
 | `session_id` | `str` | `agent.run()` start | built-in tools needing session scope |
 | `agent_name` | `str` | `agent.run()` start | `todo_manage` claim action |
+| `team_mode` | `str` (`"normal"` \| `"coding"`) | `TeamMemberBase._handle_messages` via `RunConfig.metadata` | tool executor — re-exposed as injected `_mode` arg to `schedule_task` |
+| `team_workspace` | `str \| None` | same | tool executor — re-exposed as injected `_workspace` arg to `schedule_task` |
 | `_todos` | `dict` | `todo_manage` | `todo_manage` subsequent calls in the same turn |
 | `_multimodal_tool_parts` | `dict[str, list[ContentBlock]]` | tool executor (when tool returns `ToolResult`) | agent loop (attaches to `ToolMessage.parts`) |
+
+`RunConfig.metadata` is the caller-supplied bridge: the agent loop copies entries into `state.metadata` (via `setdefault`, so explicit `agent_name` / `session_id` win). The tool executor re-projects `team_mode` / `team_workspace` as proper `InjectedArg` parameters so tools declare the dependency in their signature — see `app/agent/tools/builtin/schedule.py` and [`tools.md`](tools.md#scheduler-builtinschedulepy).
 
 > **Note:** `total_tokens`, `last_usage` are no longer stored in `metadata` — use `state.usage` instead. `tool_names` and `capabilities` were also promoted from metadata to typed fields.
 

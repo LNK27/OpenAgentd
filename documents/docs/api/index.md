@@ -170,6 +170,13 @@ Paths are relative to `OPENAGENTD_WIKI_DIR`. See [`agent/memory.md`](../agent/me
 | `POST` | `/api/scheduler/tasks/{id}/resume` | `ScheduledTaskResponse` |
 | `POST` | `/api/scheduler/tasks/{id}/trigger` | `ScheduledTaskResponse` — fire immediately |
 
+Every task delivers to the **team lead** of the routing target — there
+is no per-agent routing. The target is set by `mode`
+(`"normal"` | `"coding"`) plus `workspace` (required when
+`mode="coding"`). Workspace existence and `session_id` ↔ `(mode,
+workspace)` compatibility are validated at create/update time and
+return HTTP 422 on mismatch.
+
 `PUT` accepts a partial body (`ScheduledTaskUpdate`) — all fields optional. On update the backend cancels the existing timer, recalculates `next_fire_at`, persists to DB, and restarts the timer if `enabled=true`. See [`agent/tools.md`](../agent/tools.md#scheduler-builtinschedulepy) for field semantics and schedule types.
 
 The web UI (`SchedulerPanel`, toggled with `Ctrl+S`) exposes all eight operations. Task detail view includes an **Edit** button that opens an inline edit form pre-populated with current values.
