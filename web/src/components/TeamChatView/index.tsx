@@ -69,7 +69,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const inputRef = useRef<InputBarHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
-  const [showAgentSidebar, setShowAgentSidebar] = useState(false)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'files' | 'diff'>(null)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(false)
@@ -83,7 +82,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const effectiveViewMode: ViewMode = isMobile ? 'agent' : viewMode
   useEffect(() => {
     if (isMobile) {
-      setShowAgentSidebar(false)
+      useUIStore.getState().closeAgentCapabilities()
       setShowFilesPanel(false)
     }
   }, [isMobile])
@@ -107,14 +106,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const sessionTitle   = useTeamStore((s) => s.sessionTitle)
   const leadName       = useTeamStore((s) => s.leadName)
 
-  // Wiki + Scheduler drawer state lives in useUIStore so the topbar (here)
-  // and any future consumer can open/close them through the same path.
-  const wikiOpen        = useUIStore((s) => s.wikiOpen)
-  const schedulerOpen   = useUIStore((s) => s.schedulerOpen)
-  const toggleWiki      = useUIStore((s) => s.toggleWiki)
+  // Utility modal state lives in useUIStore so only one can be open at a time.
+  const wikiOpen = useUIStore((s) => s.wikiOpen)
+  const schedulerOpen = useUIStore((s) => s.schedulerOpen)
+  const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
+  const toggleWiki = useUIStore((s) => s.toggleWiki)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
-  const closeWiki       = useUIStore((s) => s.closeWiki)
-  const closeScheduler  = useUIStore((s) => s.closeScheduler)
+  const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
+  const closeWiki = useUIStore((s) => s.closeWiki)
+  const closeScheduler = useUIStore((s) => s.closeScheduler)
+  const closeAgentCapabilities = useUIStore((s) => s.closeAgentCapabilities)
 
   // Subscribe to active-agent stream fields directly to avoid recomputing on
   // every other agent's tick.
@@ -295,7 +296,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     viewMode,
     cycleViewMode,
     setViewMode,
-    setShowAgentSidebar,
+    toggleAgentCapabilities,
     setShowTodos,
     handleWorkspaceFiles,
     handleCodingSidebarToggle,
@@ -312,7 +313,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   useKeyboardShortcuts({
     n: handleNewSession,
     v: isMobile ? undefined : cycleViewMode,
-    a: () => setShowAgentSidebar((v) => !v),
+    a: toggleAgentCapabilities,
     f: handleWorkspaceFiles,
     t: () => { if (sessionIdState) setShowTodos((v) => !v) },
     p: isMobile ? undefined : () => setShowPalette((v) => !v),
@@ -616,11 +617,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       </div>
 
       <AgentCapabilities
-        open={showAgentSidebar}
+        open={agentCapabilitiesOpen}
         agentNames={agentNames}
         agentStreams={agentStreams}
         workspace={agentWorkspace}
-        onClose={() => setShowAgentSidebar(false)}
+        onClose={closeAgentCapabilities}
       />
       <WorkspaceFilesPanel
         open={mode !== 'coding' && showFilesPanel}

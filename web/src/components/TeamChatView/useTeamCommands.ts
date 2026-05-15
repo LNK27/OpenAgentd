@@ -41,7 +41,7 @@ interface UseTeamCommandsArgs {
   viewMode: ViewMode
   cycleViewMode: () => void
   setViewMode: (m: ViewMode) => void
-  setShowAgentSidebar: (fn: (v: boolean) => boolean) => void
+  toggleAgentCapabilities: () => void
   setShowTodos: (fn: (v: boolean) => boolean) => void
   handleWorkspaceFiles: () => void
   handleCodingSidebarToggle: () => void
@@ -67,7 +67,7 @@ export function useTeamCommands({
   viewMode,
   cycleViewMode,
   setViewMode,
-  setShowAgentSidebar,
+  toggleAgentCapabilities,
   setShowTodos,
   handleWorkspaceFiles,
   handleCodingSidebarToggle,
@@ -88,7 +88,7 @@ export function useTeamCommands({
       label: viewMode === 'agent' ? 'Switch to Split View' : 'Switch to Agent View',
       description: 'Cycle: Agent → Split', shortcut: 'Ctrl+V', action: cycleViewMode,
     },
-    { id: 'agent-info',       group: 'View',       label: 'Agent Capabilities', description: 'Show agent tools, skills and config', shortcut: 'Ctrl+A', action: () => setShowAgentSidebar((v) => !v) },
+    { id: 'agent-info',       group: 'View',       label: 'Agent Capabilities', description: 'Show agent tools, skills and config', shortcut: 'Ctrl+A', action: toggleAgentCapabilities },
     { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: 'Ctrl+T', action: () => setShowTodos((v) => !v) },
     { id: 'workspace-files',  group: 'View',       label: mode === 'coding' ? 'Open Files & Diff' : 'Toggle Workspace Files', description: mode === 'coding' ? 'Browse workspace files and git diff' : 'Browse files the agent has produced', shortcut: 'Ctrl+F', action: handleWorkspaceFiles },
     mode === 'coding'
