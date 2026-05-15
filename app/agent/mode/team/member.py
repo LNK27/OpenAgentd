@@ -554,7 +554,33 @@ class TeamMemberBase(abc.ABC):
         """Called after _handle_messages completes successfully."""
 
     async def _on_turn_error(self, exc: Exception) -> None:
-        """Called when _handle_messages raises. Override for error recovery."""
+        """Called when _handle_messages raises. Override for error recovery.
+
+        Subclasses should call ``await super()._on_turn_error(exc)`` first
+        so the base can emit the typed
+        :class:`~app.agent.schemas.events.AgentNotConfiguredEvent` for
+        :class:`~app.agent.providers.unconfigured.UnconfiguredProviderError`
+        before any role-specific handling runs.
+        """
+        from app.agent.providers.unconfigured import UnconfiguredProviderError
+
+        if isinstance(exc, UnconfiguredProviderError):
+            from app.agent.schemas.events import AgentNotConfiguredEvent
+            from app.services import memory_stream_store as stream_store
+            from app.services.stream_envelope import StreamEnvelope
+
+            try:
+                await stream_store.push_event(
+                    self.session_id,
+                    StreamEnvelope.from_event(
+                        AgentNotConfiguredEvent(
+                            agent=self.name,
+                            message=str(exc),
+                        )
+                    ),
+                )
+            except Exception as push_exc:
+                logger.warning("agent_not_configured_emit_failed error={}", push_exc)
 
     def _on_turn_finally(self) -> None:
         """Called in the finally block of every turn. Override for cleanup."""
@@ -758,7 +784,17 @@ class TeamLead(TeamMemberBase):
         ``agent_status=error`` blip in the SSE stream, which the frontend
         treats as a status indicator, not a fatal turn failure).  Emitting a
         typed :class:`ErrorEvent` lets the UI show *why* the turn stopped.
+
+        Unconfigured-provider errors are routed to the typed
+        :class:`AgentNotConfiguredEvent` by the base class; we skip the
+        generic ``ErrorEvent`` here so the UI doesn't show two banners.
         """
+        from app.agent.providers.unconfigured import UnconfiguredProviderError
+
+        await super()._on_turn_error(exc)
+        if isinstance(exc, UnconfiguredProviderError):
+            return
+
         from app.agent.schemas.events import ErrorEvent
         from app.services import memory_stream_store as stream_store
         from app.services.stream_envelope import StreamEnvelope
@@ -863,7 +899,16 @@ class TeamMember(TeamMemberBase):
         return "member"
 
     async def _on_turn_error(self, exc: Exception) -> None:
-        """Notify lead on error."""
+        """Notify lead on error.
+
+        Unconfigured-provider errors are surfaced to the UI directly by the
+        base class via :class:`AgentNotConfiguredEvent`; we also notify the
+        lead so it can pick a different member instead of retrying us.
+        """
+        from app.agent.providers.unconfigured import UnconfiguredProviderError
+
+        await super()._on_turn_error(exc)
+
         assert self._team is not None
         assert self._mailbox is not None
 
@@ -881,15 +926,26 @@ class TeamMember(TeamMemberBase):
             else ""
         )
 
+        # Member with no model: tell the lead exactly that so it doesn't
+        # retry. Generic errors keep the existing "temporarily unavailable"
+        # framing.
+        if isinstance(exc, UnconfiguredProviderError):
+            reason = (
+                f"[{self.name}]: I have no model configured. "
+                f"Ask the user to add a provider in Settings, then re-spawn me.{suffix}"
+            )
+        else:
+            reason = (
+                f"[{self.name}]: System error — temporarily unavailable. "
+                f"Please reassign my work to another member.{suffix}"
+            )
+
         await self._mailbox.send(
             to=self._team.lead.name,
             message=Message(
                 from_agent=self.name,
                 to_agent=self._team.lead.name,
-                content=(
-                    f"[{self.name}]: System error — temporarily unavailable. "
-                    f"Please reassign my work to another member.{suffix}"
-                ),
+                content=reason,
             ),
         )
 

@@ -116,7 +116,12 @@ class AgentConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> "AgentConfig":
-        if self.model and ":" not in self.model:
+        # Allow the seed placeholder unchanged — the loader substitutes an
+        # UnconfiguredProvider stub at build time so first-run installs
+        # without a real model still load cleanly.
+        from app.cli.seed import PROVIDER_MODEL_TOKEN
+
+        if self.model and self.model != PROVIDER_MODEL_TOKEN and ":" not in self.model:
             raise ValueError(
                 f"Agent '{self.name}': invalid model '{self.model}' "
                 f"(expected 'provider:model', e.g. 'googlegenai:gemini-3.1-flash')."
@@ -450,13 +455,34 @@ def _build_agent(
     if cfg.responses_api is not None:
         model_kwargs["responses_api"] = cfg.responses_api
 
-    provider = provider_factory(cfg.model, model_kwargs=model_kwargs)
+    # Agents seeded with the ``__PROVIDER_MODEL__`` placeholder load with
+    # an :class:`UnconfiguredProvider` stub so the team manager survives
+    # first-run before the user picks a provider. The stub raises
+    # :class:`UnconfiguredProviderError` on first LLM call, which the
+    # turn-runner translates into a typed
+    # :class:`AgentNotConfiguredEvent` SSE message.
+    from app.agent.providers.unconfigured import (
+        UnconfiguredProvider,
+        UnconfiguredProviderError,
+    )
+
+    try:
+        provider = provider_factory(cfg.model, model_kwargs=model_kwargs)
+    except UnconfiguredProviderError:
+        logger.warning(
+            "agent_unconfigured_provider agent={} model={}", cfg.name, cfg.model
+        )
+        provider = UnconfiguredProvider(agent_name=cfg.name)
 
     fallback_provider = None
     if cfg.fallback_model:
-        fallback_provider = provider_factory(
-            cfg.fallback_model, model_kwargs=model_kwargs
-        )
+        try:
+            fallback_provider = provider_factory(
+                cfg.fallback_model, model_kwargs=model_kwargs
+            )
+        except UnconfiguredProviderError:
+            # Fallback is best-effort — skip silently when unconfigured.
+            fallback_provider = None
 
     agent = Agent[AgentContext](
         name=cfg.name,

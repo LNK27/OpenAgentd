@@ -30,6 +30,7 @@ from app.agent.providers.geminicli import GeminiCLIProvider
 from app.agent.providers.googlegenai import GoogleGenAIProvider
 from app.agent.providers.ollama import OllamaProvider
 from app.agent.providers.openai import OpenAIProvider
+from app.agent.providers.unconfigured import UnconfiguredProviderError
 from app.agent.providers.vertexai import VertexAIProvider
 from app.agent.providers.xai import XAIProvider
 from app.agent.providers.zai import ZAIProvider
@@ -104,6 +105,14 @@ def build_provider(
             "No model specified. Set 'model' in the agent's .md frontmatter "
             "(format: 'provider:model', e.g. 'googlegenai:gemini-3.1-flash')."
         )
+    # Agents seeded with the placeholder token surface as "not configured"
+    # rather than the generic invalid-format error — the caller (loader)
+    # catches this specifically to substitute an UnconfiguredProvider stub
+    # so the agent loads but defers the failure to LLM-call time.
+    from app.cli.seed import PROVIDER_MODEL_TOKEN
+
+    if model_str == PROVIDER_MODEL_TOKEN or PROVIDER_MODEL_TOKEN in model_str:
+        raise UnconfiguredProviderError()
     if ":" not in model_str:
         raise ValueError(
             f"Invalid model format '{model_str}'. "

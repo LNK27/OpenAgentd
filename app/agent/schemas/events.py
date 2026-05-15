@@ -123,6 +123,26 @@ class ErrorEvent(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentNotConfiguredEvent(BaseModel):
+    """The agent is missing a provider/model — fixable from the UI.
+
+    Emitted in place of :class:`ErrorEvent` when an agent loaded with the
+    ``__PROVIDER_MODEL__`` placeholder is asked to run a turn. The
+    frontend renders this as an actionable banner ("Open Settings →
+    Providers to configure a model") rather than a stack-trace toast.
+    """
+
+    type: Literal["agent_not_configured"] = "agent_not_configured"
+    agent: str
+    message: str
+    # ``action.type`` tells the frontend which CTA to render. Today only
+    # ``open_settings`` is defined; new actions can be added without
+    # breaking existing clients (frontend falls back to a no-op CTA).
+    action: dict[str, Any] = Field(
+        default_factory=lambda: {"type": "open_settings", "tab": "providers"}
+    )
+
+
 class AgentStatusEvent(BaseModel):
     """An agent changed lifecycle state."""
 

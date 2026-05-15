@@ -22,6 +22,7 @@ from typing import Any, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent.schemas.events import (
+    AgentNotConfiguredEvent,
     AgentStatusEvent,
     DoneEvent,
     ErrorEvent,
@@ -53,6 +54,7 @@ AnyStreamEvent = Union[
     DoneEvent,
     RateLimitEvent,
     ErrorEvent,
+    AgentNotConfiguredEvent,
     AgentStatusEvent,
     TitleUpdateEvent,
     PermissionAskedEvent,
