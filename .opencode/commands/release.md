@@ -93,13 +93,13 @@ Sections:
 - `## Breaking Changes`: only if migration required.
 - `## What's changed`: main narrative, user-noticeable changes.
 - `## Upgrade`: only if users need action; be specific.
-- `## Install`: always include the canonical block verbatim. Confirm against the previous release before publishing:
+- `## Install`: structure by install **surface**, not by chronology. One labelled block per channel — desktop, CLI, Docker — so a reader picks their channel and stops. Confirm against the previous release before publishing:
 
   ```bash
   gh release view v<prev-version> --repo lthoangg/openagentd
   ```
 
-  Block to copy:
+  **CLI-only block** (patch/minor releases that don't change install surfaces — copy verbatim):
 
   ````
   ```
@@ -116,6 +116,51 @@ Sections:
   pip install "openagentd[full]"
   ```
   ````
+
+  **Expanded block** (when the release introduces/changes desktop, Homebrew cask, Docker, or install-script surfaces) — drop the channels that aren't relevant, keep the labelling consistent:
+
+  ````
+  **Desktop app** — download from the [desktop releases](https://github.com/lthoangg/openagentd/releases?q=desktop) page:
+
+  - macOS Apple Silicon → `OpenAgentd_*_aarch64.dmg` (run bundled `install.sh`, right-click → Open the first time), or `brew install --cask openagentd`.
+  - Windows → `OpenAgentd_*_x64-setup.exe` (More info → Run anyway at SmartScreen).
+  - Linux → `OpenAgentd_*_amd64.AppImage` (`chmod +x` and run) or the `.deb`.
+
+  **CLI / API server**
+
+  ```
+  uv tool install openagentd
+  # or
+  pip install openagentd
+  ```
+
+  `brew install openagentd` installs the base package only; optional extras (e.g. `openagentd[full]`) must be installed via `uv` or `pip`:
+
+  ```
+  uv tool install "openagentd[full]"
+  # or
+  pip install "openagentd[full]"
+  ```
+
+  **Docker**
+
+  ```
+  docker pull ghcr.io/lthoangg/openagentd:<version>
+  ```
+  ````
+
+- `## Upgrade`: when present, **split by install channel** — never combine channels in one prose paragraph. Each bullet is a copy-pasteable command (or "Settings → … → Install" path). Example shape:
+
+  ````
+  - **Desktop app (in-app updater)** — Settings → Application update → Check for updates → Install.
+  - **Desktop app via Homebrew** — `brew upgrade --cask openagentd`.
+  - **CLI via uv** — `uv tool install --upgrade openagentd`.
+  - **CLI via pip** — `pip install --upgrade openagentd`.
+  - **CLI via Homebrew** — `brew upgrade openagentd`.
+  - **Docker** — `docker compose pull && docker compose up -d`.
+  ````
+
+  If a channel has extra requirements (data move, env var rename, config migration), spell it out under the matching bullet — not in a generic preamble.
 
 - End with `**Full changelog:** https://github.com/lthoangg/openagentd/compare/<prev>...<next>`.
 - Avoid `## Tests` section.
