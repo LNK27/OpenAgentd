@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   Search,
   Settings,
+  HelpCircle,
 } from 'lucide-react'
 import { isToday, isYesterday } from 'date-fns'
 import { useTeamSessionsQuery, useDeleteTeamSessionMutation } from '@/queries'
@@ -245,29 +246,42 @@ export function Sidebar({
               </div>
             )}
 
+            {/* Search trigger — opens the command palette. Styled as an
+                input field per the wireframe; clicking anywhere fires the
+                palette open. */}
+            {!showIconOnly && onCommandPalette && (
+              <div className="px-3 pt-2">
+                <button
+                  type="button"
+                  onClick={onCommandPalette}
+                  className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                  aria-label="Open command palette"
+                  title="Open command palette (Ctrl+P)"
+                >
+                  <Search size={13} aria-hidden="true" />
+                  <span className="flex-1">Search…</span>
+                  <kbd className="font-mono text-[10px] text-(--color-text-subtle)">^P</kbd>
+                </button>
+              </div>
+            )}
+
             {/* Nav action buttons */}
-            <nav aria-label="Primary" className={`space-y-0.5 pb-2 ${showIconOnly ? 'flex flex-col items-center px-1 pt-1' : 'px-2'}`}>
+            <nav aria-label="Primary" className={`space-y-0.5 pb-2 ${showIconOnly ? 'flex flex-col items-center px-1 pt-1' : 'px-2 pt-2'}`}>
+              {showIconOnly && onCommandPalette && (
+                <SidebarItem
+                  Icon={Search}
+                  label="Commands"
+                  kbd="^P"
+                  collapsed
+                  onClick={onCommandPalette}
+                />
+              )}
               <SidebarItem
                 Icon={Plus}
                 label="New Chat"
                 kbd="^N"
                 collapsed={showIconOnly}
                 onClick={handleNewChat}
-              />
-              {onCommandPalette && (
-                <SidebarItem
-                  Icon={Search}
-                  label="Commands"
-                  kbd="^P"
-                  collapsed={showIconOnly}
-                  onClick={onCommandPalette}
-                />
-              )}
-              <SidebarItem
-                Icon={Settings}
-                label="Settings"
-                collapsed={showIconOnly}
-                onClick={() => { navigate({ to: '/settings' }); onMobileClose?.() }}
               />
             </nav>
 
@@ -364,10 +378,43 @@ export function Sidebar({
               </div>
             )}
 
-            {/* Footer */}
-            <div className={`flex items-center border-t border-(--color-border) px-3 py-2 pb-safe ${showIconOnly ? 'justify-center' : 'justify-between'}`}>
-              <ThemeToggle collapsed={showIconOnly} />
-              {!showIconOnly && <HealthDot />}
+            {/* Footer — wireframe trio: Settings · Help (palette) · ThemeToggle.
+                HealthDot is the small status dot tucked between the icon group
+                and the theme toggle. Collapsed mode keeps only the theme
+                cycler so the rail stays at 56px wide. */}
+            <div className={`flex items-center gap-2 border-t border-(--color-border) px-3 py-2 pb-safe ${showIconOnly ? 'justify-center' : 'justify-between'}`}>
+              {showIconOnly ? (
+                <ThemeToggle collapsed />
+              ) : (
+                <>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => { navigate({ to: '/settings' }); onMobileClose?.() }}
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                      aria-label="Settings"
+                      title="Settings"
+                    >
+                      <Settings size={14} aria-hidden="true" />
+                    </button>
+                    {onCommandPalette && (
+                      <button
+                        type="button"
+                        onClick={onCommandPalette}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                        aria-label="Help and shortcuts"
+                        title="Help and shortcuts (Ctrl+P)"
+                      >
+                        <HelpCircle size={14} aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <HealthDot />
+                    <ThemeToggle collapsed />
+                  </div>
+                </>
+              )}
             </div>
           </>
         )
