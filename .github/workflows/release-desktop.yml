@@ -52,12 +52,18 @@ jobs:
         include:
           - platform: macos
             arch: aarch64
-            # macos-15 (Sequoia) is GA, Apple-Silicon-native, and
-            # linked-against-a-newer-SDK enough that the traffic-light
-            # offset renders correctly on macOS 26 (Tahoe) too. macos-14
-            # binaries had a ~6 pt offset drift on Tahoe; see
-            # documents/techdebts/distribution-coverage.md.
-            runner: macos-15
+            # macos-26-arm64 (Tahoe, Apple Silicon, GA) — the title-bar
+            # control geometry that Tao computes from
+            # ``traffic_light_position`` is sensitive to the build-host
+            # SDK on Tahoe. Binaries built on macos-15 render the
+            # traffic lights ~6 pt off-centre when run on macOS 26.
+            # Building on macos-26 itself makes the offset render
+            # correctly on Tahoe (verified locally; see
+            # documents/docs/desktop.md → "Window chrome"). Older
+            # macOS versions (Sonoma 14, Sequoia 15) continue to
+            # render correctly with a Tahoe-built binary because the
+            # SDK's title-bar metrics are forward-compatible.
+            runner: macos-26-arm64
             rust_target: aarch64-apple-darwin
             tauri_args: "--target aarch64-apple-darwin --verbose"
           - platform: windows
