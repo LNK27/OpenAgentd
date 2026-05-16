@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OpenAgentd",
   "mainBinaryName": "OpenAgentd",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "identifier": "com.openagentd.desktop",
   "build": {
     "devUrl": "http://localhost:5173",
@@ -68,14 +68,14 @@
     "resources": {
       "../sidecar-bundle/": "sidecar/",
       "../scripts/install.sh": "install.sh",
-      "../scripts/INSTALL.md": "INSTALL.md"
+      "../scripts/INSTALL.md": "INSTALL.md",
+      "entitlements.plist": "entitlements.plist"
     },
     "macOS": {
       "frameworks": [],
       "minimumSystemVersion": "11.0",
       "exceptionDomain": "",
       "signingIdentity": "-",
-      "hardenedRuntime": true,
       "entitlements": "entitlements.plist"
     },
     "windows": {

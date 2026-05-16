@@ -14,20 +14,25 @@ import { useCallback } from 'react'
 
 import { getPlatform } from '@/hooks/use-platform'
 
+// Static import (not ``await import(...)``). The Tauri API has to be
+// available *synchronously* during the mousedown event for window drag
+// to work on macOS — by the time an async dynamic import resolves, the
+// OS has already discarded the mouse-down handle and dragging silently
+// no-ops. The dev server happens to round-trip the dynamic import fast
+// enough to hide the bug; release bundles split it into a separate
+// chunk loaded over ``tauri://`` and the latency is enough to break it.
+import { getCurrentWindow } from '@tauri-apps/api/window'
+
 type DragProps = {
   onMouseDown?: (event: React.MouseEvent<HTMLElement>) => void
 }
 
-// Lazy-import keeps the Tauri API out of the browser bundle's
-// critical path; the first drag attempt resolves it.
-async function startDragging(): Promise<void> {
-  const { getCurrentWindow } = await import('@tauri-apps/api/window')
-  await getCurrentWindow().startDragging()
+function startDragging(): void {
+  void getCurrentWindow().startDragging()
 }
 
-async function toggleMaximize(): Promise<void> {
-  const { getCurrentWindow } = await import('@tauri-apps/api/window')
-  await getCurrentWindow().toggleMaximize()
+function toggleMaximize(): void {
+  void getCurrentWindow().toggleMaximize()
 }
 
 // Native interactives + opt-out hook for custom components.
