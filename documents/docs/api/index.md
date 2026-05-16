@@ -284,7 +284,7 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 **Coding send** (`mode=coding`):
 - `workspace` must be an existing directory.
 - One live team is kept per resolved workspace; multiple workspaces can run at the same time.
-- One active turn is allowed per workspace. A second send returns HTTP 409.
+- Concurrent sends to the same workspace are admitted by the lead's mailbox — if the lead is working, the new message is queued in its inbox and drained on the next LLM call; if the lead is idle, it starts a fresh activation. Same model as normal mode.
 - The workspace root's `AGENTS.md`, when present and under the size limit, is appended to the model system prompt.
 - The web UI enters coding mode at `/coding`; URLs carry a local browser workspace key (`w`), the last opened workspace is restored locally, and session rows store the resolved workspace for direct restores.
 

@@ -79,11 +79,6 @@ class MemberBlueprint:
 
 
 _INSTANCE_HANDLE_RE = re.compile(r"^(?P<blueprint>[^#]+)#(?P<n>\d+)$")
-CODING_WORKSPACE_MAX_ACTIVE_TURNS = 1
-
-
-class CodingWorkspaceBusyError(RuntimeError):
-    """Raised when a coding workspace already has the maximum active turns."""
 
 
 def parse_instance_handle(handle: str) -> tuple[str, int] | None:
@@ -160,8 +155,6 @@ class AgentTeam:
 
         # Guard: only emit done after at least one user turn has started
         self._has_active_turn: bool = False
-        self._active_turn_count: int = 0
-        self._turn_admission_lock = asyncio.Lock()
 
         # Index agents by name for fast lookup in on_message.  Kept in sync
         # by spawn() / dismiss().
@@ -270,10 +263,6 @@ class AgentTeam:
         )
         if lead_done and all_members_done:
             self._has_active_turn = False  # reset for next turn
-            if self.mode == "coding":
-                async with self._turn_admission_lock:
-                    if self._active_turn_count > 0:
-                        self._active_turn_count -= 1
             session_id = self.lead.session_id
 
             try:
@@ -316,151 +305,133 @@ class AgentTeam:
         if workspace is not None:
             self.workspace = workspace
 
-        turn_slot_claimed = False
-        if self.mode == "coding" and not interrupt:
-            async with self._turn_admission_lock:
-                if self._active_turn_count >= CODING_WORKSPACE_MAX_ACTIVE_TURNS:
-                    raise CodingWorkspaceBusyError(
-                        "Coding workspace already has an active turn."
-                    )
-                self._active_turn_count += 1
-                self._has_active_turn = True
-                turn_slot_claimed = True
-
-        try:
-            is_new_session = self.lead.session_id != session_id
-            if is_new_session:
-                self.lead.session_id = session_id
-                await self.lead._ensure_db_session(
-                    title=content[:100] if content else None,
-                    mode=self.mode,
-                    workspace=self.workspace,
-                )
-
-                # Reset blueprint counters so a fresh chat starts at #1 for each
-                # blueprint.  (Reconciliation against existing DB rows is done
-                # lazily on the first spawn for the new lead session.)
-                for bp in self.blueprints.values():
-                    bp.counter_reconciled_for = None
-
-                # Drop the prior session's restorable cache — the next
-                # lead-turn prompt rebuild will repopulate it from the new
-                # lead session's children.
-                self._restorable_index = {}
-
-                # Restore previously-spawned-and-not-dismissed instances by
-                # rehydrating their session ids from DB.  Any instance that was
-                # alive (registered) when we entered this branch keeps its
-                # mailbox registration; we only update its DB session pointer
-                # so its view of history matches whatever child rows exist
-                # for the current lead session.
-                #
-                # This preserves the existing "restart restores members"
-                # behaviour for instances that had been spawned earlier in the
-                # process — but only for those that actually had child rows
-                # under THIS lead session.  Anything else is dropped from the
-                # roster (the lead can re-spawn at will).
-                await self._restore_or_drop_members_for_lead(session_id)
-
-            if interrupt:
-                cancelled = [m for m in self.all_members if m.state == "working"]
-                for member in cancelled:
-                    member._cancel_event.set()
-
-                logger.info(
-                    "team_interrupted cancelled={}",
-                    [m.name for m in cancelled],
-                )
-
-            # Persist user message and parent member sessions
-            try:
-                db_factory = resolve_db_factory(self.lead.db_factory)
-                lead_uuid = UUID(session_id)
-                async with db_factory() as db:
-                    # Build multimodal HumanMessage if attachments present
-                    if attachment_metas:
-                        parts = build_parts_from_metas(content, attachment_metas)
-                        user_msg = HumanMessage(content=content, parts=parts)
-                        msg_extra: dict | None = {"attachments": attachment_metas}
-                    else:
-                        user_msg = HumanMessage(content=content)
-                        msg_extra = None
-
-                    # Heal any tool_calls left orphaned by a previous crash /
-                    # restart *before* persisting the new user message so the
-                    # next turn's LLM input is well-formed.  See
-                    # ``heal_orphaned_tool_calls`` for the full rationale.
-                    await heal_orphaned_tool_calls(db, lead_uuid)
-
-                    lead_row = await db.get(ChatSession, lead_uuid)
-                    if lead_row is not None:
-                        lead_row.mode = self.mode
-                        lead_row.workspace = self.workspace
-                        db.add(lead_row)
-
-                    await save_message(db, lead_uuid, user_msg, extra=msg_extra)
-
-                    for member in self.members.values():
-                        try:
-                            member_uuid = UUID(member.session_id)
-                            member_row = await db.get(ChatSession, member_uuid)
-                            if (
-                                member_row is not None
-                                and member_row.parent_session_id != lead_uuid
-                            ):
-                                member_row.parent_session_id = lead_uuid
-                                db.add(member_row)
-                        except Exception as inner_exc:
-                            logger.warning(
-                                "team_parent_member_session_failed member={} error={}",
-                                member.name,
-                                inner_exc,
-                            )
-
-                    await db.commit()
-            except Exception as exc:
-                logger.warning("team_save_user_message_failed error={}", exc)
-
-            # Initialise a fresh state blob for this turn synchronously before
-            # delivering the message to the lead. This guarantees the state key
-            # exists by the time the client's GET /team/stream/{sid} arrives.
-            try:
-                await stream_store.init_turn(session_id)
-            except Exception as exc:
-                logger.warning("team_init_turn_failed error={}", exc)
-
-            # Mark that a turn is now active
-            self._has_active_turn = True
-
-            # Refresh the restorable-instance roster from the DB BEFORE
-            # the lead's activation task starts. Doing this here (rather
-            # than inside ``AgentTeamProtocolHook.wrap_model_call``) keeps
-            # the DB read off the cancellable activation path — otherwise
-            # cancelling the activation task mid-query (e.g. on
-            # ``team.stop()``) can leave the connection in a bad state on
-            # in-memory test SQLite, breaking subsequent tests. The roster
-            # only changes between turns (dismissals from a prior process
-            # or a prior turn), so refreshing once per user message is
-            # sufficient; within-turn dismisses are surfaced to the LLM via
-            # the ``team_manage`` tool result rather than the prompt.
-            try:
-                await self.refresh_restorable_index()
-            except Exception as exc:  # never block the turn on a roster glitch
-                logger.warning("team_restorable_index_prerefresh_failed error={}", exc)
-
-            # Deliver user message to lead inbox (on_message callback activates lead)
-            msg = Message(
-                from_agent="user",
-                to_agent=self.lead.name,
-                content=f"[user]: {content}",
+        is_new_session = self.lead.session_id != session_id
+        if is_new_session:
+            self.lead.session_id = session_id
+            await self.lead._ensure_db_session(
+                title=content[:100] if content else None,
+                mode=self.mode,
+                workspace=self.workspace,
             )
-            await self.mailbox.send(to=self.lead.name, message=msg)
-        except Exception:
-            if turn_slot_claimed:
-                async with self._turn_admission_lock:
-                    self._active_turn_count = max(0, self._active_turn_count - 1)
-                    self._has_active_turn = self._active_turn_count > 0
-            raise
+
+            # Reset blueprint counters so a fresh chat starts at #1 for each
+            # blueprint.  (Reconciliation against existing DB rows is done
+            # lazily on the first spawn for the new lead session.)
+            for bp in self.blueprints.values():
+                bp.counter_reconciled_for = None
+
+            # Drop the prior session's restorable cache — the next
+            # lead-turn prompt rebuild will repopulate it from the new
+            # lead session's children.
+            self._restorable_index = {}
+
+            # Restore previously-spawned-and-not-dismissed instances by
+            # rehydrating their session ids from DB.  Any instance that was
+            # alive (registered) when we entered this branch keeps its
+            # mailbox registration; we only update its DB session pointer
+            # so its view of history matches whatever child rows exist
+            # for the current lead session.
+            #
+            # This preserves the existing "restart restores members"
+            # behaviour for instances that had been spawned earlier in the
+            # process — but only for those that actually had child rows
+            # under THIS lead session.  Anything else is dropped from the
+            # roster (the lead can re-spawn at will).
+            await self._restore_or_drop_members_for_lead(session_id)
+
+        if interrupt:
+            cancelled = [m for m in self.all_members if m.state == "working"]
+            for member in cancelled:
+                member._cancel_event.set()
+
+            logger.info(
+                "team_interrupted cancelled={}",
+                [m.name for m in cancelled],
+            )
+
+        # Persist user message and parent member sessions
+        try:
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            lead_uuid = UUID(session_id)
+            async with db_factory() as db:
+                # Build multimodal HumanMessage if attachments present
+                if attachment_metas:
+                    parts = build_parts_from_metas(content, attachment_metas)
+                    user_msg = HumanMessage(content=content, parts=parts)
+                    msg_extra: dict | None = {"attachments": attachment_metas}
+                else:
+                    user_msg = HumanMessage(content=content)
+                    msg_extra = None
+
+                # Heal any tool_calls left orphaned by a previous crash /
+                # restart *before* persisting the new user message so the
+                # next turn's LLM input is well-formed.  See
+                # ``heal_orphaned_tool_calls`` for the full rationale.
+                await heal_orphaned_tool_calls(db, lead_uuid)
+
+                lead_row = await db.get(ChatSession, lead_uuid)
+                if lead_row is not None:
+                    lead_row.mode = self.mode
+                    lead_row.workspace = self.workspace
+                    db.add(lead_row)
+
+                await save_message(db, lead_uuid, user_msg, extra=msg_extra)
+
+                for member in self.members.values():
+                    try:
+                        member_uuid = UUID(member.session_id)
+                        member_row = await db.get(ChatSession, member_uuid)
+                        if (
+                            member_row is not None
+                            and member_row.parent_session_id != lead_uuid
+                        ):
+                            member_row.parent_session_id = lead_uuid
+                            db.add(member_row)
+                    except Exception as inner_exc:
+                        logger.warning(
+                            "team_parent_member_session_failed member={} error={}",
+                            member.name,
+                            inner_exc,
+                        )
+
+                await db.commit()
+        except Exception as exc:
+            logger.warning("team_save_user_message_failed error={}", exc)
+
+        # Initialise a fresh state blob for this turn synchronously before
+        # delivering the message to the lead. This guarantees the state key
+        # exists by the time the client's GET /team/stream/{sid} arrives.
+        try:
+            await stream_store.init_turn(session_id)
+        except Exception as exc:
+            logger.warning("team_init_turn_failed error={}", exc)
+
+        # Mark that a turn is now active
+        self._has_active_turn = True
+
+        # Refresh the restorable-instance roster from the DB BEFORE
+        # the lead's activation task starts. Doing this here (rather
+        # than inside ``AgentTeamProtocolHook.wrap_model_call``) keeps
+        # the DB read off the cancellable activation path — otherwise
+        # cancelling the activation task mid-query (e.g. on
+        # ``team.stop()``) can leave the connection in a bad state on
+        # in-memory test SQLite, breaking subsequent tests. The roster
+        # only changes between turns (dismissals from a prior process
+        # or a prior turn), so refreshing once per user message is
+        # sufficient; within-turn dismisses are surfaced to the LLM via
+        # the ``team_manage`` tool result rather than the prompt.
+        try:
+            await self.refresh_restorable_index()
+        except Exception as exc:  # never block the turn on a roster glitch
+            logger.warning("team_restorable_index_prerefresh_failed error={}", exc)
+
+        # Deliver user message to lead inbox (on_message callback activates lead)
+        msg = Message(
+            from_agent="user",
+            to_agent=self.lead.name,
+            content=f"[user]: {content}",
+        )
+        await self.mailbox.send(to=self.lead.name, message=msg)
 
         return session_id
 

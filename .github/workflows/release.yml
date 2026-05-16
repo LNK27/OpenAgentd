@@ -26,11 +26,22 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Check tag does not already exist
+      # We share the ``v<X.Y.Z>`` tag with ``release-desktop.yml`` so
+      # PyPI artefacts and desktop installers live under one release.
+      # If the tag already exists it's because the desktop workflow
+      # ran first for this same version — that's fine; we'll upload
+      # into the existing release below. We only block when the
+      # release ALREADY contains a wheel (i.e. ``release.yml`` itself
+      # ran for this version), which would indicate the version
+      # wasn't bumped.
+      - name: Check release does not already contain wheel for this version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
-            echo "Tag $TAG already exists. Bump the version before releasing."
+          if gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null \
+               | grep -q "\.whl$"; then
+            echo "Release $TAG already has a wheel attached. Bump the version before releasing."
             exit 1
           fi
 
@@ -50,23 +61,42 @@ jobs:
       - name: Build package
         run: uv build
 
-      - name: Create and push tag
+      # If ``release-desktop.yml`` ran first, the tag already exists
+      # (it was created by ``gh release create`` in that workflow,
+      # which implicitly creates the tag). Only push the tag if we
+      # got here first.
+      - name: Create and push tag (if missing)
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.version.outputs.tag }}" \
-            -m "Release ${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
+            echo "Tag $TAG already exists on remote (desktop workflow ran first). Skipping tag creation."
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+          fi
 
-      - name: Create GitHub release
+      # Create-or-upload: if ``release-desktop.yml`` already created
+      # the release, append wheel + sdist via ``upload --clobber``.
+      # Otherwise create it with generated notes (the canonical
+      # release notes come from this workflow's auto-generation; the
+      # operator replaces them after the desktop workflow also
+      # finishes — see ``.opencode/commands/release.md``).
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            dist/*.whl dist/*.tar.gz \
-            --title "${{ steps.version.outputs.tag }}" \
-            --generate-notes \
-            --verify-tag
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.whl dist/*.tar.gz --clobber
+          else
+            gh release create "$TAG" \
+              dist/*.whl dist/*.tar.gz \
+              --title "$TAG" \
+              --generate-notes \
+              --verify-tag
+          fi
 
       - name: Publish to PyPI
         run: uv publish
