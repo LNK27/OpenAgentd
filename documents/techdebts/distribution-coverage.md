@@ -137,6 +137,36 @@ app launching it.
 the sidecar bootstrap, or `app/cli/commands/serve.py`. Today, those
 files are stable.
 
+### macOS 26 (Tahoe) traffic-light offset
+
+**What's wrong:** on macOS 26 the OS-drawn traffic-light buttons
+render visibly lower than the centre of our 40 pt application
+header on the CI-built `.app` bundle, even though
+`traffic_light_position.y = 22` centres them perfectly on every
+other supported macOS (Big Sur → Sequoia) and on a locally-rebuilt
+release bundle on macOS 26.
+
+**Why it happens:** the `y` argument is a *bottom* inset that Tao
+applies via NSWindow's title-bar resize at runtime, but the value
+AppKit picks for the implicit title-bar height changes based on
+the macOS SDK the binary was linked against. Our `release-desktop.yml`
+runs `macos-14` (Sonoma SDK) for binary size + cache locality; the
+resulting binary picks Sonoma-era title-bar metrics that look
+correct on Sonoma/Sequoia but ~6 pt low on Tahoe. A binary built
+on Tahoe with the Tahoe SDK reads `y=22` correctly on Tahoe.
+
+**Cost to fix:** the cheapest path is to bump the macOS runner to
+`macos-15` (Sequoia) once it's a stable image — that pulls the
+linked SDK forward, reducing the offset drift to ~1–2 pt. The full
+fix is a `macos-26` runner (GA pending) or building against the
+current SDK via `MACOSX_DEPLOYMENT_TARGET` + `SDKROOT` env hints.
+Single-value y is fine; we don't need `cfg!(debug_assertions)`
+branching because the issue is SDK-linked, not debug-vs-release.
+
+**When worth doing:** when macOS 26 reaches stable + double-digit
+adoption (~6 months after GA). Before then, the affected audience
+is small (Tahoe beta testers) and the rendering is cosmetic only.
+
 ### Snap / Flatpak
 
 **Skip.** Both require separate publisher accounts and review queues.
