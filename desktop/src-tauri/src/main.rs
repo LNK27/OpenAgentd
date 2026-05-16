@@ -160,7 +160,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         let mut builder = AboutMetadataBuilder::new()
             .name(Some("OpenAgentd"))
             .version(Some(env!("CARGO_PKG_VERSION")))
-            .copyright(Some("Copyright (c) 2025 OpenAgentd contributors"))
+            .copyright(Some("Copyright (c) 2026 OpenAgentd contributors"))
             .website(Some("https://github.com/lthoangg/openagentd"))
             .website_label(Some("openagentd on GitHub"));
         if let Some(icon) = app.default_window_icon() {

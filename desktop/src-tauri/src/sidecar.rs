@@ -98,10 +98,18 @@ impl Sidecar {
             .arg("--generate-token")
             .arg("--parent-pid")
             .arg(parent_pid.to_string())
-            // PYTHONHOME / PYTHONPATH point at the bundle so the
-            // interpreter resolves modules from our site-packages, not
-            // from any system Python that happens to be on PATH.
-            .env("PYTHONHOME", &sidecar_root.join("python"))
+            // PYTHONPATH points at our bundle's site-packages so the
+            // interpreter can import ``app``. We intentionally do NOT set
+            // PYTHONHOME: python-build-standalone is relocatable and
+            // locates its own stdlib from the executable path. Setting
+            // PYTHONHOME here would leak into every subprocess the agent
+            // spawns (git → pre-commit, npm → node-gyp, uv, pipx, …) and
+            // override their own Python's stdlib resolution — e.g. a
+            // Homebrew pre-commit would try to load ``binascii`` from
+            // our slim bundle and crash with ModuleNotFoundError.
+            // PYTHONPATH leaking is harmless: it only adds search dirs,
+            // and foreign-ABI extensions in our site-packages are
+            // ignored by other interpreters.
             .env(
                 "PYTHONPATH",
                 sidecar_root.join("site-packages").as_os_str(),
