@@ -106,9 +106,11 @@ Sections:
   uv tool install openagentd
   # or
   pip install openagentd
+  # or
+  brew install lthoangg/tap/openagentd
   ```
 
-  `brew install openagentd` installs the base package only; optional extras (e.g. `openagentd[full]`) must be installed via `uv` or `pip`:
+  `brew install lthoangg/tap/openagentd` installs the base package only; optional extras (e.g. `openagentd[full]`) must be installed via `uv` or `pip`:
 
   ```
   uv tool install "openagentd[full]"
@@ -122,7 +124,7 @@ Sections:
   ````
   **Desktop app** — download from the [desktop releases](https://github.com/lthoangg/openagentd/releases?q=desktop) page:
 
-  - macOS Apple Silicon → `OpenAgentd_*_aarch64.dmg` (run bundled `install.sh`, right-click → Open the first time), or `brew install --cask openagentd`.
+  - macOS Apple Silicon → `brew install --cask lthoangg/tap/openagentd` (recommended — ad-hoc signs automatically), or `OpenAgentd_*_aarch64.dmg` (run bundled `install.sh`, right-click → Open the first time).
   - Windows → `OpenAgentd_*_x64-setup.exe` (More info → Run anyway at SmartScreen).
   - Linux → `OpenAgentd_*_amd64.AppImage` (`chmod +x` and run) or the `.deb`.
 
@@ -132,9 +134,11 @@ Sections:
   uv tool install openagentd
   # or
   pip install openagentd
+  # or
+  brew install lthoangg/tap/openagentd
   ```
 
-  `brew install openagentd` installs the base package only; optional extras (e.g. `openagentd[full]`) must be installed via `uv` or `pip`:
+  `brew install lthoangg/tap/openagentd` installs the base package only; optional extras (e.g. `openagentd[full]`) must be installed via `uv` or `pip`:
 
   ```
   uv tool install "openagentd[full]"

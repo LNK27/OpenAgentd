@@ -69,7 +69,7 @@ Full breakdown: [`documents/docs/comparison.md`](https://github.com/lthoangg/ope
 
 | Platform | Artefact | First-launch note |
 |---|---|---|
-| macOS (Apple Silicon) | `OpenAgentd_*_aarch64.dmg` | Run the bundled `install.sh` to ad-hoc sign, then right-click → **Open**. The app is unsigned — [why](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md#desktop-unsigned). |
+| macOS (Apple Silicon) | `brew install --cask lthoangg/tap/openagentd` *or* `OpenAgentd_*_aarch64.dmg` | The cask ad-hoc signs and installs automatically. With the `.dmg`, run the bundled `install.sh` then right-click → **Open**. The app is unsigned — [why](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md#desktop-unsigned). |
 | Windows | `OpenAgentd_*_x64-setup.exe` | SmartScreen warns on first run — click **More info → Run anyway**. |
 | Linux | `OpenAgentd_*_amd64.AppImage` | `chmod +x` the AppImage, or run the bundled `install.sh --install` for a launcher entry. |
 
@@ -87,7 +87,7 @@ Then right-click **OpenAgentd.app → Open** the first time (single-click won't 
 ```bash
 # macOS / Linux
 uv tool install openagentd        # recommended
-brew tap lthoangg/tap && brew install openagentd
+brew install lthoangg/tap/openagentd
 curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh   # zero-setup: bootstraps uv, then installs
 
 # Windows

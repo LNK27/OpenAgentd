@@ -24,7 +24,7 @@ For the channels we **do** ship today, see [`documents/docs/install.md`](../docs
 
 **What's missing:** `.github/workflows/release-desktop.yml` builds
 `aarch64-apple-darwin` only. Intel Mac users have no native desktop
-app — they fall back to the CLI (`brew install openagentd`) and the
+app — they fall back to the CLI (`brew install lthoangg/tap/openagentd`) and the
 web cockpit.
 
 **Cost to add:** ~10 minutes extra CI per release (one `macos-13`

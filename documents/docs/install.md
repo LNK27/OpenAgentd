@@ -29,11 +29,10 @@ Works on Linux distros and Python builds without [PEP 668](https://peps.python.o
 ## Homebrew (macOS / Linux)
 
 ```bash
-brew tap lthoangg/tap
-brew install openagentd
+brew install lthoangg/tap/openagentd
 ```
 
-To upgrade:
+The `lthoangg/tap/` prefix auto-taps the formula on first install — no separate `brew tap` step needed. To upgrade:
 
 ```bash
 openagentd upgrade      # via the built-in upgrade command
@@ -72,6 +71,15 @@ The Tauri auto-updater is a separate signing chain. Update payloads are signed w
 
 ### macOS install
 
+The easiest path is the Homebrew cask — it handles the quarantine + ad-hoc signing automatically on every install and upgrade:
+
+```sh
+brew install --cask lthoangg/tap/openagentd
+# upgrades later: brew upgrade --cask openagentd
+```
+
+The `.dmg` path is for users who don't want Homebrew:
+
 ```sh
 # Mount the .dmg, then run the bundled installer from inside the volume.
 hdiutil attach OpenAgentd_*_aarch64.dmg
@@ -80,7 +88,7 @@ cd /Volumes/OpenAgentd*
 ./install.sh --install     # also copies to /Applications
 ```
 
-On first launch, **right-click `OpenAgentd.app` → Open** (single-click won't work the first time — that's by design). Subsequent launches are normal.
+On first launch via the `.dmg` path, **right-click `OpenAgentd.app` → Open** (single-click won't work the first time — that's by design). The cask path handles this for you. Subsequent launches are normal.
 
 If you skip `install.sh` and just drag-to-Applications, you'll hit the `"damaged"` error. Re-run `install.sh` against the installed bundle to fix it:
 
