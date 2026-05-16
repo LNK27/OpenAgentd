@@ -190,7 +190,14 @@ jobs:
           # the anonymous 60/hr. Without this, binstall reliably
           # stalls on 120s rate-limit retries on macOS-26 runners.
           GITHUB_TOKEN: ${{ github.token }}
-        run: cargo binstall --no-confirm --version 2.11.1 tauri-cli
+        # ``--force``: Swatinem/rust-cache restores ``~/.cargo/.crates2.json``
+        # which tracks cargo-installed binaries.  It does NOT restore
+        # ``~/.cargo/bin/`` itself, so on a fresh runner the metadata
+        # says ``tauri-cli`` is installed while the binary is missing.
+        # Without ``--force``, binstall sees the stale metadata, no-ops,
+        # and the next step (``cargo tauri icon``) fails with
+        # ``no such command: tauri``.
+        run: cargo binstall --no-confirm --force --version 2.11.1 tauri-cli
 
       - name: Generate platform icons
         working-directory: desktop/src-tauri
