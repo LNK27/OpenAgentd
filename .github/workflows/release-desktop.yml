@@ -250,10 +250,20 @@ jobs:
           else
             BUNDLE_DIR=${{ matrix.rust_target }}/release/bundle
           fi
+          # Match Tauri's actual product bundles, which are always named
+          # `{productName}_{version}_{arch}{.lang}.{ext}` (e.g.
+          # `OpenAgentd_1.0.6_aarch64.dmg`). Without the prefix anchor
+          # the NSIS toolchain's installer-helper stubs
+          # (cli-*.exe, gui-*.exe, t*.exe, w*.exe) get vacuumed up too —
+          # they live in `bundle/nsis/` and end in `.exe` but are not
+          # something we want on the release page.
           find "$BUNDLE_DIR" -type f \( \
-            -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' \
-            -o -name '*.exe' -o -name '*.msi' -o -name '*.exe.sig' -o -name '*.msi.sig' \
-            -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*.deb' \
+            -name 'OpenAgentd_*.dmg' \
+            -o -name 'OpenAgentd_*.app.tar.gz' -o -name 'OpenAgentd_*.app.tar.gz.sig' \
+            -o -name 'OpenAgentd_*.exe' -o -name 'OpenAgentd_*.exe.sig' \
+            -o -name 'OpenAgentd_*.msi' -o -name 'OpenAgentd_*.msi.sig' \
+            -o -name 'OpenAgentd_*.AppImage' -o -name 'OpenAgentd_*.AppImage.sig' \
+            -o -name 'OpenAgentd_*.deb' \
           \) -print -exec cp {} "$GITHUB_WORKSPACE/_release/" \;
 
       - uses: actions/upload-artifact@v4
