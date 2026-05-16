@@ -271,32 +271,6 @@ class TestTeamAgentsRouteExtra:
             workspace.resolve()
         )
 
-    def test_coding_chat_returns_409_when_workspace_turn_is_busy(
-        self, app_without_team, test_team, monkeypatch, tmp_path
-    ):
-        workspace = tmp_path / "project"
-        workspace.mkdir()
-        test_team.mode = "coding"
-        test_team.workspace = str(workspace.resolve())
-        test_team._active_turn_count = 1
-        test_team._has_active_turn = True
-
-        async def fake_get_or_start_coding_team(requested_workspace: str):
-            return test_team
-
-        monkeypatch.setattr(
-            "app.api.routes.team.chat.team_manager.get_or_start_coding_team",
-            fake_get_or_start_coding_team,
-        )
-
-        client = TestClient(app_without_team)
-        resp = client.post(
-            "/api/team/chat",
-            data={"message": "new task", "mode": "coding", "workspace": str(workspace)},
-        )
-
-        assert resp.status_code == 409
-
     def test_workspace_validate_returns_resolved_path(self, app_without_team, tmp_path):
         workspace = tmp_path / "project"
         workspace.mkdir()

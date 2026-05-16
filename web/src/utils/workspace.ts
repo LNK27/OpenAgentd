@@ -11,8 +11,6 @@ export function workspaceLabel(workspace: string): string {
 
 const CODING_WORKSPACES_KEY = 'oa-coding-workspaces'
 const LAST_CODING_WORKSPACE_KEY = 'oa-last-coding-workspace'
-export const CODING_WORKSPACE_BUSY_MESSAGE = 'One active request per workspace can run at a time.'
-export const CODING_WORKSPACE_BUSY_DETAIL = 'Coding workspace already has an active turn.'
 
 export interface CodingWorkspaceEntry {
   id: string

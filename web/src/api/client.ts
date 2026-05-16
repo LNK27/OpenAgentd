@@ -7,7 +7,6 @@
  */
 
 import { readSSE, type SSECallbacks } from './sse'
-import { CODING_WORKSPACE_BUSY_DETAIL, CODING_WORKSPACE_BUSY_MESSAGE } from '@/utils/workspace'
 import type {
   SessionDetailResponse,
   SessionPageResponse,
@@ -75,9 +74,6 @@ export async function postTeamChat(
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
-    if (res.status === 409 && mode === 'coding' && body?.detail === CODING_WORKSPACE_BUSY_DETAIL) {
-      throw new Error(CODING_WORKSPACE_BUSY_MESSAGE)
-    }
     throw new Error(body?.detail || `POST /team/chat failed: ${res.status}`)
   }
   return res.json()

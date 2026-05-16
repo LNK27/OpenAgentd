@@ -12,7 +12,6 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamMemberBase
-from app.agent.mode.team.team import CodingWorkspaceBusyError
 from app.agent.tools.builtin.skill import discover_skills
 from app.api.deps import ChatFormDep, DbSession, TeamDep
 from app.api.routes.team._helpers import (
@@ -188,8 +187,6 @@ async def team_chat(
         )
     except AttachmentError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
-    except CodingWorkspaceBusyError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     logger.info(
         "team_chat_received session_id={} attachments={}",

@@ -395,7 +395,7 @@ There is no longer a ``session_type`` column. Top-level sessions (team leads, sc
 
 Team members share one sandbox workspace. Normal sessions use `{OPENAGENTD_WORKSPACE_DIR}/{lead_session_id}/`; coding sessions use the selected project directory exactly. All members of the same team write into that shared root. The sandbox itself uses a denylist (see [`tools.md`](tools.md#filesystem-builtinfilesystem)).
 
-Coding mode loads its team from `{OPENAGENTD_CONFIG_DIR}/agents/coding/`. Teams are cached per resolved workspace, so multiple workspaces can run concurrently; each workspace admits one active turn at a time. Idle coding teams are stopped opportunistically. A root `AGENTS.md` is injected into each model call when present and under the size limit. Coding sessions persist `mode` and `workspace` so `/coding/{session_id}` can restore the project context directly.
+Coding mode loads its team from `{OPENAGENTD_CONFIG_DIR}/agents/coding/`. Teams are cached per resolved workspace, so multiple workspaces can run concurrently; concurrent sends to the same workspace are admitted via the lead's mailbox (queued when the lead is working, activated when idle) — same model as normal mode. Idle coding teams are stopped opportunistically. A root `AGENTS.md` is injected into each model call when present and under the size limit. Coding sessions persist `mode` and `workspace` so `/coding/{session_id}` can restore the project context directly.
 
 ```python
 from app.core.paths import workspace_dir

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { postTeamChat } from '@/api/client'
-import { CODING_WORKSPACE_BUSY_MESSAGE } from '@/utils/workspace'
 
 const originalFetch = globalThis.fetch
 
@@ -9,21 +8,13 @@ afterEach(() => {
 })
 
 describe('postTeamChat', () => {
-  it('shows a specific coding workspace concurrency error on 409', async () => {
-    globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'Coding workspace already has an active turn.' }), { status: 409 }))) as typeof fetch
-
-    await expect(postTeamChat('hello', null, false, undefined, 'coding', '/repo/app')).rejects.toThrow(
-      CODING_WORKSPACE_BUSY_MESSAGE,
-    )
-  })
-
   it('uses backend detail for non-coding 409 errors', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'conflict' }), { status: 409 }))) as typeof fetch
 
     await expect(postTeamChat('hello')).rejects.toThrow('conflict')
   })
 
-  it('uses backend detail for coding 409 errors that are not busy-turn conflicts', async () => {
+  it('uses backend detail for coding 409 errors', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'Session belongs to a different coding workspace' }), { status: 409 }))) as typeof fetch
 
     await expect(postTeamChat('hello', null, false, undefined, 'coding', '/repo/app')).rejects.toThrow(
