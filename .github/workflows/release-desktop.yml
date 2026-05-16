@@ -52,7 +52,7 @@ jobs:
         include:
           - platform: macos
             arch: aarch64
-            # macos-26-arm64 (Tahoe, Apple Silicon, GA) — the title-bar
+            # macos-26 (Tahoe, Apple Silicon, GA) — the title-bar
             # control geometry that Tao computes from
             # ``traffic_light_position`` is sensitive to the build-host
             # SDK on Tahoe. Binaries built on macos-15 render the
@@ -63,7 +63,13 @@ jobs:
             # macOS versions (Sonoma 14, Sequoia 15) continue to
             # render correctly with a Tahoe-built binary because the
             # SDK's title-bar metrics are forward-compatible.
-            runner: macos-26-arm64
+            #
+            # Label note: the standard arm64 Tahoe runner is ``macos-26``
+            # (and the larger paid tier is ``macos-26-xlarge``). The
+            # plain ``macos-26-arm64`` label that appears in
+            # actions/runner-images docs is the *image readme name*, not
+            # a runner label — using it queues forever.
+            runner: macos-26
             rust_target: aarch64-apple-darwin
             tauri_args: "--target aarch64-apple-darwin --verbose"
           - platform: windows
