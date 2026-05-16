@@ -20,8 +20,10 @@ import pytest
 from app.agent.errors import ToolArgumentError
 from app.agent.sandbox import SandboxConfig, set_sandbox
 from app.agent.tools.builtin.shell import (
+    _PYTHON_ENV_LEAK_KEYS,
     _BgProcess,
     _bg_processes,
+    _scrubbed_env,
     _shell,
     _tail_text,
     background_process,
@@ -85,6 +87,60 @@ def test_tail_text_cuts_by_bytes():
     tail, cut = _tail_text(text, max_lines=200, max_bytes=1024)
     assert cut is True
     assert len(tail.encode()) <= 1024 + 200  # generous for newlines
+
+
+# ---------------------------------------------------------------------------
+# _scrubbed_env — strip daemon-Python leak vars before spawning user shell
+# ---------------------------------------------------------------------------
+
+
+def test_scrubbed_env_removes_python_leak_vars(monkeypatch):
+    """PYTHONPATH/PYTHONHOME/VIRTUAL_ENV leak from daemon → must be scrubbed."""
+    monkeypatch.setenv("PYTHONPATH", "/Applications/OpenAgentd.app/.../site-packages")
+    monkeypatch.setenv("PYTHONHOME", "/Applications/OpenAgentd.app/.../python")
+    monkeypatch.setenv("VIRTUAL_ENV", "/some/venv")
+    monkeypatch.setenv("UV_PYTHON", "/some/python")
+    # Innocent env vars must survive.
+    monkeypatch.setenv("HOME", "/Users/test")
+    monkeypatch.setenv("PATH", "/usr/local/bin:/usr/bin")
+
+    env = _scrubbed_env()
+
+    assert "PYTHONPATH" not in env
+    assert "PYTHONHOME" not in env
+    assert "VIRTUAL_ENV" not in env
+    assert "UV_PYTHON" not in env
+    assert env["HOME"] == "/Users/test"
+    assert env["PATH"] == "/usr/local/bin:/usr/bin"
+
+
+def test_scrubbed_env_leak_keys_covers_known_offenders():
+    """Sanity check: the leak-key set covers the vars we documented."""
+    expected = {
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "PYTHONEXECUTABLE",
+        "PYTHONUSERBASE",
+        "PYTHONSTARTUP",
+        "VIRTUAL_ENV",
+        "VIRTUAL_ENV_PROMPT",
+        "UV_PYTHON",
+        "UV_PROJECT_ENVIRONMENT",
+    }
+    assert expected.issubset(_PYTHON_ENV_LEAK_KEYS)
+
+
+@pytest.mark.asyncio
+async def test_shell_subprocess_does_not_inherit_pythonpath(sandbox, monkeypatch):
+    """End-to-end: PYTHONPATH set on daemon must NOT reach the spawned command."""
+    monkeypatch.setenv("PYTHONPATH", "/leak/site-packages")
+    # ``printenv`` exits with code 1 when the var is unset → command "succeeds"
+    # in the shell sense (the shell itself ran fine) but echoes nothing.
+    # We rely on the absence of the leak path in the output.
+    result = await _shell("printenv PYTHONPATH; echo done")
+
+    assert "/leak/site-packages" not in result
+    assert "done" in result
 
 
 # ---------------------------------------------------------------------------

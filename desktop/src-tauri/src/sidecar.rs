@@ -87,8 +87,45 @@ impl Sidecar {
             ));
         }
 
+        let site_packages = sidecar_root.join("site-packages");
+
+        // Bootstrap ``sys.path`` from inside the child instead of via the
+        // ``PYTHONPATH`` environment variable.
+        //
+        // Background:  ``PYTHONPATH`` is inherited by every grandchild
+        // process the agent spawns.  Another Python interpreter the user
+        // has installed (``uv tool install browser-use``, ``pipx`` tools,
+        // Homebrew Python scripts, …) then finds *our* pure-Python
+        // packages on ``sys.path`` before its own.  When that package
+        // tries to load a native extension built for our ABI
+        // (``pydantic_core`` cpython-3.14 vs. the tool's cpython-3.12),
+        // the import crashes with ``ModuleNotFoundError`` because
+        // Python's import system has already committed to our package
+        // directory.
+        //
+        // ``PYTHONHOME`` is still intentionally NOT set — python-build-
+        // standalone is relocatable and finds its own stdlib from the
+        // executable path; setting PYTHONHOME would leak into every
+        // subprocess and override the user's other Python interpreters'
+        // stdlib resolution.
+        //
+        // Paths arrive via ``sys.argv[1]`` (site-packages dir) and
+        // ``sys.argv[2]`` (CLI entry) so we never embed them into Python
+        // source — that would break on directories containing quotes.
+        // ``sys.argv`` is then rewritten to look like a normal
+        // ``python <entry> serve …`` invocation before ``runpy``.
+        let bootstrap = "import sys, runpy; \
+             _site = sys.argv.pop(1); \
+             _entry = sys.argv.pop(1); \
+             sys.path.insert(0, _site); \
+             sys.argv[0] = _entry; \
+             runpy.run_path(_entry, run_name='__main__')";
+
         let mut cmd = Command::new(&python_bin);
-        cmd.arg(&cli_entry)
+        cmd.arg("-c")
+            .arg(bootstrap)
+            .arg(site_packages.as_os_str())
+            .arg(cli_entry.as_os_str())
             .arg("serve")
             .arg("--host")
             .arg("127.0.0.1")
@@ -98,22 +135,6 @@ impl Sidecar {
             .arg("--generate-token")
             .arg("--parent-pid")
             .arg(parent_pid.to_string())
-            // PYTHONPATH points at our bundle's site-packages so the
-            // interpreter can import ``app``. We intentionally do NOT set
-            // PYTHONHOME: python-build-standalone is relocatable and
-            // locates its own stdlib from the executable path. Setting
-            // PYTHONHOME here would leak into every subprocess the agent
-            // spawns (git → pre-commit, npm → node-gyp, uv, pipx, …) and
-            // override their own Python's stdlib resolution — e.g. a
-            // Homebrew pre-commit would try to load ``binascii`` from
-            // our slim bundle and crash with ModuleNotFoundError.
-            // PYTHONPATH leaking is harmless: it only adds search dirs,
-            // and foreign-ABI extensions in our site-packages are
-            // ignored by other interpreters.
-            .env(
-                "PYTHONPATH",
-                sidecar_root.join("site-packages").as_os_str(),
-            )
             .env("PYTHONUNBUFFERED", "1")
             .env("APP_ENV", "production")
             .stdin(Stdio::null())

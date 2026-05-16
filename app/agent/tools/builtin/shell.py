@@ -128,6 +128,42 @@ _bg_processes: dict[int, _BgProcess] = {}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# Environment variables that point at *our* Python runtime (the bundled
+# sidecar's site-packages, the daemon's virtualenv, etc.).  Leaking these
+# into a user-spawned subprocess is dangerous: another Python interpreter
+# the agent invokes — ``browser-use``, ``pipx`` tools, ``uv tool`` shims
+# installed under a different Python version — will find *our* pure-Python
+# packages on ``sys.path`` and then crash when it tries to load a
+# native extension built for our Python ABI (e.g. ``pydantic_core``
+# compiled for cpython-3.14 vs. the tool's cpython-3.12).
+_PYTHON_ENV_LEAK_KEYS: frozenset[str] = frozenset(
+    {
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "PYTHONEXECUTABLE",
+        "PYTHONUSERBASE",
+        "PYTHONSTARTUP",
+        "VIRTUAL_ENV",
+        "VIRTUAL_ENV_PROMPT",
+        # uv injects these when it activates a tool venv; they steer
+        # uv invocations to *our* cache/python and break user tools.
+        "UV_PYTHON",
+        "UV_PROJECT_ENVIRONMENT",
+    }
+)
+
+
+def _scrubbed_env() -> dict[str, str]:
+    """Return ``os.environ`` minus daemon-Python leak vars.
+
+    The desktop sidecar sets ``PYTHONPATH`` so the bundled interpreter can
+    import ``app`` (see ``desktop/src-tauri/src/sidecar.rs``).  That env
+    var is inherited by every subprocess we spawn — including the shell
+    tool — and shadows other Python tools' own packages.  We strip the
+    known leak vars before spawning the user's shell command.
+    """
+    return {k: v for k, v in os.environ.items() if k not in _PYTHON_ENV_LEAK_KEYS}
+
 
 def _kill_process_group(proc: asyncio.subprocess.Process, sig: signal.Signals) -> None:
     """Send *sig* to the process group led by *proc*, falling back to direct kill."""
@@ -306,6 +342,7 @@ async def _shell(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(cwd),
+            env=_scrubbed_env(),
             start_new_session=True,  # new process group → clean killTree
         )
 
