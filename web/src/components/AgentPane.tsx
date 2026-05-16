@@ -109,7 +109,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
                {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
              </button>
            )}
-           <p className="whitespace-pre-wrap">{visibleContent}</p>
+           <p className="break-words whitespace-pre-wrap">{visibleContent}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
