@@ -52,15 +52,21 @@ icons:
 # ``beforeDevCommand`` is intentionally absent from tauri.conf.json so
 # ``cargo tauri dev`` does NOT try to start its own Vite — we rely on the
 # repo-root ``make dev`` to manage Vite + FastAPI together.
+#
+# ``-c tauri.dev.conf.json`` overrides the bundle identifier + product
+# name so the dev build coexists with a Homebrew-cask-installed prod
+# build (they get separate Dock icons, tray entries, and log dirs).
+# Without this, macOS routes ``open -a OpenAgentd`` to whichever
+# instance is already running, masking which app you're testing.
 dev:
 	@echo "→ Tauri dev shell. Make sure backend (port 8000) + Vite ($(DEV_URL)) are running."
-	cd src-tauri && OPENAGENTD_DEV_BACKEND_URL="$(DEV_URL)" cargo tauri dev
+	cd src-tauri && OPENAGENTD_DEV_BACKEND_URL="$(DEV_URL)" cargo tauri dev -c tauri.dev.conf.json
 
 # Dev with the bundled CPython sidecar — the closest thing to ``make build``
 # without producing a .dmg. Useful for testing handshake, token injection,
 # Job-Object cleanup, and the ``app.cli serve`` entry path.
 dev-bundled: sidecar
-	cd src-tauri && cargo tauri dev
+	cd src-tauri && cargo tauri dev -c tauri.dev.conf.json
 
 build:
 	cd src-tauri && cargo tauri build

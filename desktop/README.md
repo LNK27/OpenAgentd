@@ -58,8 +58,9 @@ cd web && bun install && bun run build && cd ..
 # Build a slim Python sidecar bundle (uses uv + python-build-standalone)
 make -C desktop sidecar
 
-# Run the desktop shell in dev mode
-cd desktop && cargo tauri dev
+# Run the desktop shell in dev mode (prefer ``make dev`` from this
+# directory so the dev override picks up — see ``Makefile``).
+cd desktop && make dev
 ```
 
 ## Packaging
