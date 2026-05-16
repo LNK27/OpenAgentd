@@ -292,14 +292,16 @@ async def _shell(
         if not command.strip():
             return "[Succeeded]\n\n"
 
-        # Build the subprocess.  For login shells (zsh, bash) we do NOT pass
-        # ``-l``/``--login`` — we want the user's interactive config but not
-        # a full login session that resets PATH to defaults.  Using ``-c``
-        # directly is the standard pattern for non-interactive shells.
+        # Build the subprocess.  For zsh/bash we use ``-l`` and explicitly
+        # source the user's rc files (~/.zshenv, ~/.zshrc, ~/.bashrc) so the
+        # agent sees the same PATH the user has in their terminal — including
+        # ``~/.local/bin``, ``~/.bun/bin``, etc.  This matters when the daemon
+        # is launched from a GUI/launchd context where PATH is minimal.
+        # See ``shell_runtime.build_argv`` for details.
+        argv = _shell_mod.build_argv(shell_bin, command)
         proc = await asyncio.create_subprocess_exec(
             shell_bin,
-            "-c",
-            command,
+            *argv,
             stdin=asyncio.subprocess.DEVNULL,  # no TTY — interactive prompts must not hang
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
