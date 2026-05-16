@@ -11,22 +11,6 @@ class SandboxSettingsBody(BaseModel):
     denied_patterns: list[str] = Field(default_factory=list)
 
 
-class UpdateStatusBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    current_version: str
-    latest_version: str | None = None
-    update_available: bool = False
-    can_install: bool
-    install_blocked_reason: str | None = None
-
-
-class UpdateInstallBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: str
-
-
 # ── Providers (Settings → Providers tab) ────────────────────────────────────
 
 
