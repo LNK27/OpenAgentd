@@ -34,6 +34,13 @@ import { splitFrontmatter } from '@/components/settings/frontmatter'
 interface DreamForm {
   // Agent fields
   name: string
+  /**
+   * Role is always written as ``member`` (dream never leads a team) but we
+   * preserve it on the form so a user who hand-edits the file to ``lead``
+   * doesn't have their change silently dropped on save.  Read on parse,
+   * defaulted to ``member`` on write.
+   */
+  role: string
   model: string
   tools: string[]
   // Dream-specific
@@ -43,33 +50,47 @@ interface DreamForm {
 
 const DEFAULT_FORM: DreamForm = {
   name: 'dream',
+  role: 'member',
   model: '',
-  tools: ['ls', 'read', 'wiki_search', 'write'],
+  tools: ['ls', 'read', 'write', 'edit', 'rm', 'wiki_search'],
   enabled: false,
   schedule: '0 2 * * *',
 }
 
-const DEFAULT_BODY = `You are the dream agent. Your job is to consolidate the wiki from unprocessed conversation sessions and notes.
+const DEFAULT_BODY = `You are the dream agent. Your job is to maintain a structured, interlinked wiki from unprocessed conversation sessions and notes.
 
 Your working directory is the wiki root. Use relative paths directly:
-- \`USER.md\` (not wiki/USER.md)
-- \`topics/{slug}.md\` (not wiki/topics/)
-- \`INDEX.md\` (not wiki/INDEX.md)
+- \`USER.md\` - pure YAML durable user facts
+- \`INDEX.md\` - table of contents
+- \`sources/{Source-Slug}.md\` - one summary per meaningful source
+- \`topics/{slug}.md\` - concept pages
+- \`entities/{slug}.md\` - people, tools, products, organizations
+- \`comparisons/{slug}.md\` - X-vs-Y pages
+- \`notes/{date}.md\` - read-only input; never edit notes
+
+Each prompt begins with Today, Wiki state, and Source-Slug headers. Prefer editing existing pages listed in Wiki state over creating duplicates.
 
 For each session/note you process:
 
-1. Read \`USER.md\` — update it if new stable facts about the user were learned (identity, preferences, working style). Rewrite in-place, do not append.
+1. Create or update \`sources/{Source-Slug}.md\` first for every meaningful source.
 
-2. For each topic that emerged: create or update \`topics/{slug}.md\` with required frontmatter:
+2. Update \`USER.md\` only if durable user facts were learned. Keep it pure YAML.
+
+3. Create or update topic, entity, and comparison pages with required frontmatter:
    \`\`\`
    ---
    description: One-sentence summary (drives search relevance).
    tags: [tag1, tag2]
-   updated: YYYY-MM-DD
+   updated: YYYY-MM-DD UTC
+   confidence: high | medium | low
+   sources:
+     - <Source-Slug>
+   related:
+     - "[[related-slug]]"
    ---
    \`\`\`
 
-3. Update \`INDEX.md\` — a table of contents listing all topic files with one-line descriptions.
+4. Update related existing pages and \`INDEX.md\`.
 
 Quality gate:
 - Only promote durable facts worth remembering across sessions.
@@ -77,9 +98,9 @@ Quality gate:
 - If nothing worth promoting was found, do nothing.
 
 Rules:
-- Never delete existing topic files — only update them.
-- Be surgical: only update sections that actually changed.
-- Write precise, query-friendly descriptions for topics — they drive search relevance.`
+- Never edit \`notes/\` or \`LOG.md\`.
+- Use surgical edits for existing pages.
+- Write precise, query-friendly descriptions - they drive search relevance.`
 
 // ── Parse / serialise ─────────────────────────────────────────────────────────
 
@@ -116,6 +137,7 @@ function parseDreamMd(raw: string): { form: DreamForm; body: string } {
 
     switch (key) {
       case 'name':    form.name = val; break
+      case 'role':    form.role = val; break
       case 'model':   form.model = val; break
       case 'enabled': form.enabled = val === 'true'; break
       case 'schedule': form.schedule = val; break
@@ -140,7 +162,10 @@ function parseDreamMd(raw: string): { form: DreamForm; body: string } {
 function serialiseDreamMd(form: DreamForm, body: string): string {
   const lines: string[] = []
   lines.push(`name: ${form.name}`)
-  lines.push('role: member')
+  // Preserve whatever role was in the parsed source.  Defaults to "member"
+  // for fresh installs (DEFAULT_FORM) — matches the backend invariant that
+  // dream is always a team member, never a lead.
+  lines.push(`role: ${form.role || 'member'}`)
   if (form.model) lines.push(`model: ${form.model}`)
   lines.push(`enabled: ${form.enabled}`)
   lines.push(`schedule: "${form.schedule}"`)
@@ -285,7 +310,7 @@ export function DreamSettingsPage() {
                     Enabled
                   </label>
                   <span className="text-xs text-(--color-text-muted)">
-                    When disabled, dream runs only via <em>Run now</em> or <code className="font-mono">/dream</code>.
+                    When disabled, dream runs only via <em>Run now</em> or the Command Palette.
                   </span>
                 </div>
 
@@ -340,7 +365,7 @@ export function DreamSettingsPage() {
                     className="h-9 font-mono text-sm"
                   />
                   <p className="text-[11px] text-(--color-text-muted)">
-                    <code className="font-mono">read, write, ls, wiki_search</code> are always injected by the backend regardless of this list.
+                    <code className="font-mono">read, write, edit, rm, ls, wiki_search</code> are always injected by the backend regardless of this list.
                   </p>
                 </div>
               </section>

@@ -371,6 +371,67 @@ async def test_start_malformed_dream_md_logs_and_skips(tmp_path: Path, monkeypat
 # ── Coverage gap: _fire CancelledError is not swallowed ──────────────────────
 
 
+# ── #3: filesystem edits to dream.md are picked up without a reload call ────
+
+
+@pytest.mark.asyncio
+async def test_loop_picks_up_filesystem_edit(_dream_md: Path):
+    """Writing a new ``enabled: false`` value directly to dream.md (without
+    going through ``PUT /api/dream/config``) must cause the running loop
+    to exit on its next iteration.
+
+    This used to require either a server restart or a ``reload()`` call —
+    surprising for users who edited the file with their editor of choice.
+    """
+    scheduler = DreamScheduler(db_factory=_fake_db_factory())
+
+    original_sleep = asyncio.sleep
+    sleep_count = {"n": 0}
+
+    async def _fast_sleep(seconds: float, *args, **kwargs):
+        sleep_count["n"] += 1
+        # Collapse first sleep (cron wait); for the second, give the test
+        # time to rewrite the file before the loop wakes again.
+        if sleep_count["n"] <= 1:
+            await original_sleep(0)
+            return
+        await original_sleep(0.05)
+
+    async def _noop_fire(_self) -> None:
+        return None
+
+    with patch.object(DreamScheduler, "_fire", _noop_fire):
+        with patch("app.services.dream_scheduler.asyncio.sleep", _fast_sleep):
+            await scheduler.start()
+            try:
+                # Wait until the loop has fired at least once.
+                for _ in range(50):
+                    if sleep_count["n"] >= 1:
+                        break
+                    await original_sleep(0.01)
+
+                # Rewrite the file with enabled: false — this is the
+                # filesystem-edit path we want the loop to honour.
+                (_dream_md / "dream.md").write_text(
+                    "---\nname: dream\nmodel: mock:model\nenabled: false\n"
+                    "schedule: '* * * * *'\n---\nstop.\n",
+                    encoding="utf-8",
+                )
+
+                # The loop should exit on its own once it sees the mtime
+                # change and re-parses enabled=false.  Wait up to 2s.
+                loop_task = scheduler._task
+                assert loop_task is not None
+                try:
+                    await asyncio.wait_for(loop_task, timeout=2.0)
+                except asyncio.CancelledError:
+                    pass
+                except asyncio.TimeoutError:
+                    pytest.fail("Loop did not exit after dream.md was disabled on disk")
+            finally:
+                await scheduler.stop()
+
+
 @pytest.mark.asyncio
 async def test_fire_propagates_cancelled_error(_dream_md: Path):
     """``_fire`` catches Exception but MUST re-raise CancelledError so the

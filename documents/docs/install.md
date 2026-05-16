@@ -143,7 +143,7 @@ docker compose up -d              # pulls and starts on http://localhost:4082
 |-----------|---------------|----------|
 | `./data` | `/data` | SQLite DB — **back this up** |
 | `./config` | `/data/config` | `agents/`, `skills/`, `.env`, `mcp.json` |
-| `./wiki` | `/data/wiki` | `USER.md`, `topics/`, `notes/` |
+| `./wiki` | `/data/wiki` | `USER.md`, knowledge dirs, `notes/` |
 | `./workspace` | `/data/workspace` | Per-session agent workspaces |
 
 The directories are created automatically by Docker on first start. To pre-load agents or skills, populate `./config/agents/` before running `docker compose up`.

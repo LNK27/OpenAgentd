@@ -29,7 +29,7 @@ OpenAgentd splits runtime files across **six** XDG-aligned roots, one per catego
 - **State** — historical bookkeeping. Logs (`logs/`), telemetry (`telemetry/`), OTEL rollups (`otel/`), `openagentd.pid`. Safe to archive.
 - **Cache** — regeneratable throwaway. `quoteoftheday.json`, `copilot_oauth.json`, `codex_oauth.json`. Safe to delete any time.
 - **Workspace** — per-session agent workspaces (`{root}/<sid>/`). User uploads live at `{root}/<sid>/uploads/`. Allowed by the sandbox so filesystem tools (`read`/`write`/`shell`) can operate there.
-- **Wiki** — agent memory (`USER.md`, `INDEX.md`, `topics/`, `notes/`). See [`agent/memory.md`](../agent/memory.md).
+- **Wiki** — agent memory (`USER.md`, `INDEX.md`, `LOG.md`, `LINT.md`, knowledge dirs, `notes/`). See [`agent/memory.md`](../agent/memory.md).
 
 ## `.env` location
 
@@ -49,10 +49,15 @@ Dev-mode paths shown below — substitute the production columns from the table 
 ├── data/                                  # OPENAGENTD_DATA_DIR
 │   └── openagentd.db                          # main SQLite DB
 ├── wiki/                                  # OPENAGENTD_WIKI_DIR
-│   ├── USER.md                                # always injected into system prompt
+│   ├── USER.md                                # pure YAML, injected into system prompt
 │   ├── INDEX.md                               # dream-maintained TOC
-│   ├── topics/                                # durable knowledge base
-│   └── notes/                                 # session dumps + agent notes
+│   ├── LOG.md                                 # service-managed dream/lint log
+│   ├── LINT.md                                # latest dream lint report
+│   ├── topics/                                # concept pages
+│   ├── entities/                              # concrete things
+│   ├── sources/                               # one page per ingested source
+│   ├── comparisons/                           # X-vs-Y pages
+│   └── notes/                                 # agent notes
 ├── workspace/                             # OPENAGENTD_WORKSPACE_DIR
 │   └── {lead_session_id}/                     # per-team agent workspace
 │       └── uploads/<uuid>.<ext>               # user uploads (reachable as `uploads/<filename>`)

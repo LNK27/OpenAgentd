@@ -238,16 +238,28 @@ export interface WikiFileInfo {
   description: string
   updated: string | null
   tags: string[]
+  /** ``high|medium|low`` from frontmatter; ``null`` when unspecified. */
+  confidence?: string | null
+  /** Source slugs that contributed (e.g. ``session-a1b2c3d4``). */
+  sources?: string[]
 }
 
-/** Full wiki tree grouped by subdirectory. */
+/** Full wiki tree grouped by subdirectory.  Mirrors the Karpathy LLM-Wiki
+ *  page-type split: concepts (``topics``), entities, sources, comparisons.
+ */
 export interface WikiTree {
-  /** system/ — currently just USER.md, always injected into the prompt. */
+  /** Root files: USER.md, INDEX.md, LOG.md, LINT.md (any that exist). */
   system: WikiFileInfo[]
   /** notes/ — session dumps written by the agent (read-only in the UI). */
   notes: WikiFileInfo[]
-  /** topics/ — dream-synthesised knowledge, editable by the user. */
+  /** topics/ — concept pages (abstract ideas, techniques). */
   topics: WikiFileInfo[]
+  /** entities/ — concrete things (people, tools, orgs, products). */
+  entities: WikiFileInfo[]
+  /** sources/ — one-page summaries per ingested source. */
+  sources: WikiFileInfo[]
+  /** comparisons/ — X-vs-Y pages. */
+  comparisons: WikiFileInfo[]
 }
 
 /** Raw contents of a single wiki file. */
@@ -257,6 +269,8 @@ export interface WikiFile {
   description: string
   updated: string | null
   tags: string[]
+  confidence?: string | null
+  sources?: string[]
 }
 
 // ── Agent management ────────────────────────────────────────────────────────

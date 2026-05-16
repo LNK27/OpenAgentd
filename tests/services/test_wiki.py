@@ -198,9 +198,10 @@ def test_write_note_appends(_wiki_dir: Path):
 
 
 def test_default_user_file_content():
-    assert "## Identity" in DEFAULT_USER_FILE
-    assert "## Preferences" in DEFAULT_USER_FILE
-    assert "## Working style" in DEFAULT_USER_FILE
+    assert "identity: {}" in DEFAULT_USER_FILE
+    assert "preferences: []" in DEFAULT_USER_FILE
+    assert "working_style: []" in DEFAULT_USER_FILE
+    assert "projects: []" in DEFAULT_USER_FILE
 
 
 # ── New tests for recent changes ──────────────────────────────────────────────
@@ -232,8 +233,115 @@ def test_delete_index_md_raises(_wiki_dir: Path):
     from app.services.wiki import delete_file
 
     (_wiki_dir / INDEX_FILE).write_text("# Index\n", encoding="utf-8")
-    with pytest.raises(WikiPathError, match="Refusing to delete wiki root file"):
+    with pytest.raises(WikiPathError, match="Refusing to delete protected wiki file"):
         delete_file(INDEX_FILE)
+
+
+# ── Karpathy LLM-Wiki page-type subdirs ──────────────────────────────────────
+
+
+def test_validate_entities_path(_wiki_dir: Path):
+    """``entities/{slug}.md`` is now a valid path."""
+    from app.services.wiki import validate_wiki_path
+
+    resolved = validate_wiki_path("entities/fastapi.md")
+    assert resolved.name == "fastapi.md"
+
+
+def test_validate_sources_path(_wiki_dir: Path):
+    from app.services.wiki import validate_wiki_path
+
+    resolved = validate_wiki_path("sources/2026-05-16-session-abc.md")
+    assert resolved.name == "2026-05-16-session-abc.md"
+
+
+def test_validate_comparisons_path(_wiki_dir: Path):
+    from app.services.wiki import validate_wiki_path
+
+    resolved = validate_wiki_path("comparisons/rag-vs-llm-wiki.md")
+    assert resolved.name == "rag-vs-llm-wiki.md"
+
+
+def test_validate_log_md_path(_wiki_dir: Path):
+    """LOG.md is a valid root-level file (just like USER/INDEX/LINT)."""
+    from app.services.wiki import LOG_FILE, validate_wiki_path
+
+    resolved = validate_wiki_path(LOG_FILE)
+    assert resolved.name == "LOG.md"
+
+
+def test_validate_unknown_subdir_rejected(_wiki_dir: Path):
+    """A directory not in the allowlist is still rejected."""
+    from app.services.wiki import validate_wiki_path
+
+    with pytest.raises(WikiPathError, match="must be one of"):
+        validate_wiki_path("random-dir/page.md")
+
+
+def test_parse_frontmatter_confidence_and_sources():
+    """``confidence`` and ``sources`` are parsed from frontmatter."""
+    from app.services.wiki import parse_frontmatter
+
+    raw = (
+        "---\n"
+        "description: Test page\n"
+        "confidence: high\n"
+        "sources:\n"
+        "  - session-a1b2c3d4\n"
+        "  - note-2026-05-16\n"
+        "---\n\n"
+        "body\n"
+    )
+    parsed = parse_frontmatter(raw)
+    assert parsed.confidence == "high"
+    assert parsed.sources == ("session-a1b2c3d4", "note-2026-05-16")
+
+
+def test_parse_frontmatter_invalid_confidence_dropped():
+    """Bogus confidence values (e.g. ``"super-sure"``) parse to None."""
+    from app.services.wiki import parse_frontmatter
+
+    raw = "---\nconfidence: super-sure\n---\nbody\n"
+    parsed = parse_frontmatter(raw)
+    assert parsed.confidence is None
+
+
+def test_list_tree_includes_all_knowledge_dirs(_wiki_dir: Path):
+    """``list_tree`` surfaces topics, entities, sources, comparisons."""
+    from app.services.wiki import list_tree, write_file
+
+    write_file("topics/python.md", "---\ndescription: Python.\n---\nbody\n")
+    write_file("entities/fastapi.md", "---\ndescription: FastAPI.\n---\nbody\n")
+    write_file("sources/2026-session.md", "---\ndescription: A session.\n---\n")
+    write_file("comparisons/x-vs-y.md", "---\ndescription: X vs Y.\n---\n")
+
+    tree = list_tree()
+    assert [i.path for i in tree.topics] == ["topics/python.md"]
+    assert [i.path for i in tree.entities] == ["entities/fastapi.md"]
+    assert [i.path for i in tree.sources] == ["sources/2026-session.md"]
+    assert [i.path for i in tree.comparisons] == ["comparisons/x-vs-y.md"]
+
+
+def test_append_log_creates_then_appends(_wiki_dir: Path):
+    """First append creates LOG.md with a header; subsequent appends grow it."""
+    from app.services.wiki import LOG_FILE, append_log
+
+    log_path = _wiki_dir / LOG_FILE
+    assert not log_path.exists()
+
+    append_log("first entry")
+    text1 = log_path.read_text(encoding="utf-8")
+    assert text1.startswith("# Wiki Log")
+    assert "first entry" in text1
+    # The header line is greppable.
+    grep_lines = [ln for ln in text1.splitlines() if ln.startswith("## [")]
+    assert len(grep_lines) == 1
+
+    append_log("second entry\nwith details")
+    text2 = log_path.read_text(encoding="utf-8")
+    grep_lines2 = [ln for ln in text2.splitlines() if ln.startswith("## [")]
+    assert len(grep_lines2) == 2
+    assert "with details" in text2  # multi-line body preserved
 
 
 def test_write_file_tags_in_content(_wiki_dir: Path):

@@ -11,6 +11,8 @@ Usage:
   uv run python -m manual.dream log               # show dream_log entries
   uv run python -m manual.dream log --notes       # show dream_notes_log entries
   uv run python -m manual.dream log --all         # show both logs
+  uv run python -m manual.dream lint              # health-check wiki via API
+  uv run python -m manual.dream lint --direct     # health-check wiki directly (no server)
 """
 
 from __future__ import annotations
@@ -181,13 +183,25 @@ async def _run_via_api(base_url: str) -> int:
 async def _run_direct() -> int:
     """Run dream directly via the DB.  Returns POSIX-style exit code:
     0 on full success, 3 if any items failed mid-run.
+
+    .. warning::
+       ``--direct`` bypasses the in-process ``_run_lock`` because it runs
+       in a separate Python process from the server.  The
+       ``dream_log.session_id`` UNIQUE constraint prevents double-bookkeeping,
+       but both processes can write to the same ``wiki/topics/*.md`` files
+       concurrently — last-writer-wins, content may interleave.  Do not run
+       ``--direct`` while the server is also running unless you understand
+       this trade-off.  Use ``manual.dream run`` (without ``--direct``) for
+       safe concurrent operation.
     """
     from app.services.dream import run_dream
 
     print("Running dream directly (no server)...")
     try:
         async with async_session_factory() as db:
-            result = await run_dream(db)
+            # drain=True matches the API route: a manual trigger processes
+            # everything pending, ignoring batch_size.
+            result = await run_dream(db, drain=True)
     except Exception as exc:
         if _is_missing_tables(exc):
             _print_missing_tables_hint()
@@ -258,6 +272,64 @@ async def _cmd_log_inner(
     print()
 
 
+# ── Lint ──────────────────────────────────────────────────────────────────────
+
+
+async def cmd_lint(*, base_url: str, direct: bool) -> int:
+    """Trigger a dream-agent wiki lint pass.  Returns POSIX-style exit code."""
+    if direct:
+        return await _lint_direct()
+    return await _lint_via_api(base_url)
+
+
+async def _lint_via_api(base_url: str) -> int:
+    """Trigger lint via the API.  Returns POSIX-style exit code."""
+    url = f"{base_url}/dream/lint"
+    print(f"POST {url}")
+    # Lint is bounded by dream's ``timeout_seconds`` (default 300s); allow
+    # generous slack so a slow LLM doesn't surface a false negative.
+    timeout = httpx.Timeout(connect=5.0, read=900.0, write=30.0, pool=5.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            resp = await client.post(url)
+            resp.raise_for_status()
+            result = resp.json()
+            print(f"\nResult: {json.dumps(result, indent=2)}")
+            return 0 if "lint_completed_at" in result else 3
+        except httpx.HTTPStatusError as exc:
+            print(f"HTTP error {exc.response.status_code}: {exc.response.text}")
+            return 1
+        except httpx.ConnectError:
+            print(f"Could not connect to {url} — is the server running?")
+            print("Use --direct to run without the server.")
+            return 2
+        except httpx.ReadTimeout:
+            print("Read timed out — check `wiki/LINT.md` after the server finishes.")
+            return 4
+
+
+async def _lint_direct() -> int:
+    """Run lint directly via the DB.  Returns POSIX-style exit code.
+
+    .. warning::
+       Like ``run --direct``, this bypasses the in-process ``_run_lock``.
+       Don't run while the server is also active.
+    """
+    from app.services.dream import run_dream_lint
+
+    print("Running dream lint directly (no server)...")
+    try:
+        async with async_session_factory() as db:
+            result = await run_dream_lint(db)
+    except Exception as exc:
+        if _is_missing_tables(exc):
+            _print_missing_tables_hint()
+            return 2
+        raise
+    print(f"\nResult: {json.dumps(result, indent=2)}")
+    return 0 if "lint_completed_at" in result else 3
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
@@ -288,6 +360,15 @@ def main() -> None:
     log_p.add_argument("--notes", action="store_true", help="Show notes log only")
     log_p.add_argument("--all", dest="show_all", action="store_true", help="Show both session and notes log")
 
+    lint_p = sub.add_parser(
+        "lint", help="Run a dream-agent lint pass on the wiki"
+    )
+    lint_p.add_argument(
+        "--direct",
+        action="store_true",
+        help="Run directly via DB (no server required)",
+    )
+
     args = p.parse_args()
 
     exit_code = 0
@@ -301,6 +382,8 @@ def main() -> None:
         exit_code = asyncio.run(
             cmd_log(show_sessions=show_sessions, show_notes=show_notes)
         )
+    elif args.cmd == "lint":
+        exit_code = asyncio.run(cmd_lint(base_url=args.base, direct=args.direct))
 
     if exit_code:
         sys.exit(exit_code)

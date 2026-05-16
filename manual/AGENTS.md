@@ -60,10 +60,11 @@ uv run python -m manual.team_roster_lifecycle
 | `dream.py run` | Trigger dream via `POST /api/dream/run` (server required) | `--base URL` |
 | `dream.py run --direct` | Trigger dream directly via DB (no server required) | — |
 | `dream.py log` | Show `dream_log` entries (sessions processed) | `--notes`, `--all` |
-| `wiki.py tree` | Show full wiki tree (system / topics / notes) | `--unprocessed` |
+| `dream.py lint` | Trigger wiki lint via `POST /api/dream/lint` or directly | `--direct`, `--base URL` |
+| `wiki.py tree` | Show full wiki tree (system, knowledge dirs, notes) | `--unprocessed` |
 | `wiki.py read PATH` | Print a wiki file's contents | — |
 | `wiki.py write PATH` | Write a wiki file (content from `--content` or stdin) | `--content` |
-| `wiki.py delete PATH` | Delete a wiki file (USER.md and INDEX.md blocked) | — |
+| `wiki.py delete PATH` | Delete a wiki file (USER.md, INDEX.md, LOG.md blocked) | — |
 | `note.py TEXT` | Append a timestamped note entry to wiki/notes/{date}.md | — |
 | `note.py --list` | List all note files with size and line count | — |
 | `note.py --cat FILE` | Print contents of a note file | — |

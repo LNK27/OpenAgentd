@@ -10,7 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
 from app.core.db import get_session
-from app.services.dream import run_dream
+from app.services.dream import run_dream, run_dream_lint
 
 router = APIRouter(prefix="/dream", tags=["dream"])
 
@@ -67,5 +67,21 @@ async def put_dream_config(
 
 @router.post("/run")
 async def run_dream_now(db: AsyncSession = Depends(get_session)) -> dict:
-    """Manually trigger the dream agent to process unprocessed sessions and notes."""
-    return await run_dream(db)
+    """Manually trigger the dream agent to process unprocessed sessions and notes.
+
+    Uses ``drain=True`` so a manual click processes every pending item in one
+    go, ignoring ``batch_size``.  ``batch_size`` still bounds the scheduler's
+    cron-driven fires.
+    """
+    return await run_dream(db, drain=True)
+
+
+@router.post("/lint")
+async def run_dream_lint_now(db: AsyncSession = Depends(get_session)) -> dict:
+    """Run a dream-agent lint pass over the wiki.
+
+    Produces ``wiki/LINT.md`` with contradictions, orphans, stale claims,
+    etc.  Separate from ``POST /run`` — lint is read-only over the wiki
+    except for the report file itself.
+    """
+    return await run_dream_lint(db)
