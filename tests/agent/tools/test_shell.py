@@ -330,6 +330,10 @@ def fast_bg(monkeypatch):
     and (b) detect immediate exits.  We replace it with a short polling loop
     that yields the event loop just enough times for the reader task to
     consume any pending stdout — typically a single iteration is enough.
+
+    We also force ``/bin/sh`` so we skip zsh login + rc-file sourcing
+    (~200ms boot cost), which would otherwise blow past the short sleep
+    budget before the spawned process finishes echoing.
     """
     _real_sleep = asyncio.sleep
 
@@ -340,6 +344,10 @@ def fast_bg(monkeypatch):
             await _real_sleep(0.005)
 
     monkeypatch.setattr("app.agent.tools.builtin.shell.asyncio.sleep", _short_sleep)
+    # ``/bin/sh`` takes the bare ``-c`` argv path → no rc sourcing → instant boot.
+    monkeypatch.setattr(
+        "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+    )
 
 
 @pytest.mark.asyncio

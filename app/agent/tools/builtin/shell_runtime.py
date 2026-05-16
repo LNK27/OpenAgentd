@@ -126,6 +126,59 @@ def is_posix(shell_path: str | None = None) -> bool:
     return n in {"bash", "dash", "ksh", "sh", "zsh"}
 
 
+# ── argv construction ───────────────────────────────────────────────────────
+# Mirrors opencode's ``shell.ts`` (packages/opencode/src/shell/shell.ts).
+#
+# When a GUI app (or any non-interactive context) launches the daemon, its
+# PATH only contains system defaults — user dirs like ``~/.local/bin``,
+# ``~/.bun/bin``, ``~/.cargo/bin``, and ``$(brew --prefix)/bin`` are missing
+# because they are added by interactive rc files (``~/.zshrc``, ``~/.bashrc``).
+# A plain ``zsh -c`` does NOT source those files, so the agent cannot find
+# tools the user installed.
+#
+# Fix: invoke the shell with ``-l`` (login) AND explicitly source the
+# interactive rc files.  Errors during sourcing are swallowed so a broken
+# rc never blocks a command.  Other POSIX shells (sh/dash/ksh) fall back
+# to bare ``-c`` — they have no widely-used per-user rc file.
+
+
+def build_argv(shell_bin: str, command: str) -> list[str]:
+    """Return argv (after the shell binary) that runs *command* with full user PATH.
+
+    For zsh/bash we wrap *command* in a small script that sources the user's
+    rc files before evaluating it.  For other POSIX shells we use a bare
+    ``-c`` since they have no portable per-user rc convention.
+
+    The shell's ``cwd`` is set by the caller via ``subprocess`` ``cwd=`` —
+    we don't ``cd`` inside the script so a missing workdir raises a clear
+    OS-level error instead of an opaque shell error.
+    """
+    shell_name = _shell_name(shell_bin)
+
+    if shell_name == "zsh":
+        # -l loads ~/.zprofile/~/.zlogin; explicit source covers ~/.zshenv
+        # and ~/.zshrc which a non-interactive login shell skips.
+        # ``eval $1`` keeps quoting/$VAR semantics identical to ``zsh -c``.
+        wrapper = (
+            "[[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 || true; "
+            '[[ -f "${ZDOTDIR:-$HOME}/.zshrc" ]] && '
+            'source "${ZDOTDIR:-$HOME}/.zshrc" >/dev/null 2>&1 || true; '
+            'eval "$1"'
+        )
+        return ["-l", "-c", wrapper, "openagentd", command]
+
+    if shell_name == "bash":
+        wrapper = (
+            "shopt -s expand_aliases; "
+            "[[ -f ~/.bashrc ]] && source ~/.bashrc >/dev/null 2>&1 || true; "
+            'eval "$1"'
+        )
+        return ["-l", "-c", wrapper, "openagentd", command]
+
+    # sh, dash, ksh, anything else POSIX-compatible
+    return ["-c", command]
+
+
 def reset_cache() -> None:
     """Clear the cached shell detection — for test isolation only."""
     global _CACHED_SHELL
