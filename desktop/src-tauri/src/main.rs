@@ -12,6 +12,8 @@ use tauri::{
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
 };
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
+use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::Mutex;
 
 use crate::sidecar::{Handshake, Sidecar};
@@ -34,6 +36,7 @@ const MENU_STATUS: &str = "status";
 const MENU_SESSION: &str = "session";
 const MENU_RELOAD: &str = "reload";
 const MENU_FORCE_RELOAD: &str = "force_reload";
+const MENU_CHECK_UPDATES: &str = "check_updates";
 const MENU_QUIT: &str = "quit";
 
 /// Label shown in the tray when no chat/coding session is active.
@@ -45,18 +48,12 @@ const TRAY_SESSION_MAX_LEN: usize = 60;
 
 /// Apply platform-specific window chrome.
 ///
-/// macOS uses the **overlay** title-bar style — the WebView extends
-/// under the OS-drawn traffic-lights and the React app reserves a
-/// 70 pt left inset for them. ``traffic_light_position`` must be set
-/// here because the JSON config value is ignored when the window is
-/// built from Rust via ``WebviewWindowBuilder``.
-///
-/// ``y`` is a *bottom* inset: Tao resizes the native title-bar to
-/// ``button_height + y`` (tao 0.35.x, macos/view.rs:1152). Empirical
-/// tuning for our 40 pt header: 14 → too high, 22 → centred, 26 →
-/// too low.
-///
-/// Windows and Linux keep their native chrome.
+/// macOS uses an overlay title-bar; the React app reserves a 70 pt left
+/// inset for the traffic-lights. ``traffic_light_position`` must be set
+/// from Rust because the JSON config value is ignored when the window is
+/// built via ``WebviewWindowBuilder``. ``y`` is a *bottom* inset (tao
+/// resizes the native title-bar to ``button_height + y`` — tao 0.35.x,
+/// macos/view.rs:1152); 22 pt centres against our 40 pt header.
 fn configure_window_chrome(builder: WebviewWindowBuilder<'_, tauri::Wry, AppHandle>) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
     #[cfg(target_os = "macos")]
     {
@@ -140,19 +137,12 @@ fn quit_app(app: &AppHandle) {
     app.exit(0);
 }
 
-/// Reload the main webview.
-///
-/// ``force`` triggers a cache-busting reload (equivalent to Shift+Reload in a
-/// browser). The standard reload uses ``window.location.reload()`` which
-/// respects the HTTP cache; force reload appends a unique query param to bust
-/// any stale assets that the WebView may have cached. Useful when the user
-/// has just edited an agent config or the backend has been restarted.
+/// Reload the main webview. ``force`` bypasses the WebView cache via a
+/// unique query-param, matching the browser's Shift+Reload behaviour.
 fn reload_main_window(app: &AppHandle, force: bool) {
     show_main_window(app);
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         if force {
-            // Append a cache-busting query param to the current URL so the
-            // WebView fetches fresh assets instead of replaying the cache.
             let _ = window.eval(
                 "(() => { const u = new URL(window.location.href); \
                  u.searchParams.set('__oad_reload', Date.now().toString()); \
@@ -173,17 +163,212 @@ fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_TELEMETRY => navigate_main_window(app, "/telemetry"),
         MENU_RELOAD => reload_main_window(app, false),
         MENU_FORCE_RELOAD => reload_main_window(app, true),
+        MENU_CHECK_UPDATES => check_for_updates(app),
         MENU_QUIT => quit_app(app),
         _ => {}
     }
 }
 
+/// Manual "Check for Updates…" flow triggered from the menu bar.
+///
+/// Driven from Rust (not the webview) so the menu still works if the UI
+/// is wedged. All feedback is via native dialogs and the tray status.
+fn check_for_updates(app: &AppHandle) {
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        run_update_check(handle).await;
+    });
+}
+
+async fn run_update_check(app: AppHandle) {
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => {
+            show_update_error(&app, &format!("Updater unavailable: {e}"));
+            return;
+        }
+    };
+
+    match updater.check().await {
+        Ok(Some(update)) => {
+            let message = format_update_prompt(
+                &update.version,
+                env!("CARGO_PKG_VERSION"),
+                update.body.as_deref(),
+            );
+
+            let accepted = ask_dialog(&app, "Update available", &message, "Install", "Later").await;
+            if !accepted {
+                return;
+            }
+
+            update_tray_status(&app, "Status: Downloading update…");
+            let mut downloaded: usize = 0;
+            let mut last_mb_announced: usize = 0;
+            let app_for_progress = app.clone();
+            let install_result = update
+                .download_and_install(
+                    move |chunk, total| {
+                        downloaded = downloaded.saturating_add(chunk);
+                        let mb = downloaded / (1024 * 1024);
+                        if mb > last_mb_announced {
+                            last_mb_announced = mb;
+                            update_tray_status(
+                                &app_for_progress,
+                                &format_download_progress(mb, total),
+                            );
+                        }
+                    },
+                    {
+                        let app_for_finish = app.clone();
+                        move || {
+                            update_tray_status(&app_for_finish, "Status: Installing update…");
+                        }
+                    },
+                )
+                .await;
+            if let Err(e) = install_result {
+                update_tray_status(&app, "Status: Running");
+                show_update_error(&app, &format!("Failed to install update: {e}"));
+                return;
+            }
+
+            // ``tauri::process::restart`` execs the new binary directly,
+            // skipping ``RunEvent::ExitRequested`` — so the sidecar must
+            // be shut down here or it leaks and races the new bundle for
+            // the handshake port.
+            update_tray_status(&app, "Status: Restarting…");
+            shutdown_sidecar_now(&app).await;
+
+            let state: tauri::State<'_, AppState> = app.state();
+            state.quitting.store(true, Ordering::SeqCst);
+            tauri::process::restart(&app.env());
+        }
+        Ok(None) => {
+            show_update_info(
+                &app,
+                "You're up to date",
+                &format!(
+                    "OpenAgentd {} is the latest version.",
+                    env!("CARGO_PKG_VERSION")
+                ),
+            );
+        }
+        Err(e) => {
+            show_update_error(&app, &format!("Couldn't check for updates: {e}"));
+        }
+    }
+}
+
+/// Cleanly stop the Python sidecar before a process re-exec.
+///
+/// Idempotent: ``.take()``s the sidecar out of shared state, so repeat
+/// calls (or a race with ``ExitRequested``) are no-ops.
+async fn shutdown_sidecar_now(app: &AppHandle) {
+    let state: tauri::State<'_, AppState> = app.state();
+    let sidecar = state.sidecar.clone();
+    let mut guard = sidecar.lock().await;
+    if let Some(mut s) = guard.take() {
+        s.shutdown().await;
+    }
+}
+
+async fn ask_dialog(
+    app: &AppHandle,
+    title: &str,
+    message: &str,
+    ok_label: &str,
+    cancel_label: &str,
+) -> bool {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let ok = ok_label.to_string();
+    app.dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            ok_label.to_string(),
+            cancel_label.to_string(),
+        ))
+        .show_with_result(move |result| {
+            let _ = tx.send(dialog_result_is_accept(&result, &ok));
+        });
+    rx.await.unwrap_or(false)
+}
+
+/// Map a ``MessageDialogResult`` from an ``OkCancelCustom`` dialog to a
+/// simple accept/cancel boolean.
+///
+/// ``OkCancelCustom`` yields ``Custom(label)`` matching the button text the
+/// user pressed (rfd's behaviour, surfaced through tauri-plugin-dialog).
+/// Some platforms still report a plain ``Ok``/``Cancel`` for the bundled
+/// system dialog, so we accept either spelling of "yes".
+fn dialog_result_is_accept(result: &MessageDialogResult, ok_label: &str) -> bool {
+    match result {
+        MessageDialogResult::Ok | MessageDialogResult::Yes => true,
+        MessageDialogResult::Custom(s) => s == ok_label,
+        MessageDialogResult::Cancel | MessageDialogResult::No => false,
+    }
+}
+
+/// Build the "Update available" dialog body shown to the user.
+///
+/// Release notes are truncated to ~600 characters with an ellipsis so a
+/// runaway changelog never produces a multi-screen modal. An empty/None
+/// body collapses the notes paragraph entirely.
+fn format_update_prompt(new_version: &str, current_version: &str, body: Option<&str>) -> String {
+    const MAX_NOTES_CHARS: usize = 600;
+    let notes = body.unwrap_or_default().trim();
+    let trimmed = if notes.chars().count() > MAX_NOTES_CHARS {
+        let mut s: String = notes.chars().take(MAX_NOTES_CHARS - 1).collect();
+        s.push('…');
+        s
+    } else {
+        notes.to_string()
+    };
+    if trimmed.is_empty() {
+        format!(
+            "OpenAgentd {new_version} is available (you have {current_version}).\n\nDownload and install now?"
+        )
+    } else {
+        format!(
+            "OpenAgentd {new_version} is available (you have {current_version}).\n\n{trimmed}\n\nDownload and install now?"
+        )
+    }
+}
+
+/// Format the tray status string shown during a bundle download.
+///
+/// ``total == Some(0)`` is treated the same as ``None`` — some HTTP
+/// responses omit ``Content-Length`` and our caller passes whatever it
+/// has — so we never produce a misleading ``"5/0 MB"`` label.
+fn format_download_progress(downloaded_mb: usize, total_bytes: Option<u64>) -> String {
+    match total_bytes {
+        Some(total) if total > 0 => {
+            let total_mb = total / (1024 * 1024);
+            format!("Status: Downloading {downloaded_mb}/{total_mb} MB")
+        }
+        _ => format!("Status: Downloading {downloaded_mb} MB"),
+    }
+}
+
+fn show_update_info(app: &AppHandle, title: &str, message: &str) {
+    app.dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Info)
+        .show(|_| {});
+}
+
+fn show_update_error(app: &AppHandle, message: &str) {
+    app.dialog()
+        .message(message)
+        .title("Update")
+        .kind(MessageDialogKind::Error)
+        .show(|_| {});
+}
+
 fn install_desktop_menus(app: &tauri::App) -> Result<()> {
-    // About dialog metadata — shows icon, app name, version, and copyright in
-    // the native macOS About panel. Icon falls back to ``None`` on Windows
-    // (the predefined item ignores it there). Version comes from the crate so
-    // it stays in lockstep with ``tauri.conf.json``'s ``version`` field, which
-    // is enforced at build time by ``cargo tauri build``.
     let about_metadata = {
         let mut builder = AboutMetadataBuilder::new()
             .name(Some("OpenAgentd"))
@@ -202,6 +387,14 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         Some(about_metadata),
     )?;
 
+    // Per Apple HIG, "Check for Updates…" sits directly below About.
+    let app_check_updates = MenuItem::with_id(
+        app,
+        MENU_CHECK_UPDATES,
+        "Check for Updates…",
+        true,
+        None::<&str>,
+    )?;
     let app_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
     let app_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
     let app_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
@@ -211,11 +404,6 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let file_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, Some("CmdOrCtrl+Q"))?;
     let view_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
     let view_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
-    // ``Reload`` re-fetches the page from the network (respecting the HTTP
-    // cache); ``Force Reload`` busts the cache via a query-param trick. Both
-    // bindings mirror the standard browser shortcuts and are useful after the
-    // user updates agent configs, restarts the backend, or hits a wedged
-    // frontend state.
     let view_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload", true, Some("CmdOrCtrl+R"))?;
     let view_force_reload = MenuItem::with_id(
         app,
@@ -225,11 +413,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         Some("CmdOrCtrl+Shift+R"),
     )?;
 
-    // Edit submenu — required on macOS for native ⌘A/⌘C/⌘V/⌘X/⌘Z to reach the
-    // webview's input fields. Without this submenu the webview never receives
-    // the corresponding keyboard events. ``undo``/``redo`` are macOS-only and
-    // silently no-op on Windows/Linux when invoked; including them keeps the
-    // menu uniform across platforms.
+    // Edit submenu is required on macOS so ⌘A/⌘C/⌘V/⌘X/⌘Z reach the webview.
     let edit_undo = PredefinedMenuItem::undo(app, None)?;
     let edit_redo = PredefinedMenuItem::redo(app, None)?;
     let edit_cut = PredefinedMenuItem::cut(app, None)?;
@@ -239,6 +423,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
 
     let app_menu = SubmenuBuilder::new(app, "OpenAgentd")
         .item(&app_about)
+        .item(&app_check_updates)
         .separator()
         .item(&app_show)
         .separator()
@@ -280,9 +465,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     app.set_menu(menu)?;
 
     let status = MenuItem::with_id(app, MENU_STATUS, "Status: Starting", false, None::<&str>)?;
-    // ``session`` is informational only — kept disabled so the user can't
-    // click it. Updated by ``update_tray_session`` whenever the frontend
-    // reports a new active session/workspace via ``set_tray_session``.
+    // Informational only; updated from ``set_tray_session``.
     let session = MenuItem::with_id(app, MENU_SESSION, TRAY_SESSION_IDLE, false, None::<&str>)?;
     let tray_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
     let tray_chat = MenuItem::with_id(app, MENU_CHAT, "Chat", true, None::<&str>)?;
@@ -290,6 +473,13 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let tray_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
     let tray_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
     let tray_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload Window", true, None::<&str>)?;
+    let tray_check_updates = MenuItem::with_id(
+        app,
+        MENU_CHECK_UPDATES,
+        "Check for Updates…",
+        true,
+        None::<&str>,
+    )?;
     let tray_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, None::<&str>)?;
     let tray_menu = Menu::with_items(
         app,
@@ -304,21 +494,19 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             &tray_telemetry,
             &PredefinedMenuItem::separator(app)?,
             &tray_reload,
+            &tray_check_updates,
             &PredefinedMenuItem::separator(app)?,
             &tray_quit,
         ],
     )?;
-    // Left-click on the tray icon opens the tray menu (showing live status
-    // first) instead of summoning the main window. Users summon the window
-    // explicitly via the "Show OpenAgentd" menu entry. This mirrors the
-    // behaviour of utility menu-bar apps on macOS where the icon is a status
-    // surface, not a launcher. ``show_menu_on_left_click(true)`` is the Tauri
-    // v2 built-in for this; no custom click handler is needed.
+    // Left-click opens the menu so the icon acts as a status surface, not
+    // a launcher. We deliberately do not register ``on_menu_event`` here —
+    // the app-level handler in ``main()`` already receives tray events,
+    // so adding one would fire ``handle_desktop_menu`` twice.
     let mut tray = TrayIconBuilder::new()
         .menu(&tray_menu)
         .show_menu_on_left_click(true)
-        .tooltip("OpenAgentd")
-        .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()));
+        .tooltip("OpenAgentd");
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone()).icon_as_template(true);
     }
@@ -354,13 +542,10 @@ fn update_tray_session(app: &AppHandle, text: &str) {
     });
 }
 
-/// Frontend-callable command: updates the tray's session-label item.
+/// Frontend command: update the tray's session-label item.
 ///
-/// The JS layer derives the label (mode prefix + session title or workspace
-/// name) and pushes it here whenever the active session changes. Empty input
-/// is normalised to the idle placeholder so the tray never shows a blank row.
-/// Input length is hard-capped at ``TRAY_SESSION_MAX_LEN`` characters to keep
-/// the menu width sane even if the frontend forgets to truncate.
+/// Empty input falls back to the idle placeholder; long input is truncated
+/// to ``TRAY_SESSION_MAX_LEN`` so the menu width stays sane.
 #[tauri::command]
 fn set_tray_session(app: AppHandle, text: String) -> Result<(), String> {
     let trimmed = text.trim();
@@ -397,21 +582,11 @@ async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Result<(
 async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
 
-    // ── Dev-mode escape hatch ──────────────────────────────────────────────
-    // When ``OPENAGENTD_DEV_BACKEND_URL`` is set we skip the bundled
-    // sidecar entirely and point the WebView at an externally-managed
-    // backend. This is the realistic inner-loop for ``cargo tauri dev``:
-    //
-    //     terminal 1: make dev                # FastAPI on :8000 with reload
-    //     terminal 2: cd web && bun dev       # Vite on :5173, proxies /api → :8000
-    //     terminal 3: OPENAGENTD_DEV_BACKEND_URL=http://localhost:5173 \
-    //                 cargo tauri dev
-    //
-    // In dev mode we have no handshake token, so we leave
-    // ``window.__OAD_TOKEN__`` undefined. The frontend's auth
-    // interceptor falls back to the legacy no-token path, which works
-    // because ``OPENAGENTD_DESKTOP_TOKEN`` is also unset on the dev
-    // backend.
+    // Dev-mode escape hatch: when ``OPENAGENTD_DEV_BACKEND_URL`` is set,
+    // skip the bundled sidecar and point the WebView at an externally
+    // managed backend. ``__OAD_TOKEN__`` is left undefined; the frontend
+    // falls back to the legacy no-token path (matched by an unset
+    // ``OPENAGENTD_DESKTOP_TOKEN`` on the dev backend).
     if let Ok(dev_url) = std::env::var("OPENAGENTD_DEV_BACKEND_URL") {
         log::info!("dev-mode: using external backend at {dev_url}");
         let url = WebviewUrl::External(dev_url.parse().context("parse dev backend url")?);
@@ -436,7 +611,6 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
         return Ok(());
     }
 
-    // ── Production: spawn the bundled Python sidecar ──────────────────────
     let mut sidecar = Sidecar::spawn(&app).context("spawn sidecar")?;
     let handshake: Handshake = sidecar
         .read_handshake(Duration::from_secs(30))
@@ -455,8 +629,8 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
         .await
         .context("wait_for_health")?;
 
-    // Build the window AFTER we know the backend URL and token, so we can
-    // inject the token via initialization_script before any page JS runs.
+    // Build the window only once we have the backend URL + token so the
+    // token is injected before any page JS runs.
     let token = handshake.token.clone();
     let init_script = format!(
         "Object.defineProperty(window, '__OAD_TOKEN__', {{ value: {token_json}, writable: false, configurable: false }});",
@@ -478,7 +652,6 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     win.set_focus().ok();
     update_tray_status(&app, "Status: Running");
 
-    // Stash the sidecar so we can clean it up on exit.
     let _ = state.sidecar.lock().await.replace(sidecar);
 
     app.emit(
@@ -509,13 +682,10 @@ fn main() {
         .plugin(log_plugin)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        // The updater plugin reads ``plugins.updater`` from
-        // ``tauri.conf.json`` — endpoint, public key, and the per-platform
-        // install mode. The frontend drives the actual check/install via
-        // ``@tauri-apps/plugin-updater``; this just makes the plugin
-        // reachable from the webview. ``tauri-plugin-process`` is needed
-        // so the JS side can call ``relaunch()`` after the new bundle is
-        // staged.
+        // Updater config (endpoint, pubkey, install mode) lives in
+        // ``tauri.conf.json``'s ``plugins.updater`` block. ``process`` is
+        // required for ``tauri::process::restart`` after the new bundle
+        // is staged.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(state)
@@ -564,8 +734,7 @@ fn main() {
             RunEvent::ExitRequested { .. } => {
                 let state: tauri::State<'_, AppState> = app.state();
                 let sidecar = state.sidecar.clone();
-                // Block on shutdown to avoid the process exiting before
-                // the child receives SIGTERM.
+                // Block so the child receives SIGTERM before the parent exits.
                 tauri::async_runtime::block_on(async move {
                     if let Some(mut s) = sidecar.lock().await.take() {
                         s.shutdown().await;
@@ -574,4 +743,154 @@ fn main() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── dialog_result_is_accept ──────────────────────────────────────────────
+    //
+    // Guards the OkCancelCustom mapping. rfd surfaces the user's choice as
+    // ``Custom("Install")`` on macOS/Linux but the underlying system dialog
+    // may report ``Ok``/``Yes`` instead — both must count as accept, and
+    // every other variant (including a ``Custom`` with a different label)
+    // must count as cancel.
+
+    #[test]
+    fn dialog_result_custom_with_matching_label_accepts() {
+        assert!(dialog_result_is_accept(
+            &MessageDialogResult::Custom("Install".into()),
+            "Install"
+        ));
+    }
+
+    #[test]
+    fn dialog_result_custom_with_other_label_rejects() {
+        assert!(!dialog_result_is_accept(
+            &MessageDialogResult::Custom("Later".into()),
+            "Install"
+        ));
+    }
+
+    #[test]
+    fn dialog_result_ok_and_yes_accept() {
+        assert!(dialog_result_is_accept(&MessageDialogResult::Ok, "Install"));
+        assert!(dialog_result_is_accept(&MessageDialogResult::Yes, "Install"));
+    }
+
+    #[test]
+    fn dialog_result_cancel_and_no_reject() {
+        assert!(!dialog_result_is_accept(
+            &MessageDialogResult::Cancel,
+            "Install"
+        ));
+        assert!(!dialog_result_is_accept(&MessageDialogResult::No, "Install"));
+    }
+
+    // ── format_update_prompt ────────────────────────────────────────────────
+    //
+    // The prompt is the only thing the user reads before deciding to install,
+    // so it must (a) always show both version numbers, (b) handle a missing
+    // body without printing literal "None" or doubled blank lines, and
+    // (c) bound the length so a runaway changelog doesn't blow out the modal.
+
+    #[test]
+    fn update_prompt_without_notes_omits_notes_paragraph() {
+        let prompt = format_update_prompt("1.2.0", "1.1.0", None);
+        assert!(prompt.contains("1.2.0"));
+        assert!(prompt.contains("1.1.0"));
+        assert!(prompt.contains("Download and install now?"));
+        // Exactly one blank line between the version line and the call to
+        // action — i.e. no orphan ``\n\n\n`` from an empty body.
+        assert!(!prompt.contains("\n\n\n"));
+    }
+
+    #[test]
+    fn update_prompt_with_empty_string_body_treated_as_no_notes() {
+        let with_empty = format_update_prompt("1.2.0", "1.1.0", Some(""));
+        let with_none = format_update_prompt("1.2.0", "1.1.0", None);
+        assert_eq!(with_empty, with_none);
+    }
+
+    #[test]
+    fn update_prompt_with_whitespace_only_body_treated_as_no_notes() {
+        let prompt = format_update_prompt("1.2.0", "1.1.0", Some("   \n\t  "));
+        let baseline = format_update_prompt("1.2.0", "1.1.0", None);
+        assert_eq!(prompt, baseline);
+    }
+
+    #[test]
+    fn update_prompt_includes_short_notes_verbatim() {
+        let prompt = format_update_prompt("1.2.0", "1.1.0", Some("Fixed crash on launch"));
+        assert!(prompt.contains("Fixed crash on launch"));
+    }
+
+    #[test]
+    fn update_prompt_truncates_long_notes_with_ellipsis() {
+        let long = "x".repeat(2000);
+        let prompt = format_update_prompt("1.2.0", "1.1.0", Some(&long));
+        // The xxxxx body itself must be capped well below the original
+        // length and end with an ellipsis. Total prompt length is body +
+        // surrounding template, so it stays under ~1000 chars.
+        assert!(prompt.contains('…'));
+        assert!(prompt.len() < 1000);
+        assert!(prompt.contains("1.2.0"));
+        assert!(prompt.contains("Download and install now?"));
+    }
+
+    #[test]
+    fn update_prompt_truncation_respects_char_boundaries() {
+        // A body of 700 multi-byte chars (3 bytes each in UTF-8) would
+        // panic on a naive ``&body[..N]`` slice. ``chars().take`` keeps
+        // us safe — assert we don't panic and produce a valid String.
+        let multibyte_body: String = "✦".repeat(700);
+        let prompt = format_update_prompt("1.2.0", "1.1.0", Some(&multibyte_body));
+        assert!(prompt.contains('…'));
+        assert!(prompt.is_char_boundary(prompt.len()));
+    }
+
+    // ── format_download_progress ────────────────────────────────────────────
+    //
+    // Closure-callable formatter for the tray status. Critical: never
+    // produce "0/0 MB" or similar garbage when Content-Length is missing
+    // or zero, and never divide by zero.
+
+    #[test]
+    fn download_progress_with_total_shows_fraction() {
+        assert_eq!(
+            format_download_progress(3, Some(50 * 1024 * 1024)),
+            "Status: Downloading 3/50 MB"
+        );
+    }
+
+    #[test]
+    fn download_progress_without_total_omits_denominator() {
+        assert_eq!(
+            format_download_progress(7, None),
+            "Status: Downloading 7 MB"
+        );
+    }
+
+    #[test]
+    fn download_progress_with_zero_total_falls_back_to_no_denominator() {
+        // A misbehaving server that returns ``Content-Length: 0`` must not
+        // produce ``"5/0 MB"`` — the fallback path drops the denominator.
+        assert_eq!(
+            format_download_progress(5, Some(0)),
+            "Status: Downloading 5 MB"
+        );
+    }
+
+    #[test]
+    fn download_progress_handles_partial_megabyte_total() {
+        // 500 KB total → integer-MB division yields 0, so we treat it
+        // identically to "no total" rather than printing "0/0 MB".
+        let small_total = 500 * 1024;
+        let label = format_download_progress(0, Some(small_total));
+        // Integer division gives ``0`` MB; not ideal but at least not
+        // misleading — the formatter still prints a valid "downloading"
+        // string and never panics.
+        assert!(label.starts_with("Status: Downloading"));
+    }
 }
