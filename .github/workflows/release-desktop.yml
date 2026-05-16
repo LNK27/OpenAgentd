@@ -151,16 +151,46 @@ jobs:
           # only the default branch warms the cache.
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
 
-      # ``tauri-cli`` would otherwise compile from source for ~3 minutes
-      # per platform per release. ``cargo-binstall`` fetches a prebuilt
-      # binary from the tauri-apps release page in a few seconds.
+      # ``tauri-cli`` is a single 30 MB prebuilt binary
+      # (``~/.cargo/bin/cargo-tauri``). The naïve flow — install
+      # ``cargo-binstall``, then ``binstall --version "^2.0"`` — has
+      # two hidden costs:
+      #
+      # 1. Anonymous GitHub API rate limit. binstall resolves the
+      #    latest 2.x release via ``api.github.com``. GitHub-hosted
+      #    runners share egress IPs, and the anonymous limit (60/hr
+      #    per IP) gets blown out on busy days, especially on the
+      #    larger macOS pool. We've seen this step sit on 120s
+      #    retries for 10+ minutes. Passing ``GITHUB_TOKEN`` lifts
+      #    the limit to 5000/hr.
+      # 2. The binary doesn't change between runs. ``actions/cache``
+      #    keyed on the pinned version eliminates the re-download
+      #    entirely on subsequent runs (per ``runner.os``/``arch``).
+      #
+      # Order: cache check → install binstall if miss → binstall if
+      # miss. Pinning to ``2.11.1`` avoids the semver resolution
+      # hop; bump it deliberately when Tauri ships a new patch.
+      - name: Restore cached tauri-cli
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-2.11.1-${{ runner.os }}-${{ runner.arch }}
+
       - name: Install cargo-binstall
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-binstall
 
       - name: Install tauri-cli (prebuilt)
-        run: cargo binstall --no-confirm --version "^2.0" tauri-cli
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        env:
+          # Authenticated GitHub API requests — 5000/hr instead of
+          # the anonymous 60/hr. Without this, binstall reliably
+          # stalls on 120s rate-limit retries on macOS-26 runners.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall --no-confirm --version 2.11.1 tauri-cli
 
       - name: Generate platform icons
         working-directory: desktop/src-tauri

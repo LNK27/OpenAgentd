@@ -65,7 +65,7 @@ Full breakdown: [`documents/docs/comparison.md`](https://github.com/lthoangg/ope
 
 ## Quick start
 
-**Desktop app** (double-click install, no terminal) — download from the [latest desktop release](https://github.com/lthoangg/openagentd/releases?q=desktop):
+**Desktop app** (double-click install, no terminal) — download from the [latest release](https://github.com/lthoangg/openagentd/releases/latest):
 
 | Platform | Artefact | First-launch note |
 |---|---|---|

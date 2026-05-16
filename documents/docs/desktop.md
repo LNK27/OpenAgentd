@@ -214,26 +214,43 @@ Output artefacts land in
 
 ## Release
 
-Triggered via the **Release Desktop** workflow in GitHub Actions.
-See `.github/workflows/release-desktop.yml`.
+A full release is **two workflows publishing into one GitHub tag** (`v<X.Y.Z>`):
 
-The workflow:
+| Workflow | Trigger | Cadence | Artefacts |
+|---|---|---|---|
+| `.github/workflows/release.yml` | `workflow_dispatch confirm=release` | ~90 s | `openagentd-<ver>-py3-none-any.whl`, `openagentd-<ver>.tar.gz`; publishes to PyPI. |
+| `.github/workflows/release-desktop.yml` | `workflow_dispatch confirm=release-desktop` | ~20–25 min | `OpenAgentd_<ver>_aarch64.dmg`, `OpenAgentd_<ver>_x64_en-US.msi`, `OpenAgentd_<ver>_amd64.deb`, `latest.json`. |
 
-1. Matrix-builds on `macos-14` (arm64), `windows-latest` (x64), `ubuntu-22.04` (x64).
-2. On each runner, runs `scripts/build_sidecar.py` → `cargo tauri build`.
-3. Signs (when secrets are configured):
-   - **macOS**: `APPLE_SIGNING_IDENTITY` + `APPLE_ID` + `APPLE_PASSWORD` + `APPLE_TEAM_ID` → notarized + stapled.
-   - **Windows**: `WINDOWS_CERTIFICATE` (when an Authenticode certificate is available) → signed installer.
-   - **Updater**: `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` → `.sig` files alongside artefacts.
-4. Uploads to a GitHub release.
-5. Runs `scripts/make_updater_manifest.py` to produce `latest.json` for
-   the Tauri auto-updater endpoint.
+Both workflows use a **create-or-upload** publish step (`gh release view "$TAG"` → `upload --clobber` if present, else `create`), so order doesn't matter for correctness. The runbook orders them PyPI-first so the canonical auto-generated release notes come from `release.yml`; the desktop matrix then appends its installers ~20 min later. See [`.opencode/commands/release.md`](../../.opencode/commands/release.md) for the operator runbook.
+
+History — pre-1.0.9 releases used a split-tag scheme (`v<X.Y.Z>` for PyPI, `v<X.Y.Z>-desktop` for installers). That produced fragmented compare-links, duplicate release notes, and a confusing release listing. 1.0.9 consolidated everything under one tag; older `v*-desktop` tags remain on GitHub for archival but aren't created by the workflows anymore.
+
+`release-desktop.yml` matrix:
+
+1. macOS arm64 on `macos-26` (Tahoe — the host SDK matters for the title-bar geometry; see "Window chrome" above).
+2. Windows x64 on `windows-latest`.
+3. Linux x64 on `ubuntu-22.04`.
+
+Each runner: `scripts/build_sidecar.py` → `cargo tauri build` → `gh release upload`. The `latest.json` updater manifest is produced after all three matrix legs succeed and uploaded to a rolling `latest-desktop` release that mirrors only the manifest (artefact URLs *inside* `latest.json` still point at the immutable `v<X.Y.Z>` release).
+
+Signing happens when secrets are present:
+
+- **macOS**: `APPLE_SIGNING_IDENTITY` + `APPLE_ID` + `APPLE_PASSWORD` + `APPLE_TEAM_ID` → notarized + stapled.
+- **Windows**: `WINDOWS_CERTIFICATE` (when an Authenticode certificate is available) → signed installer.
+- **Updater**: `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` → `.sig` files alongside artefacts.
+
+When secrets are absent (today's default), the workflow conditionally **unsets** the Tauri signing env vars so `cargo tauri build` falls back to ad-hoc signing (`signingIdentity: "-"` in `tauri.conf.json`).
 
 Tauri updater endpoint (in `tauri.conf.json`):
 
 ```
-https://github.com/lthoangg/openagentd/releases/latest/download/latest.json
+https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json
 ```
+
+Companion publishers (run automatically off `workflow_run`):
+
+- `.github/workflows/publish-homebrew.yml` — updates `lthoangg/homebrew-tap` `Formula/openagentd.rb` from the PyPI sdist after `release.yml` succeeds.
+- `.github/workflows/publish-homebrew-cask.yml` — updates `lthoangg/homebrew-tap` `Casks/openagentd.rb` from the `.dmg` after `release-desktop.yml` succeeds. The resolver waits for a release with an `aarch64.dmg` asset attached, so the formula update and cask update don't race even though they're both triggered off the unified tag.
 
 ## Installation (unsigned builds)
 

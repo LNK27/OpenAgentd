@@ -130,7 +130,7 @@ Sections:
   **Expanded block** (when the release introduces/changes desktop, Homebrew cask, Docker, or install-script surfaces) — drop the channels that aren't relevant, keep the labelling consistent:
 
   ````
-  **Desktop app** — download from the [desktop releases](https://github.com/lthoangg/openagentd/releases?q=desktop) page:
+  **Desktop app** — download from this release (CLI + desktop ship under one tag since 1.0.9):
 
   - macOS Apple Silicon → `brew install --cask lthoangg/tap/openagentd` (recommended — ad-hoc signs automatically), or `OpenAgentd_*_aarch64.dmg` (run bundled `install.sh`, right-click → Open the first time).
   - Windows → `OpenAgentd_*_x64-setup.exe` (More info → Run anyway at SmartScreen).
