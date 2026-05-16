@@ -12,13 +12,48 @@
  * These tests focus on UI behavior and form interactions.
  */
 
-import { describe, it, expect } from 'bun:test'
+import { afterEach, beforeEach, describe, it, expect, mock } from 'bun:test'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { SchedulerPanel } from '@/components/SchedulerPanel'
 import '@testing-library/jest-dom'
+
+// The panel's task-list query fires ``fetch('/api/scheduler/tasks')`` as
+// soon as it mounts. Without a stub, happy-dom forwards that to Node's
+// real ``fetch``, which attempts an actual socket connection against
+// ``http://localhost:5173`` — there is no listener in tests, so the
+// promise hangs until the OS-level connect timeout (>1 s) and the
+// default ``waitFor`` window expires before the query settles. Stubbing
+// ``fetch`` here makes failure (or success) deterministic and instant
+// so the UI fallback-state assertions stop racing the network.
+let originalFetch: typeof fetch | undefined
+
+beforeEach(() => {
+  originalFetch = globalThis.fetch
+  // Default stub: scheduler tasks endpoint resolves to empty array so
+  // the panel reaches the "No scheduled tasks yet" terminal state
+  // quickly. Individual tests override this with ``mock(...)`` when they
+  // need a different shape (e.g. the error-path test below).
+  globalThis.fetch = mock(async (...args: unknown[]) => {
+    const input = args[0] as RequestInfo | URL
+    const url = typeof input === 'string' ? input : input.toString()
+    if (url.includes('/api/scheduler/tasks')) {
+      return new Response(JSON.stringify({ tasks: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    return new Response('{}', { status: 200 })
+  }) as unknown as typeof fetch
+})
+
+afterEach(() => {
+  if (originalFetch) {
+    globalThis.fetch = originalFetch
+  }
+})
 
 // ── Wrapper ──────────────────────────────────────────────────────────────────
 
@@ -47,15 +82,41 @@ describe('SchedulerPanel — Edit Task Form', () => {
     expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
   })
 
-  it('shows error or empty state message when tasks fail to load', async () => {
+  it('renders the error fallback when the tasks query rejects', async () => {
+    // Override the default empty-list stub with a 500 so the query
+    // settles into ``isError === true`` and the panel shows its error
+    // branch (AlertCircle + 'Failed to load tasks').
+    globalThis.fetch = mock(async (...args: unknown[]) => {
+      const input = args[0] as RequestInfo | URL
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/api/scheduler/tasks')) {
+        return new Response('{"detail":"boom"}', {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+
     renderSchedulerPanel()
 
-    // Wait for either error or empty state message
     await waitFor(() => {
-      const errorMsg = screen.queryByText(/Failed to load tasks/i)
-      const emptyMsg = screen.queryByText(/No scheduled tasks yet/i)
-      expect(errorMsg || emptyMsg).toBeInTheDocument()
+      expect(screen.getByText(/Failed to load tasks/i)).toBeInTheDocument()
     })
+    // The empty-state copy must NOT also be rendered — error and empty
+    // are mutually exclusive branches in the component.
+    expect(screen.queryByText(/No scheduled tasks yet/i)).toBeNull()
+  })
+
+  it('renders the empty-state message when the tasks query resolves to no tasks', async () => {
+    // beforeEach already stubs fetch to return ``{ tasks: [] }`` for
+    // this endpoint; no extra setup needed.
+    renderSchedulerPanel()
+
+    await waitFor(() => {
+      expect(screen.getByText(/No scheduled tasks yet/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/Failed to load tasks/i)).toBeNull()
   })
 
   it('has a create task button in the header', async () => {
