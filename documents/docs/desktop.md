@@ -85,12 +85,14 @@ The shell installs both native app menus and a system tray menu in `desktop/src-
 
 | Surface | Actions |
 |---------|---------|
-| App menu / menu bar | **OpenAgentd**: About OpenAgentd, Show OpenAgentd, Settings, Telemetry, Quit OpenAgentd. **File**: Chat, Coding, Quit. **Edit**: Undo, Redo, Cut, Copy, Paste, Select All. **View**: Settings, Telemetry. **Window**: Minimize, Hide to Tray. |
-| System tray | Status, Session, Show OpenAgentd, Chat, Coding, Settings, Telemetry, Quit OpenAgentd. |
+| App menu / menu bar | **OpenAgentd**: About OpenAgentd, Show OpenAgentd, Settings, Telemetry, Quit OpenAgentd. **File**: Chat, Coding, Quit. **Edit**: Undo, Redo, Cut, Copy, Paste, Select All. **View**: Reload (`⌘/Ctrl+R`), Force Reload (`⌘/Ctrl+Shift+R`), Settings, Telemetry. **Window**: Minimize, Hide to Tray. |
+| System tray | Status, Session, Show OpenAgentd, Chat, Coding, Settings, Telemetry, Reload Window, Quit OpenAgentd. |
 
 The **Edit** submenu is required on macOS for native `⌘A` / `⌘C` / `⌘V` / `⌘X` / `⌘Z` to reach the webview's input fields — without it those shortcuts have no handler at the application level and the corresponding actions silently no-op inside the textarea. `Undo`/`Redo` are macOS-only and not registered on Windows/Linux; the other edit items work on all platforms.
 
 The **About OpenAgentd** item opens the native About panel populated with the app icon, name, version (from `Cargo.toml` / `tauri.conf.json`), copyright, and a link to the project repository.
+
+The **View → Reload** action (`⌘/Ctrl+R`) calls `window.location.reload()` on the main webview, respecting the HTTP cache. **Force Reload** (`⌘/Ctrl+Shift+R`) appends a cache-busting `__oad_reload` query param via `window.location.replace(...)` so the WebView refetches assets that may have been cached. The same action is mirrored on the tray as **Reload Window** for cases where the main window is hidden or wedged. Reload always brings the window to front before refreshing so the user sees the result.
 
 Clicking the tray icon opens the tray menu (showing live status first) rather than summoning the main window. The window is summoned explicitly via the "Show OpenAgentd" entry. This matches macOS menu-bar app conventions where the icon is a status surface rather than a launcher.
 

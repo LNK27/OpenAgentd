@@ -32,6 +32,8 @@ const MENU_SETTINGS: &str = "settings";
 const MENU_TELEMETRY: &str = "telemetry";
 const MENU_STATUS: &str = "status";
 const MENU_SESSION: &str = "session";
+const MENU_RELOAD: &str = "reload";
+const MENU_FORCE_RELOAD: &str = "force_reload";
 const MENU_QUIT: &str = "quit";
 
 /// Label shown in the tray when no chat/coding session is active.
@@ -138,6 +140,30 @@ fn quit_app(app: &AppHandle) {
     app.exit(0);
 }
 
+/// Reload the main webview.
+///
+/// ``force`` triggers a cache-busting reload (equivalent to Shift+Reload in a
+/// browser). The standard reload uses ``window.location.reload()`` which
+/// respects the HTTP cache; force reload appends a unique query param to bust
+/// any stale assets that the WebView may have cached. Useful when the user
+/// has just edited an agent config or the backend has been restarted.
+fn reload_main_window(app: &AppHandle, force: bool) {
+    show_main_window(app);
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        if force {
+            // Append a cache-busting query param to the current URL so the
+            // WebView fetches fresh assets instead of replaying the cache.
+            let _ = window.eval(
+                "(() => { const u = new URL(window.location.href); \
+                 u.searchParams.set('__oad_reload', Date.now().toString()); \
+                 window.location.replace(u.toString()); })();",
+            );
+        } else {
+            let _ = window.eval("window.location.reload();");
+        }
+    }
+}
+
 fn handle_desktop_menu(app: &AppHandle, id: &str) {
     match id {
         MENU_SHOW => show_main_window(app),
@@ -145,6 +171,8 @@ fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_CODING => navigate_main_window(app, "/coding"),
         MENU_SETTINGS => navigate_main_window(app, "/settings"),
         MENU_TELEMETRY => navigate_main_window(app, "/telemetry"),
+        MENU_RELOAD => reload_main_window(app, false),
+        MENU_FORCE_RELOAD => reload_main_window(app, true),
         MENU_QUIT => quit_app(app),
         _ => {}
     }
@@ -183,6 +211,19 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let file_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, Some("CmdOrCtrl+Q"))?;
     let view_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
     let view_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
+    // ``Reload`` re-fetches the page from the network (respecting the HTTP
+    // cache); ``Force Reload`` busts the cache via a query-param trick. Both
+    // bindings mirror the standard browser shortcuts and are useful after the
+    // user updates agent configs, restarts the backend, or hits a wedged
+    // frontend state.
+    let view_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload", true, Some("CmdOrCtrl+R"))?;
+    let view_force_reload = MenuItem::with_id(
+        app,
+        MENU_FORCE_RELOAD,
+        "Force Reload",
+        true,
+        Some("CmdOrCtrl+Shift+R"),
+    )?;
 
     // Edit submenu — required on macOS for native ⌘A/⌘C/⌘V/⌘X/⌘Z to reach the
     // webview's input fields. Without this submenu the webview never receives
@@ -222,6 +263,9 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&edit_select_all)
         .build()?;
     let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&view_reload)
+        .item(&view_force_reload)
+        .separator()
         .item(&view_settings)
         .item(&view_telemetry)
         .build()?;
@@ -245,6 +289,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let tray_coding = MenuItem::with_id(app, MENU_CODING, "Coding", true, None::<&str>)?;
     let tray_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
     let tray_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
+    let tray_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload Window", true, None::<&str>)?;
     let tray_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, None::<&str>)?;
     let tray_menu = Menu::with_items(
         app,
@@ -257,6 +302,8 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             &tray_coding,
             &tray_settings,
             &tray_telemetry,
+            &PredefinedMenuItem::separator(app)?,
+            &tray_reload,
             &PredefinedMenuItem::separator(app)?,
             &tray_quit,
         ],
