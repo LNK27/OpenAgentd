@@ -23,7 +23,7 @@ openagentd stop                          # stop background processes
 openagentd status                        # check if running
 openagentd logs                          # tail the server log (alias: openagentd logs -n 100)
 openagentd doctor                        # check system health
-openagentd update                        # update to the latest version (or Settings → Updates in installed app)
+openagentd update                        # update to the latest version (desktop app: OpenAgentd → Check for Updates…)
 openagentd --version                     # print version
 
 openagentd auth copilot                  # GitHub Copilot OAuth (browser PKCE)

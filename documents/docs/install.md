@@ -123,9 +123,9 @@ The `.deb` package works on Debian/Ubuntu derivatives: `sudo dpkg -i OpenAgentd_
 
 ### Auto-updates
 
-Open **Settings → Application update → Check for updates** to check the rolling [`latest-desktop/latest.json`](https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json) manifest. When a new version is offered, the **Install** button downloads, verifies the minisign signature, stages the new bundle, and restarts the app. An invalid signature aborts the install with a toast — no silent overwrites.
+Pick **OpenAgentd → Check for Updates…** from the menu bar (or the system-tray icon's menu) to check the rolling [`latest-desktop/latest.json`](https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json) manifest. When a new version is offered, accepting the **Install** prompt downloads the new bundle, verifies its minisign signature, shuts down the Python sidecar, and restarts the app on the upgraded version. An invalid signature aborts the install with a native error dialog — no silent overwrites.
 
-The same Settings card hosts the legacy PyPI-based update path when OpenAgentd is running as a CLI server outside the desktop bundle; the UI picks the right path automatically based on `window.__TAURI_INTERNALS__`.
+Running OpenAgentd as a CLI server (outside the desktop bundle) instead? Use `openagentd update` from the same terminal that launched the process.
 
 ## Docker
 
