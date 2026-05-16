@@ -44,9 +44,9 @@ async def test_no_wiki_dir_returns_message(tmp_path: Path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_no_topics_returns_message(_wiki_dir: Path):
-    """Empty topics dir should return a descriptive message."""
+    """Empty knowledge dirs should return a descriptive message."""
     result = await _wiki_search(query="jwt auth", top_k=5)
-    assert result == "No topic files in wiki yet."
+    assert result == "No knowledge pages in wiki yet."
 
 
 # ── Matching topic ────────────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ async def test_no_match_returns_no_results_message(_wiki_dir: Path):
         "---\ndescription: Deployment pipeline for staging and prod\ntags: [deploy, ci]\nupdated: 2026-04-17\n---\n\nDeploy content.\n",
     )
     result = await _wiki_search(query="xyzzy quux frobnicate", top_k=5)
-    assert "No wiki topics matched" in result
+    assert "No wiki pages matched" in result
 
 
 # ── top_k limit ───────────────────────────────────────────────────────────────

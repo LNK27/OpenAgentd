@@ -1,6 +1,8 @@
-"""wiki_search tool — search wiki topics.
+"""wiki_search tool — search across all knowledge pages.
 
-Supports keyword search with BM25 scoring.
+Supports keyword search with BM25 scoring over the four knowledge dirs
+(``topics/``, ``entities/``, ``sources/``, ``comparisons/``).  ``notes/``
+is excluded — notes are raw input, not curated knowledge.
 """
 
 from __future__ import annotations
@@ -23,16 +25,20 @@ async def _wiki_search(
         Field(description='Search methods. Only "text" keyword search is available.'),
     ] = ["text"],
     top_k: Annotated[
-        int, Field(description="Maximum number of topics to return (default 5).")
+        int,
+        Field(description="Maximum number of pages to return (default 5)."),
     ] = 5,
 ) -> str:
-    """Search wiki topics by keyword or meaning.
+    """Search wiki knowledge pages by keyword or meaning.
 
-    Use this to find relevant knowledge before starting a task,
-    or when you need to look up something specific.
-    Returns matching topic files with their content.
+    Searches across topics, entities, sources, and comparisons — the full
+    knowledge graph the dream agent maintains.  Use this to find relevant
+    knowledge before starting a task, or to look up a specific concept,
+    person, tool, or comparison.
+
+    Returns matching pages with their content (truncated at 4096 bytes
+    per page).
     """
-    # text / BM25 search
     root = wiki_root()
     if not root.exists():
         return "No wiki directory found."
@@ -40,16 +46,24 @@ async def _wiki_search(
     try:
         tree = list_tree()
     except Exception as exc:
-        return f"Failed to list wiki topics: {exc}"
+        return f"Failed to list wiki pages: {exc}"
 
-    if not tree.topics:
-        return "No topic files in wiki yet."
+    # Concatenate all knowledge dirs.  ``_score_topics`` is name-agnostic —
+    # it scores any WikiFileInfo by description + tags + path.
+    candidates = (
+        list(tree.topics)
+        + list(tree.entities)
+        + list(tree.sources)
+        + list(tree.comparisons)
+    )
+    if not candidates:
+        return "No knowledge pages in wiki yet."
 
-    scored = _score_topics(query, tree.topics)
+    scored = _score_topics(query, candidates)
     matches = [(info, score) for info, score in scored if score > 0.0][:top_k]
 
     if not matches:
-        return f"No wiki topics matched '{query}'."
+        return f"No wiki pages matched '{query}'."
 
     parts = [f"Wiki search results for: '{query}'\n"]
     for info, score in matches:
@@ -70,8 +84,9 @@ wiki_search = Tool(
     _wiki_search,
     name="wiki_search",
     description=(
-        "Search the wiki by keyword — a knowledge base of topics distilled from past conversations. "
-        "Use this to recall what was previously discussed or decided on any subject. "
-        "Returns full content of matching topic files."
+        "Search the wiki — knowledge pages distilled from past conversations. "
+        "Searches topics (concepts), entities (people/tools/orgs), sources, "
+        "and comparisons.  Use this to recall what was previously discussed "
+        "or decided on any subject.  Returns full content of matching pages."
     ),
 )

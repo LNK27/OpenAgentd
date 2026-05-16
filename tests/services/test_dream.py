@@ -554,7 +554,7 @@ async def test_run_dream_topics_written_recorded(setup_db, _wiki_dir: Path):
     topics_dir = _wiki_dir / "topics"
     topics_dir.mkdir(exist_ok=True)
 
-    async def _fake_synthesise(agent, db, sess, *, timeout_seconds):
+    async def _fake_synthesise(agent, db, sess, *, timeout_seconds, wiki_context=""):
         (topics_dir / "python.md").write_text(
             "---\ndescription: Python programming.\ntags: [python]\n---\n",
             encoding="utf-8",
@@ -849,7 +849,7 @@ async def test_run_dream_failed_synthesis_not_marked_processed(
         )
         await db.commit()
 
-    async def _always_fail(agent, db, sess, *, timeout_seconds):
+    async def _always_fail(agent, db, sess, *, timeout_seconds, wiki_context=""):
         raise _SynthesisFailed("boom")
 
     with patch(
@@ -923,6 +923,103 @@ async def test_transcript_header_omits_session_id(setup_db, _wiki_dir: Path):
     assert str(session.id) not in transcript
     assert "Agent: test-agent" in transcript
     assert "Date:" in transcript
+
+
+# ── Karpathy: stable Source-Slug for per-source pages ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_transcript_header_includes_source_slug(setup_db, _wiki_dir: Path):
+    """The transcript header must include a stable ``Source-Slug:`` line so
+    the dream LLM can name the per-source page deterministically and cite
+    the source in frontmatter.  Uses the last 8 hex chars of the UUID — the
+    random tail of UUIDv7, avoiding timestamp-prefix collisions.
+    """
+    from app.core.db import async_session_factory
+    from app.services.dream import _fetch_session_transcript
+
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(SessionMessage(session_id=session.id, role="user", content="Hello!"))
+        await db.commit()
+
+    async with async_session_factory() as db:
+        transcript = await _fetch_session_transcript(db, session)
+
+    expected_slug = f"session-{session.id.hex[-8:]}"
+    assert f"Source-Slug: {expected_slug}" in transcript
+    # Slug must precede the Agent line so the LLM reads identity first.
+    assert transcript.index("Source-Slug:") < transcript.index("Agent:")
+    # Raw UUID (with dashes) must NOT appear — slug uses hex-only form.
+    assert str(session.id) not in transcript
+
+
+@pytest.mark.asyncio
+async def test_synthesise_note_prompt_includes_source_slug(
+    setup_db, _wiki_dir: Path, monkeypatch
+):
+    """Notes get a deterministic ``Source-Slug: note-<stem>`` so the dream
+    agent can name ``sources/note-<stem>.md`` consistently across runs.
+    """
+    from app.services.dream import _synthesise_note
+
+    notes_dir = _wiki_dir / "notes"
+    notes_dir.mkdir(parents=True, exist_ok=True)
+    (notes_dir / "2026-05-17.md").write_text("hello world\n", encoding="utf-8")
+
+    captured: dict[str, str] = {}
+
+    class _StubAgent:
+        async def run(self, msgs, *, config):
+            captured["prompt"] = msgs[0].content
+            return None
+
+    await _synthesise_note(
+        _StubAgent(), "2026-05-17.md", timeout_seconds=10, wiki_context=""
+    )
+
+    assert "Source-Slug: note-2026-05-17" in captured["prompt"]
+
+
+# ── Karpathy: today block prevents LLM from hallucinating dates ──────────────
+
+
+def test_build_wiki_context_starts_with_today_block(_wiki_dir: Path):
+    """``_build_wiki_context`` must always start with a ``Today: ...`` line
+    so the LLM uses today's actual date in ``updated:`` frontmatter rather
+    than hallucinating it (the model has no internal clock).
+    """
+    from app.services.dream import _build_wiki_context
+
+    # First-ever run: nothing in wiki → still returns today block.
+    ctx = _build_wiki_context()
+    assert ctx.startswith("Today: ")
+    # Format is YYYY-MM-DD UTC.
+    import re as _re
+
+    assert _re.match(r"^Today: \d{4}-\d{2}-\d{2} UTC\n", ctx)
+
+
+def test_build_wiki_context_today_block_present_with_existing_pages(_wiki_dir: Path):
+    """When the wiki already has content, the today block still appears
+    first — before the existing-state listing.
+    """
+    from app.services.dream import _build_wiki_context
+
+    (_wiki_dir / "INDEX.md").write_text("- topic: x\n", encoding="utf-8")
+    (_wiki_dir / "topics").mkdir(exist_ok=True)
+    (_wiki_dir / "topics" / "python.md").write_text(
+        "---\ndescription: x\n---\n", encoding="utf-8"
+    )
+    ctx = _build_wiki_context()
+    assert ctx.startswith("Today: ")
+    # Wiki state still surfaced after the today block.
+    assert "INDEX.md" in ctx
+    assert "python" in ctx
+    # Today block must appear before the wiki state header.
+    assert ctx.index("Today: ") < ctx.index("Wiki state")
 
 
 # ── A5: Long transcripts truncate without O(n^2) blow-up ─────────────────────
@@ -1459,10 +1556,10 @@ async def test_run_dream_partial_failure_accounts_correctly(setup_db, _wiki_dir:
     await _make_real_session()
     (_wiki_dir / "notes" / "2026-05-13.md").write_text("note body", encoding="utf-8")
 
-    async def _ok_session(agent, db, sess, *, timeout_seconds):
+    async def _ok_session(agent, db, sess, *, timeout_seconds, wiki_context=""):
         return ["dummy-topic"]
 
-    async def _fail_note(agent, filename, *, timeout_seconds):
+    async def _fail_note(agent, filename, *, timeout_seconds, wiki_context=""):
         raise _SynthesisFailed("LLM timeout")
 
     with patch(
@@ -1843,3 +1940,266 @@ def test_dream_agent_config_required_tools_idempotent():
     # Each required tool should appear exactly once.
     for tool in ("read", "write", "edit", "rm", "ls", "wiki_search"):
         assert cfg.tools.count(tool) == 1
+
+
+# ── E1: drain semantics — manual triggers ignore batch_size ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_drain_processes_all_pending(setup_db, _wiki_dir: Path):
+    """``drain=True`` ignores ``batch_size`` and processes every pending
+    item.  This is the fix for the user-reported "Run now only processes 1
+    session" footgun caused by the conservative default ``batch_size: 1``.
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=1)  # deliberately the conservative default
+    # 5 real sessions in the backlog.
+    for _ in range(5):
+        await _make_real_session()
+
+    async def _ok(agent, db, sess, *, timeout_seconds, wiki_context=""):
+        return []
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        with patch("app.services.dream._synthesise_session", _ok):
+            async with async_session_factory() as db:
+                result = await run_dream(db, drain=True)
+
+    # All 5 processed despite batch_size=1.
+    assert result["sessions_processed"] == 5
+    assert result["remaining"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_dream_default_respects_batch_size(setup_db, _wiki_dir: Path):
+    """``drain=False`` (default — scheduler path) still honours batch_size.
+    Regression guard so we don't accidentally drain on every cron tick.
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=2)
+    for _ in range(5):
+        await _make_real_session()
+
+    async def _ok(agent, db, sess, *, timeout_seconds, wiki_context=""):
+        return []
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        with patch("app.services.dream._synthesise_session", _ok):
+            async with async_session_factory() as db:
+                result = await run_dream(db)  # drain=False
+
+    assert result["sessions_processed"] == 2
+    assert result["remaining"] == 3
+
+
+# ── E2: existing wiki context is injected into the per-item prompt ───────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_injects_wiki_context(setup_db, _wiki_dir: Path):
+    """``_synthesise_session`` receives a non-empty ``wiki_context`` when
+    INDEX.md or topic files exist on disk.  Without this, the agent
+    re-creates duplicate topics per session.
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=1)
+    (_wiki_dir / "INDEX.md").write_text("- python: stuff\n", encoding="utf-8")
+    (_wiki_dir / "topics").mkdir(exist_ok=True)
+    (_wiki_dir / "topics" / "python.md").write_text(
+        "---\ndescription: x\n---\n", encoding="utf-8"
+    )
+    await _make_real_session()
+
+    captured: dict[str, str] = {}
+
+    async def _capture(agent, db, sess, *, timeout_seconds, wiki_context=""):
+        captured["wiki_context"] = wiki_context
+        return []
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        with patch("app.services.dream._synthesise_session", _capture):
+            async with async_session_factory() as db:
+                await run_dream(db, drain=True)
+
+    assert "python" in captured["wiki_context"]
+    assert "INDEX.md" in captured["wiki_context"]
+
+
+# ── Failure handling: failed items stay unprocessed, scheduler retries ───────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_failed_item_stays_unprocessed(setup_db, _wiki_dir: Path):
+    """When synthesis fails, the item must NOT be marked processed — the
+    next run picks it up again.  No persistent failure tracking; the
+    scheduler is the only retry mechanism.
+    """
+    from app.core.db import async_session_factory
+    from app.services.dream import _SynthesisFailed, get_unprocessed_sessions
+
+    _write_dream_md(batch_size=1)
+    await _make_real_session()
+
+    async def _fail(agent, db, sess, *, timeout_seconds, wiki_context=""):
+        raise _SynthesisFailed("simulated")
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        with patch("app.services.dream._synthesise_session", _fail):
+            async with async_session_factory() as db:
+                result = await run_dream(db, drain=True)
+            assert result["failed"] == 1
+            assert result["sessions_processed"] == 0
+
+            # The session must still be unprocessed — next run retries it.
+            async with async_session_factory() as db:
+                unprocessed = await get_unprocessed_sessions(db)
+            assert len(unprocessed) == 1
+
+
+# ── LOG.md: dream appends after each non-empty run ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_appends_to_log_md(setup_db, _wiki_dir: Path):
+    """After a non-empty run, ``wiki/LOG.md`` gets a parseable entry.
+
+    The header line begins with ``## [`` for greppability — matches the
+    Karpathy LLM-Wiki convention so users can do ``grep '^## \\['``.
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=1)
+    await _make_real_session()
+
+    async def _ok(agent, db, sess, *, timeout_seconds, wiki_context=""):
+        return ["dummy-topic"]
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        with patch("app.services.dream._synthesise_session", _ok):
+            async with async_session_factory() as db:
+                await run_dream(db, drain=True)
+
+    log_path = _wiki_dir / "LOG.md"
+    assert log_path.is_file()
+    text = log_path.read_text(encoding="utf-8")
+    assert "sessions=1" in text
+    # Greppable prefix.
+    grep_lines = [ln for ln in text.splitlines() if ln.startswith("## [")]
+    assert len(grep_lines) == 1
+
+
+@pytest.mark.asyncio
+async def test_run_dream_no_log_entry_on_truly_empty_run(setup_db, _wiki_dir: Path):
+    """A run with absolutely nothing to do (no sessions, no notes) must not
+    pollute LOG.md with a noise entry every cron tick.
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=1)
+    # No sessions, no notes — nothing pending.
+    async with async_session_factory() as db:
+        await run_dream(db)
+
+    log_path = _wiki_dir / "LOG.md"
+    assert not log_path.exists()
+
+
+# ── Within-batch wiki_context refresh (item N+1 sees item N's writes) ───────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_wiki_context_refreshes_between_items(
+    setup_db, _wiki_dir: Path
+):
+    """In a drain of 2 sessions, the SECOND synthesis call must see any
+    topic that the first call created.  Without per-item refresh, both
+    items would see the same baseline view and re-create the same topic.
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=1)
+    await _make_real_session(content="first session about python")
+    await _make_real_session(content="second session about python")
+
+    captured_contexts: list[str] = []
+    topics_dir = _wiki_dir / "topics"
+    topics_dir.mkdir(exist_ok=True)
+    call_count = {"n": 0}
+
+    async def _synth(agent, db, sess, *, timeout_seconds, wiki_context=""):
+        captured_contexts.append(wiki_context)
+        call_count["n"] += 1
+        # First call creates a topic file; second call should see it in
+        # its wiki_context prefix.
+        if call_count["n"] == 1:
+            (topics_dir / "python.md").write_text(
+                "---\ndescription: Python.\n---\n", encoding="utf-8"
+            )
+            return ["python"]
+        return []
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        with patch("app.services.dream._synthesise_session", _synth):
+            async with async_session_factory() as db:
+                await run_dream(db, drain=True)
+
+    assert call_count["n"] == 2
+    # First context has no "python" topic listed yet.
+    assert "python" not in captured_contexts[0]
+    # Second context HAS the python slug — proves per-item refresh works.
+    assert "python" in captured_contexts[1]
+
+
+# ── #4 + #5: batched empty-session check is one query, not N+1 ───────────────
+
+
+@pytest.mark.asyncio
+async def test_run_dream_handles_many_empty_sessions(setup_db, _wiki_dir: Path):
+    """20 empty sessions are all marked processed in a single drain run.
+    Pre-fix this was N+1 queries; the assertion here is just behavioural —
+    the perf characterisation is in the query plan.
+    """
+    from app.core.db import async_session_factory
+
+    _write_dream_md(batch_size=1)
+    # 20 empty sessions (no messages at all).
+    async with async_session_factory() as db:
+        for _ in range(20):
+            db.add(ChatSession(agent_name="test-agent"))
+        await db.commit()
+
+    with patch(
+        "app.services.dream._load_dream_agent",
+        side_effect=lambda cfg: _make_loaded_agent(),
+    ):
+        async with async_session_factory() as db:
+            result = await run_dream(db, drain=True)
+
+    # All 20 should be marked (empty → no LLM, no synthesis count).
+    assert result["sessions_processed"] == 0
+    assert result["notes_processed"] == 0
+    # Verify they were marked in dream_log so the next run doesn't see them.
+    async with async_session_factory() as db:
+        unprocessed = await get_unprocessed_sessions(db)
+    assert unprocessed == []

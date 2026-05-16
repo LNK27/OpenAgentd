@@ -1,15 +1,21 @@
 /**
  * WikiPanel — file tree + markdown editor for the agent wiki.
  *
- * The wiki lives under ``{OPENAGENTD_WIKI_DIR}``:
+ * The wiki lives under ``{OPENAGENTD_WIKI_DIR}`` and follows the Karpathy
+ * LLM-Wiki layout:
  *
- *   USER.md   — stable user facts (always injected into the system prompt)
- *   INDEX.md  — dream-maintained table of contents (editable)
- *   notes/    — agent notes (one file per day, append-only); deletable but not editable
- *   topics/   — dream-synthesised topic knowledge; fully editable
+ *   USER.md      — stable user facts (always injected into the system prompt)
+ *   INDEX.md     — dream-maintained table of contents (editable)
+ *   LOG.md       — append-only dream activity log (read but don't edit)
+ *   LINT.md      — most recent lint report (overwritten on each lint pass)
+ *   topics/      — concept pages (abstract ideas, techniques)
+ *   entities/    — concrete things (people, tools, orgs)
+ *   sources/     — one summary per ingested source
+ *   comparisons/ — X-vs-Y pages
+ *   notes/       — agent notes (read-only in the UI; deletable)
  *
- * `WikiTree.system` is a logical bucket holding USER.md and INDEX.md — there
- * is no `system/` directory on disk.
+ * `WikiTree.system` is the logical bucket for root files (USER, INDEX, LOG,
+ * LINT) — there is no `system/` directory on disk.
  *
  * The panel lets the user browse the tree, open a file, and save or delete it.
  * Notes are read-only in the editor (agent-written) but can be deleted.
@@ -38,7 +44,13 @@ interface WikiPanelProps {
 }
 
 
-type SectionKey = 'system' | 'notes' | 'topics'
+type SectionKey =
+  | 'system'
+  | 'notes'
+  | 'topics'
+  | 'entities'
+  | 'sources'
+  | 'comparisons'
 
 type Section = {
   key: SectionKey
@@ -63,11 +75,14 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
     setSelectedPath(null)
   }
 
-  const sections: Section[] = [
+  // Sections are rendered in this order.  Empty knowledge sections are
+  // hidden below — a freshly-installed wiki only shows System + Notes
+  // until dream populates topics/entities/sources/comparisons.
+  const rawSections: Section[] = [
     {
       key: 'system',
       label: 'Wiki',
-      hint: 'USER.md (injected every prompt) · INDEX.md (table of contents)',
+      hint: 'USER · INDEX · LOG · LINT (root files)',
       files: tree?.system ?? [],
     },
     {
@@ -79,10 +94,34 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
     {
       key: 'topics',
       label: 'Topics',
-      hint: 'Dream-synthesised knowledge',
+      hint: 'Concept pages — abstract ideas, techniques',
       files: tree?.topics ?? [],
     },
+    {
+      key: 'entities',
+      label: 'Entities',
+      hint: 'People, tools, organisations, products',
+      files: tree?.entities ?? [],
+    },
+    {
+      key: 'sources',
+      label: 'Sources',
+      hint: 'One summary per ingested source',
+      files: tree?.sources ?? [],
+    },
+    {
+      key: 'comparisons',
+      label: 'Comparisons',
+      hint: 'X-vs-Y pages',
+      files: tree?.comparisons ?? [],
+    },
   ]
+  // Always show ``system`` and ``notes`` even when empty (their existence is
+  // a UX cue).  Hide knowledge sections that haven't been populated yet to
+  // avoid four empty headers on a fresh install.
+  const sections = rawSections.filter(
+    (s) => s.key === 'system' || s.key === 'notes' || s.files.length > 0,
+  )
 
   return (
     <AnimatePresence>

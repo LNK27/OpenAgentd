@@ -1,23 +1,20 @@
 /**
  * /settings — "About openagentd" landing.
  *
- * On desktop the new SettingsSidebar already exposes every category as a
- * row; the right pane here therefore focuses on the things that don't
- * have a dedicated category: version, application updates, and a short
- * description of the project. On mobile this also doubles as the
- * settings hub: the sidebar is hidden so we render the same overview
- * cards used by older builds to let the user jump into each section.
+ * Desktop hides the sidebar category list (the rail already shows them);
+ * mobile re-uses this page as the settings hub by rendering nav cards.
+ *
+ * Updates are not surfaced here: desktop uses **OpenAgentd → Check for
+ * Updates…** in the menu bar; CLI users run ``openagentd update``.
  */
 import { Link } from '@tanstack/react-router'
 import {
   ChevronRight,
-  Download,
   Info,
   KeyRound,
   Mic,
   Moon,
   Plug,
-  RefreshCw,
   Shield,
   Sparkles,
   Wrench,
@@ -26,22 +23,15 @@ import {
 
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { getPlatform } from '@/hooks/use-platform'
-import { useDesktopUpdateCheck, useDesktopUpdateInstall } from '@/hooks/use-desktop-update'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   useAgentFilesQuery,
   useHealthQuery,
-  useInstallUpdateMutation,
   useMcpServersQuery,
   useProvidersQuery,
   useSandboxSettingsQuery,
   useSkillFilesQuery,
   useSpeechConfigQuery,
-  useUpdateStatusQuery,
 } from '@/queries'
-import { useToastStore } from '@/stores/useToastStore'
 
 interface CardProps {
   to:
@@ -92,143 +82,6 @@ function SettingsNavCard({ to, icon: Icon, title, description, count, countLabel
         aria-hidden="true"
       />
     </Link>
-  )
-}
-
-export function SystemUpdateCard() {
-  const { isTauri } = getPlatform()
-  const healthQ = useHealthQuery()
-  // Two parallel update sources, only one is "live" at a time:
-  //   - Inside the Tauri desktop bundle → the Tauri auto-updater (signed
-  //     bundle from ``v<version>-desktop`` GitHub releases).
-  //   - Anywhere else (CLI server, browser) → the PyPI-backed flow which
-  //     spawns ``openagentd update`` on the host.
-  // Both queries are ``enabled: false`` so neither auto-fires; the
-  // active branch is chosen by ``isTauri`` in ``handleCheck`` /
-  // ``handleInstall``.
-  const pypiUpdateQ = useUpdateStatusQuery()
-  const pypiInstallMut = useInstallUpdateMutation()
-  const desktopUpdateQ = useDesktopUpdateCheck()
-  const desktopInstallMut = useDesktopUpdateInstall()
-
-  const push = useToastStore((s) => s.push)
-
-  const isChecking = isTauri ? desktopUpdateQ.isFetching : pypiUpdateQ.isFetching
-  const isInstalling = isTauri ? desktopInstallMut.isPending : pypiInstallMut.isPending
-  const status = isTauri ? desktopUpdateQ.data : pypiUpdateQ.data
-  const error = isTauri ? desktopUpdateQ.error : pypiUpdateQ.error
-  const currentVersion = status?.current_version ?? healthQ.data?.version
-
-  const handleCheck = async () => {
-    try {
-      const result = isTauri ? await desktopUpdateQ.refetch() : await pypiUpdateQ.refetch()
-      if (result.error) throw result.error
-      const data = result.data
-      if (!data) return
-      push({
-        tone: data.update_available ? 'info' : 'success',
-        title: data.update_available ? `New update v${data.latest_version}` : 'OpenAgentd is up to date',
-        description: `Current version: v${data.current_version}`,
-      })
-    } catch (err) {
-      push({
-        tone: 'error',
-        title: 'Update check failed',
-        description: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-
-  const handleInstall = async () => {
-    try {
-      if (isTauri) {
-        await desktopInstallMut.mutateAsync()
-        // Tauri ``relaunch()`` should fire before this toast is read, but
-        // queue it anyway so the user sees confirmation if the relaunch
-        // is delayed (e.g. macOS Gatekeeper prompt on first signed run).
-        push({
-          tone: 'success',
-          title: 'Update installed',
-          description: 'OpenAgentd is restarting to apply the update.',
-        }, 8000)
-      } else {
-        await pypiInstallMut.mutateAsync()
-        push({
-          tone: 'success',
-          title: 'Update started',
-          description: 'OpenAgentd will install the update and restart in the background.',
-        }, 8000)
-      }
-    } catch (err) {
-      push({
-        tone: 'error',
-        title: 'Install failed',
-        description: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-
-  return (
-    <Card size="sm" className="border-(--color-border) bg-(--bg-card)">
-      <CardHeader className="gap-2 sm:grid-cols-[1fr_auto]">
-        <div>
-          <CardTitle>Application update</CardTitle>
-          <CardDescription>
-            Check for a published OpenAgentd release and install it from here.
-          </CardDescription>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleCheck}
-          disabled={isChecking || isInstalling}
-          className="justify-self-start sm:justify-self-end"
-        >
-          <RefreshCw size={13} className={cn(isChecking && 'animate-spin')} aria-hidden="true" />
-          {isChecking ? 'Checking...' : 'Check for updates'}
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="rounded-lg bg-(--bg-key) p-3 text-xs text-(--color-text-muted) ring-1 ring-(--color-border)">
-          <div className="flex flex-wrap items-center gap-2">
-            <span>Current version:</span>
-            <span className="font-mono text-(--color-text)">
-              {currentVersion ? `v${currentVersion}` : 'Not checked'}
-            </span>
-            {status?.latest_version && (
-              <>
-                <span>Latest:</span>
-                <span className="font-mono text-(--color-text)">v{status.latest_version}</span>
-              </>
-            )}
-          </div>
-          {error && (
-            <p className="mt-2 text-(--color-error)">
-              {error instanceof Error ? error.message : String(error)}
-            </p>
-          )}
-          {status?.install_blocked_reason && (
-            <p className="mt-2">{status.install_blocked_reason}</p>
-          )}
-        </div>
-
-        {status?.update_available && (
-          <div className="flex flex-col gap-2 rounded-lg border border-(--accent-blue)/30 bg-(--accent-blue-soft) p-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-medium text-(--color-text)">
-              New update v{status.latest_version} is available.
-            </p>
-            <Button
-              size="sm"
-              onClick={handleInstall}
-              disabled={!status.can_install || isInstalling}
-            >
-              <Download size={13} aria-hidden="true" />
-              {isInstalling ? 'Starting...' : 'Install'}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
   )
 }
 
@@ -351,11 +204,6 @@ export function SettingsHubPage() {
             </section>
           </>
         )}
-
-        <section>
-          <SectionHeader>Updates</SectionHeader>
-          <SystemUpdateCard />
-        </section>
       </div>
     </div>
   )

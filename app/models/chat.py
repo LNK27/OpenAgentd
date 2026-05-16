@@ -181,7 +181,7 @@ class DreamLog(SQLModel, table=True):
 class DreamNotesLog(SQLModel, table=True):
     """Records note files that have been processed by the dream agent."""
 
-    __tablename__ = "dream_notes_log"  # type: ignore[reportIncompatibleVariableOverride]
+    __tablename__: str = "dream_notes_log"  # type: ignore[reportIncompatibleVariableOverride]
 
     id: int | None = Field(default=None, primary_key=True)
     filename: str = Field(index=True, unique=True)  # e.g. "2026-04-29-abc123.md"

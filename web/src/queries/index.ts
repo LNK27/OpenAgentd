@@ -55,10 +55,6 @@ export {
   useUpdateSandboxSettingsMutation,
 } from './useSandboxSettingsQuery'
 export {
-  useUpdateStatusQuery,
-  useInstallUpdateMutation,
-} from './useUpdateQuery'
-export {
   useProvidersQuery,
   useSaveProviderMutation,
   useInstallSeedMutation,

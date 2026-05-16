@@ -27,7 +27,7 @@
 
 **A workspace the agent shares with you.** Every file the agent touches shows up in a side panel — browse, preview, download. In `/coding`, open a server-local project folder and review the live file tree plus current git diff from the same drawer.
 
-**Persistent memory you can edit.** Three-tier wiki: session notes, synthesised topics, and a `USER.md` injected into every prompt. Browse and edit it from the Wiki panel.
+**Persistent memory you can edit.** Karpathy-style wiki: `USER.md` is injected into every prompt, session notes feed the dream agent, and durable knowledge is organized into sources, topics, entities, and comparisons. Browse and edit it from the Wiki panel.
 
 **Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view — or switch to a single unified view.
 
@@ -211,13 +211,13 @@ Member instances are created lazily from `role: member` configs. Re-spawning an 
 
 ## Memory
 
-Three tiers, all editable:
+The wiki is editable and organized around durable, source-linked pages:
 
-1. **`USER.md`** — Always injected into every system prompt. Edit it directly to give the agent standing context about you, your projects, or your preferences.
-2. **Topics** — Synthesised knowledge base, BM25-searchable via `wiki_search`.
-3. **Session notes** — Per-session notes the agent appends to via the `note` tool.
+1. **`USER.md`** — Pure YAML, always injected into every system prompt. Edit it directly to give the agent standing context about you, your projects, or your preferences.
+2. **Knowledge pages** — `sources/`, `topics/`, `entities/`, and `comparisons/`, BM25-searchable via `wiki_search`.
+3. **Session notes** — Per-day notes the agent appends to via the `note` tool.
 
-The **dream agent** runs on a cron schedule, reads unprocessed session notes, synthesises new topic files, and updates the wiki index — turning ephemeral conversation into durable memory without any action on your part.
+The **dream agent** runs on a cron schedule, reads unprocessed sessions and notes, writes source summaries first, updates related knowledge pages, and refreshes the wiki index - turning ephemeral conversation into durable memory without any action on your part.
 
 ---
 

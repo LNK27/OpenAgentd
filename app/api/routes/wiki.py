@@ -32,12 +32,25 @@ class WikiFileInfoResponse(BaseModel):
     description: str = ""
     updated: str | None = None
     tags: list[str] = Field(default_factory=list)
+    confidence: str | None = None
+    sources: list[str] = Field(default_factory=list)
 
 
 class WikiTreeResponse(BaseModel):
+    """Mirrors the Karpathy LLM-Wiki page-type split.
+
+    ``system`` is the bucket for root-level files (USER, INDEX, LOG, LINT).
+    ``notes`` is the raw input log.  The remaining four are knowledge dirs
+    populated by the dream agent — ``topics`` keeps its legacy name even
+    though it semantically holds *concept* pages.
+    """
+
     system: list[WikiFileInfoResponse]
     notes: list[WikiFileInfoResponse]
     topics: list[WikiFileInfoResponse]
+    entities: list[WikiFileInfoResponse] = Field(default_factory=list)
+    sources: list[WikiFileInfoResponse] = Field(default_factory=list)
+    comparisons: list[WikiFileInfoResponse] = Field(default_factory=list)
 
 
 class WikiFileResponse(BaseModel):
@@ -46,6 +59,8 @@ class WikiFileResponse(BaseModel):
     description: str = ""
     updated: str | None = None
     tags: list[str] = Field(default_factory=list)
+    confidence: str | None = None
+    sources: list[str] = Field(default_factory=list)
 
 
 class WikiWriteRequest(BaseModel):
@@ -62,6 +77,8 @@ def _info(i: WikiFileInfo) -> WikiFileInfoResponse:
         description=i.description,
         updated=i.updated,
         tags=list(i.tags),
+        confidence=i.confidence,
+        sources=list(i.sources),
     )
 
 
@@ -73,7 +90,7 @@ async def get_wiki_tree(
     ),
     db: AsyncSession = Depends(get_session),
 ) -> WikiTreeResponse:
-    """Return the full wiki tree (system + notes + topics)."""
+    """Return the full wiki tree (system + notes + four knowledge dirs)."""
     unprocessed: set[str] | None = None
     if unprocessed_only:
         unprocessed = set(await get_unprocessed_notes(db))
@@ -83,6 +100,9 @@ async def get_wiki_tree(
         system=[_info(i) for i in tree.system],
         notes=[_info(i) for i in tree.notes],
         topics=[_info(i) for i in tree.topics],
+        entities=[_info(i) for i in tree.entities],
+        sources=[_info(i) for i in tree.sources],
+        comparisons=[_info(i) for i in tree.comparisons],
     )
 
 
@@ -103,6 +123,8 @@ async def get_wiki_file(
         description=f.description,
         updated=f.updated,
         tags=list(f.tags),
+        confidence=f.confidence,
+        sources=list(f.sources),
     )
 
 
@@ -119,6 +141,8 @@ async def put_wiki_file(body: WikiWriteRequest) -> WikiFileResponse:
         description=f.description,
         updated=f.updated,
         tags=list(f.tags),
+        confidence=f.confidence,
+        sources=list(f.sources),
     )
 
 

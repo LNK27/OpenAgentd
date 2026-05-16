@@ -18,6 +18,8 @@ from loguru import logger
 from app.services.dream import _dream_config_path
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sqlmodel.ext.asyncio.session import AsyncSession
 
     from app.core.db import DbFactory
@@ -205,9 +207,47 @@ class DreamScheduler:
         so a running dream synthesis is never cut short.  If cancellation
         arrives while firing, the CancelledError is re-raised after the fire
         completes.
+
+        On each iteration, the loop checks ``dream.md``'s mtime; if it has
+        changed since startup, the schedule is re-parsed in-place.  This
+        means filesystem edits (e.g. via ``$EDITOR`` or ``manual.wiki``)
+        take effect on the next tick without requiring a server restart or
+        a ``PUT /api/dream/config`` call.  If the file flips to
+        ``enabled: false`` or is deleted, the loop exits cleanly.
         """
+        path = _dream_config_path()
+        try:
+            current_mtime = path.stat().st_mtime_ns
+        except OSError:
+            current_mtime = 0
+
         while True:
             try:
+                # Cheap stat each iteration; reparse only on mtime change.
+                try:
+                    new_mtime = path.stat().st_mtime_ns
+                except OSError:
+                    # File deleted under us — exit cleanly so the scheduler
+                    # state matches the on-disk reality (nothing to schedule).
+                    logger.info("dream_scheduler_config_missing exiting=true")
+                    return
+
+                if new_mtime != current_mtime:
+                    current_mtime = new_mtime
+                    new_schedule, still_enabled = await self._reparse_schedule(path)
+                    if not still_enabled:
+                        logger.info(
+                            "dream_scheduler_disabled_via_file_edit exiting=true"
+                        )
+                        return
+                    if new_schedule is not None and new_schedule != schedule:
+                        logger.info(
+                            "dream_scheduler_schedule_changed old={} new={}",
+                            schedule,
+                            new_schedule,
+                        )
+                        schedule = new_schedule
+
                 now = datetime.now(timezone.utc)
                 cron = croniter(schedule, now)
                 next_fire: datetime = cron.get_next(datetime)
@@ -248,6 +288,28 @@ class DreamScheduler:
 
             if cancelled:
                 raise asyncio.CancelledError
+
+    async def _reparse_schedule(self, path: "Path") -> tuple[str | None, bool]:
+        """Reparse ``dream.md`` to pick up a filesystem edit.
+
+        Returns ``(new_schedule, still_enabled)``.  On parse failure the
+        previous schedule is kept by returning ``(None, True)`` so a
+        transient broken edit doesn't kill the loop.  The caller treats
+        ``still_enabled=False`` as "exit loop" — the user disabled dream
+        without going through the API.
+        """
+        from app.services.dream import parse_dream_md
+
+        try:
+            cfg = await asyncio.to_thread(parse_dream_md, path)
+        except (ValueError, OSError) as exc:
+            logger.warning(
+                "dream_scheduler_reparse_failed error={} keeping_previous_schedule=true",
+                exc,
+            )
+            return None, True
+
+        return cfg.schedule, cfg.enabled
 
     async def _fire(self) -> None:
         """Execute one dream run.

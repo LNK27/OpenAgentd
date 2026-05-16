@@ -85,7 +85,7 @@ The shell installs both native app menus and a system tray menu in `desktop/src-
 
 | Surface | Actions |
 |---------|---------|
-| App menu / menu bar | **OpenAgentd**: About OpenAgentd, Show OpenAgentd, Settings, Telemetry, Quit OpenAgentd. **File**: Chat, Coding, Quit. **Edit**: Undo, Redo, Cut, Copy, Paste, Select All. **View**: Reload (`⌘/Ctrl+R`), Force Reload (`⌘/Ctrl+Shift+R`), Settings, Telemetry. **Window**: Minimize, Hide to Tray. |
+| App menu / menu bar | **OpenAgentd**: About OpenAgentd, Check for Updates…, Show OpenAgentd, Settings, Telemetry, Quit OpenAgentd. **File**: Chat, Coding, Quit. **Edit**: Undo, Redo, Cut, Copy, Paste, Select All. **View**: Reload (`⌘/Ctrl+R`), Force Reload (`⌘/Ctrl+Shift+R`), Settings, Telemetry. **Window**: Minimize, Hide to Tray. |
 | System tray | Status, Session, Show OpenAgentd, Chat, Coding, Settings, Telemetry, Reload Window, Quit OpenAgentd. |
 
 The **Edit** submenu is required on macOS for native `⌘A` / `⌘C` / `⌘V` / `⌘X` / `⌘Z` to reach the webview's input fields — without it those shortcuts have no handler at the application level and the corresponding actions silently no-op inside the textarea. `Undo`/`Redo` are macOS-only and not registered on Windows/Linux; the other edit items work on all platforms.
@@ -108,6 +108,18 @@ The tray **Session** line below status mirrors the user's active context with li
 - `No active session` — fallback when nothing is open.
 
 The frontend pushes the label via the `set_tray_session` Tauri command (see `web/src/lib/tray.ts`) whenever the active mode/workspace/session-title or the team's working flag changes; the command silently truncates labels longer than 60 characters so the tray menu width stays sane.
+
+## Updates
+
+The desktop bundle has exactly one update entry point: **OpenAgentd → Check for Updates…** in the menu bar. The entire flow lives in `desktop/src-tauri/src/main.rs` (`run_update_check`) and is driven by `tauri-plugin-updater` against the manifest published at `https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json`.
+
+1. The menu item triggers `app.updater()?.check()`. If no update is available the user sees a native "You're up to date" dialog and nothing else happens.
+2. When an update is available, `format_update_prompt` renders the version, optional release notes (trimmed and truncated to ~1 KB so the dialog stays sane), and an estimated size. The user accepts via a native `MessageDialog` (`OkCancelCustom`, button text "Install & Restart").
+3. `update.download_and_install(...)` streams the artefact. Tray status flips to `Status: Downloading update… N/M MB` (throttled to whole-MB updates by `format_download_progress` so we don't spawn a Tauri command per chunk).
+4. Once the bytes are on disk and the minisign signature verifies, `shutdown_sidecar_now` cleanly terminates the Python sidecar **before** calling `tauri::process::restart`. This is mandatory: `restart` never raises `RunEvent::ExitRequested`, so the sidecar would otherwise be orphaned.
+5. Any error (network, signature, write permission) surfaces as a native error dialog; the tray status reverts to `Status: Running`.
+
+There is no in-page "Updates" UI and no `/api/settings/update*` HTTP surface. CLI/server installs upgrade via `openagentd upgrade` (or whichever package manager installed them — see [CLI reference](./cli.md)). The Rust update path is exercised by unit tests in the same file (`format_update_prompt`, `format_download_progress`, `dialog_result_is_accept`).
 
 ## Window chrome
 

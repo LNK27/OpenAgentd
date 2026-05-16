@@ -682,28 +682,6 @@ export async function updateSandboxSettings(
   return res.json()
 }
 
-// ── /settings/update ─────────────────────────────────────────────────────────
-
-export type UpdateStatus = {
-  current_version: string
-  latest_version: string | null
-  update_available: boolean
-  can_install: boolean
-  install_blocked_reason: string | null
-}
-
-export async function getUpdateStatus(): Promise<UpdateStatus> {
-  const res = await fetch(`${API}/settings/update`)
-  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/update')
-  return res.json()
-}
-
-export async function installUpdate(): Promise<{ status: string }> {
-  const res = await fetch(`${API}/settings/update/install`, { method: 'POST' })
-  if (!res.ok) await parseDetailOrThrow(res, 'POST /settings/update/install')
-  return res.json()
-}
-
 // ── /settings/providers ──────────────────────────────────────────────────────
 
 export type ProviderInfo = {

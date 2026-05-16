@@ -64,7 +64,7 @@ openagentd doctor            # check system health
 openagentd upgrade           # update to the latest version
 ```
 
-Migrations run automatically on startup. Updates can also be installed via **Settings → Updates** in the web app.
+Migrations run automatically on startup. Desktop bundle users update via **OpenAgentd → Check for Updates…** in the menu bar; CLI/server users run `openagentd update`.
 
 For frontend + backend development with hot-reload, use `make dev` from a source checkout — uvicorn (`:8000` with `--reload`) + Vite (`:5173`) together.
 

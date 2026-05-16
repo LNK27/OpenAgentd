@@ -1,11 +1,13 @@
 """Dream service — consolidate wiki from unprocessed sessions and notes.
 
 Dream reads unprocessed chat sessions and note files, runs the dream agent
-over each one, and writes to wiki/topics/, wiki/USER.md, wiki/INDEX.md.
+over each one, and writes to the wiki root and knowledge directories.
 
 The dream agent is loaded from .openagentd/config/dream.md.  If that file is
-missing, has no ``model:`` field, or ``enabled: false``, synthesis is skipped
-and items are still marked as processed (infrastructure-only mode).
+missing or has no ``model:`` field, synthesis is skipped and items are still
+marked as processed (infrastructure-only mode).  ``enabled: false`` disables
+the scheduler, but manual runs still process pending items when a model is
+configured.
 """
 
 from __future__ import annotations
@@ -25,8 +27,23 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models.chat import ChatSession, DreamLog, DreamNotesLog, SessionMessage
-from app.services.wiki import NOTES_DIR, TOPICS_DIR, wiki_root
+from app.models.chat import (
+    ChatSession,
+    DreamLog,
+    DreamNotesLog,
+    SessionMessage,
+)
+from app.services.wiki import (
+    COMPARISONS_DIR,
+    ENTITIES_DIR,
+    INDEX_FILE,
+    LINT_FILE,
+    NOTES_DIR,
+    SOURCES_DIR,
+    TOPICS_DIR,
+    append_log,
+    wiki_root,
+)
 
 if TYPE_CHECKING:
     import contextvars
@@ -48,6 +65,12 @@ _REQUIRED_TOOLS: list[str] = ["read", "write", "edit", "rm", "ls", "wiki_search"
 DEFAULT_LLM_TIMEOUT_SECONDS = 300  # 5 min — covers most reasonable transcripts
 DEFAULT_MAX_PROMPT_CHARS = 60_000  # ~15k tokens — fits inside any modern context
 PER_MESSAGE_CAP_CHARS = 4_000
+
+# Cap on bytes of ``INDEX.md`` injected into each per-item prompt as
+# de-duplication context.  Keeps prompt token budget predictable even when
+# the wiki's TOC grows large.  At 8KB this is ~2k tokens — small relative
+# to typical transcript size.
+INDEX_CONTEXT_MAX_CHARS = 8_000
 
 # Serialise dream runs so manual /api/dream/run cannot race the scheduler fire
 # and crash on the dream_log.session_id UNIQUE constraint.
@@ -188,62 +211,85 @@ DREAM_AGENT_NAME = "dream"
 
 
 async def get_unprocessed_sessions(
-    db: AsyncSession, *, dream_agent_name: str = DREAM_AGENT_NAME
+    db: AsyncSession,
+    *,
+    dream_agent_name: str = DREAM_AGENT_NAME,
 ) -> list[ChatSession]:
-    """Return sessions not yet in ``dream_log``, excluding only sessions that
+    """Return sessions not yet in ``dream_log``, excluding sessions that
     belong to the dream agent itself.
 
+    Uses a SQL anti-join (``WHERE NOT IN``) so the worst case is a single
+    indexed scan of ``chat_sessions`` plus a subquery on ``dream_log`` —
+    not the previous "load every row then filter in Python" pattern that
+    became O(n) memory for large deployments.
+
     Empty sessions **are** included in the result — :func:`run_dream`
-    inspects each one via :func:`_session_has_messages` and writes the
-    "empty" log row inside its own per-item transaction, so this function
-    stays a **pure read** and transaction boundaries remain correct.
-
-    ``dream_agent_name`` defaults to ``"dream"`` but is overridden by
-    :func:`_run_dream_locked` with the active ``dream_cfg.name`` so renaming
-    the dream agent via ``dream.md`` does not create a feedback loop.
+    inspects them via :func:`_split_sessions_by_emptiness` (one batched
+    query, not N+1) and writes the "empty" log row inside its own per-item
+    transaction.
     """
-    processed_ids_result = await db.exec(select(DreamLog.session_id))
-    processed_ids = set(processed_ids_result.all())
-
-    all_sessions_result = await db.exec(select(ChatSession))
-    all_sessions = all_sessions_result.all()
-
-    return [
-        s
-        for s in all_sessions
-        if s.id not in processed_ids and s.agent_name != dream_agent_name
-    ]
+    processed_subquery = select(DreamLog.session_id)
+    stmt = select(ChatSession).where(
+        col(ChatSession.id).not_in(processed_subquery),
+        col(ChatSession.agent_name) != dream_agent_name,
+    )
+    return list((await db.exec(stmt)).all())
 
 
-async def _session_has_messages(db: AsyncSession, session: ChatSession) -> bool:
-    """Return True if the session has at least one non-system, non-excluded
-    message.  Used by :func:`run_dream` to split empties from real work.
+async def _split_sessions_by_emptiness(
+    db: AsyncSession, sessions: list[ChatSession]
+) -> tuple[list[ChatSession], list[ChatSession]]:
+    """Return ``(real, empty)`` — one batched query, not N+1.
+
+    A session is *empty* when it has no non-system, non-excluded messages.
+    Previously this was one ``SELECT ... LIMIT 1`` per session in a Python
+    loop; for a backlog of N sessions that's N round-trips before the first
+    LLM call.  Single ``GROUP BY`` query collapses it to one.
     """
+    if not sessions:
+        return [], []
+
+    session_ids = [s.id for s in sessions]
     stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session.id)
+        select(SessionMessage.session_id)
+        .where(col(SessionMessage.session_id).in_(session_ids))
         .where(~col(SessionMessage.exclude_from_context))
         .where(col(SessionMessage.role) != "system")
-        .limit(1)
+        .group_by(col(SessionMessage.session_id))
     )
-    return bool((await db.exec(stmt)).first())
+    with_messages = set((await db.exec(stmt)).all())
+
+    real: list[ChatSession] = []
+    empty: list[ChatSession] = []
+    for s in sessions:
+        (real if s.id in with_messages else empty).append(s)
+    return real, empty
 
 
 async def get_unprocessed_notes(db: AsyncSession) -> list[str]:
-    """Return note filenames not yet in dream_notes_log."""
+    """Return note filenames not yet in ``dream_notes_log``.
+
+    SQL-side filter via anti-join — the file list still comes from disk
+    (notes are filesystem-backed) but membership in ``dream_notes_log`` is
+    excluded with a single ``WHERE filename NOT IN (...)`` predicate.
+    """
     root = wiki_root()
     notes_dir = root / NOTES_DIR
     if not notes_dir.is_dir():
         return []
-
-    processed_result = await db.exec(select(DreamNotesLog.filename))
-    processed = set(processed_result.all())
 
     all_notes = [
         entry.name
         for entry in sorted(notes_dir.iterdir())
         if entry.is_file() and entry.suffix == ".md"
     ]
+    if not all_notes:
+        return []
+
+    stmt = select(DreamNotesLog.filename).where(
+        col(DreamNotesLog.filename).in_(all_notes)
+    )
+    processed = set((await db.exec(stmt)).all())
     return [n for n in all_notes if n not in processed]
 
 
@@ -431,6 +477,96 @@ def _dream_config_path() -> Path:
     return Path(settings.OPENAGENTD_CONFIG_DIR) / "dream.md"
 
 
+# ── Existing-wiki context (E2: de-duplication prompt prefix) ──────────────────
+
+
+def _today_block() -> str:
+    """Return a single-line "Today: YYYY-MM-DD UTC" prompt prefix.
+
+    The dream LLM otherwise hallucinates dates in ``updated:`` frontmatter
+    and lint reports (it has no internal clock).  Stable, parseable, cheap.
+    """
+    return "Today: " + datetime.now(timezone.utc).strftime("%Y-%m-%d UTC") + "\n\n"
+
+
+def _build_wiki_context() -> str:
+    """Build a prompt prefix listing existing wiki state.
+
+    Injected before each item's transcript/note so the dream agent can
+    de-duplicate against existing pages *without* having to remember to
+    call ``ls`` and ``read INDEX.md`` first.  Addresses the
+    fragmentation-over-time bug where two sessions about the same subject
+    spawned fresh topic files.
+
+    Always starts with a ``Today: ...`` line so the LLM does not hallucinate
+    the current date in ``updated:`` frontmatter or page bodies.
+
+    Surfaces all four knowledge dirs (``topics/``, ``entities/``,
+    ``sources/``, ``comparisons/``) so the agent picks the right page-type
+    in line with the Karpathy LLM-Wiki pattern.  Bounded by
+    :data:`INDEX_CONTEXT_MAX_CHARS` so a large wiki cannot blow the prompt
+    budget — INDEX.md is truncated first, then per-dir slug lists are
+    truncated if still over budget.
+
+    Returns the today-block alone on a first-ever run (no existing pages
+    to surface yet) — keeps the date prefix consistent across all runs.
+    """
+    root = wiki_root()
+    parts: list[str] = []
+
+    index_path = root / INDEX_FILE
+    if index_path.is_file():
+        try:
+            index_text = index_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            index_text = ""
+        if index_text:
+            if len(index_text) > INDEX_CONTEXT_MAX_CHARS:
+                index_text = (
+                    index_text[:INDEX_CONTEXT_MAX_CHARS]
+                    + "\n[... INDEX.md truncated ...]"
+                )
+            parts.append("Current INDEX.md:\n" + index_text)
+
+    # List slugs for each knowledge dir so the agent can pick edit-over-write
+    # for any subject.  Limit each listing to keep the prompt bounded — the
+    # ones beyond the cap are dropped entirely (the LLM still has ``ls`` if
+    # it wants to inspect further).
+    per_dir_cap = 200  # ~one screen per dir
+    for label, subdir in (
+        ("topic", TOPICS_DIR),
+        ("entity", ENTITIES_DIR),
+        ("source", SOURCES_DIR),
+        ("comparison", COMPARISONS_DIR),
+    ):
+        d = root / subdir
+        if not d.is_dir():
+            continue
+        slugs = sorted(f.stem for f in d.iterdir() if f.is_file() and f.suffix == ".md")
+        if not slugs:
+            continue
+        listed = slugs[:per_dir_cap]
+        more = (
+            "" if len(slugs) == len(listed) else f" (+{len(slugs) - len(listed)} more)"
+        )
+        parts.append(
+            f"Existing {label} slugs ({len(slugs)}): " + ", ".join(listed) + more
+        )
+
+    if not parts:
+        # First-ever run still gets the today block so the LLM doesn't
+        # hallucinate dates in the first batch of pages.
+        return _today_block() + "---\n\n"
+
+    return (
+        _today_block()
+        + "Wiki state — prefer ``edit`` on these existing pages over creating "
+        "duplicates.  Use ``[[slug]]`` to cross-reference between pages.\n\n"
+        + "\n\n".join(parts)
+        + "\n\n---\n\n"
+    )
+
+
 # ── Session transcript formatter ──────────────────────────────────────────────
 
 
@@ -459,15 +595,22 @@ async def _fetch_session_transcript(
     if not rows:
         return "(empty session)"
 
-    # Header is intentionally minimal — the dream LLM should consolidate
-    # *content*, not opaque IDs.  Embedding ``session.id`` here would leak
-    # raw UUIDs into the generated topic files.  Agent name + a date stamp
-    # are enough provenance for the model to reason about "when did this
-    # come from" without polluting the wiki.
+    # Header gives the LLM a stable, short source identifier.  ``Source-Slug``
+    # is used verbatim as the ``sources/{slug}.md`` filename AND in
+    # ``sources:`` frontmatter of every page derived from this session, so
+    # multiple ingests of the same conversation update the same source page
+    # rather than fragmenting.  We use the LAST 8 hex chars of the session
+    # UUID — these come from the random portion of a UUIDv7, giving full
+    # entropy.  Using ``hex[:8]`` would collide for sessions created in the
+    # same millisecond (the first 48 bits of UUIDv7 encode the timestamp).
+    # The full UUID is never exposed to the LLM, preserving the "no raw
+    # UUIDs in body content" invariant.
     created_date = (
         session.created_at.strftime("%Y-%m-%d") if session.created_at else "unknown"
     )
+    short_id = session.id.hex[-8:]
     header = [
+        f"Source-Slug: session-{short_id}",
         f"Agent: {session.agent_name or 'unknown'}",
         f"Date: {created_date}",
         "",
@@ -574,8 +717,14 @@ async def _synthesise_session(
     session: ChatSession,
     *,
     timeout_seconds: int,
+    wiki_context: str = "",
 ) -> list[str]:
     """Run the dream agent over one session.
+
+    ``wiki_context`` is a (possibly empty) prefix listing existing topics
+    so the agent can prefer ``edit`` over ``write`` and avoid creating
+    duplicates.  Built once per :func:`run_dream` invocation and shared
+    across all items in the batch.
 
     Returns the list of changed topic slugs on success.  Raises
     :class:`_SynthesisFailed` when the LLM call errors or times out —
@@ -591,8 +740,9 @@ async def _synthesise_session(
         return []
 
     prompt = (
-        "Process the following conversation session and update the wiki accordingly.\n\n"
-        f"{transcript}"
+        wiki_context
+        + "Process the following conversation session and update the wiki accordingly.\n\n"
+        + transcript
     )
 
     before = _topics_snapshot()
@@ -632,8 +782,11 @@ async def _synthesise_note(
     filename: str,
     *,
     timeout_seconds: int,
+    wiki_context: str = "",
 ) -> list[str]:
     """Run the dream agent over one note file.
+
+    See :func:`_synthesise_session` for ``wiki_context`` semantics.
 
     Returns changed topic slugs on success; raises :class:`_SynthesisFailed`
     when the LLM call errors or times out.
@@ -651,10 +804,15 @@ async def _synthesise_note(
     if not content.strip():
         return []
 
+    # Stable per-source slug — see _fetch_session_transcript for rationale.
+    # Notes already have a filename, so we use its stem (kebab-cased).
+    note_slug = "note-" + Path(filename).stem.lower().replace("_", "-")
     prompt = (
-        "Process the following note and update the wiki accordingly.\n\n"
-        f"Note file: {filename}\n\n"
-        f"{content}"
+        wiki_context
+        + "Process the following note and update the wiki accordingly.\n\n"
+        + f"Source-Slug: {note_slug}\n"
+        + f"Note file: {filename}\n\n"
+        + content
     )
 
     before = _topics_snapshot()
@@ -684,10 +842,179 @@ async def _synthesise_note(
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 
-async def run_dream(db: AsyncSession) -> dict:
-    """Process up to ``batch_size`` unprocessed items (interleaved sessions
-    and notes) under a global lock so concurrent invocations cannot race
-    on the ``dream_log.session_id`` UNIQUE constraint.
+# ── Lint operation ────────────────────────────────────────────────────────────
+
+
+_LINT_PROMPT = """\
+You are running the dream agent in LINT mode.  Health-check the wiki.
+
+Your working directory is the wiki root.  Use ``ls`` and ``read`` to inspect:
+- ``USER.md``, ``INDEX.md``, ``LOG.md`` (root files)
+- ``topics/``, ``entities/``, ``sources/``, ``comparisons/`` (knowledge pages)
+
+**YOU MUST WRITE A REPORT.**  The final action of this turn is a single
+``write`` call to ``LINT.md`` — even when the wiki is healthy and there
+are no issues.  Skipping the write is a failure mode.
+
+Check for issues across these categories:
+
+1. **Contradictions** — claims that conflict between pages.
+2. **Orphan pages** — knowledge pages not referenced by any ``[[wikilink]]``
+   from another page.
+3. **Missing concepts** — slugs referenced via ``[[slug]]`` from other pages
+   but with no corresponding file under any knowledge dir.
+4. **Stale claims** — pages whose ``updated:`` frontmatter is more than 6
+   months old, OR pages whose content sounds outdated.
+5. **Low-confidence pages** — pages with ``confidence: low`` frontmatter
+   that could be promoted or removed.
+6. **Index drift** — entries in ``INDEX.md`` that no longer have a backing
+   file, OR knowledge pages missing from the INDEX.
+
+Overwrite ``LINT.md`` with this exact format::
+
+    ---
+    generated: YYYY-MM-DD UTC
+    issues: N
+    ---
+
+    # Wiki Lint Report
+
+    ## Contradictions (M)
+    - [page A] vs [page B]: ...
+
+    ## Orphan pages (M)
+    - [[slug]]: ...
+
+    ## Missing concepts (M)
+    - [[slug]] referenced from [[other-page]] — no file exists
+
+    ## Stale claims (M)
+    - [[slug]]: last updated YYYY-MM-DD
+
+    ## Low-confidence pages (M)
+    - [[slug]]
+
+    ## Index drift (M)
+    - INDEX.md lists [[slug]] but no file exists
+    - [[slug]] exists but is missing from INDEX.md
+
+When a category has zero items, still include the header with "(0)" and a
+single line "- (none)" so the report structure is uniform across runs.
+
+When the wiki is fully healthy, the report still gets written — every
+category shows "(0)" / "- (none)" and ``issues: 0`` in the frontmatter.
+
+Do NOT modify any file other than ``LINT.md``.  Lint is read-only over
+the rest of the wiki.
+"""
+
+
+async def run_dream_lint(db: AsyncSession) -> dict:  # noqa: ARG001 — db kept for parity
+    """Run the dream agent in lint mode, writing findings to ``wiki/LINT.md``.
+
+    Returns ``{lint_completed_at, lint_path}`` on success, or
+    ``{skipped: <reason>}`` when dream isn't configured (no dream.md, no
+    model).  Like :func:`run_dream`, this is serialised by ``_run_lock`` so
+    a lint pass can't race a synthesis fire.
+
+    Lint is intentionally distinct from synthesis: it has its own prompt,
+    runs against the *current* wiki state, and produces a single
+    overwriteable report file.  It does NOT touch ``dream_log``.
+
+    The ``db`` parameter is accepted for API symmetry with :func:`run_dream`
+    even though the lint agent does not query the database — keeping the
+    signatures aligned makes the FastAPI route and CLI plumbing uniform.
+    """
+    async with _run_lock:
+        return await _run_dream_lint_locked()
+
+
+async def _run_dream_lint_locked() -> dict:
+    """Inner lint implementation — assumes ``_run_lock`` is held."""
+    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.schemas.agent import RunConfig
+    from app.agent.schemas.chat import HumanMessage
+
+    dream_cfg: DreamAgentConfig | None = None
+    config_path = _dream_config_path()
+    if config_path.exists():
+        try:
+            dream_cfg = await asyncio.to_thread(parse_dream_md, config_path)
+        except ValueError as exc:
+            logger.warning("dream_lint_config_parse_failed error={}", exc)
+
+    if dream_cfg is None or not dream_cfg.model:
+        logger.info("dream_lint_skip reason=no_model_configured")
+        return {"skipped": "no_model_configured"}
+
+    loaded = _load_dream_agent(dream_cfg)
+    if loaded is None:
+        logger.info("dream_lint_skip reason=agent_load_failed")
+        return {"skipped": "agent_load_failed"}
+
+    agent, sandbox_token = loaded
+    started = datetime.now(timezone.utc)
+    logger.info("dream_lint_start model={}", dream_cfg.model)
+
+    try:
+        try:
+            await asyncio.wait_for(
+                agent.run(
+                    [HumanMessage(content=_today_block() + _LINT_PROMPT)],
+                    config=RunConfig(),
+                ),
+                timeout=dream_cfg.timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "dream_lint_llm_timeout timeout_seconds={}",
+                dream_cfg.timeout_seconds,
+            )
+            return {"skipped": "llm_timeout"}
+        except Exception as exc:
+            logger.warning("dream_lint_llm_failed error={}", exc)
+            return {"skipped": f"llm_error: {exc}"}
+    finally:
+        _sandbox_ctx.reset(sandbox_token)
+
+    duration = (datetime.now(timezone.utc) - started).total_seconds()
+    lint_path = wiki_root() / LINT_FILE
+    lint_exists = lint_path.is_file()
+    logger.info(
+        "dream_lint_complete duration_s={:.1f} lint_md_written={}",
+        duration,
+        lint_exists,
+    )
+
+    try:
+        await asyncio.to_thread(
+            append_log,
+            f"lint | duration_s={duration:.1f} "
+            f"lint_md_{'written' if lint_exists else 'not_written'}",
+        )
+    except Exception:
+        logger.exception("dream_lint_log_append_failed")
+
+    return {
+        "lint_completed_at": datetime.now(timezone.utc).isoformat(),
+        "lint_path": LINT_FILE,
+        "duration_seconds": duration,
+        "lint_md_written": lint_exists,
+    }
+
+
+async def run_dream(db: AsyncSession, *, drain: bool = False) -> dict:
+    """Process unprocessed items (interleaved sessions and notes) under a
+    global lock so concurrent invocations cannot race on the
+    ``dream_log.session_id`` UNIQUE constraint.
+
+    ``drain``:
+      - ``False`` (scheduler default) — process up to ``batch_size`` items
+        from ``dream.md``.  Keeps scheduled fires bounded.
+      - ``True`` (manual API / CLI default) — process every pending item.
+        Matches user intent for "Run now": drain the queue.  The previous
+        behaviour of also honouring ``batch_size`` here meant manual runs
+        only processed 1 item per click on the default config — a footgun.
 
     Each item gets its own fresh agent instance so no conversation history
     bleeds between items.  Sessions and notes are **interleaved** (one of
@@ -701,12 +1028,17 @@ async def run_dream(db: AsyncSession) -> dict:
             "remaining": R,
             "failed": F,
         }
+
+    ``failed`` is the count of items whose synthesis raised on this run.
+    Failed items stay unprocessed and the scheduler retries them on the
+    next fire.  No persistent failure tracking — operators inspect
+    ``LOG.md`` and surface persistent failures themselves.
     """
     async with _run_lock:
-        return await _run_dream_locked(db)
+        return await _run_dream_locked(db, drain=drain)
 
 
-async def _run_dream_locked(db: AsyncSession) -> dict:
+async def _run_dream_locked(db: AsyncSession, *, drain: bool) -> dict:
     """Inner implementation — assumes ``_run_lock`` is held."""
     # Parse dream.md once and pass the config down — avoids re-reading the
     # file mid-run if the user edits it (bug #14).  Wrap in ``to_thread``
@@ -731,25 +1063,24 @@ async def _run_dream_locked(db: AsyncSession) -> dict:
     )
     unprocessed_notes = await get_unprocessed_notes(db)
 
-    # Empty-session marking moved here from get_unprocessed_sessions so the
-    # write side-effect is no longer hidden inside a read function (bug #3).
-    #
-    # Cap empties drained per run to avoid commit-storms when a long-lived
-    # deployment accumulates thousands of test/abandoned empty sessions.  The
-    # cap is generous (100x ``batch_size`` so a healthy backlog still drains
-    # quickly) but bounded so one fire cannot block on thousands of commits.
+    # Single batched query splits real/empty — replaces the previous N+1
+    # ``_session_has_messages`` loop.
+    real_sessions, empty_sessions = await _split_sessions_by_emptiness(
+        db, unprocessed_sessions
+    )
+
+    # Mark empties (no LLM call needed).  Cap drained per run to avoid
+    # commit-storms when a long-lived deployment accumulates thousands of
+    # test/abandoned empty sessions.  When ``drain=True``, we still cap at
+    # the same generous limit — a single manual click should never need
+    # to commit > 100k rows.
     empty_session_drain_cap = max(100, batch_size * 100)
-    real_sessions: list[ChatSession] = []
     empty_count = 0
     empty_mark_failures = 0
-    for session in unprocessed_sessions:
-        if await _session_has_messages(db, session):
-            real_sessions.append(session)
-            continue
+    leftover_empties = 0
+    for session in empty_sessions:
         if empty_count >= empty_session_drain_cap:
-            # Stop marking — leftover empties will be picked up by the next
-            # run.  Don't break the loop entirely: real sessions found after
-            # this point still need to be enqueued for synthesis.
+            leftover_empties += 1
             continue
         try:
             await _mark_item_processed(db, "session", session)
@@ -764,11 +1095,12 @@ async def _run_dream_locked(db: AsyncSession) -> dict:
                 "dream_empty_session_mark_failed session_id={} retry_next_run=true",
                 session.id,
             )
-    if empty_count or empty_mark_failures:
+    if empty_count or empty_mark_failures or leftover_empties:
         logger.info(
-            "dream_skipped_empty_sessions count={} failures={} drain_cap={}",
+            "dream_skipped_empty_sessions count={} failures={} leftover={} drain_cap={}",
             empty_count,
             empty_mark_failures,
+            leftover_empties,
             empty_session_drain_cap,
         )
 
@@ -782,11 +1114,17 @@ async def _run_dream_locked(db: AsyncSession) -> dict:
             "failed": 0,
         }
 
+    # ``drain=True`` (manual triggers) ignores ``batch_size`` and processes
+    # everything pending in one go.  Scheduled fires keep the cap so a 2am
+    # cron tick can't monopolise the LLM provider for an hour.
+    cap = total_remaining if drain else batch_size
+
     logger.info(
-        "dream_run_start sessions={} notes={} batch_size={} timeout_s={}",
+        "dream_run_start sessions={} notes={} cap={} drain={} timeout_s={}",
         len(real_sessions),
         len(unprocessed_notes),
-        batch_size,
+        cap,
+        drain,
         timeout_seconds,
     )
 
@@ -794,18 +1132,18 @@ async def _run_dream_locked(db: AsyncSession) -> dict:
     notes_processed = 0
     failed = 0
 
-    # Interleave: one session, one note, one session, ... up to batch_size.
+    # Interleave: one session, one note, one session, ... up to cap.
     work: list[tuple[str, ChatSession | str]] = []
     s_iter = iter(real_sessions)
     n_iter = iter(unprocessed_notes)
-    while len(work) < batch_size:
+    while len(work) < cap:
         added = False
         try:
             work.append(("session", next(s_iter)))
             added = True
         except StopIteration:
             pass
-        if len(work) >= batch_size:
+        if len(work) >= cap:
             break
         try:
             work.append(("note", next(n_iter)))
@@ -814,6 +1152,13 @@ async def _run_dream_locked(db: AsyncSession) -> dict:
             pass
         if not added:
             break
+
+    # Wiki context is rebuilt PER ITEM (inside the loop below) so item N+1
+    # sees any topics item N just created.  Without this refresh, a drain
+    # of 5 sessions on the same subject would each generate a fresh topic
+    # file because each item saw the same baseline view from before the
+    # batch started.  Cost is negligible — a couple of stat()s + one
+    # ``INDEX.md`` read per item.
 
     # Sandbox restoration is handled per-item via ``_sandbox_ctx.reset(token)``
     # in the inner ``finally`` block below — each ``_load_dream_agent`` call
@@ -870,6 +1215,10 @@ async def _run_dream_locked(db: AsyncSession) -> dict:
             continue
 
         agent, sandbox_token = loaded
+        # Refresh per item so item N+1 sees item N's writes.  Built before
+        # the synthesis call so the prompt embeds the post-previous-item
+        # state of the wiki.
+        wiki_context = await asyncio.to_thread(_build_wiki_context)
         try:
             if kind == "session":
                 if not isinstance(item, ChatSession):
@@ -878,13 +1227,18 @@ async def _run_dream_locked(db: AsyncSession) -> dict:
                     )
                 try:
                     topics_written = await _synthesise_session(
-                        agent, db, item, timeout_seconds=timeout_seconds
+                        agent,
+                        db,
+                        item,
+                        timeout_seconds=timeout_seconds,
+                        wiki_context=wiki_context,
                     )
-                except _SynthesisFailed:
+                except _SynthesisFailed as exc:
                     failed += 1
                     logger.warning(
-                        "dream_session_failed session_id={} retry_next_run=true",
+                        "dream_session_failed session_id={} error={} retry_next_run=true",
                         item.id,
+                        exc,
                     )
                     continue
                 try:
@@ -917,13 +1271,17 @@ async def _run_dream_locked(db: AsyncSession) -> dict:
                     )
                 try:
                     topics_written = await _synthesise_note(
-                        agent, item, timeout_seconds=timeout_seconds
+                        agent,
+                        item,
+                        timeout_seconds=timeout_seconds,
+                        wiki_context=wiki_context,
                     )
-                except _SynthesisFailed:
+                except _SynthesisFailed as exc:
                     failed += 1
                     logger.warning(
-                        "dream_note_failed filename={} retry_next_run=true",
+                        "dream_note_failed filename={} error={} retry_next_run=true",
                         item,
+                        exc,
                     )
                     continue
                 try:
@@ -956,4 +1314,27 @@ async def _run_dream_locked(db: AsyncSession) -> dict:
         "failed": failed,
     }
     logger.info("dream_run_complete result={}", result)
+
+    # Append a human-readable LOG.md entry so users have a chronological
+    # record of dream activity alongside the wiki itself (Karpathy LLM-Wiki
+    # pattern).  Skip on completely empty runs (drain=False with nothing to
+    # do) so the log doesn't fill up with noise from idle cron ticks.
+    if sessions_processed or notes_processed or failed or empty_count:
+        summary_first_line = (
+            f"dream | sessions={sessions_processed} notes={notes_processed} "
+            f"failed={failed} drain={drain}"
+        )
+        details: list[str] = []
+        if empty_count:
+            details.append(f"- empty sessions drained: {empty_count}")
+        if remaining:
+            details.append(f"- remaining pending: {remaining}")
+        body = summary_first_line + ("\n" + "\n".join(details) if details else "")
+        try:
+            await asyncio.to_thread(append_log, body)
+        except Exception:
+            # LOG.md append failure is non-fatal — the synthesis side-effects
+            # already landed in dream_log and the wiki.  Log and move on.
+            logger.exception("dream_log_append_failed")
+
     return result
