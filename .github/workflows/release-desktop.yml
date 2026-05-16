@@ -6,10 +6,17 @@ name: Release Desktop
 #   - Windows x64 (.exe NSIS installer, .msi)
 #   - Linux x64  (.AppImage, .deb)
 #
-# Outputs are attached to the GitHub Release matching `app/version.txt`.
-# The `latest.json` updater manifest is generated last and uploaded to
-# the same release; the Tauri updater endpoint
-# (configured in tauri.conf.json) points at that file.
+# Outputs are attached to the GitHub Release matching `app/version.txt`
+# (tag ``v<X.Y.Z>`` — the same tag ``release.yml`` creates for the
+# wheel/sdist). Run ``release.yml`` first so the tag + release exist,
+# then ``release-desktop.yml`` appends the desktop installers via
+# ``gh release upload --clobber``. If the order is reversed, this
+# workflow creates the release itself (see the publish step's
+# create-or-update branch).
+# The ``latest.json`` updater manifest is generated last and uploaded
+# to the same release; the Tauri updater endpoint (configured in
+# tauri.conf.json) points at the rolling ``latest-desktop`` release
+# which only mirrors ``latest.json``.
 
 on:
   workflow_dispatch:
@@ -37,10 +44,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: version
+        # Use the same ``v<X.Y.Z>`` tag as ``release.yml``. Both
+        # workflows publish into one release so the artefact set
+        # (wheel + sdist + .dmg + .msi + .deb) lives under one tag
+        # the user can compare-link to. The publish job below
+        # uploads with ``--clobber`` so it does not matter which
+        # workflow runs first.
         run: |
           VERSION=$(cat app/version.txt | tr -d '[:space:]')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v${VERSION}-desktop" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
@@ -316,6 +329,12 @@ jobs:
             --out _release/latest.json
 
       - name: Create or update GitHub release
+        # Releases land on the shared ``v<X.Y.Z>`` tag. If
+        # ``release.yml`` already created the release with the
+        # canonical notes + wheel/sdist, we append our installers
+        # via ``upload --clobber``. If we ran first, we create the
+        # release with a minimal title; ``release.yml`` will then
+        # ``upload`` the wheel + sdist on top.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -324,7 +343,7 @@ jobs:
             gh release upload "$TAG" _release/* --clobber
           else
             gh release create "$TAG" _release/* \
-              --title "OpenAgentd Desktop ${{ needs.prepare.outputs.version }}" \
+              --title "$TAG" \
               --generate-notes
           fi
 
