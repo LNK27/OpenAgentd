@@ -127,7 +127,15 @@ export function extractText(node: unknown): string {
 
 // ── CodeBlock ─────────────────────────────────────────────────────────────────
 
-export function CodeBlock({ children, rawText }: { children: React.ReactNode; rawText: string }) {
+export function CodeBlock({
+  children,
+  language,
+  rawText,
+}: {
+  children: React.ReactNode
+  language?: string
+  rawText: string
+}) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -140,21 +148,34 @@ export function CodeBlock({ children, rawText }: { children: React.ReactNode; ra
     }
   }
 
+  const copyButton = (
+    <button
+      onClick={handleCopy}
+      className="rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) md:opacity-0 md:group-hover:opacity-100"
+      aria-label="Copy code"
+      title="Copy"
+    >
+      {copied ? (
+        <Check size={13} className="text-(--color-success)" />
+      ) : (
+        <Copy size={13} />
+      )}
+    </button>
+  )
+
   return (
-    <div className="surface-raised group relative my-2 overflow-hidden rounded-xl border border-(--color-border) bg-(--bg-card)">
-      <button
-        onClick={handleCopy}
-        className="absolute right-2 top-2 z-10 rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) md:opacity-0 md:group-hover:opacity-100"
-        aria-label="Copy code"
-        title="Copy"
-      >
-        {copied ? (
-          <Check size={13} className="text-(--color-success)" />
-        ) : (
-          <Copy size={13} />
-        )}
-      </button>
-      <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-(--color-text)">
+    <div className="surface-raised group relative my-1.5 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
+      {language ? (
+        <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+            {language}
+          </span>
+          {copyButton}
+        </div>
+      ) : (
+        <div className="absolute top-1.5 right-1.5 z-10">{copyButton}</div>
+      )}
+      <pre className="overflow-x-auto px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
         <code>{children}</code>
       </pre>
     </div>
@@ -367,9 +388,17 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   const components = useMemo(
     () => ({
       pre: (props: React.HTMLAttributes<HTMLPreElement>) => {
-        const codeEl = props.children as React.ReactElement<{ children?: unknown }>
+        const codeEl = props.children as React.ReactElement<{
+          children?: unknown
+          className?: string
+        }>
         const codeText = extractText(codeEl?.props?.children)
-        return <CodeBlock rawText={codeText}>{codeEl?.props?.children as React.ReactNode}</CodeBlock>
+        const language = codeEl?.props?.className?.match(/(?:^|\s)language-([^\s]+)/)?.[1]
+        return (
+          <CodeBlock language={language} rawText={codeText}>
+            {codeEl?.props?.children as React.ReactNode}
+          </CodeBlock>
+        )
       },
       a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
         <a {...props} target="_blank" rel="noopener noreferrer" />

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { fixNestedFences, extractText } from "@/utils/markdown";
+import { render, screen } from "@testing-library/react";
+import { fixNestedFences, extractText, MarkdownBlock } from "@/utils/markdown";
 
 // ---------------------------------------------------------------------------
 // fixNestedFences
@@ -400,5 +401,25 @@ describe("extractText", () => {
   it("handles object with props.children null", () => {
     const node = { props: { children: null } };
     expect(extractText(node)).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MarkdownBlock code fences
+// ---------------------------------------------------------------------------
+
+describe("MarkdownBlock code fences", () => {
+  it("shows the fenced language in the code block header", () => {
+    render(<MarkdownBlock content={["```ts", "const answer = 42", "```"].join("\n")} />);
+
+    expect(screen.getByText("ts")).toBeTruthy();
+    expect(document.querySelector("pre")?.textContent).toContain("const answer = 42");
+  });
+
+  it("does not show a code block header for an unlabeled fence", () => {
+    render(<MarkdownBlock content={["```", "plain text", "```"].join("\n")} />);
+
+    const pre = screen.getByText("plain text").closest("pre");
+    expect(pre?.previousElementSibling?.textContent).not.toBe("plain text");
   });
 });
