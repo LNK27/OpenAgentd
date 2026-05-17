@@ -1,21 +1,19 @@
 /**
- * ToolCall — paper-card record of a tool invocation.
+ * ToolCall — inline record of a tool invocation.
  *
  * Visual language follows the pencil source (nodes ``dqwZw`` / ``LJOUY``)
  * and the canonical spec at ``applications.md#tool-call-row``:
  *
- *   - Outer card: 1px ``--color-border`` outline, ``rounded-md``, on the
- *     ambient surface (no fill of its own — sits on the chat surface).
- *   - Header row: status dot + mono tool-name (or one-line summary) +
- *     chevron, padded ``px-3 py-2``.
- *   - Expanded body: divider, then the args/result panels on the warm
- *     ``--bg-key`` surface so the actual content gets a calm reading wash.
+ *   - Collapsed row: no card fill; sits on the ambient chat surface.
+ *   - Header row: mono tool label + optional summary + chevron.
+ *   - Expanded body: separate bordered inspector with section panels so
+ *     args/results read as secondary diagnostic content.
  *
- * Identity is carried by a colored status dot for the lifecycle:
- * start / running / success / failed.
+ * Running state is carried by subtle header animation; result content carries
+ * success/failure details.
  *
  * The per-tool header/args customisation lives in ``./display.tsx``;
- * this module owns only the chrome (collapse, copy, status dot, motion).
+ * this module owns only the chrome (collapse, copy, motion).
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -58,6 +56,15 @@ function formatShellResult(result: string | undefined): { statusLine: string | n
 
   const body = firstNewline >= 0 ? result.slice(firstNewline + 1).trimStart() : ''
   return { statusLine: firstLine, body: body || null }
+}
+
+function formatToolLabel(name: string): string {
+  if (!name) return 'Tool'
+  return name
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps) {
@@ -127,17 +134,19 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
   const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult)
   const expanded = manualExpanded ?? Boolean(shownLiveOutput)
   const displayName = name || 'tool'
-  const headerClassName = `flex-1 truncate font-mono font-semibold text-(--color-text) ${state === 'running' ? 'animate-pulse text-(--color-marker-orange)' : ''}`
+  const toolLabel = formatToolLabel(displayName)
+  const title = headerTitle ? `${toolLabel}: ${headerTitle}` : toolLabel
+  const headerClassName = `min-w-0 truncate font-mono text-(--color-text) ${state === 'running' ? 'animate-pulse text-(--color-marker-orange)' : ''}`
 
   return (
-    <div className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border)">
-      {/* Header row — card-padded, mono name, chevron at end */}
+    <div className="tool-row-enter my-2">
+      {/* Header row — separate from the details container so collapsed tools stay lightweight. */}
       <button
         type="button"
         onClick={() => hasDetails && setManualExpanded(!expanded)}
-        className={`group flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
+        className={`group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-sm transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
           hasDetails
-            ? 'cursor-pointer hover:bg-(--bg-key)'
+            ? 'cursor-pointer text-(--color-text) hover:text-(--color-accent)'
             : 'cursor-default'
         }`}
         aria-expanded={expanded}
@@ -151,22 +160,19 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
       >
         {/* Header content: tool-specific summary or fallback to tool name.
             Mono+600 per pencil dqwZw. */}
-        {visibleHeader ? (
-          <span
-            className={headerClassName}
-            title={headerTitle ?? undefined}
-          >
-            {visibleHeader}
-          </span>
-        ) : (
-          <code className={headerClassName}>
-            {displayName}
-          </code>
-        )}
+        <span className={headerClassName} title={title}>
+          <span className="font-semibold">{toolLabel}</span>
+          {visibleHeader && (
+            <>
+              <span>: </span>
+              <span title={headerTitle ?? undefined}>{visibleHeader}</span>
+            </>
+          )}
+        </span>
 
         {hasDetails && (
           <ChevronRight
-            size={14}
+            size={13}
             className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
             aria-hidden
           />
@@ -184,18 +190,17 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
             transition={{ duration: DURATIONS_S.base, ease: EASINGS.out }}
             className="overflow-hidden"
           >
-            <div className="border-t border-(--color-border) bg-(--bg-key)">
-              <div className="space-y-3 px-3 py-2.5">
+            <section className="surface-raised group relative mt-1 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
                 {/* Args section — caption + copy sit above the content. */}
                 {formattedArgs && (
-                  <section className="relative">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
+                  <div>
+                    <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
+                      <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
                         {isShellTerminal ? 'terminal' : 'arguments'}
                       </span>
                       <button
                         onClick={handleCopyArgs}
-                        className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+                        className="rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:opacity-0 md:group-hover:opacity-100"
                         aria-label="Copy arguments"
                         title="Copy"
                       >
@@ -207,10 +212,10 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
                       </button>
                     </div>
                     {isShellTerminal ? (
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col gap-1 p-2.5">
                         <pre
                           ref={shownLiveOutput ? liveOutputRef : undefined}
-                          className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text-2)"
+                          className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
                         >
                           <span className="select-none text-(--color-text-muted)">$ </span>
                           <span className="text-(--color-accent)">{formattedArgs}</span>
@@ -229,39 +234,39 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
                         )}
                       </div>
                     ) : (
-                      <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-(--color-text-2)">
+                      <pre className="overflow-auto whitespace-pre-wrap break-all px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
                         {formattedArgs}
                       </pre>
                     )}
-                  </section>
+                  </div>
                 )}
 
                 {shownLiveOutput && !isShellTerminal && (
-                  <section className="relative">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
+                  <div>
+                    <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 ${formattedArgs ? 'border-t' : ''}`}>
+                      <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
                         output
                       </span>
                     </div>
                     <pre
                       ref={liveOutputRef}
-                      className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)"
+                      className="max-h-64 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
                     >
                       {shownLiveOutput}
                     </pre>
-                  </section>
+                  </div>
                 )}
 
                 {/* Result section — same caption treatment as args. */}
                 {shownResult && !isShellTerminal && (
-                  <section className="relative">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
+                  <div>
+                    <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
+                      <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
                         result
                       </span>
                       <button
                         onClick={handleCopyResult}
-                        className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+                        className="rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:opacity-0 md:group-hover:opacity-100"
                         aria-label="Copy result"
                         title="Copy result"
                       >
@@ -272,13 +277,12 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
                         )}
                       </button>
                     </div>
-                    <div className="text-xs leading-relaxed text-(--color-text-2)">
+                    <div className="max-h-80 overflow-auto px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
                       <ToolResult toolName={name} result={shownResult} />
                     </div>
-                  </section>
+                  </div>
                 )}
-              </div>
-            </div>
+            </section>
           </motion.div>
         )}
       </AnimatePresence>

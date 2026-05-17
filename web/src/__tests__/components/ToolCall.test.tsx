@@ -49,12 +49,12 @@ function expectPlainArg(header: HTMLElement, arg: string) {
 describe("ToolCall — header", () => {
   it("shows tool name when no custom display config", () => {
     render(<ToolCall name="custom_tool" args='{"path":"src/main.py"}' done={false} />)
-    expect(screen.getByText("custom_tool")).toBeTruthy()
+    expect(screen.getByText("Custom Tool")).toBeTruthy()
   })
 
   it("shows only the tool name when no args", () => {
     render(<ToolCall name="read" />)
-    expect(screen.getByText("read")).toBeTruthy()
+    expect(screen.getByText("Read")).toBeTruthy()
     expect(screen.queryByText("pending")).toBeNull()
   })
 
@@ -88,6 +88,13 @@ describe("ToolCall — shell display", () => {
     expect(screen.queryByText("shell")).toBeNull()
   })
 
+  it("renders the tool name bold and description normal", () => {
+    const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
+    render(<ToolCall name="shell" args={args} done={false} />)
+    expect(screen.getByText("Shell").className).toContain("font-semibold")
+    expect(getHeader("Run unit tests").className).not.toContain("font-semibold")
+  })
+
   it("shows command string as args instead of JSON", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
@@ -100,13 +107,13 @@ describe("ToolCall — shell display", () => {
   it("falls back to tool name when shell has no description", () => {
     const args = JSON.stringify({ command: "ls" })
     render(<ToolCall name="shell" args={args} done={false} />)
-    expect(screen.getByText("shell")).toBeTruthy()
+    expect(screen.getByText("Shell")).toBeTruthy()
   })
 
   it("falls back to tool name when shell description is empty", () => {
     const args = JSON.stringify({ command: "ls", description: "" })
     render(<ToolCall name="shell" args={args} done={false} />)
-    expect(screen.getByText("shell")).toBeTruthy()
+    expect(screen.getByText("Shell")).toBeTruthy()
   })
 
   it("auto-expands live output before the final result arrives", () => {
@@ -151,12 +158,35 @@ describe("ToolCall — web_search display", () => {
     expect(screen.queryByText("web_search")).toBeNull()
   })
 
-  it("shows query string as args instead of JSON", async () => {
+  it("hides redundant query args already shown in the header", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ query: "react hooks guide" })
     render(<ToolCall name="web_search" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
+    expect(screen.queryByText("arguments")).toBeNull()
     expect(screen.queryByText(/"query"/)).toBeNull()
+  })
+})
+
+describe("ToolCall — file search display", () => {
+  it("hides glob args already shown in the header", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ pattern: "web/src/**/*.tsx", directory: "web", match: "name" })
+    render(<ToolCall name="glob" args={args} done={false} />)
+
+    expectPlainArg(getHeader("Finding web/src/**/*.tsx in web (by name)"), "web/src/**/*.tsx")
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByText("arguments")).toBeNull()
+  })
+
+  it("hides grep args already shown in the header", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ pattern: "useEffect", directory: "web/src", include: "*.tsx" })
+    render(<ToolCall name="grep" args={args} done={false} />)
+
+    expectPlainArg(getHeader("Searching useEffect in web/src (*.tsx)"), "useEffect")
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByText("arguments")).toBeNull()
   })
 })
 
@@ -180,12 +210,13 @@ describe("ToolCall — web_fetch display", () => {
     expectPlainArg(header, "example.com")
   })
 
-  it("shows full URL in args section", async () => {
+  it("hides redundant URL args", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ url: "https://docs.python.org/3/library/asyncio.html" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    expect(screen.getByText("https://docs.python.org/3/library/asyncio.html")).toBeTruthy()
+    expect(screen.queryByText("arguments")).toBeNull()
+    expect(screen.queryByText("https://docs.python.org/3/library/asyncio.html")).toBeNull()
   })
 })
 
@@ -285,7 +316,7 @@ describe("ToolCall — recall display", () => {
 describe("ToolCall — default display", () => {
   it("shows tool name for uncustomised tools", () => {
     render(<ToolCall name="custom_tool" args='{"path":"x","value":"test"}' done={false} />)
-    expect(screen.getByText("custom_tool")).toBeTruthy()
+    expect(screen.getByText("Custom Tool")).toBeTruthy()
   })
 
   it("shows pretty-printed JSON args", async () => {
@@ -345,6 +376,7 @@ describe("ToolCall — expand/collapse", () => {
     )
     await user.click(screen.getByRole("button"))
     expect(screen.getByText("result")).toBeTruthy()
+    expect(document.querySelector('[class*="max-h-80"][class*="overflow-auto"]')).toBeTruthy()
   })
 
   it("shows both args and result sections together", async () => {
@@ -470,8 +502,9 @@ describe("ToolCall — team_configure display", () => {
 
     expect(getHeader("Granting tool: write to executor#1")).toBeTruthy()
     await user.click(screen.getByRole("button"))
-    expect(screen.getByText(/member: executor#1/)).toBeTruthy()
-    expect(screen.getByText(/capability: tool: write/)).toBeTruthy()
+    expect(screen.queryByText("arguments")).toBeNull()
+    expect(screen.queryByText(/member: executor#1/)).toBeNull()
+    expect(screen.queryByText(/capability: tool: write/)).toBeNull()
     expect(screen.queryByText(/"member"/)).toBeNull()
   })
 
@@ -550,6 +583,120 @@ describe("ToolCall — skill display", () => {
     // Button should not be clickable (cursor-default)
     expect(btn.className).toContain("cursor-default")
     expect(btn.className).not.toContain("cursor-pointer")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Custom tool display — note / wiki_search
+// ---------------------------------------------------------------------------
+
+describe("ToolCall — note display", () => {
+  it("shows conversational header and note content as args", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ content: "User prefers concise summaries." })
+    render(<ToolCall name="note" args={args} done={false} />)
+
+    expect(getHeader("Recording note…")).toBeTruthy()
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText("User prefers concise summaries.")).toBeTruthy()
+    expect(screen.queryByText(/"content"/)).toBeNull()
+  })
+})
+
+describe("ToolCall — wiki_search display", () => {
+  it("shows query in the header and hides redundant args", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ query: "deployment decisions", methods: ["text"], top_k: 5 })
+    render(<ToolCall name="wiki_search" args={args} done={false} />)
+
+    expectPlainArg(getHeader('Searching wiki for "deployment decisions"'), '"deployment decisions"')
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByText("arguments")).toBeNull()
+    expect(screen.queryByText(/"query"/)).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Custom tool display — todo_manage / schedule_task
+// ---------------------------------------------------------------------------
+
+describe("ToolCall — todo_manage display", () => {
+  it("shows create summary and simplified action args", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({
+      actions: [{
+        action: "create",
+        content: "Audit backend tools",
+        status: "pending",
+        priority: "high",
+        assigned_to: "explorer#1",
+        dependencies: ["task_1"],
+      }],
+    })
+    render(<ToolCall name="todo_manage" args={args} done={false} />)
+
+    expectPlainArg(getHeader("Creating todo: Audit backend tools"), "Audit backend tools")
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText(/create \[pending\] \(high\).*Audit backend tools/)).toBeTruthy()
+    expect(screen.queryByText(/"actions"/)).toBeNull()
+  })
+
+  it("summarizes batched todo actions without raw JSON", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({
+      actions: [
+        { action: "update", task_id: "task_1", status: "completed" },
+        { action: "claim", task_id: "task_2" },
+      ],
+    })
+    render(<ToolCall name="todo_manage" args={args} done={false} />)
+
+    expectPlainArg(getHeader("Updating 2 todos…"), "2 todos")
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText(/update task_1: status=completed/)).toBeTruthy()
+    expect(screen.getByText(/claim task_2/)).toBeTruthy()
+    expect(screen.queryByText(/"task_id"/)).toBeNull()
+  })
+
+  it("hides redundant read args", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ actions: [{ action: "read" }] })
+    render(<ToolCall name="todo_manage" args={args} done={false} />)
+
+    expect(getHeader("Reading todos…")).toBeTruthy()
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByText("arguments")).toBeNull()
+  })
+})
+
+describe("ToolCall — schedule_task display", () => {
+  it("shows create summary and schedule prompt args", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({
+      action: "create",
+      name: "daily-standup",
+      schedule_type: "cron",
+      cron_expression: "0 8 * * 1-5",
+      timezone: "Asia/Ho_Chi_Minh",
+      prompt: "Draft the standup summary.",
+    })
+    render(<ToolCall name="schedule_task" args={args} done={false} />)
+
+    expectPlainArg(getHeader("Scheduling daily-standup"), "daily-standup")
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText(/schedule: cron 0 8 \* \* 1-5 \(Asia\/Ho_Chi_Minh\)/)).toBeTruthy()
+    expect(screen.getByText(/prompt: Draft the standup summary\./)).toBeTruthy()
+    expect(screen.queryByText(/"cron_expression"/)).toBeNull()
+  })
+
+  it("hides redundant list args", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ action: "list" })
+    render(<ToolCall name="schedule_task" args={args} done={false} />)
+
+    expect(getHeader("Listing scheduled tasks…")).toBeTruthy()
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByText("arguments")).toBeNull()
   })
 })
 
@@ -845,60 +992,20 @@ describe("ToolCall — shell terminal label and formatting", () => {
 })
 
 describe("ToolCall — copy formattedArgs instead of raw JSON", () => {
-  it("copies formattedArgs for web_search (query string only)", async () => {
+  it("does not show a copy button for hidden web_search args", async () => {
     const user = userEvent.setup()
-    let copiedText = ""
-    const mockWriteText = async (text: string) => {
-      copiedText = text
-    }
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: mockWriteText },
-      writable: true,
-    })
-
-    try {
-      const args = JSON.stringify({ query: "python async", other: "ignored" })
-      render(<ToolCall name="web_search" args={args} done={false} />)
-      await user.click(screen.getByRole("button"))
-      const copyBtn = screen.getByLabelText("Copy arguments")
-      await user.click(copyBtn)
-      expect(copiedText).toBe("python async")
-      expect(copiedText).not.toContain("query")
-      expect(copiedText).not.toContain("other")
-    } finally {
-      Object.defineProperty(navigator, "clipboard", {
-        value: navigator.clipboard,
-        writable: true,
-      })
-    }
+    const args = JSON.stringify({ query: "python async", other: "ignored" })
+    render(<ToolCall name="web_search" args={args} done={false} />)
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByLabelText("Copy arguments")).toBeNull()
   })
 
-  it("copies formattedArgs for web_fetch (URL only)", async () => {
+  it("does not show a copy button for hidden web_fetch args", async () => {
     const user = userEvent.setup()
-    let copiedText = ""
-    const mockWriteText = async (text: string) => {
-      copiedText = text
-    }
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: mockWriteText },
-      writable: true,
-    })
-
-    try {
-      const args = JSON.stringify({ url: "https://example.com", timeout: 30 })
-      render(<ToolCall name="web_fetch" args={args} done={false} />)
-      await user.click(screen.getByRole("button"))
-      const copyBtn = screen.getByLabelText("Copy arguments")
-      await user.click(copyBtn)
-      expect(copiedText).toBe("https://example.com")
-      expect(copiedText).not.toContain("url")
-      expect(copiedText).not.toContain("timeout")
-    } finally {
-      Object.defineProperty(navigator, "clipboard", {
-        value: navigator.clipboard,
-        writable: true,
-      })
-    }
+    const args = JSON.stringify({ url: "https://example.com", timeout: 30 })
+    render(<ToolCall name="web_fetch" args={args} done={false} />)
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByLabelText("Copy arguments")).toBeNull()
   })
 
   it("copies formattedArgs for remember (formatted items)", async () => {
@@ -1053,7 +1160,7 @@ describe("ToolCall — empty args {} show no args section", () => {
 
   it("shows tool name when args is empty object", () => {
     render(<ToolCall name="custom_tool" args="{}" done={false} />)
-    expect(screen.getByText("custom_tool")).toBeTruthy()
+    expect(screen.getByText("Custom Tool")).toBeTruthy()
   })
 
   it("shows result section even when args is empty", async () => {
@@ -1131,56 +1238,20 @@ describe("ToolCall — getToolDisplay called before copy handlers", () => {
     }
   })
 
-  it("formattedArgs is available in copy handler for web_search", async () => {
+  it("does not expose hidden web_search args to the copy handler", async () => {
     const user = userEvent.setup()
-    let copiedText = ""
-    const mockWriteText = async (text: string) => {
-      copiedText = text
-    }
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: mockWriteText },
-      writable: true,
-    })
-
-    try {
-      const args = JSON.stringify({ query: "typescript generics" })
-      render(<ToolCall name="web_search" args={args} done={false} />)
-      await user.click(screen.getByRole("button"))
-      const copyBtn = screen.getByLabelText("Copy arguments")
-      await user.click(copyBtn)
-      expect(copiedText).toBe("typescript generics")
-    } finally {
-      Object.defineProperty(navigator, "clipboard", {
-        value: navigator.clipboard,
-        writable: true,
-      })
-    }
+    const args = JSON.stringify({ query: "typescript generics" })
+    render(<ToolCall name="web_search" args={args} done={false} />)
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByLabelText("Copy arguments")).toBeNull()
   })
 
-  it("formattedArgs is available in copy handler for web_fetch", async () => {
+  it("does not expose hidden web_fetch args to the copy handler", async () => {
     const user = userEvent.setup()
-    let copiedText = ""
-    const mockWriteText = async (text: string) => {
-      copiedText = text
-    }
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: mockWriteText },
-      writable: true,
-    })
-
-    try {
-      const args = JSON.stringify({ url: "https://docs.python.org" })
-      render(<ToolCall name="web_fetch" args={args} done={false} />)
-      await user.click(screen.getByRole("button"))
-      const copyBtn = screen.getByLabelText("Copy arguments")
-      await user.click(copyBtn)
-      expect(copiedText).toBe("https://docs.python.org")
-    } finally {
-      Object.defineProperty(navigator, "clipboard", {
-        value: navigator.clipboard,
-        writable: true,
-      })
-    }
+    const args = JSON.stringify({ url: "https://docs.python.org" })
+    render(<ToolCall name="web_fetch" args={args} done={false} />)
+    await user.click(screen.getByRole("button"))
+    expect(screen.queryByLabelText("Copy arguments")).toBeNull()
   })
 
   it("formattedArgs is available in copy handler for remember", async () => {

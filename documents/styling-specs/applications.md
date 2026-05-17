@@ -352,35 +352,36 @@ A blinking caret trailing live-streamed text. Spec in [motion.md § Streaming cu
 
 ## Tool-call row
 
-A paper card recording one tool invocation. Identity is carried by a colored status dot, not a tool icon, so the same chrome serves every tool the agent might call.
+A compact inline record of one tool invocation. Identity is carried by the humanized tool label plus a deterministic summary, not a tool icon, so the same chrome serves every tool the agent might call.
 
 ### Lifecycle
 
-| State | When | Dot |
+| State | When | Header treatment |
 |---|---|---|
-| Start | Tool name has arrived but arguments have not | Muted, gentle pulse |
-| Running | Arguments are streaming, no result yet | Accent-blue, gentle pulse |
-| Success | Result has landed and does not look like a failure | `--color-success`, static |
-| Failed | Result begins with a known failure prefix or a non-zero exit signal | `--color-error`, static |
+| Start | Tool name has arrived but arguments have not | Humanized tool label, or a pending-state summary for tools that opt in |
+| Running | Arguments are streaming, no result yet | Header text pulses with the running color |
+| Success | Result has landed and does not look like a failure | Header returns to normal text treatment |
+| Failed | Result begins with a known failure prefix or a non-zero exit signal | Header returns to normal text treatment; failure is visible in result content |
 
-The failure detection is conservative: prefer false negatives over false positives. The dot only flips to error when the result text matches one of the agreed failure shapes (e.g. `[failed`, `[error`, `exit code 1`, `exit 1`). Tool result formatters must use those prefixes consistently so the indicator stays trustworthy.
+The failure detection is conservative: prefer false negatives over false positives. A call is considered failed only when the result text matches one of the agreed failure shapes (e.g. `[failed`, `[error`, `exit code 1`, `exit 1`). Tool result formatters must use those prefixes consistently so the indicator stays trustworthy.
 
 ### Chrome
 
-- Outer card: small radius, 1px `--color-border`, no fill — sits on the ambient chat surface so a stack of rows reads as a single column.
-- Header row: status dot, mono name (or a tool-specific summary), chevron at the trailing edge. Header padding sits at the small-card scale.
-- Hover wash on `--bg-key` only when the row is expandable. A row with no details is non-interactive and skips the wash.
-- Expanded body: divider, then the calm `--bg-key` wash. Inside the body, two sections — arguments and result — each captioned with mono uppercase 10px in `--color-text-subtle`, with copy-to-clipboard affordance per section.
+- Collapsed row: no enclosing card and no fill; it sits on the ambient chat surface so a stack of tool rows reads as lightweight inline telemetry.
+- Header row: mono `text-sm`, bold humanized tool label, optional `: summary` in normal weight, chevron immediately after the phrase when expandable.
+- Hover treatment changes text color only when the row is expandable. A row with no details is non-interactive and skips the chevron.
+- Expanded body: one codeblock-style `surface-raised` container with `--bg-card`, 1px `--color-border`, and section header strips on `--bg-key`. Sections are captioned with mono uppercase 10px in `--color-text-muted`, with copy-to-clipboard affordance where content is visible.
+- Result bodies cap at `max-h-80` with internal scrolling so long tool output does not stretch the chat transcript.
 
 ### Per-tool customisation
 
-Tools may customise the header summary (e.g. "Read `src/main.py`" instead of "read_file") and the way arguments are rendered (e.g. shell commands prefixed with `$`, JSON formatted as syntax-highlighted blocks). That customisation is per-tool and lives next to the chrome, not inside it. The chrome rules do not change between tools.
+Tools may customise the header summary (e.g. `Read: Reading src/main.py` instead of a raw backend name) and the way arguments are rendered (e.g. shell commands prefixed with `$`, redundant query/path args hidden when already represented in the summary). That customisation is per-tool and lives next to the chrome, not inside it. The chrome rules do not change between tools.
 
 ### Don't
 
-- Add a wrench (or any tool icon) to the header. The status dot is the only identity glyph; a tool icon adds noise without information.
-- Tint the result body green or red to match status. The dot already conveys state; the warm `--bg-key` reads as a calm reading wash regardless of outcome.
-- Fill the outer card. Leave it transparent so the row blends into the chat surface; only the expanded body gets a fill.
+- Add a wrench (or any tool icon) to the header. The humanized tool label is the identity anchor; an icon adds noise without information.
+- Tint the result body green or red to match status. The details container should stay neutral so long output remains readable regardless of outcome.
+- Fill the collapsed row. Leave it transparent so the row blends into the chat surface; only the expanded body gets a fill.
 - Use the deprecated `--border-card` token; use `--color-border`.
 
 ---

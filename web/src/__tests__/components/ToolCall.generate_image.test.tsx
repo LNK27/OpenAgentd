@@ -115,9 +115,9 @@ describe("ToolCall — generate_image header", () => {
     expect(screen.queryByText("generate_image")).toBeNull()
   })
 
-  it("shows 'generate_image' as tool name when args is undefined (pending state)", () => {
+  it("shows humanized tool name when args is undefined (pending state)", () => {
     render(<ToolCall name="generate_image" done={false} />)
-    expect(screen.getByText("generate_image")).toBeTruthy()
+    expect(screen.getByText("Generate Image")).toBeTruthy()
   })
 
   it("does not show a stale pending badge when args is undefined", () => {
@@ -446,9 +446,9 @@ describe("ToolCall — generate_image expand/collapse", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — generate_image status indicators", () => {
-  it("shows start state as just the tool name when no args", () => {
+  it("shows start state as just the humanized tool name when no args", () => {
     render(<ToolCall name="generate_image" done={false} />)
-    expect(screen.getByText("generate_image")).toBeTruthy()
+    expect(screen.getByText("Generate Image")).toBeTruthy()
     expect(screen.queryByText("pending")).toBeNull()
   })
 
@@ -573,7 +573,7 @@ describe("ToolCall — generate_image does not regress other tools", () => {
       />
     )
     await user.click(screen.getByRole("button"))
-    expect(screen.getByText("arguments")).toBeTruthy()
+    expect(screen.queryByText("arguments")).toBeNull()
     expect(screen.getByText("result")).toBeTruthy()
   })
 })
