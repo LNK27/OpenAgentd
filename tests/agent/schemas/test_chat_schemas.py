@@ -324,7 +324,7 @@ class TestHumanMessageIsMultimodal:
 
 
 # ---------------------------------------------------------------------------
-# capabilities.py — get_capabilities (line 172: unknown provider → _DEFAULT)
+# capabilities.py — get_capabilities (prefix-only resolution)
 # ---------------------------------------------------------------------------
 
 
@@ -336,17 +336,12 @@ class TestGetCapabilities:
         assert caps.input.vision is False
         assert caps.input.document_text is True
 
-    def test_exact_match_vision_model(self):
+    def test_zai_prefix_text_only(self):
         from app.agent.providers.capabilities import get_capabilities
 
-        caps = get_capabilities("zai:glm-5v-turbo")
-        assert caps.input.vision is True
-
-    def test_exact_match_non_vision_model(self):
-        from app.agent.providers.capabilities import get_capabilities
-
-        caps = get_capabilities("zai:glm-5-turbo")
-        assert caps.input.vision is False
+        # The whole zai: prefix is text-only under the conservative default.
+        assert get_capabilities("zai:glm-5v-turbo").input.vision is False
+        assert get_capabilities("zai:glm-5-turbo").input.vision is False
 
     def test_prefix_fallback_googlegenai(self):
         from app.agent.providers.capabilities import get_capabilities
@@ -361,7 +356,6 @@ class TestGetCapabilities:
         assert caps.input.vision is True
 
     def test_unknown_provider_returns_default(self):
-        """Line 172: no exact match and no prefix match → _DEFAULT (vision=False)."""
         from app.agent.providers.capabilities import get_capabilities
 
         caps = get_capabilities("unknown_provider:some-model")
@@ -371,8 +365,8 @@ class TestGetCapabilities:
     def test_case_insensitive_lookup(self):
         from app.agent.providers.capabilities import get_capabilities
 
-        caps_lower = get_capabilities("zai:glm-5v-turbo")
-        caps_upper = get_capabilities("ZAI:GLM-5V-TURBO")
+        caps_lower = get_capabilities("openai:gpt-5")
+        caps_upper = get_capabilities("OPENAI:GPT-5")
         assert caps_lower == caps_upper
 
     def test_to_dict(self):
@@ -396,14 +390,6 @@ class TestGetCapabilities:
         }
 
     def test_prefix_fallback_nvidia(self):
-        """nvidia: prefix maps to vision=False (conservative default for NIM)."""
-        from app.agent.providers.capabilities import get_capabilities
-
-        caps = get_capabilities("nvidia:stepfun-ai/step-3.5-flash")
-        assert caps.input.vision is False
-
-    def test_prefix_fallback_nvidia_any_model(self):
-        """All nvidia: models use the same prefix fallback."""
         from app.agent.providers.capabilities import get_capabilities
 
         caps = get_capabilities("nvidia:meta/llama-3.1-8b-instruct")

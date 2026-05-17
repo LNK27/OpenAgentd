@@ -3,13 +3,16 @@
 Resolves input and output capabilities from the fully-qualified
 ``provider:model`` string stored in ``Agent.model_id``.
 
-Defaults and prefix fallbacks are defined in this module (infrastructure
-logic).  Exact per-model overrides are loaded from ``capabilities.yaml``.
-
 Lookup order:
-1. Exact match in ``capabilities.yaml`` (case-insensitive).
-2. Longest prefix match in ``_PREFIX_FALLBACKS``.
-3. ``_DEFAULT``.
+
+1. Longest prefix match in :data:`_PREFIX_FALLBACKS`.
+2. :data:`_DEFAULT`.
+
+No per-model overrides and no name-substring heuristics: discovered
+models trust the prefix, and edge cases (e.g. ``deepseek:foo-vision``)
+fail at the provider boundary with a clear error. The benefit is a
+maintenance-free registry — see ``documents/techdebts/model-capabilities-registry.md``
+for the long-term direction if richer metadata becomes necessary.
 
 Usage::
 
@@ -17,23 +20,14 @@ Usage::
 
     caps = get_capabilities("googlegenai:gemini-3.1-pro-preview")
     caps.input.vision          # True — accepts image/png, image/jpeg, etc.
-    caps.input.document_text   # True — markitdown conversion for pdf/docx/txt/csv/json/md
+    caps.input.document_text   # True — markitdown for pdf/docx/txt/csv/json/md
     caps.output.text           # True — generates text responses
     caps.to_dict()             # {"input": {...}, "output": {...}}
 """
 
 from __future__ import annotations
 
-import functools
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
-
-import yaml
-from loguru import logger
-
-# ── Path to the YAML registry ────────────────────────────────────────────────
-_YAML_PATH = Path(__file__).parent / "capabilities.yaml"
 
 
 # ── Dataclasses ──────────────────────────────────────────────────────────────
@@ -94,7 +88,7 @@ class ModelCapabilities:
         }
 
 
-# ── Defaults & prefix fallbacks (infrastructure logic) ───────────────────────
+# ── Defaults & prefix fallbacks ──────────────────────────────────────────────
 
 _DEFAULT = ModelCapabilities()
 
@@ -103,115 +97,31 @@ _PREFIX_FALLBACKS: list[tuple[str, ModelCapabilities]] = [
     ("googlegenai:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
     ("vertexai:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
     ("geminicli:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    # OpenAI generic: assume vision-capable
+    # OpenAI generic: vision-capable (GPT-4o family and newer)
     ("openai:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
     # Copilot generic: conservative — no vision
     ("copilot:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
     # Codex (ChatGPT subscription): conservative — no vision
     ("codex:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # xAI (Grok): multimodal models support vision (e.g. grok-4); conservative default
+    # xAI (Grok): vision on grok-4 family
     ("xai:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
     # ZAI generic: conservative — no vision
     ("zai:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # DeepSeek: text-only (no vision in deepseek-chat / deepseek-reasoner)
+    # DeepSeek: text-only
     ("deepseek:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # OpenRouter: too varied — text only unless more specific
+    # OpenRouter: too varied — conservative text-only
     ("openrouter:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # NVIDIA NIM: too varied — text only unless more specific
+    # NVIDIA NIM: too varied — conservative text-only
     ("nvidia:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # Ollama: catalog spans text-only (Llama, Qwen, DeepSeek) and vision
-    # (Llava, Llama 3.2-vision, qwen3-vl). Conservative default — list
-    # exact vision models in capabilities.yaml when needed.
+    # Ollama: catalog spans text-only and vision; conservative default
     ("ollama:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # 9Router: aggregator proxy fronts many vision-capable models (Claude,
-    # Gemini, GPT-4o, etc.); default vision=true and let exact entries opt out.
+    # 9Router: aggregator proxy fronts vision-capable upstreams
     ("router9:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    # CLIProxyAPI: wraps Gemini/ChatGPT/Claude via local proxy; many of those
-    # are vision-capable, so default vision=true and let exact entries opt out.
+    # CLIProxyAPI: wraps Gemini/ChatGPT/Claude
     ("cliproxy:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    # AWS Bedrock: too varied across model families — conservative text-only default.
-    # Claude and Nova vision models are listed as exact entries in capabilities.yaml.
+    # AWS Bedrock: too varied — conservative text-only default
     ("bedrock:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
 ]
-
-
-# ── YAML loading (exact model overrides only) ────────────────────────────────
-
-
-def _parse_input(
-    raw: dict[str, Any] | None,
-    defaults: ModelInputCapabilities,
-) -> ModelInputCapabilities:
-    """Merge a sparse ``input:`` dict onto *defaults*."""
-    if not raw:
-        return defaults
-    return ModelInputCapabilities(
-        vision=raw.get("vision", defaults.vision),
-        document_text=raw.get("document_text", defaults.document_text),
-        audio=raw.get("audio", defaults.audio),
-        video=raw.get("video", defaults.video),
-    )
-
-
-def _parse_output(
-    raw: dict[str, Any] | None,
-    defaults: ModelOutputCapabilities,
-) -> ModelOutputCapabilities:
-    """Merge a sparse ``output:`` dict onto *defaults*."""
-    if not raw:
-        return defaults
-    return ModelOutputCapabilities(
-        text=raw.get("text", defaults.text),
-        image=raw.get("image", defaults.image),
-        audio=raw.get("audio", defaults.audio),
-    )
-
-
-def _parse_capabilities(
-    raw: dict[str, Any],
-    default_input: ModelInputCapabilities,
-    default_output: ModelOutputCapabilities,
-) -> ModelCapabilities:
-    """Parse a capabilities entry with sparse merge onto defaults."""
-    return ModelCapabilities(
-        input=_parse_input(raw.get("input"), default_input),
-        output=_parse_output(raw.get("output"), default_output),
-    )
-
-
-@functools.lru_cache(maxsize=1)
-def _load_exact_models() -> dict[str, ModelCapabilities]:
-    """Load exact model overrides from ``capabilities.yaml`` (cached).
-
-    Returns an empty dict if the file is missing or malformed — the caller
-    falls through to prefix/default lookup.
-    """
-    try:
-        raw = yaml.safe_load(_YAML_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        logger.warning(
-            "capabilities_yaml_load_failed path={} — using prefix/default only",
-            _YAML_PATH,
-        )
-        return {}
-
-    if not isinstance(raw, dict):
-        logger.warning("capabilities_yaml_invalid_format — using prefix/default only")
-        return {}
-
-    default_input = _DEFAULT.input
-    default_output = _DEFAULT.output
-
-    exact: dict[str, ModelCapabilities] = {}
-    for model_key, entry in raw.items():
-        if isinstance(entry, dict):
-            exact[model_key.lower()] = _parse_capabilities(
-                entry,
-                default_input,
-                default_output,
-            )
-
-    return exact
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -221,9 +131,9 @@ def get_capabilities(model_id: str | None) -> ModelCapabilities:
     """Return capability set for a fully-qualified provider:model string.
 
     Lookup order:
-    1. Exact match in ``capabilities.yaml`` (case-insensitive).
-    2. Longest prefix match in ``_PREFIX_FALLBACKS``.
-    3. ``_DEFAULT``.
+
+    1. Longest prefix match in :data:`_PREFIX_FALLBACKS`.
+    2. :data:`_DEFAULT`.
 
     Args:
         model_id: e.g. ``"googlegenai:gemini-3.1-pro-preview"``, ``"openai:gpt-5"``.
@@ -234,12 +144,6 @@ def get_capabilities(model_id: str | None) -> ModelCapabilities:
 
     key = model_id.lower()
 
-    # 1. Exact match from YAML
-    exact = _load_exact_models()
-    if key in exact:
-        return exact[key]
-
-    # 2. Longest prefix match
     best_prefix = ""
     best_caps: ModelCapabilities | None = None
     for prefix, caps in _PREFIX_FALLBACKS:
@@ -250,13 +154,4 @@ def get_capabilities(model_id: str | None) -> ModelCapabilities:
     if best_caps is not None:
         return best_caps
 
-    # 3. Default
     return _DEFAULT
-
-
-def reload_capabilities() -> None:
-    """Clear the cached registry — next ``get_capabilities()`` call reloads YAML.
-
-    Useful for tests or hot-reload scenarios.
-    """
-    _load_exact_models.cache_clear()

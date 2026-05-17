@@ -31,8 +31,8 @@ class ProviderEntry(TypedDict, total=False):
       project + location + gcloud auth). UI renders the field list
       from ``env_vars``.
 
-    ``default_models`` is the curated dropdown the UI shows; the user
-    can always pick "custom" and type any model string.
+    ``default_models`` is the curated fallback list the UI shows when live
+    provider model discovery is unavailable.
     """
 
     id: str

@@ -189,12 +189,12 @@ class TestDeepSeekProviderFactory:
 
 
 # ============================================================================
-# Capabilities — deepseek: prefix and exact models
+# Capabilities — deepseek: prefix
 # ============================================================================
 
 
 class TestDeepSeekCapabilities:
-    """deepseek: prefix resolves to vision=False; exact models override as needed."""
+    """deepseek: prefix resolves to vision=False for every model."""
 
     def test_deepseek_prefix_vision_false(self):
         caps = get_capabilities("deepseek:some-unknown-model")

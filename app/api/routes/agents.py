@@ -7,6 +7,8 @@ file back.  Running agents pick up new config on their next turn.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
@@ -15,11 +17,9 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app.agent.loader import AgentConfig
-from app.agent.providers.capabilities import (
-    _PREFIX_FALLBACKS,
-    _load_exact_models,
-    get_capabilities,
-)
+from app.agent.providers.capabilities import _PREFIX_FALLBACKS, get_capabilities
+from app.agent.providers.catalog import ProviderEntry, all_providers
+from app.agent.providers.model_discovery import discover_provider_models
 from app.agent.tools.builtin.skill import discover_skills
 from app.api.schemas.agents import (
     AgentDeleteResponse,
@@ -40,6 +40,12 @@ from app.services.agent_fs import (
 )
 
 router = APIRouter()
+
+# Live-discovered provider models are cached per-provider so each
+# ``/agents/registry`` call doesn't fan out to every configured backend.
+# TTL is short so newly-added models become visible without a restart.
+_REGISTRY_MODEL_CACHE_TTL_S = 60.0
+_registry_model_cache: dict[str, tuple[float, list[str]]] = {}
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -209,12 +215,14 @@ async def get_registry() -> RegistryResponse:
 
     providers = sorted({p.rstrip(":") for p, _ in _PREFIX_FALLBACKS})
 
-    exact = _load_exact_models()
+    seen: set[str] = set()
     models: list[ModelCatalogEntry] = []
-    for model_id in sorted(exact.keys()):
-        if ":" not in model_id:
-            continue
-        provider, model = model_id.split(":", 1)
+
+    def _append(provider: str, model: str) -> None:
+        model_id = f"{provider}:{model}"
+        if model_id in seen:
+            return
+        seen.add(model_id)
         caps = get_capabilities(model_id)
         models.append(
             ModelCatalogEntry(
@@ -225,12 +233,66 @@ async def get_registry() -> RegistryResponse:
             )
         )
 
+    for entry in all_providers():
+        for model in entry.get("default_models", []):
+            _append(entry["id"], model)
+
+    for provider, model in await _discover_configured_registry_models():
+        _append(provider, model)
+
+    models.sort(key=lambda item: (item.provider, item.model))
+
     return RegistryResponse(
         tools=tools,
         skills=skills,
         providers=providers,
         models=models,
     )
+
+
+async def _discover_configured_registry_models() -> list[tuple[str, str]]:
+    """Concurrently discover live models for every configured provider.
+
+    Results are cached per-provider for :data:`_REGISTRY_MODEL_CACHE_TTL_S`
+    seconds, and discovery failures degrade silently (the cached fallback
+    or just the curated catalog is shown instead). We *only* poll
+    providers that are already configured — otherwise we'd send empty
+    requests to every backend on every registry call.
+    """
+    # Avoid a circular-import-on-startup hazard: this helper is imported
+    # from settings.py for the configuration check.
+    from app.api.routes.settings import _provider_is_configured
+
+    configured: list[ProviderEntry] = [
+        entry for entry in all_providers() if _provider_is_configured(entry)
+    ]
+    if not configured:
+        return []
+
+    now = time.monotonic()
+
+    async def _fetch(entry: ProviderEntry) -> tuple[str, list[str]]:
+        provider_id = entry["id"]
+        cached = _registry_model_cache.get(provider_id)
+        if cached and now - cached[0] < _REGISTRY_MODEL_CACHE_TTL_S:
+            return provider_id, cached[1]
+        models = await discover_provider_models(entry)
+        _registry_model_cache[provider_id] = (now, models)
+        return provider_id, models
+
+    results = await asyncio.gather(
+        *(_fetch(entry) for entry in configured),
+        return_exceptions=True,
+    )
+
+    out: list[tuple[str, str]] = []
+    for result in results:
+        if isinstance(result, BaseException):
+            logger.info("registry_model_discovery_failed error={}", result)
+            continue
+        provider_id, model_ids = result
+        out.extend((provider_id, model) for model in model_ids)
+    return out
 
 
 @router.get("/{name}")

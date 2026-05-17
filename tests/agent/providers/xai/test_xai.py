@@ -194,8 +194,9 @@ class TestXAICapabilities:
 
     def test_xai_prefix_vision_true_any_model(self):
         caps = get_capabilities("xai:grok-3-mini")
-        # grok-3-mini is text-only but we default to True at the prefix level;
-        # per-model overrides in capabilities.yaml can narrow it down later.
+        # The xai: prefix defaults to vision=True; older text-only models
+        # like grok-3-mini inherit that and will surface a provider-side
+        # error if the user actually attaches an image to one.
         assert caps.input.vision is True
 
     def test_xai_prefix_document_text_true(self):
