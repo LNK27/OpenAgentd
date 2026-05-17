@@ -254,7 +254,7 @@ export function DreamSettingsPage() {
         {isMobile && (
           <Link
             to="/settings"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             aria-label="Back to settings"
           >
             <ArrowLeft size={14} />
@@ -272,17 +272,23 @@ export function DreamSettingsPage() {
           variant="outline"
           onClick={handleRunNow}
           disabled={dreamMut.isPending}
+          title="Run now"
         >
           <Play size={12} aria-hidden="true" />
-          {dreamMut.isPending ? 'Running…' : 'Run now'}
+          <span className="hidden sm:inline">
+            {dreamMut.isPending ? 'Running…' : 'Run now'}
+          </span>
         </Button>
         <Button
           size="sm"
           onClick={handleSave}
           disabled={!dirty || updateMut.isPending}
+          title="Save"
         >
           <Save size={12} aria-hidden="true" />
-          {updateMut.isPending ? 'Saving…' : 'Save'}
+          <span className="hidden sm:inline">
+            {updateMut.isPending ? 'Saving…' : 'Save'}
+          </span>
         </Button>
       </header>
 

@@ -2,7 +2,7 @@
 title: Mobile Layout
 description: Phone-first responsive design — breakpoints, safe areas, master/detail patterns, and per-component mobile behaviour.
 status: stable
-updated: 2026-04-29
+updated: 2026-05-18
 ---
 
 # Mobile layout
@@ -43,6 +43,20 @@ Use `h-dvh` everywhere instead of `h-screen` (iOS Safari dynamic toolbar).
 - `showIconOnly = !isMobile && collapsed` — icon-only mode is desktop-only.
 - Command palette button hidden on mobile (`onCommandPalette` prop omitted).
 
+### CodingSidebar (`CodingSidebar.tsx`)
+Mirrors the `Sidebar` pattern for `/coding` mode:
+- Desktop: inline flex column, animates width between 0 (collapsed) and 256 px via the `desktopCollapsed` prop.
+- Mobile: `position: fixed`, slides in/out via `x` transform (`w-[272px]`, `z-40`). Backdrop overlay closes it on tap.
+- Props: `desktopCollapsed`, `mobileOpen`, `onMobileClose` (owner: `TeamChatView`).
+- Always mounted once — branching happens internally based on `useIsMobile()` to avoid an unmount/remount race when the hook resolves after first paint.
+- `handleSessionSelect` calls `onMobileClose()` so picking a session auto-dismisses the drawer.
+- `TeamChatView`'s hamburger routes to `setMobileSidebarOpen` on coding+mobile (shares state with the regular `Sidebar` drawer).
+
+### CodingWorkspacePanel (`CodingWorkspacePanel.tsx`)
+Right-side workspace explorer for `/coding` mode.
+- Desktop (`sm:` and up): inline `relative w-[440px] shrink-0` flex sibling (unchanged).
+- Mobile: `fixed inset-y-0 right-0 w-full max-w-[440px]` with `shadow-xl` — slides over the chat instead of pushing it off-screen.
+
 ### TeamChatView (`TeamChatView/index.tsx`)
 - `effectiveViewMode = isMobile ? 'agent' : viewMode` — split/unified modes disabled on mobile.
 - View-mode toggle, token count, split/unified controls are hidden on mobile.
@@ -66,6 +80,12 @@ All three use **master/detail** on mobile — one pane at a time, never side-by-
 Desktop: fixed-width left column + flex-1 right column (unchanged).
 
 `SchedulerPanel` previously used `lg:w-96` / `hidden lg:flex` (viewport breakpoints). These were replaced with explicit `isMobile` branches — the panel's own width (`min(960px, 90vw)`) is narrower than 1024 px on mobile so `lg:` never fired.
+
+### Full-screen sheet modals (`WikiPanel`, `SchedulerPanel`, `CommandPalette`)
+Centered modal surfaces switch to a full-bleed sheet on mobile:
+- Base: `fixed inset-0` covers the entire viewport, no rounded corners, no border.
+- `sm:` and up: revert to centered modal — `sm:left-1/2 sm:top-1/2 sm:inset-auto sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border`.
+- `CommandPalette` uses `px-3 pt-4 sm:px-0 sm:pt-[15vh]` to sit near the top of the viewport on mobile rather than floating in dead space.
 
 ### Settings (`settings.tsx`, `settings.sandbox.tsx`)
 - Desktop: three-column (`CategoryRail` + `CategoryList` + `Outlet`).
@@ -96,7 +116,24 @@ Style: `h-4 w-4` rounded-full, `bg-(--color-surface-2)` with a `ring-(--color-bo
 
 ## Back-button conventions
 
-All mobile back buttons are **icon-only** (`ArrowLeft`, `h-7 w-7`, `aria-label` set). No text label next to the icon.
+All mobile back buttons are **icon-only** (`ArrowLeft`, `aria-label` set). No text label next to the icon. Size: `h-11 w-11` for sticky settings headers (meets 44 px touch target); legacy `h-7 w-7` is still used inside dialog headers where vertical space is tight.
+
+---
+
+## Status bars (`StatusBar`, `TeamStatusBar`)
+
+Both footer status rows use `flex-wrap items-center justify-between gap-x-3 gap-y-1` so left/center/right clusters wrap onto a new line instead of overflowing on narrow viewports. The right cluster also wraps internally (`flex-wrap justify-end`) so agent pills stack neatly. `StatusBar` hides the `Ctrl+N new` shortcut hint on mobile (`hidden sm:inline`).
+
+---
+
+## Shared primitive guards
+
+A few `components/ui/*` primitives have responsive guards so individual call sites don't have to:
+
+- **`popover`**: `w-[min(18rem,calc(100vw-1rem))]` — never overflows the viewport when anchored near the edge.
+- **`select`**: `max-w-[calc(100vw-1rem)]` on the content popup.
+- **`tabs`**: `max-w-full overflow-x-auto scrollbar-none` on `TabsList` — many tabs scroll horizontally instead of breaking the row.
+- **`view-toggle`**: buttons are `h-8 w-8` (32 px) to meet the touch-target threshold.
 
 ---
 
