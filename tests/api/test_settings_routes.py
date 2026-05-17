@@ -575,10 +575,42 @@ def test_list_provider_models_returns_404_for_unknown() -> None:
     assert response.status_code == 404
 
 
-def test_list_provider_models_falls_back_to_defaults(
+def test_list_provider_models_falls_back_for_vertexai(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When discovery returns no models, the response uses curated defaults."""
+    """When discovery returns no models, providers with a curated
+    ``fallback_models`` list in the catalog (only vertexai today)
+    respond with ``source=fallback`` and the curated list. Other
+    providers respond with an empty list — see the companion test."""
+
+    async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return []
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _empty
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/vertexai/models",
+        json={"api_key": "fake"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "fallback"
+    assert isinstance(body["models"], list)
+    assert body["models"], "vertexai catalog entry must keep a non-empty fallback list"
+    assert all(isinstance(model_id, str) for model_id in body["models"])
+
+
+def test_list_provider_models_returns_empty_for_providers_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Providers without a curated ``fallback_models`` (everyone except
+    vertexai) return an empty model list when live discovery fails —
+    we no longer surface stale catalog defaults."""
 
     async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
         return []
@@ -596,9 +628,8 @@ def test_list_provider_models_falls_back_to_defaults(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["source"] == "default"
-    assert isinstance(body["models"], list)
-    assert all(isinstance(model_id, str) for model_id in body["models"])
+    assert body["source"] == "fallback"
+    assert body["models"] == []
 
 
 def test_list_provider_models_returns_discovered_models(
@@ -752,7 +783,13 @@ def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> 
     client = TestClient(app)
     response = client.get("/api/agents/registry")
 
+    # Registry endpoint stays healthy even when every provider's
+    # discovery raises. With ``fallback_models`` removed from all
+    # providers except vertexai, the only entries that survive are
+    # vertexai's curated list — every other provider yields no models
+    # without a working live discovery call.
     assert response.status_code == 200
-    # Curated default_models are still present.
     body = response.json()
-    assert any(m["provider"] == "openai" for m in body["models"])
+    providers_seen = {m["provider"] for m in body["models"]}
+    assert "openai" not in providers_seen
+    assert providers_seen <= {"vertexai"}

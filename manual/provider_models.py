@@ -35,8 +35,8 @@ async def _check(provider_id: str, limit: int) -> None:
         models = discovered
         source = "provider"
     else:
-        models = list(entry.get("default_models", []))
-        source = "defaults"
+        models = list(entry.get("fallback_models", []))
+        source = "fallback" if models else "none"
 
     print(f"\n{provider_id}: {len(models)} models ({source})")
     for model in models[:limit]:

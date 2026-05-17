@@ -241,7 +241,7 @@ async def list_providers() -> ProvidersListBody:
                 kind=entry["kind"],
                 env_var=entry.get("env_var", ""),
                 env_vars=list(entry.get("env_vars", [])),
-                default_models=list(entry.get("default_models", [])),
+                fallback_models=list(entry.get("fallback_models", [])),
                 oauth_command=entry.get("oauth_command", ""),
                 docs_url=entry.get("docs_url", ""),
                 is_configured=is_configured,
@@ -265,12 +265,16 @@ def _build_overrides(
 async def list_provider_models(
     provider_id: str, body: ProviderModelsRequest
 ) -> ProviderModelsResponse:
-    """Return live provider models when available, otherwise catalog defaults.
+    """Return live provider models when available, otherwise the catalog fallback.
 
     Per-request credentials in ``body`` are threaded through to
     :func:`discover_provider_models` via the ``overrides`` parameter — we
     never touch ``os.environ`` because a concurrent request would observe
     the leaked value.
+
+    Most providers respond with a live list. For providers with no
+    listing endpoint upstream (currently just vertexai) we fall back to
+    the curated ``fallback_models`` set in the catalog.
     """
     from app.agent.providers.catalog import find
     from app.agent.providers.model_discovery import discover_provider_models
@@ -289,8 +293,8 @@ async def list_provider_models(
         )
     return ProviderModelsResponse(
         provider=provider_id,
-        models=list(entry.get("default_models", [])),
-        source="default",
+        models=list(entry.get("fallback_models", [])),
+        source="fallback",
     )
 
 

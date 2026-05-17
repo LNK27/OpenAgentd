@@ -339,9 +339,9 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
             onToggle={() => setModelsExpanded((v) => !v)}
           />
         )}
-        {modelSource === 'default' && models.length > 0 && (
+        {modelSource === 'fallback' && models.length > 0 && (
           <p className="rounded-md border border-(--color-border) bg-(--bg-key) px-2 py-1.5 text-xs text-(--color-text-muted)">
-            Provider unreachable — showing {models.length} curated defaults.
+            Live listing unavailable — showing {models.length} curated fallback models.
           </p>
         )}
       </CardContent>

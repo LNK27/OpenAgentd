@@ -236,8 +236,19 @@ async def get_registry() -> RegistryResponse:
             )
         )
 
+    # Live discovery covers every configured provider that has a working
+    # ``/models`` endpoint. For the rare provider with no listing API
+    # upstream (vertexai today), the catalog carries a curated
+    # ``fallback_models`` list — but we only surface it when the provider
+    # is configured, so the agent dropdown never advertises models the
+    # user can't actually run.
+    from app.api.routes.settings import _provider_is_configured
+
     for entry in all_providers():
-        for model in entry.get("default_models", []):
+        fallback = entry.get("fallback_models", [])
+        if not fallback or not _provider_is_configured(entry):
+            continue
+        for model in fallback:
             _append(entry["id"], model)
 
     for provider, model in await _discover_configured_registry_models():
