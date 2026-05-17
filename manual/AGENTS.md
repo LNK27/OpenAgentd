@@ -60,6 +60,7 @@ uv run python -m manual.team_roster_lifecycle
 | `dream.py run` | Trigger dream via `POST /api/dream/run` (server required) | `--base URL` |
 | `dream.py run --direct` | Trigger dream directly via DB (no server required) | — |
 | `dream.py log` | Show `dream_log` entries (sessions processed) | `--notes`, `--all` |
+| `dream.py unmark` | Requeue a processed session or note | `--session ID`, `--note FILE` |
 | `dream.py lint` | Trigger wiki lint via `POST /api/dream/lint` or directly | `--direct`, `--base URL` |
 | `wiki.py tree` | Show full wiki tree (system, knowledge dirs, notes) | `--unprocessed` |
 | `wiki.py read PATH` | Print a wiki file's contents | — |
@@ -87,6 +88,10 @@ uv run python -m manual.dream log --notes
 
 # Show both logs
 uv run python -m manual.dream log --all
+
+# Requeue a session/note that was marked processed too early
+uv run python -m manual.dream unmark --session <SESSION_ID>
+uv run python -m manual.dream unmark --note 2026-05-17.md
 
 # Show wiki tree (all files)
 uv run python -m manual.wiki tree

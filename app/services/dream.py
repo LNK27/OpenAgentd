@@ -4,10 +4,9 @@ Dream reads unprocessed chat sessions and note files, runs the dream agent
 over each one, and writes to the wiki root and knowledge directories.
 
 The dream agent is loaded from .openagentd/config/dream.md.  If that file is
-missing or has no ``model:`` field, synthesis is skipped and items are still
-marked as processed (infrastructure-only mode).  ``enabled: false`` disables
-the scheduler, but manual runs still process pending items when a model is
-configured.
+missing or has no ``model:`` field, synthesis is skipped and non-empty items
+remain pending.  ``enabled: false`` disables the scheduler, but manual runs
+still process pending items when a model is configured.
 """
 
 from __future__ import annotations
@@ -1045,12 +1044,19 @@ async def _run_dream_locked(db: AsyncSession, *, drain: bool) -> dict:
     # because YAML parsing + ``Path.read_text`` are synchronous and would
     # otherwise block the event loop, stalling other FastAPI requests (A2).
     dream_cfg: DreamAgentConfig | None = None
+    skip_reason: str | None = None
     config_path = _dream_config_path()
     if config_path.exists():
         try:
             dream_cfg = await asyncio.to_thread(parse_dream_md, config_path)
         except ValueError as exc:
             logger.warning("dream_run_config_parse_failed error={}", exc)
+            skip_reason = "config_parse_failed"
+    else:
+        skip_reason = "no_dream_config"
+
+    if dream_cfg is not None and not dream_cfg.model:
+        skip_reason = "no_model_configured"
 
     batch_size = max(1, dream_cfg.batch_size) if dream_cfg else 1
     timeout_seconds = (
@@ -1113,6 +1119,22 @@ async def _run_dream_locked(db: AsyncSession, *, drain: bool) -> dict:
             "remaining": 0,
             "failed": 0,
         }
+
+    if skip_reason is not None:
+        result = {
+            "sessions_processed": 0,
+            "notes_processed": 0,
+            "remaining": total_remaining,
+            "failed": 0,
+            "skipped": skip_reason,
+        }
+        logger.info(
+            "dream_run_skip reason={} remaining={}", skip_reason, total_remaining
+        )
+        return result
+
+    if dream_cfg is None:  # pragma: no cover - guarded by skip_reason above
+        raise RuntimeError("dream config missing without skip reason")
 
     # ``drain=True`` (manual triggers) ignores ``batch_size`` and processes
     # everything pending in one go.  Scheduled fires keep the cap so a 2am
@@ -1177,41 +1199,14 @@ async def _run_dream_locked(db: AsyncSession, *, drain: bool) -> dict:
         item_start = datetime.now(timezone.utc)
         logger.info("dream_item_start kind={} {}", kind, item_label)
 
-        # Infrastructure-only mode (no dream.md or loader failure): mark the
-        # item so it doesn't pile up forever, but skip synthesis.
-        if dream_cfg is None:
-            try:
-                await _mark_item_processed(db, kind, item)
-            except Exception:
-                failed += 1
-                logger.warning(
-                    "dream_infra_mark_failed kind={} {} retry_next_run=true",
-                    kind,
-                    item_label,
-                )
-                continue
-            if kind == "session":
-                sessions_processed += 1
-            else:
-                notes_processed += 1
-            continue
-
         loaded = _load_dream_agent(dream_cfg)
         if loaded is None:
-            try:
-                await _mark_item_processed(db, kind, item)
-            except Exception:
-                failed += 1
-                logger.warning(
-                    "dream_loader_skip_mark_failed kind={} {} retry_next_run=true",
-                    kind,
-                    item_label,
-                )
-                continue
-            if kind == "session":
-                sessions_processed += 1
-            else:
-                notes_processed += 1
+            failed += 1
+            logger.warning(
+                "dream_agent_load_failed kind={} {} retry_next_run=true",
+                kind,
+                item_label,
+            )
             continue
 
         agent, sandbox_token = loaded

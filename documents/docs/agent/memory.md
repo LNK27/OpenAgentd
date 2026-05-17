@@ -80,8 +80,10 @@ projects: []
 - The dream agent sandbox workspace is `wiki_root()`, so `read("USER.md")` and `write("topics/slug.md")` use bare wiki-relative paths.
 - Sessions and notes are interleaved as session, note, session, note up to the run cap.
 - Scheduled runs process up to `batch_size`; manual runs use `drain=True` and process all pending non-empty items.
+- If `dream.md` is missing, invalid, or model-less, non-empty sessions and notes remain pending and the run returns `skipped`; they are not marked processed without synthesis.
 - Each item is wrapped in `asyncio.wait_for(..., timeout=timeout_seconds)`.
 - On timeout or LLM error, the item is not marked processed and retries on the next run.
+- If the dream agent fails to load, the item is counted as failed and remains pending for retry.
 - Transcripts are capped at `DEFAULT_MAX_PROMPT_CHARS = 60_000` with middle elision; per-message cap is `4_000` chars.
 - `_run_lock` serializes in-process dream and lint runs.
 - Wiki context is rebuilt before each item so later items in a drain can see pages created by earlier items.
@@ -183,6 +185,12 @@ Manual dream run
   -> POST /api/dream/run or manual.dream run --direct
   -> run_dream(drain=True)
   -> drains pending non-empty items in one call
+  -> skipped config/model runs leave items pending
+
+Manual dream recovery
+  -> manual.dream unmark --session <id> or --note <filename>
+  -> removes dream_log / dream_notes_log rows
+  -> requeues items that were marked processed too early
 
 Dream lint
   -> POST /api/dream/lint or manual.dream lint
