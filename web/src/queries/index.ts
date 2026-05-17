@@ -56,7 +56,9 @@ export {
 } from './useSandboxSettingsQuery'
 export {
   useProvidersQuery,
+  useProviderModelsMutation,
   useSaveProviderMutation,
+  useTestProviderMutation,
   useInstallSeedMutation,
 } from './useProvidersQuery'
 export {

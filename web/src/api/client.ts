@@ -710,13 +710,29 @@ export type ProvidersListBody = {
 
 export type ProviderSaveRequest = {
   api_key?: string
-  default_model?: string
   extra?: Record<string, string>
+}
+
+export type ModelEntry = {
+  id: string
+  vision: boolean
+}
+
+export type ProviderModelsResponse = {
+  provider: string
+  models: ModelEntry[]
+  source: 'provider' | 'default'
 }
 
 export type ProviderSaveResponse = {
   saved: boolean
   is_first_provider: boolean
+}
+
+export type ProviderTestResponse = {
+  ok: boolean
+  latency_ms?: number | null
+  error?: string | null
 }
 
 export type SeedInstallResponse = {
@@ -753,6 +769,32 @@ export async function saveProvider(
     body: JSON.stringify(body),
   })
   if (!res.ok) await parseDetailOrThrow(res, `PUT /settings/providers/${providerId}`)
+  return res.json()
+}
+
+export async function testProvider(
+  providerId: string,
+  body: { api_key?: string; model: string; extra?: Record<string, string> },
+): Promise<ProviderTestResponse> {
+  const res = await fetch(`${API}/settings/providers/${encodeURIComponent(providerId)}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /settings/providers/${providerId}/test`)
+  return res.json()
+}
+
+export async function listProviderModels(
+  providerId: string,
+  body: { api_key?: string; extra?: Record<string, string> },
+): Promise<ProviderModelsResponse> {
+  const res = await fetch(`${API}/settings/providers/${encodeURIComponent(providerId)}/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /settings/providers/${providerId}/models`)
   return res.json()
 }
 

@@ -1,32 +1,56 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, ExternalLink, KeyRound, Loader2, ShieldCheck, TerminalSquare } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
+import fuzzysort from 'fuzzysort'
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Eye,
+  KeyRound,
+  Loader2,
+  ShieldCheck,
+  TerminalSquare,
+} from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 
-import { installSeed, oauthLoginStream, type OAuthLoginEvent, type ProviderInfo } from '@/api/client'
+import {
+  installSeed,
+  listProviderModels,
+  oauthLoginStream,
+  type ModelEntry,
+  type OAuthLoginEvent,
+  type ProviderInfo,
+} from '@/api/client'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { NativeSelect } from '@/components/ui/native-select'
-import { queryKeys, useInstallSeedMutation, useProvidersQuery, useSaveProviderMutation } from '@/queries'
+import {
+  queryKeys,
+  useProviderModelsMutation,
+  useProvidersQuery,
+  useSaveProviderMutation,
+} from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useToastStore } from '@/stores/useToastStore'
-
-function defaultModel(provider: ProviderInfo): string {
-  return provider.default_models[0] ?? ''
-}
-
-function providerModel(provider: ProviderInfo, model: string): string {
-  return `${provider.id}:${model || defaultModel(provider)}`
-}
 
 function providerKindLabel(kind: ProviderInfo['kind']): string {
   if (kind === 'api_key') return 'API key'
   if (kind === 'oauth') return 'OAuth'
   if (kind === 'local') return 'Local'
   return 'Cloud credentials'
+}
+
+/** Daemon-style providers expose an optional base URL so users can point
+ *  at a proxy running on another host. Each entry names the env var the
+ *  backend reads (and persists via the Save endpoint) plus a placeholder
+ *  showing the default the daemon would normally listen on. */
+const DAEMON_BASE_URL: Record<string, { var: string; placeholder: string }> = {
+  router9: { var: 'ROUTER9_BASE_URL', placeholder: 'http://localhost:20128/v1' },
+  cliproxy: { var: 'CLIPROXY_BASE_URL', placeholder: 'http://localhost:8317/v1' },
+  ollama: { var: 'OLLAMA_BASE_URL', placeholder: 'http://localhost:11434/v1' },
 }
 
 function eventLabel(event: OAuthLoginEvent): string {
@@ -42,135 +66,416 @@ function eventLabel(event: OAuthLoginEvent): string {
 
 function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const [apiKey, setApiKey] = useState('')
-  const [model, setModel] = useState(defaultModel(provider))
+  const [baseUrl, setBaseUrl] = useState('')
+  const [verifiedKey, setVerifiedKey] = useState('')
   const [oauthOpen, setOauthOpen] = useState(false)
+  const [modelsExpanded, setModelsExpanded] = useState(false)
+  const [modelSearch, setModelSearch] = useState('')
+  const modelsMutation = useProviderModelsMutation()
   const saveMutation = useSaveProviderMutation()
-  const seedMutation = useInstallSeedMutation()
   const push = useToastStore((s) => s.push)
+  const queryClient = useQueryClient()
 
-  const canSave = provider.kind === 'api_key' && apiKey.trim().length > 0 && model.trim().length > 0
+  const trimmedKey = apiKey.trim()
+  const trimmedBaseUrl = baseUrl.trim()
+  const hasCandidateKey = trimmedKey.length > 0
+  // Save is enabled only after List models succeeded for *this exact* key.
+  const hasVerifiedKey = verifiedKey === trimmedKey && hasCandidateKey
+  const canSave = provider.kind === 'api_key' && hasVerifiedKey
 
-  const handleSave = async () => {
+  const daemon = DAEMON_BASE_URL[provider.id]
+  // Only sends ``extra`` when the user actually typed something. An empty
+  // override means "use the daemon's default" — the backend would write
+  // an empty line and confuse things.
+  const extraForRequest = useMemo<Record<string, string> | undefined>(() => {
+    if (!daemon || !trimmedBaseUrl) return undefined
+    return { [daemon.var]: trimmedBaseUrl }
+  }, [daemon, trimmedBaseUrl])
+
+  // Auto-list models for already-connected providers (no new key typed).
+  // OAuth providers (Copilot, Codex) also surface their model list here
+  // once the user has completed the device-flow login.
+  const autoFetchEnabled =
+    provider.is_configured &&
+    !hasCandidateKey &&
+    (provider.kind === 'api_key' || provider.kind === 'oauth')
+
+  const autoModelsQ = useQuery({
+    queryKey: queryKeys.settings.providerModels(provider.id),
+    queryFn: () => listProviderModels(provider.id, {}),
+    enabled: autoFetchEnabled,
+    staleTime: 60_000,
+  })
+
+  // Derived (not state) — single source of truth is the query cache.
+  const models = useMemo<ModelEntry[]>(
+    () => autoModelsQ.data?.models ?? [],
+    [autoModelsQ.data?.models],
+  )
+  const modelSource = autoModelsQ.data?.source ?? null
+
+  const handleListModels = async () => {
     try {
-      const result = await saveMutation.mutateAsync({
+      const listed = await modelsMutation.mutateAsync({
         providerId: provider.id,
-        body: { api_key: apiKey.trim(), default_model: model },
+        apiKey: trimmedKey,
+        extra: extraForRequest,
       })
-      if (result.is_first_provider) {
-        await seedMutation.mutateAsync(providerModel(provider, model))
+      // Write into the shared query cache so the derived ``models`` /
+      // ``modelSource`` above pick it up without a parallel local state.
+      queryClient.setQueryData(queryKeys.settings.providerModels(provider.id), listed)
+      if (listed.source === 'provider' && listed.models.length > 0) {
+        setVerifiedKey(trimmedKey)
+        setModelsExpanded(true)
+        push({
+          tone: 'success',
+          title: 'Connection verified',
+          description: `${listed.models.length} models available.`,
+        })
+      } else {
+        // Provider was unreachable → backend fell back to catalog defaults.
+        // Don't mark the key verified; user should retry.
+        push({
+          tone: 'info',
+          title: 'Provider unreachable',
+          description: 'Showing curated defaults. Check your key and try again.',
+        })
       }
-      setApiKey('')
-      push({
-        tone: 'success',
-        title: 'Provider saved',
-        description: result.is_first_provider ? 'Default agents and skills are ready.' : provider.label,
-      })
     } catch (err) {
       push({
         tone: 'error',
-        title: 'Provider setup failed',
+        title: 'Could not list models',
         description: err instanceof Error ? err.message : String(err),
       })
     }
   }
 
+  const handleSave = async () => {
+    try {
+      // Always include the base-URL field for daemon providers (even
+      // when empty) so the backend's ``write_env_credentials`` removes
+      // a previously-set line when the user clears the input.
+      const extraForSave =
+        daemon !== undefined ? { [daemon.var]: trimmedBaseUrl } : undefined
+      await saveMutation.mutateAsync({
+        providerId: provider.id,
+        body: { api_key: trimmedKey, extra: extraForSave },
+      })
+      setApiKey('')
+      setVerifiedKey('')
+      push({
+        tone: 'success',
+        title: 'Provider saved',
+        description: provider.label,
+      })
+    } catch (err) {
+      push({
+        tone: 'error',
+        title: 'Could not save provider',
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  const showModelCount = modelSource === 'provider' && models.length > 0
+  const listing = modelsMutation.isPending || autoModelsQ.isFetching
+
   return (
     <Card size="sm" className="border-(--color-border) bg-(--bg-card)">
-      <CardHeader className="gap-4 sm:grid-cols-[1fr_auto] sm:items-start">
-        <div className="flex min-w-0 gap-3">
+      <CardContent className="space-y-3 p-3">
+        {/* ── Header ──────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)">
             {provider.kind === 'oauth' ? <ShieldCheck size={13} aria-hidden="true" /> : <KeyRound size={13} aria-hidden="true" />}
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle>{provider.label}</CardTitle>
-              <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted)">
-                {providerKindLabel(provider.kind)}
-              </span>
-            {provider.is_configured && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-success)">
-                <CheckCircle2 size={12} aria-hidden="true" />
-                Connected
-              </span>
-            )}
-            </div>
-            <CardDescription className="mt-1 max-w-2xl">{provider.description}</CardDescription>
-          </div>
-        </div>
-        {provider.docs_url && (
-          <a
-            href={provider.docs_url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 justify-self-start text-xs text-(--color-accent) hover:underline sm:justify-self-end"
-          >
-            Docs <ExternalLink size={12} aria-hidden="true" />
-          </a>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-4 pl-12 max-sm:pl-3">
-        {provider.kind === 'api_key' && (
-          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_240px_auto] lg:items-end">
-            <label className="space-y-1.5">
-              <span className="text-xs font-medium text-(--color-text-muted)">{provider.env_var}</span>
-              <Input
-                type="password"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key'}
-                autoComplete="off"
-              />
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-xs font-medium text-(--color-text-muted)">Default model</span>
-              <NativeSelect
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-                className="w-full"
-                aria-label={`${provider.label} default model`}
-              >
-                {provider.default_models.map((item) => (
-                  <option key={item} value={item}>{item}</option>
-                ))}
-              </NativeSelect>
-            </label>
-            <Button
-              type="button"
-              onClick={handleSave}
-              disabled={!canSave || saveMutation.isPending || seedMutation.isPending}
-            >
-              {(saveMutation.isPending || seedMutation.isPending) && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-              Save
+          <p className="text-sm font-semibold text-(--color-text)">{provider.label}</p>
+          <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted)">
+            {providerKindLabel(provider.kind)}
+          </span>
+          {provider.is_configured && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-success)">
+              <CheckCircle2 size={12} aria-hidden="true" />
+              Connected
+            </span>
+          )}
+          {showModelCount && (
+            <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted)">
+              {models.length} models
+            </span>
+          )}
+          <div className="flex-1" />
+          {provider.docs_url && (
+            <Button type="button" size="sm" variant="ghost" onClick={() => void openExternalUrl(provider.docs_url)}>
+              Docs <ExternalLink size={12} aria-hidden="true" />
             </Button>
+          )}
+        </div>
+        <p className="text-xs text-(--color-text-muted)">{provider.description}</p>
+
+        {/* ── API-key controls ─────────────────────────────────────────── */}
+        {provider.kind === 'api_key' && (
+          <div className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
+              <label className="min-w-0">
+                <span className="sr-only">{provider.env_var}</span>
+                <Input
+                  type="password"
+                  value={apiKey}
+                  onChange={(event) => {
+                    setApiKey(event.target.value)
+                    setVerifiedKey('')
+                  }}
+                  placeholder={provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key'}
+                  autoComplete="off"
+                  className="h-9"
+                />
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleListModels}
+                disabled={!hasCandidateKey || listing}
+              >
+                {listing && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                List models
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSave}
+                disabled={!canSave || saveMutation.isPending}
+              >
+                {saveMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                Save
+              </Button>
+            </div>
+            {daemon && (
+              <label className="block">
+                <span className="text-[11px] font-medium text-(--color-text-muted)">Base URL (optional)</span>
+                <Input
+                  type="url"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder={daemon.placeholder}
+                  autoComplete="off"
+                  className="mt-1 h-9 font-mono text-xs"
+                  spellCheck={false}
+                />
+              </label>
+            )}
+            {hasCandidateKey && !hasVerifiedKey && (
+              <p className="text-xs text-(--color-text-muted)">
+                Click <span className="font-medium">List models</span> to verify this key before saving.
+              </p>
+            )}
+            {!hasCandidateKey && provider.is_configured && (
+              <p className="text-xs text-(--color-text-muted)">
+                Key saved. Type a new one above only if you want to replace it.
+              </p>
+            )}
           </div>
         )}
 
+        {/* ── OAuth providers ──────────────────────────────────────────── */}
         {provider.kind === 'oauth' && (
-          <div className="flex flex-col gap-3 rounded-lg border border-(--color-border) bg-(--bg-key) p-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-(--color-text-muted)">
-              Opens a browser approval page and stores the token locally after success.
-            </p>
-            <Button type="button" onClick={() => setOauthOpen(true)}>
+          <div className="flex items-center justify-end">
+            <Button type="button" size="sm" onClick={() => setOauthOpen(true)}>
               <ShieldCheck size={14} aria-hidden="true" />
               Connect
             </Button>
           </div>
         )}
 
-        {provider.kind !== 'api_key' && provider.kind !== 'oauth' && (
-          <p className="rounded-lg border border-(--color-border) bg-(--bg-key) p-3 text-xs text-(--color-text-muted)">
-            This provider is detected from local environment or system credentials.
+        {/* ── Local daemon (Ollama) — optional base URL only ─────────── */}
+        {provider.kind === 'local' && daemon && (
+          <div className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
+              <label className="min-w-0">
+                <span className="sr-only">{daemon.var}</span>
+                <Input
+                  type="url"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder={daemon.placeholder}
+                  autoComplete="off"
+                  className="h-9 font-mono text-xs"
+                  spellCheck={false}
+                />
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleListModels}
+                disabled={listing}
+              >
+                {listing && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                List models
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSave}
+                disabled={saveMutation.isPending}
+              >
+                {saveMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                Save
+              </Button>
+            </div>
+            <p className="text-xs text-(--color-text-muted)">
+              Leave blank to use the default daemon at <span className="font-mono">{daemon.placeholder}</span>.
+            </p>
+          </div>
+        )}
+
+        {/* ── Detected providers (cloud_creds, or local without base URL) ── */}
+        {provider.kind !== 'api_key' && provider.kind !== 'oauth' && !daemon && (
+          <p className="text-xs text-(--color-text-muted)">
+            Detected from local environment or system credentials.
+          </p>
+        )}
+
+        {/* ── Models panel ────────────────────────────────────────────── */}
+        {models.length > 0 && modelSource === 'provider' && (
+          <ModelsPanel
+            providerId={provider.id}
+            models={models}
+            search={modelSearch}
+            onSearchChange={setModelSearch}
+            expanded={modelsExpanded}
+            onToggle={() => setModelsExpanded((v) => !v)}
+          />
+        )}
+        {modelSource === 'default' && models.length > 0 && (
+          <p className="rounded-md border border-(--color-border) bg-(--bg-key) px-2 py-1.5 text-xs text-(--color-text-muted)">
+            Provider unreachable — showing {models.length} curated defaults.
           </p>
         )}
       </CardContent>
       {provider.kind === 'oauth' && oauthOpen && (
-        <OAuthLoginDialog
-          provider={provider}
-          open={oauthOpen}
-          onOpenChange={setOauthOpen}
-        />
+        <OAuthLoginDialog provider={provider} open={oauthOpen} onOpenChange={setOauthOpen} />
       )}
     </Card>
+  )
+}
+
+/** Indexed model entry for fuzzysort — qualifiedId is the search target
+ *  *and* the value the user sees / copies, so search and display stay in
+ *  sync. */
+type IndexedModel = {
+  model: ModelEntry
+  qualifiedId: string
+}
+
+function ModelsPanel({
+  providerId,
+  models,
+  search,
+  onSearchChange,
+  expanded,
+  onToggle,
+}: {
+  providerId: string
+  models: ModelEntry[]
+  search: string
+  onSearchChange: (v: string) => void
+  expanded: boolean
+  onToggle: () => void
+}) {
+  // Copying is silent on success — feedback is already implicit (the
+  // mouse click triggers the browser's clipboard write). We only surface
+  // a toast if the clipboard API rejects, which is rare and worth
+  // calling out.
+  const push = useToastStore((s) => s.push)
+  const handleCopy = async (qualifiedId: string) => {
+    try {
+      await navigator.clipboard.writeText(qualifiedId)
+    } catch {
+      push({ tone: 'error', title: 'Copy failed', description: qualifiedId })
+    }
+  }
+
+  // Materialise once per ``models`` change. Indexing into the qualified
+  // string means searching for ``"openai:gpt-5"`` works just as well as
+  // searching for ``"gpt5"``.
+  const indexed = useMemo<IndexedModel[]>(
+    () => models.map((model) => ({ model, qualifiedId: `${providerId}:${model.id}` })),
+    [models, providerId],
+  )
+
+  // Fuzzysort: subsequence match with score-based ranking. Empty query
+  // skips ranking entirely (preserves the provider's returned order).
+  const visible = useMemo<IndexedModel[]>(() => {
+    const q = search.trim()
+    if (!q) return indexed
+    const results = fuzzysort.go(q, indexed, {
+      key: 'qualifiedId',
+      threshold: 0.2,
+      limit: 200,
+    })
+    return results.map((r) => r.obj)
+  }, [indexed, search])
+
+  return (
+    <div className="rounded-md border border-(--color-border) bg-(--bg-page)">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs font-medium text-(--color-text-muted) hover:text-(--color-text)"
+        aria-expanded={expanded}
+      >
+        <span>
+          {indexed.length} models available {search && <span className="text-(--color-text-muted)">· {visible.length} shown</span>}
+        </span>
+        <span className="text-[11px]">{expanded ? 'Hide' : 'Show'}</span>
+      </button>
+      {expanded && (
+        <div className="border-t border-(--color-border) p-2">
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Filter models…"
+            className="h-8 text-xs"
+            aria-label="Filter models"
+          />
+          <ul className="mt-2 max-h-64 overflow-y-auto">
+            {visible.length === 0 ? (
+              <li className="px-2 py-3 text-center text-xs text-(--color-text-muted)">No matching models.</li>
+            ) : (
+              visible.map(({ model, qualifiedId }) => (
+                <li
+                  key={qualifiedId}
+                  className="flex items-center gap-2 rounded px-2 py-1 hover:bg-(--bg-key)"
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--color-text)">
+                    {qualifiedId}
+                  </span>
+                  {model.vision && (
+                    <span
+                      className="inline-flex items-center gap-0.5 rounded bg-(--color-success-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--color-success)"
+                      title="Vision-capable"
+                    >
+                      <Eye size={10} aria-hidden="true" />
+                      vision
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleCopy(qualifiedId)}
+                    className="rounded p-1 text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)"
+                    aria-label={`Copy ${qualifiedId}`}
+                  >
+                    <Copy size={11} aria-hidden="true" />
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -300,12 +605,12 @@ function OAuthLoginDialog({
 export function ProvidersSettingsPage() {
   const isMobile = useIsMobile()
   const providersQ = useProvidersQuery()
-  const sortedProviders = useMemo(
-    () => [...(providersQ.data?.providers ?? [])].sort((a, b) => Number(b.is_configured) - Number(a.is_configured) || a.label.localeCompare(b.label)),
-    [providersQ.data?.providers],
-  )
-
-  const connectedCount = sortedProviders.filter((provider) => provider.is_configured).length
+  // Render in catalog order so the list is stable regardless of which
+  // providers happen to be configured. Sorting by ``is_configured`` would
+  // bump a provider to the top the moment its key is saved, which makes
+  // the page feel like it's rearranging itself under the user.
+  const providers = providersQ.data?.providers ?? []
+  const connectedCount = providers.filter((provider) => provider.is_configured).length
 
   return (
     <>
@@ -327,26 +632,26 @@ export function ProvidersSettingsPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-5 p-6">
           <p className="text-sm leading-relaxed text-(--color-text-muted)">
-            Add the model provider OpenAgentd should use for seeded agents. API keys are written to your local config; OAuth tokens are stored in your local cache.
+            Add the model provider OpenAgentd should use. API keys are written to your local config; OAuth tokens are stored in your local cache. Click <span className="font-medium">List models</span> to verify a key before saving.
           </p>
 
-        {providersQ.isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-(--color-text-muted)">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            Loading providers…
-          </div>
-        ) : providersQ.error ? (
-          <div className="rounded-lg border border-(--color-error)/30 bg-(--color-error)/10 p-4 text-sm text-(--color-error)">
-            {providersQ.error instanceof Error ? providersQ.error.message : String(providersQ.error)}
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {sortedProviders.map((provider) => (
-              <ProviderCard key={provider.id} provider={provider} />
-            ))}
-          </div>
-        )}
-      </div>
+          {providersQ.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-(--color-text-muted)">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Loading providers…
+            </div>
+          ) : providersQ.error ? (
+            <div className="rounded-lg border border-(--color-error)/30 bg-(--color-error)/10 p-4 text-sm text-(--color-error)">
+              {providersQ.error instanceof Error ? providersQ.error.message : String(providersQ.error)}
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {providers.map((provider) => (
+                <ProviderCard key={provider.id} provider={provider} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </>
   )

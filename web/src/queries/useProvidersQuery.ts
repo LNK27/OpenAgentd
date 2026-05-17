@@ -2,9 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   installSeed,
+  listProviderModels,
   listProviders,
   saveProvider,
+  testProvider,
+  type ProviderModelsResponse,
   type ProviderSaveRequest,
+  type ProviderTestResponse,
 } from '@/api/client'
 import { queryKeys } from './keys'
 
@@ -24,6 +28,20 @@ export function useSaveProviderMutation() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
     },
+  })
+}
+
+export function useProviderModelsMutation() {
+  return useMutation<ProviderModelsResponse, Error, { providerId: string; apiKey?: string; extra?: Record<string, string> }>({
+    mutationFn: ({ providerId, apiKey, extra }) =>
+      listProviderModels(providerId, { api_key: apiKey, extra }),
+  })
+}
+
+export function useTestProviderMutation() {
+  return useMutation<ProviderTestResponse, Error, { providerId: string; apiKey?: string; model: string; extra?: Record<string, string> }>({
+    mutationFn: ({ providerId, apiKey, model, extra }) =>
+      testProvider(providerId, { api_key: apiKey, model, extra }),
   })
 }
 
