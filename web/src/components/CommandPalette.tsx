@@ -124,7 +124,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
-        className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 pt-[15vh] backdrop-blur-sm"
+        className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-3 pt-4 backdrop-blur-sm sm:px-0 sm:pt-[15vh]"
         onClick={onClose}
       >
         <motion.div
