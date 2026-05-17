@@ -138,8 +138,8 @@ describe("ToolCall generate_video display", () => {
   it("renders without crashing when pending (no args, no done)", () => {
     render(<ToolCall name="generate_video" />);
 
-    // When no args, shows tool name instead of custom header
-    expect(screen.getByText(/generate_video/i)).toBeInTheDocument();
+    // When no args, shows the readable tool label instead of a custom header.
+    expect(screen.getByText(/Generate Video/i)).toBeInTheDocument();
     expect(screen.queryByText(/pending/i)).toBeNull();
   });
 
