@@ -121,6 +121,11 @@ class _BgProcess:
         self._reader_task.cancel()
         return self.proc.returncode
 
+    async def wait(self) -> int | None:
+        await self.proc.wait()
+        await self._reader_task
+        return self.proc.returncode
+
 
 # Module-level registry: PID → _BgProcess
 _bg_processes: dict[int, _BgProcess] = {}
@@ -495,9 +500,9 @@ shell_tool = Tool(
 
 async def _background_process(
     action: Annotated[
-        Literal["list", "status", "output", "stop"],
+        Literal["list", "status", "output", "stop", "wait"],
         Field(
-            description="Action: 'list' (all processes), 'status', 'output', or 'stop' (requires pid)."
+            description="Action: 'list' (all processes), 'status', 'output', 'stop', or 'wait' (requires pid)."
         ),
     ],
     pid: Annotated[
@@ -507,11 +512,11 @@ async def _background_process(
     last_n_lines: Annotated[
         int | None,
         Field(
-            description="Lines to return for 'output' action (default all, max 200)."
+            description="Lines to return for 'output' and 'wait' actions (default all, max 200)."
         ),
     ] = None,
 ) -> str:
-    """Manage background processes started with shell(background=true). Actions: list, status, output, stop."""
+    """Manage background processes started with shell(background=true). Actions: list, status, output, stop, wait."""
     if action == "list":
         if not _bg_processes:
             return "No background processes running."
@@ -544,6 +549,13 @@ async def _background_process(
             return f"PID {pid}: no output captured yet."
         return f"PID {pid} output:\n{text}"
 
+    if action == "wait":
+        exit_code = await bg.wait()
+        text = bg.read_output(last_n=last_n_lines)
+        if not text:
+            return f"PID {pid}: exited (code {exit_code})\nNo output captured."
+        return f"PID {pid}: exited (code {exit_code})\nFinal output:\n{text}"
+
     # action == "stop"
     exit_code = await bg.stop()
     _bg_processes.pop(pid, None)
@@ -553,5 +565,5 @@ async def _background_process(
 background_process = Tool(
     _background_process,
     name="bg",
-    description="Manage background processes started with shell(background=true). Actions: list, status, output, stop.",
+    description="Manage background processes started with shell(background=true). Actions: list, status, output, stop, wait.",
 )

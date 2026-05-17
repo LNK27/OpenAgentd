@@ -474,6 +474,24 @@ async def test_background_process_output_and_status(sandbox_workspace, fast_bg):
 
 
 @pytest.mark.asyncio
+async def test_background_process_wait(sandbox_workspace, fast_bg):
+    """wait blocks until the process exits and returns final output."""
+    await shell_tool.arun(
+        command="printf 'start\\n' && sleep 0.05 && printf 'done\\n'",
+        background=True,
+        timeout_seconds=1,
+    )
+    pid = next(iter(_bg_processes))
+
+    result = await background_process.arun(action="wait", pid=pid)
+
+    assert f"PID {pid}: exited (code 0)" in result
+    assert "start" in result
+    assert "done" in result
+    assert pid in _bg_processes
+
+
+@pytest.mark.asyncio
 async def test_background_process_stop(sandbox_workspace, fast_bg):
     """background_process stop removes the process from the registry."""
     await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)

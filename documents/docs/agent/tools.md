@@ -167,7 +167,7 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 | Tool | What it does |
 |------|-------------|
 | `shell` | Run a shell command inside the sandbox workspace. Supports `background=true` for long-running processes. |
-| `bg` | Manage background processes: `list`, `status`, `output`, `stop` |
+| `bg` | Manage background processes: `list`, `status`, `output`, `wait`, `stop` |
 
 #### `shell` parameters
 
@@ -181,7 +181,7 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 
 #### Large output handling
 
-Shell output is streamed incrementally. Large output is saved under `.openagentd/sessions/<session_id>/.shell_output/` and the tool returns a readable relative path plus the last 200 lines inline. A `<shell_metadata>` advisory block is appended on timeout.
+Foreground shell output is read incrementally while the command runs, but returned only when the command exits or times out. Large output is saved under `.openagentd/sessions/<session_id>/.shell_output/` and the tool returns a readable relative path plus the last 200 lines inline. A `<shell_metadata>` advisory block is appended on timeout.
 
 For tool result offloading (applied across all tools), `ToolResultOffloadHook` kicks in when the result string exceeds `DEFAULT_CHAR_THRESHOLD` (default 40000 chars — see `app/agent/hooks/tool_result_offload.py`). See [Tool Result Offload](hooks.md#toolresultoffloadhook).
 
@@ -193,15 +193,15 @@ When `background=true`:
 - If the process exits during warmup, it is treated as a foreground failure.
 - Otherwise, returns `[Background — PID <pid>]` with the command and initial output.
 - Output is continuously drained into a 200-line ring buffer.
-- Use `bg` to inspect or stop it.
+- Use `bg` to inspect, wait for completion, or stop it.
 
 #### `bg` parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `action` | `Literal['list','status','output','stop']` | required | `list` all processes, `status`/`output`/`stop` require a PID |
-| `pid` | `int \| None` | `None` | PID (required for `status`, `output`, `stop`) |
-| `last_n_lines` | `int \| None` | `None` | For `output`: return only the last N lines (default all, max 200) |
+| `action` | `Literal['list','status','output','wait','stop']` | required | `list` all processes; other actions require a PID |
+| `pid` | `int \| None` | `None` | PID (required except for `list`) |
+| `last_n_lines` | `int \| None` | `None` | For `output` and `wait`: return only the last N lines (default all, max 200) |
 
 #### Non-interactive execution
 

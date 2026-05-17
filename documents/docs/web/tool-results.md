@@ -168,7 +168,7 @@ Rendering:
 - First line is parsed as the status token. `Succeeded` uses `--color-success`; `Failed …` uses `--color-error`. No boxed chrome, no icons.
 - Remaining output in a scrollable `<pre>` (`max-h-48`, `break-words`).
 
-> `bg` results are no longer rendered by `ShellResult`. They fall through to `GenericResult` because `bg` returns free-form management text (`PID <pid>: running`, `stopped (exit code N)\nFinal output:\n…`) that does not share the foreground `[Succeeded]` / `[Failed]` header convention.
+> `bg` results are no longer rendered by `ShellResult`. They fall through to `GenericResult` because `bg` returns free-form management text (`PID <pid>: running`, `exited (code N)\nFinal output:\n…`, `stopped (exit code N)\nFinal output:\n…`) that does not share the foreground `[Succeeded]` / `[Failed]` header convention.
 
 ### `FileListResult` — `ls`, `glob`, `grep`
 
