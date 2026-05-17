@@ -35,6 +35,7 @@ interface AgentPaneProps {
 }
 
 const USER_COLLAPSE_LINES = 10
+const USER_COLLAPSE_CHARS = 700
 
 function isDirectUserBlock(block: ContentBlock): boolean {
   return block.type === 'user' && !block.extra?.from_agent
@@ -56,9 +57,11 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
   }
 
   const lines = content.split('\n')
-  const needsCollapse = lines.length > USER_COLLAPSE_LINES
+  const needsCollapse = lines.length > USER_COLLAPSE_LINES || content.length > USER_COLLAPSE_CHARS
   const visibleContent = needsCollapse && !expanded
-    ? lines.slice(0, USER_COLLAPSE_LINES).join('\n')
+    ? lines.length > USER_COLLAPSE_LINES
+      ? lines.slice(0, USER_COLLAPSE_LINES).join('\n')
+      : `${content.slice(0, USER_COLLAPSE_CHARS).trimEnd()}...`
     : content
 
   return (
@@ -97,7 +100,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
            </div>
          )}
 
-         <div className="relative overflow-hidden rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs leading-relaxed text-(--color-text)">
+          <div className="relative overflow-hidden rounded-lg rounded-br-sm border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm">
            {/* Expand / collapse button — top-right inside bubble (compact) */}
            {needsCollapse && (
              <button
@@ -113,7 +116,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
-               className="pointer-events-none absolute inset-x-0 bottom-0"
+                className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"
                style={{
                  height: '1.9rem',
                  background: 'linear-gradient(to bottom, transparent 0%, var(--color-surface) 90%)',

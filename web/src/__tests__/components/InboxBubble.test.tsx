@@ -10,13 +10,13 @@ describe("InboxBubble", () => {
   // ── agent label ─────────────────────────────────────────────────────────────
   it("shows agent name in header", () => {
     render(<InboxBubble content="Hello from worker" fromAgent="worker-1" />)
-    expect(screen.getByText("worker-1")).toBeTruthy()
+    expect(screen.getByText("Message from worker-1")).toBeTruthy()
   })
 
   // ── content rendering ───────────────────────────────────────────────────────
 
   it("renders short content (under threshold) without collapse button", () => {
-    // 3 lines — under COLLAPSE_LINES=5
+    // 3 lines — at COLLAPSE_LINES=3
     const content = "line1\nline2\nline3"
     render(<InboxBubble content={content} fromAgent="bot" />)
     expect(screen.getByText(/line1/)).toBeTruthy()
@@ -26,7 +26,7 @@ describe("InboxBubble", () => {
   })
 
   it("renders long content (over threshold) with collapse button", () => {
-    // 6 lines — over COLLAPSE_LINES=5
+    // 6 lines — over COLLAPSE_LINES=3
     const content = "1\n2\n3\n4\n5\n6"
     render(<InboxBubble content={content} fromAgent="bot" />)
     const btn = screen.getByRole("button")
