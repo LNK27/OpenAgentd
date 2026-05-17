@@ -183,9 +183,15 @@ avoid racing `agent.run()`. See
 `app/agent/mode/team/member.py:refresh_if_dirty` and
 `app/services/team_manager.py:refresh_idle_agents`.
 
-Adding/removing **agent files** at runtime (team-shape change) is out
-of scope — drift detection assumes the roster is fixed for the
-process.
+Adding/removing **member agent files** at runtime is handled by
+`team_manager.refresh_blueprints()`, also called from `GET /team/agents`:
+it scans the agents directory for that team's mode, registers new
+`MemberBlueprint`s for previously unseen `.md` files, and drops
+blueprints whose source file vanished — unless an instance is still
+live in the roster, in which case the blueprint is kept so an in-flight
+conversation can still address the agent by handle. Lead lifecycle
+remains out of scope; changing the lead still requires
+`team_manager.reload()`.
 
 ### `team_manager` — lifecycle + admin reload
 

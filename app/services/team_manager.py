@@ -433,6 +433,85 @@ def refresh_idle_agents(team: "AgentTeam") -> None:
             )
 
 
+def refresh_blueprints(team: "AgentTeam") -> None:
+    """Rediscover member ``.md`` files for *team* and update its blueprint
+    registry in place.
+
+    The source directory is derived from ``team.mode`` so callers
+    (currently just ``GET /team/agents``) don't need to know whether they
+    hold a default or a coding team. Without this, a user who creates a
+    new member through the Settings → Agents page wouldn't see it appear
+    in the spawnable roster until the team object is evicted and rebuilt
+    — typically a server restart.
+
+    Behaviour:
+
+    * **New file** → register a fresh :class:`MemberBlueprint`. The lead
+      will see it on its next ``team_manage`` listing.
+    * **Removed file** → drop the blueprint *only if* no live instances
+      reference it; otherwise leave it alone so an in-flight conversation
+      can still address the agent by handle.
+    * **Edited file** → no-op here. The blueprint's ``source_path`` is
+      unchanged and existing instances pick up the edit via the regular
+      drift mechanism on their next turn.
+    * **Lead changed** → no-op. Lead lifecycle is owned by :func:`reload`,
+      not by this hot-path service.
+    * **Parse error in a new file** → logged and skipped; the rest of the
+      directory is still processed.
+    """
+    from app.agent.loader import parse_agent_md
+    from app.agent.mode.team.team import MemberBlueprint
+
+    agents_dir = (
+        _resolve_coding_agents_dir() if team.mode == "coding" else _resolve_agents_dir()
+    )
+    if not agents_dir.exists():
+        return
+
+    md_files = sorted(agents_dir.glob("*.md"))
+    seen: set[str] = set()
+    for md_path in md_files:
+        try:
+            cfg = parse_agent_md(md_path)
+        except Exception as exc:
+            logger.warning(
+                "blueprint_refresh_parse_failed path={} error={}", md_path.name, exc
+            )
+            continue
+        # Skip the lead — its file lives in the same directory but is owned
+        # by :func:`reload`, not by this hot-path discovery.
+        if cfg.role != "member":
+            continue
+        if "#" in cfg.name or cfg.name == team.lead.name:
+            # Same invariants ``load_team_from_dir`` enforces; silently
+            # drop the bad file rather than 500 the listing endpoint.
+            continue
+        seen.add(cfg.name)
+        existing = team.blueprints.get(cfg.name)
+        if existing is None:
+            team.blueprints[cfg.name] = MemberBlueprint(
+                name=cfg.name,
+                description=cfg.description or cfg.name,
+                source_path=md_path,
+            )
+            logger.info("blueprint_added name={} path={}", cfg.name, md_path.name)
+        elif existing.source_path != md_path:
+            # File renamed but ``name:`` kept — repoint so the next spawn
+            # reads from the new location.
+            existing.source_path = md_path
+
+    for name in list(team.blueprints.keys()):
+        if name in seen:
+            continue
+        # Don't pull the rug out from under a live conversation: if any
+        # instance of this blueprint is still in the roster, leave the
+        # blueprint in place so its handle still resolves.
+        if team.live_instances_for_blueprint(name):
+            continue
+        team.blueprints.pop(name, None)
+        logger.info("blueprint_removed name={}", name)
+
+
 # ── Skill cache invalidation ─────────────────────────────────────────────────
 
 

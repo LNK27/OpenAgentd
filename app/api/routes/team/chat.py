@@ -259,6 +259,9 @@ async def list_team_agents(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:
         team_obj = _require_team(team)
+    # Rediscover blueprint files from disk before serializing so newly
+    # created members (Settings → Agents) appear without a server restart.
+    team_manager.refresh_blueprints(team_obj)
     team_manager.refresh_idle_agents(team_obj)
     all_members: list[TeamMemberBase] = [team_obj.lead, *team_obj.members.values()]
     blueprints = [
