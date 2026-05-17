@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -41,6 +43,29 @@ class ProvidersListBody(BaseModel):
     has_any_configured: bool
 
 
+class ModelEntry(BaseModel):
+    """One model entry returned by the provider-models endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    # Whether the model accepts image inputs. Resolved from the provider
+    # prefix in ``app.agent.providers.capabilities`` — same source as the
+    # attachment-upload gate, so what the UI shows matches what the
+    # backend actually enforces.
+    vision: bool = False
+
+
+class ProviderModelsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    models: list[ModelEntry] = Field(default_factory=list)
+    # ``provider`` = list returned by the live provider API.
+    # ``default`` = curated fallback from the catalog (provider unreachable).
+    source: Literal["provider", "default"]
+
+
 class ProviderTestRequest(BaseModel):
     """``POST /api/settings/providers/{id}/test`` request body."""
 
@@ -52,6 +77,13 @@ class ProviderTestRequest(BaseModel):
     api_key: str = ""
     model: str
     # Multi-field providers (vertexai) pass their extras here.
+    extra: dict[str, str] = Field(default_factory=dict)
+
+
+class ProviderModelsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    api_key: str = ""
     extra: dict[str, str] = Field(default_factory=dict)
 
 
@@ -69,9 +101,6 @@ class ProviderSaveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     api_key: str = ""
-    # Optional: when present, this becomes the default model the seed
-    # installer substitutes into ``__PROVIDER_MODEL__``.
-    default_model: str = ""
     extra: dict[str, str] = Field(default_factory=dict)
 
 

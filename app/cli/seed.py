@@ -108,9 +108,11 @@ def write_env_credentials(
         Absolute path to ``~/.config/openagentd/.env`` (or the test
         equivalent).
     credentials
-        Mapping of env-var name → value to write. Empty values are
-        allowed and overwrite existing ones, so callers can clear a key
-        by passing an empty string.
+        Mapping of env-var name → value to write. An empty-string value
+        means "clear this key" — the line is dropped from the file
+        entirely (rather than left as ``KEY=``) so ``pydantic-settings``
+        falls back to its declared default instead of resolving to the
+        empty string.
     comments
         Optional mapping of env-var name → comment line. The comment is
         appended below the var when *adding* it for the first time, not
@@ -134,6 +136,10 @@ def write_env_credentials(
             "",
         ]
         for key, val in credentials.items():
+            if not val:
+                # Nothing to write — and there's no existing line to
+                # supersede on a fresh file.
+                continue
             lines.append(f"{key}={val}")
             if key in comments:
                 lines.append(comments[key])
@@ -142,19 +148,23 @@ def write_env_credentials(
 
     existing = env_file.read_text(encoding="utf-8")
     out_lines: list[str] = []
-    replaced: set[str] = set()
+    handled: set[str] = set()
     for line in existing.splitlines():
         key = line.split("=", 1)[0].strip()
         if key in credentials:
-            out_lines.append(f"{key}={credentials[key]}")
-            replaced.add(key)
+            handled.add(key)
+            new_val = credentials[key]
+            if new_val:
+                out_lines.append(f"{key}={new_val}")
+            # else: empty value → drop the line (caller asked to clear).
         else:
             out_lines.append(line)
     for key, val in credentials.items():
-        if key not in replaced:
-            out_lines.append(f"{key}={val}")
-            if key in comments:
-                out_lines.append(comments[key])
+        if key in handled or not val:
+            continue
+        out_lines.append(f"{key}={val}")
+        if key in comments:
+            out_lines.append(comments[key])
     env_file.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
     return False
 

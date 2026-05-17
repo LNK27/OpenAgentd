@@ -29,6 +29,19 @@ def isolated_config(tmp_path: Path):
         yield target
 
 
+@pytest.fixture(autouse=True)
+def _reset_local_reachable_cache():
+    """Clear the daemon-reachability cache between tests.
+
+    The cache is module-level state; without resetting it a test that
+    happens to ping a daemon successfully (or hit a cached failure)
+    would leak that result into unrelated tests.
+    """
+    settings_routes._local_reachable_cache.clear()
+    yield
+    settings_routes._local_reachable_cache.clear()
+
+
 def test_get_sandbox_returns_seed_defaults_when_file_missing(
     isolated_config: Path,
 ) -> None:
@@ -133,9 +146,22 @@ def test_update_install_helpers_not_importable() -> None:
 
 def test_list_providers_returns_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
     """GET /providers returns one entry per catalog row with config state."""
-    # Clear any ambient env so the test is deterministic.
-    for name in ("GOOGLE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
-        monkeypatch.delenv(name, raising=False)
+    # Clear every known credential env var so the test is deterministic
+    # regardless of the developer's local ``.env``.
+    from app.agent.providers.catalog import PROVIDER_KEY_VAR, all_providers
+
+    for var in PROVIDER_KEY_VAR.values():
+        monkeypatch.delenv(var, raising=False)
+    for entry in all_providers():
+        for var in entry.get("env_vars", ()):
+            monkeypatch.delenv(var, raising=False)
+
+    # Stub the daemon probe so this test doesn't depend on whether
+    # Ollama happens to be running on the developer's machine.
+    async def _unreachable(_entry):  # type: ignore[no-untyped-def]
+        return False
+
+    monkeypatch.setattr(settings_routes, "_local_provider_reachable", _unreachable)
 
     app = _make_app()
     client = TestClient(app)
@@ -146,10 +172,8 @@ def test_list_providers_returns_catalog(monkeypatch: pytest.MonkeyPatch) -> None
     assert len(data["providers"]) > 5  # we ship many
     ids = {p["id"] for p in data["providers"]}
     assert {"googlegenai", "openai", "openrouter", "copilot", "codex"} <= ids
-    # Nothing in the env → no provider should be flagged as configured.
-    assert data["has_any_configured"] is False or any(
-        p["kind"] == "local" and p["is_configured"] for p in data["providers"]
-    )
+    # Nothing configured → has_any_configured is exactly False.
+    assert data["has_any_configured"] is False
 
 
 def test_list_providers_marks_configured_when_env_var_set(
@@ -166,6 +190,69 @@ def test_list_providers_marks_configured_when_env_var_set(
     google = next(p for p in data["providers"] if p["id"] == "googlegenai")
     assert google["is_configured"] is True
     assert data["has_any_configured"] is True
+
+
+def test_list_providers_ollama_not_configured_when_daemon_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`kind="local"` providers must not show as Connected unless the daemon answers."""
+
+    async def _unreachable(_entry):  # type: ignore[no-untyped-def]
+        return False
+
+    monkeypatch.setattr(settings_routes, "_local_provider_reachable", _unreachable)
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.get("/api/settings/providers")
+
+    assert response.status_code == 200
+    ollama = next(p for p in response.json()["providers"] if p["id"] == "ollama")
+    assert ollama["is_configured"] is False
+
+
+def test_list_providers_ollama_configured_when_daemon_reachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the probe succeeds, Ollama shows as Connected."""
+
+    async def _reachable(_entry):  # type: ignore[no-untyped-def]
+        return True
+
+    monkeypatch.setattr(settings_routes, "_local_provider_reachable", _reachable)
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.get("/api/settings/providers")
+
+    assert response.status_code == 200
+    ollama = next(p for p in response.json()["providers"] if p["id"] == "ollama")
+    assert ollama["is_configured"] is True
+
+
+def test_list_providers_router9_requires_both_env_var_and_daemon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Local-proxy api_key providers need both a key AND a reachable daemon."""
+    monkeypatch.delenv("ROUTER9_API_KEY", raising=False)
+
+    probed: list[str] = []
+
+    async def _spy(entry):  # type: ignore[no-untyped-def]
+        probed.append(entry["id"])
+        return True
+
+    monkeypatch.setattr(settings_routes, "_local_provider_reachable", _spy)
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.get("/api/settings/providers")
+
+    assert response.status_code == 200
+    router9 = next(p for p in response.json()["providers"] if p["id"] == "router9")
+    # No env var → still not connected, and we never bothered to probe.
+    assert router9["is_configured"] is False
+    assert "router9" not in probed
 
 
 def test_list_providers_marks_oauth_file_configured(
@@ -243,7 +330,7 @@ def test_save_provider_writes_env_and_mutates_environ(
     client = TestClient(app)
     response = client.put(
         "/api/settings/providers/googlegenai",
-        json={"api_key": "fresh-key-123", "default_model": "gemini-3-flash-preview"},
+        json={"api_key": "fresh-key-123"},
     )
     assert response.status_code == 200
     body = response.json()
@@ -265,10 +352,57 @@ def test_save_provider_writes_env_and_mutates_environ(
     # again.
     response2 = client.put(
         "/api/settings/providers/googlegenai",
-        json={"api_key": "another-key", "default_model": "gemini-3-flash-preview"},
+        json={"api_key": "another-key"},
     )
     assert response2.status_code == 200
     assert response2.json()["is_first_provider"] is False
+
+
+def test_save_provider_persists_base_url_extra(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Daemon providers can set an optional base URL via ``extra``.
+
+    The value is written to ``.env`` alongside the API key and mirrored
+    into ``os.environ`` so the next discovery call picks it up without a
+    server restart. Clearing the field (empty string) deletes the line.
+    """
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    monkeypatch.delenv("ROUTER9_API_KEY", raising=False)
+    monkeypatch.delenv("ROUTER9_BASE_URL", raising=False)
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.put(
+        "/api/settings/providers/router9",
+        json={
+            "api_key": "rk-123",
+            "extra": {"ROUTER9_BASE_URL": "http://10.0.0.5:20128/v1"},
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["saved"] is True
+
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "ROUTER9_API_KEY=rk-123" in env_text
+    assert "ROUTER9_BASE_URL=http://10.0.0.5:20128/v1" in env_text
+
+    import os
+
+    assert os.environ.get("ROUTER9_BASE_URL") == "http://10.0.0.5:20128/v1"
+
+    # Clearing the base URL on a subsequent save removes the line from
+    # ``.env`` and pops the env var.
+    response2 = client.put(
+        "/api/settings/providers/router9",
+        json={"api_key": "rk-123", "extra": {"ROUTER9_BASE_URL": ""}},
+    )
+    assert response2.status_code == 200
+    env_text2 = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "ROUTER9_BASE_URL" not in env_text2
+    assert os.environ.get("ROUTER9_BASE_URL") is None
 
 
 def test_save_provider_404_for_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -345,3 +479,285 @@ def test_install_seed_defaults_rejects_blank_model() -> None:
     response = client.post("/api/settings/seed", json={"provider_model": ""})
 
     assert response.status_code == 422
+
+
+# ── Daemon reachability probe ───────────────────────────────────────────────
+
+
+def test_local_provider_reachable_uses_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two probes within the TTL hit the cache instead of re-issuing HTTP."""
+    import asyncio
+
+    from app.agent.providers.catalog import find
+
+    entry = find("ollama")
+    assert entry is not None
+
+    call_count = 0
+
+    class _FakeResponse:
+        status_code = 200
+
+    class _FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _url):
+            nonlocal call_count
+            call_count += 1
+            return _FakeResponse()
+
+    monkeypatch.setattr(settings_routes.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(settings_routes.settings, "OLLAMA_BASE_URL", "http://x:1")
+
+    first = asyncio.get_event_loop().run_until_complete(
+        settings_routes._local_provider_reachable(entry)
+    )
+    second = asyncio.get_event_loop().run_until_complete(
+        settings_routes._local_provider_reachable(entry)
+    )
+    assert first is True
+    assert second is True
+    assert call_count == 1
+
+
+def test_local_provider_reachable_swallows_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Connection refused / timeout → False (no exception bubbles up)."""
+    import asyncio
+
+    import httpx
+
+    from app.agent.providers.catalog import find
+
+    entry = find("ollama")
+    assert entry is not None
+
+    class _BoomClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _url):
+            raise httpx.ConnectError("daemon down")
+
+    monkeypatch.setattr(settings_routes.httpx, "AsyncClient", _BoomClient)
+    monkeypatch.setattr(settings_routes.settings, "OLLAMA_BASE_URL", "http://x:1")
+
+    result = asyncio.get_event_loop().run_until_complete(
+        settings_routes._local_provider_reachable(entry)
+    )
+    assert result is False
+
+
+# ── POST /providers/{id}/models ─────────────────────────────────────────────
+
+
+def test_list_provider_models_returns_404_for_unknown() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/notreal/models",
+        json={"api_key": "x"},
+    )
+    assert response.status_code == 404
+
+
+def test_list_provider_models_falls_back_to_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When discovery returns no models, the response uses curated defaults."""
+
+    async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return []
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _empty
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/googlegenai/models",
+        json={"api_key": "fake"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "default"
+    assert isinstance(body["models"], list)
+    assert all("id" in entry and "vision" in entry for entry in body["models"])
+    # Google models inherit the googlegenai: prefix → vision=True.
+    if body["models"]:
+        assert body["models"][0]["vision"] is True
+
+
+def test_list_provider_models_returns_discovered_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When discovery succeeds, response carries source='provider' and each model
+    is shaped as ``{id, vision}``."""
+
+    async def _two_models(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return ["model-a", "model-b"]
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _two_models
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/openai/models",
+        json={"api_key": "fake"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "openai"
+    assert body["source"] == "provider"
+    assert body["models"] == [
+        {"id": "model-a", "vision": True},
+        {"id": "model-b", "vision": True},
+    ]
+
+
+def test_list_provider_models_does_not_mutate_os_environ(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The /models endpoint must thread credentials via overrides, not env."""
+    import os
+
+    sentinel = "PROBE_ENV_VALUE_BEFORE_REQUEST"
+    monkeypatch.setenv("OPENAI_API_KEY", sentinel)
+
+    captured: dict[str, object] = {}
+
+    async def _spy(_entry, **kwargs):  # type: ignore[no-untyped-def]
+        captured["overrides"] = kwargs.get("overrides")
+        captured["env_during"] = os.environ.get("OPENAI_API_KEY")
+        return []
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _spy
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/openai/models",
+        json={"api_key": "candidate-key"},
+    )
+
+    assert response.status_code == 200
+    # os.environ stayed untouched — only the overrides dict carried the key.
+    assert os.environ.get("OPENAI_API_KEY") == sentinel
+    assert captured["env_during"] == sentinel
+    assert captured["overrides"] == {"OPENAI_API_KEY": "candidate-key"}
+
+
+# ── /agents/registry — concurrent + cached discovery ────────────────────────
+
+
+def test_registry_skips_unconfigured_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Discovery only runs for providers the user has actually configured."""
+    from fastapi import FastAPI
+
+    from app.api.routes.agents import router as agents_router
+
+    # Force every provider to look unconfigured.
+    monkeypatch.setattr(
+        "app.api.routes.settings._provider_is_configured", lambda _entry: False
+    )
+
+    call_count = 0
+
+    async def _spy(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        nonlocal call_count
+        call_count += 1
+        return []
+
+    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
+
+    app = FastAPI()
+    app.include_router(agents_router, prefix="/api/agents")
+    client = TestClient(app)
+    response = client.get("/api/agents/registry")
+
+    assert response.status_code == 200
+    assert call_count == 0
+
+
+def test_registry_caches_discovery_within_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two calls in the same TTL window invoke discovery just once per provider."""
+    from fastapi import FastAPI
+
+    from app.api.routes import agents as agents_module
+    from app.api.routes.agents import router as agents_router
+
+    # Reset the module-level cache so prior tests don't taint the count.
+    agents_module._registry_model_cache.clear()
+
+    monkeypatch.setattr(
+        "app.api.routes.settings._provider_is_configured",
+        lambda entry: entry["id"] == "openai",
+    )
+
+    call_count = 0
+
+    async def _spy(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        nonlocal call_count
+        call_count += 1
+        return ["only-model"]
+
+    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
+
+    app = FastAPI()
+    app.include_router(agents_router, prefix="/api/agents")
+    client = TestClient(app)
+
+    client.get("/api/agents/registry")
+    client.get("/api/agents/registry")
+
+    assert call_count == 1
+
+
+def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A discovery exception per provider must not break the whole registry."""
+    from fastapi import FastAPI
+
+    from app.api.routes import agents as agents_module
+    from app.api.routes.agents import router as agents_router
+
+    agents_module._registry_model_cache.clear()
+
+    monkeypatch.setattr(
+        "app.api.routes.settings._provider_is_configured", lambda _entry: True
+    )
+
+    async def _raise(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        raise RuntimeError("provider unreachable")
+
+    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _raise)
+
+    app = FastAPI()
+    app.include_router(agents_router, prefix="/api/agents")
+    client = TestClient(app)
+    response = client.get("/api/agents/registry")
+
+    assert response.status_code == 200
+    # Curated default_models are still present.
+    body = response.json()
+    assert any(m["provider"] == "openai" for m in body["models"])
