@@ -17,8 +17,10 @@
  * by the parent route) hosts the Form/Raw toggle next to Save — keeping
  * top-of-page real estate consistent across all editor pages.
  */
-import { useMemo, useState } from 'react'
-import { AlertCircle } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { AlertCircle, ChevronDown } from 'lucide-react'
+import fuzzysort from 'fuzzysort'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -26,9 +28,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -282,8 +282,17 @@ function FormFields({
   // handled by the caller's full-form check before save.
   const nameError = isNew ? validateAgentName(fm.name) : null
   const descriptionError = validateDescription(fm.description ?? '')
-  const modelError = validateModel(fm.model ?? '', { required: true })
-  const fallbackError = validateModel(fm.fallback_model ?? '')
+  const validModelIds = useMemo(
+    () => modelOptions.map((m) => m.id),
+    [modelOptions],
+  )
+  const modelError = validateModel(fm.model ?? '', {
+    required: true,
+    validValues: validModelIds,
+  })
+  const fallbackError = validateModel(fm.fallback_model ?? '', {
+    validValues: validModelIds,
+  })
 
   const onTempChange = (next: string) => {
     setTempRaw(next)
@@ -378,28 +387,29 @@ function FormFields({
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <Field label="Model" required error={modelError} className="md:col-span-2">
-            <ModelPicker
+            <ModelCombobox
               value={fm.model ?? ''}
               options={modelOptions}
               onChange={(v) => updateFromForm({ ...fm, model: v }, body)}
               disabled={disabled}
               invalid={!!modelError}
+              placeholder="Type to search models…"
             />
           </Field>
 
           <Field
             label="Fallback model"
             error={fallbackError}
-            hint="Used when the primary model errors out."
+            hint="Used when the primary model errors out. Leave blank for none."
             className="md:col-span-2"
           >
-            <ModelPicker
+            <ModelCombobox
               value={fm.fallback_model ?? ''}
               options={modelOptions}
-              allowEmpty
               onChange={(v) => updateFromForm({ ...fm, fallback_model: v || null }, body)}
               disabled={disabled}
               invalid={!!fallbackError}
+              placeholder="Type to search models (or leave blank)…"
             />
           </Field>
 
@@ -519,109 +529,244 @@ function FormFields({
   )
 }
 
-// ── Model picker ────────────────────────────────────────────────────────────
+// ── Model combobox ──────────────────────────────────────────────────────────
+
+interface ModelOption {
+  id: string
+  provider: string
+  model: string
+  vision: boolean
+}
 
 /**
- * Two-mode model picker:
- *   • "list" — shadcn Select grouped by provider
- *   • "custom" — free-text input (provider:model) for models the registry
- *     doesn't advertise
+ * Typeahead combobox for picking a registry model id (``provider:model``).
  *
- * Mode is derived from whether the current value matches a registry entry,
- * with an explicit "Use custom" override the user can flip.
+ * The user types into a regular text input; matches from the registry are
+ * ranked by ``fuzzysort`` and rendered in a floating list below. Picking
+ * an entry (click, ↑/↓ + Enter) commits the value. Free-text values that
+ * don't match a registry entry are flagged by ``validateModel`` upstream
+ * — the input itself doesn't gate keystrokes so the user can edit freely.
+ *
+ * Empty input commits an empty string, which the caller may interpret as
+ * "unset" (used for ``fallback_model``).
  */
-function ModelPicker({
+function ModelCombobox({
   value,
   onChange,
   options,
   disabled,
-  allowEmpty,
   invalid,
+  placeholder,
 }: {
   value: string
   onChange: (v: string) => void
-  options: { id: string; provider: string; model: string; vision: boolean }[]
+  options: ModelOption[]
   disabled?: boolean
-  allowEmpty?: boolean
   invalid?: boolean
+  placeholder?: string
 }) {
-  const valueIsKnown = !value || options.some((o) => o.id === value)
-  const [forceCustom, setForceCustom] = useState(!valueIsKnown && !!value)
-  const useCustom = forceCustom || (!valueIsKnown && !!value)
+  const [query, setQuery] = useState(value)
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(0)
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
 
-  const grouped = useMemo(() => {
-    const g = new Map<string, typeof options>()
-    for (const o of options) {
-      if (!g.has(o.provider)) g.set(o.provider, [])
-      g.get(o.provider)!.push(o)
+  // Adopt external value changes (e.g. switching agents) without losing
+  // the user's in-progress query while focused.
+  const [lastValue, setLastValue] = useState(value)
+  if (value !== lastValue) {
+    setLastValue(value)
+    setQuery(value)
+  }
+
+  // Track the input's viewport rect while the dropdown is open so the
+  // portalled list stays pinned beneath it as the page scrolls or the
+  // window resizes. Measured synchronously after layout so the first
+  // frame after open is already positioned correctly.
+  useLayoutEffect(() => {
+    if (!open) return
+    const measure = () => {
+      const rect = inputRef.current?.getBoundingClientRect()
+      if (rect) setAnchorRect(rect)
     }
-    return g
-  }, [options])
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+    }
+  }, [open])
 
-  if (useCustom) {
-    return (
-      <div className="flex items-center gap-2">
-        <Input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          placeholder="provider:model"
-          aria-invalid={invalid || undefined}
-          className="flex-1 font-mono"
-        />
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            setForceCustom(false)
-            // If the current value isn't in the registry, clear it so the
-            // Select doesn't render an empty placeholder mismatch.
-            if (!valueIsKnown) onChange('')
-          }}
-        >
-          Use list
-        </Button>
-      </div>
-    )
+  // Close when a click/focus lands outside the input *and* the dropdown.
+  // The portalled list isn't a DOM descendant of the wrapper, so we
+  // can't rely on a single onBlur handler.
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null
+      if (
+        wrapperRef.current?.contains(target) ||
+        listRef.current?.contains(target)
+      ) {
+        return
+      }
+      setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [open])
+
+  // Filter + rank with fuzzysort. Empty query → full list (provider order).
+  const filtered = useMemo<ModelOption[]>(() => {
+    const q = query.trim()
+    if (!q) return options
+    // Indexing into ``id`` (the qualified ``provider:model``) means
+    // searching ``gpt5`` and ``openai:gpt-5.4`` both work.
+    const results = fuzzysort.go(q, options, {
+      key: 'id',
+      threshold: 0.2,
+      limit: 50,
+    })
+    return results.map((r) => r.obj)
+  }, [options, query])
+
+  // Clamp highlight when the list shrinks. Derived-state pattern (see
+  // React docs: "You might not need an effect").
+  const [lastLen, setLastLen] = useState(filtered.length)
+  if (lastLen !== filtered.length) {
+    setLastLen(filtered.length)
+    setHighlight((h) => Math.min(h, Math.max(filtered.length - 1, 0)))
+  }
+
+  const commit = (next: string) => {
+    setQuery(next)
+    onChange(next)
+    setOpen(false)
+  }
+
+  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setOpen(true)
+      setHighlight((i) => Math.min(i + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlight((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      if (!open) return
+      e.preventDefault()
+      const row = filtered[highlight]
+      if (row) commit(row.id)
+    } else if (e.key === 'Escape') {
+      if (!open) return
+      e.preventDefault()
+      setOpen(false)
+    }
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <Select
-        value={value || undefined}
-        onValueChange={(v) => onChange(v ?? '')}
-        disabled={disabled}
-      >
-        <SelectTrigger
-          className={cn('flex-1', invalid && 'aria-invalid:border-(--color-error)')}
+    <div ref={wrapperRef} className="relative">
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
+          aria-controls="model-combobox-list"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setHighlight(0)
+            setOpen(true)
+            // Push the in-progress query upstream so validation surfaces
+            // "Not in the provider model list" as the user types past a
+            // known entry. Empty query commits an empty value.
+            onChange(e.target.value)
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKey}
+          disabled={disabled}
+          placeholder={placeholder ?? 'Type to search models…'}
           aria-invalid={invalid || undefined}
+          autoComplete="off"
+          spellCheck={false}
+          className="pr-8 font-mono"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={open ? 'Close model list' : 'Open model list'}
+          onMouseDown={(e) => {
+            // Toggle without stealing focus from the input.
+            e.preventDefault()
+            setOpen((v) => !v)
+            inputRef.current?.focus()
+          }}
+          disabled={disabled}
+          className="absolute top-1/2 right-2 -translate-y-1/2 text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50"
         >
-          <SelectValue placeholder={allowEmpty ? '(none)' : 'Select a model…'} />
-        </SelectTrigger>
-        <SelectContent>
-          {[...grouped.entries()].map(([provider, models]) => (
-            <SelectGroup key={provider}>
-              <SelectLabel>{provider}</SelectLabel>
-              {models.map((m) => (
-                <SelectItem key={m.id} value={m.id} className="font-mono">
-                  {m.model}
-                  {m.vision ? ' · vision' : ''}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        onClick={() => setForceCustom(true)}
-      >
-        Custom
-      </Button>
+          <ChevronDown size={14} aria-hidden="true" />
+        </button>
+      </div>
+
+      {open && !disabled && anchorRect &&
+        createPortal(
+          <ul
+            ref={listRef}
+            id="model-combobox-list"
+            role="listbox"
+            // Portalled to document.body so the dropdown escapes any
+            // ancestor with ``overflow-hidden`` (e.g. the Card primitive).
+            // Positioned in viewport coords via the tracked anchor rect.
+            style={{
+              position: 'fixed',
+              top: anchorRect.bottom + 4,
+              left: anchorRect.left,
+              width: anchorRect.width,
+            }}
+            className="z-50 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--bg-page) p-1 shadow-[0_8px_24px_rgba(26,23,20,0.16)]"
+          >
+            {filtered.length === 0 ? (
+              <li className="px-3 py-3 text-center text-xs text-(--color-text-muted)">
+                No matching models
+              </li>
+            ) : (
+              filtered.map((o, i) => {
+                const isHi = i === highlight
+                const isSel = o.id === value
+                return (
+                  <li key={o.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isSel}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => commit(o.id)}
+                      onMouseEnter={() => setHighlight(i)}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left font-mono text-xs transition-colors',
+                        isHi && 'bg-(--bg-key)',
+                        isSel && 'text-(--color-accent)',
+                      )}
+                    >
+                      <span className="min-w-0 truncate">{o.id}</span>
+                      {o.vision && (
+                        <span className="shrink-0 text-[10px] text-(--color-text-muted)">
+                          vision
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                )
+              })
+            )}
+          </ul>,
+          document.body,
+        )}
     </div>
   )
 }
