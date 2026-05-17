@@ -86,19 +86,23 @@ def _build_platforms(artefact_dir: Path, base_url: str) -> dict[str, dict[str, s
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--version", required=True, help="Version string (e.g. 0.6.0).")
-    ap.add_argument("--channel", default="stable", choices=["stable", "beta", "nightly"])
+    ap.add_argument(
+        "--channel", default="stable", choices=["stable", "beta", "nightly"]
+    )
     ap.add_argument("--artefact-dir", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument(
         "--tag",
         default=None,
-        help="GitHub release tag (defaults to v<version>-desktop).",
+        help="GitHub release tag (defaults to v<version>).",
     )
     args = ap.parse_args()
 
-    tag = args.tag or f"v{args.version}-desktop"
+    tag = args.tag or f"v{args.version}"
     base_url = _release_base_url(args.version, tag)
     platforms = _build_platforms(args.artefact_dir, base_url)
 
