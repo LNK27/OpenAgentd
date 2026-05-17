@@ -6,8 +6,8 @@ Design parity with opencode's bash.ts:
   Incompatible shells (fish, nu) are rejected in favour of zsh/bash.
 - Streaming output: bytes are read incrementally and spilled to a temp file
   in the workspace when they exceed ``max_output_bytes``.  The LLM receives
-  the last N lines as an inline tail, with the spill path advertised so it
-  can ``read`` the full output if needed.
+  the first and last output lines inline, with the spill path advertised so
+  it can ``read`` the full output if needed.
 - ``workdir`` parameter (optional): run the command in a specific directory.
   Relative paths resolve inside the sandbox workspace. Absolute paths are
   allowed when the caller intentionally needs to run outside the workspace.
@@ -21,7 +21,7 @@ Output format (foreground)::
 
     [Succeeded]
 
-    <last lines of output>
+    <output>
 
 Or when truncated::
 
@@ -29,7 +29,9 @@ Or when truncated::
 
     ...output truncated (full output saved to .openagentd/sessions/<sid>/.shell_output/<id>.txt)
 
-    <last N lines>
+    <first N/2 lines>
+    ...output truncated...
+    <last N/2 lines>
 
 ``[Failed — exit code N]`` prefix when the command exits non-zero.
 """
@@ -60,10 +62,10 @@ _DEFAULT_TIMEOUT_SECONDS = (
 _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
 _SHELL_OUTPUT_SUBDIR = ".shell_output"
 
-# Maximum lines and bytes to include as inline tail in the result
-_TAIL_MAX_LINES = 200
+# Maximum lines and bytes to include inline in the result
+_OUTPUT_MAX_LINES = 300
 # Bytes kept inline; output beyond this spills to a temp file
-_TAIL_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
+_OUTPUT_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
 
 
 # ── Background process registry ──────────────────────────────────────────────
@@ -186,7 +188,7 @@ def _kill_process_group(proc: asyncio.subprocess.Process, sig: signal.Signals) -
 
 
 def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
-    """Return the last *max_lines* lines that fit within *max_bytes*.
+    """Return first and last lines that fit within *max_lines* and *max_bytes*.
 
     Returns ``(tail_text, was_cut)`` where ``was_cut`` is True when not all
     output is included.
@@ -195,17 +197,15 @@ def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
     if len(lines) <= max_lines and len(text.encode()) <= max_bytes:
         return text, False
 
-    out: list[str] = []
-    used = 0
-    for line in reversed(lines):
-        encoded = line.encode("utf-8")
-        size = len(encoded) + (1 if out else 0)  # +1 for newline separator
-        if used + size > max_bytes and out:
-            break
-        if len(out) >= max_lines:
-            break
-        out.insert(0, line)
-        used += size
+    head_limit = max_lines // 2
+    tail_limit = max_lines - head_limit
+    out = lines[:head_limit] + ["...output truncated..."] + lines[-tail_limit:]
+
+    while len("\n".join(out).encode()) > max_bytes and len(out) > 1:
+        if len(out) % 2 == 0:
+            del out[-2]
+        else:
+            del out[0]
 
     return "\n".join(out), True
 
@@ -308,7 +308,7 @@ async def _shell(
 
     Uses the user's preferred POSIX shell (``$SHELL`` → zsh → bash → sh).
     Supports ``&&``, ``||``, pipes, ``$VAR``, subshells.
-    Large output is streamed: the last 200 lines are returned inline;
+    Large output is streamed: the first and last output lines are returned inline;
     the full output is saved to ``.openagentd/sessions/<sid>/.shell_output/`` in the workspace.
     Set ``background=true`` for long-running processes.
     """
@@ -463,7 +463,7 @@ async def _shell(
         )
 
         # Spill to file if output is large
-        tail, was_cut = _tail_text(text, _TAIL_MAX_LINES, _TAIL_MAX_BYTES)
+        tail, was_cut = _tail_text(text, _OUTPUT_MAX_LINES, _OUTPUT_MAX_BYTES)
 
         if was_cut:
             call_id = str(uuid.uuid4())[:8]
