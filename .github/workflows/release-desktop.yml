@@ -362,6 +362,7 @@ jobs:
           python3 scripts/make_updater_manifest.py \
             --version "${{ needs.prepare.outputs.version }}" \
             --channel "${{ github.event.inputs.channel }}" \
+            --tag "${{ needs.prepare.outputs.tag }}" \
             --artefact-dir _release \
             --out _release/latest.json
 
@@ -389,7 +390,7 @@ jobs:
       # always resolve to the most recent desktop release's manifest, so
       # we maintain a rolling ``latest-desktop`` release that mirrors
       # only ``latest.json``. The artefact URLs *inside* latest.json
-      # still point at the immutable ``v{X.Y.Z}-desktop`` release above,
+      # still point at the immutable ``v{X.Y.Z}`` release above,
       # so old clients keep working and downloads are cacheable.
       - name: Update rolling latest-desktop release
         env:
