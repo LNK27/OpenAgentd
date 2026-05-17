@@ -23,7 +23,8 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useIsMobile } from '@/hooks/use-mobile'
 import {
   Folder,
   HelpCircle,
@@ -66,6 +67,12 @@ interface CodingSidebarProps {
   openWorkspaceDialogKey?: number
   /** Open the command palette (search input + footer help). */
   onCommandPalette?: () => void
+  /** Desktop only: when true, the inline panel collapses to width=0. */
+  desktopCollapsed?: boolean
+  /** Mobile only: whether the overlay drawer is open. */
+  mobileOpen?: boolean
+  /** Mobile only: called when the drawer should close (backdrop tap, navigation). */
+  onMobileClose?: () => void
 }
 
 export function CodingSidebar({
@@ -74,7 +81,11 @@ export function CodingSidebar({
   onCollapse,
   openWorkspaceDialogKey = 0,
   onCommandPalette,
+  desktopCollapsed = false,
+  mobileOpen = false,
+  onMobileClose,
 }: CodingSidebarProps) {
+  const isMobile = useIsMobile()
   // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
   // We don't render an inline collapse toggle anymore — the topbar
   // hamburger and Ctrl+B own that surface.
@@ -222,6 +233,7 @@ export function CodingSidebar({
       params: { sessionId: session.id },
       search,
     })
+    onMobileClose?.()
   }
 
   const handleSessionDelete = (e: React.MouseEvent, session: SessionResponse) => {
@@ -237,12 +249,36 @@ export function CodingSidebar({
   }
 
   return (
+    <>
+      {/* Mobile backdrop — closes the drawer on tap. */}
+      <AnimatePresence>
+        {isMobile && mobileOpen && (
+          <motion.div
+            key="coding-sidebar-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-30 bg-black/60 md:hidden"
+            aria-hidden="true"
+            onClick={onMobileClose}
+          />
+        )}
+      </AnimatePresence>
+
     <motion.aside
-      initial={{ width: 0, opacity: 0 }}
-      animate={{ width: 256, opacity: 1 }}
-      exit={{ width: 0, opacity: 0 }}
+      initial={false}
+      animate={
+        isMobile
+          ? { x: mobileOpen ? 0 : -280 }
+          : { width: desktopCollapsed ? 0 : 256 }
+      }
       transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-      className="flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)"
+      className={
+        isMobile
+          ? 'fixed inset-y-0 left-0 z-40 flex w-[272px] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
+          : 'flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)'
+      }
     >
       {/* Search trigger — opens the command palette (Ctrl+P). */}
       {onCommandPalette && (
@@ -491,5 +527,6 @@ export function CodingSidebar({
         </DialogContent>
       </Dialog>
     </motion.aside>
+    </>
   )
 }

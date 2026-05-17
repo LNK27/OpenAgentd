@@ -181,40 +181,46 @@ class TestXAIProviderFactory:
 
 
 # ============================================================================
-# Capabilities — xai: prefix
+# Capabilities — xai: exact-match resolution
 # ============================================================================
 
 
 class TestXAICapabilities:
-    """xai: prefix resolves to vision=True (multimodal Grok models)."""
+    """``xai:`` capabilities come from the bundled YAML registry.
 
-    def test_xai_prefix_vision_true(self):
+    Grok-4 / Grok-4.3 are listed with vision=true. Older or unlisted
+    Grok IDs fall through to the all-false defaults (the resolver no
+    longer matches by provider prefix).
+    """
+
+    def test_grok_4_listed_with_vision(self):
         caps = get_capabilities("xai:grok-4")
         assert caps.input.vision is True
 
-    def test_xai_prefix_vision_true_any_model(self):
+    def test_unlisted_grok_defaults_no_vision(self):
+        # grok-3-mini is not in capabilities.yaml — falls through to
+        # all-false defaults. Image attachments will be rejected at the
+        # gate, which is the safe behaviour for an un-curated model.
         caps = get_capabilities("xai:grok-3-mini")
-        # grok-3-mini is text-only but we default to True at the prefix level;
-        # per-model overrides in capabilities.yaml can narrow it down later.
-        assert caps.input.vision is True
+        assert caps.input.vision is False
 
-    def test_xai_prefix_document_text_true(self):
+    def test_document_text_true(self):
         caps = get_capabilities("xai:grok-4")
         assert caps.input.document_text is True
 
-    def test_xai_prefix_output_text_true(self):
+    def test_output_text_true(self):
         caps = get_capabilities("xai:grok-4")
         assert caps.output.text is True
 
-    def test_xai_prefix_output_image_false(self):
+    def test_output_image_false(self):
         caps = get_capabilities("xai:grok-4")
         assert caps.output.image is False
 
-    def test_xai_prefix_audio_false(self):
+    def test_audio_false(self):
         caps = get_capabilities("xai:grok-4")
         assert caps.input.audio is False
 
-    def test_xai_prefix_case_insensitive(self):
+    def test_case_insensitive_lookup(self):
         caps_lower = get_capabilities("xai:grok-4")
         caps_upper = get_capabilities("XAI:grok-4")
         assert caps_lower == caps_upper

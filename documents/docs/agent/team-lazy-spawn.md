@@ -186,6 +186,7 @@ spawning a peer mid-turn.
 |--------------------------------------|------------------------------------------------------|
 | blueprint definition + parsing       | `app/agent/loader.py`                                |
 | `MemberBlueprint`, spawn / dismiss   | `app/agent/mode/team/team.py`                        |
+| runtime blueprint rediscovery        | `app/services/team_manager.py:refresh_blueprints`    |
 | roster/configure tools               | `app/agent/mode/team/manage.py`                      |
 | protocol prompt assembly             | `app/agent/mode/team/member.py`                      |
 | recipient resolution                 | `app/agent/mode/team/tools.py`                       |

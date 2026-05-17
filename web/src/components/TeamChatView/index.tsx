@@ -434,7 +434,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               type="button"
               onClick={() => {
                 if (mode === 'coding') {
-                  setCodingSidebarCollapsed((v) => !v)
+                  if (isMobile) {
+                    setMobileSidebarOpen((v) => !v)
+                  } else {
+                    setCodingSidebarCollapsed((v) => !v)
+                  }
                 } else if (isMobile) {
                   setMobileSidebarOpen(true)
                 } else {
@@ -529,17 +533,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           takes no space here and the main column is always full-width. */}
       <div className="flex min-h-0 flex-1">
         {mode === 'coding' ? (
-          <AnimatePresence initial={false}>
-            {!codingSidebarCollapsed && (
-              <CodingSidebar
-                currentSessionId={sessionIdState || undefined}
-                workspace={workspace}
-                onCollapse={() => setCodingSidebarCollapsed(true)}
-                openWorkspaceDialogKey={openWorkspaceDialogKey}
-                onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
-              />
-            )}
-          </AnimatePresence>
+          <CodingSidebar
+            currentSessionId={sessionIdState || undefined}
+            workspace={workspace}
+            onCollapse={() => setCodingSidebarCollapsed(true)}
+            openWorkspaceDialogKey={openWorkspaceDialogKey}
+            onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
+            desktopCollapsed={codingSidebarCollapsed}
+            mobileOpen={mobileSidebarOpen}
+            onMobileClose={() => setMobileSidebarOpen(false)}
+          />
         ) : (
           <Sidebar
             currentSessionId={sessionIdState || undefined}

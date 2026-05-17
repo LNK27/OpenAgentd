@@ -237,7 +237,7 @@ function SandboxHelpPopover() {
           </button>
         }
       />
-      <PopoverContent className="w-80 gap-3 p-3" align="start">
+      <PopoverContent className="w-[min(20rem,calc(100vw-1rem))] gap-3 p-3" align="start">
         <ul className="flex flex-col gap-1.5">
           {EXAMPLES.map((ex) => (
             <li key={ex.pattern} className="flex flex-col gap-0.5">

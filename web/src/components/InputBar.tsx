@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
-import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
+import { ArrowUp, File, Folder, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
@@ -663,6 +663,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         value={value}
         activeRange={mentionRange}
         textareaRef={textareaRef}
+        fileRefs={fileRefs}
       />
       <textarea
         ref={setTextareaRef}
@@ -750,30 +751,46 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
             aria-label="Reference workspace file"
             className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md"
           >
-            {filteredMentions.map((ref, idx) => (
-              <button
-                key={`${ref.type}:${ref.path}`}
-                ref={(node) => { mentionOptionRefs.current[idx] = node }}
-                role="option"
-                aria-selected={idx === clampedMentionIndex}
-                // ``onMouseDown`` + ``preventDefault`` runs before the
-                // textarea's ``onBlur`` clears the picker, so the click
-                // actually reaches our handler.
-                onMouseDown={(e) => { e.preventDefault(); insertMention(ref) }}
-                className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
-                  idx === clampedMentionIndex
-                    ? 'bg-(--bg-key) text-(--color-text)'
-                    : 'text-(--color-text-muted) hover:bg-(--bg-key)'
-                }`}
-              >
-                <span className="shrink-0 text-xs text-(--color-text-subtle)">
-                  {ref.type === 'directory' ? 'dir' : 'file'}
-                </span>
-                <span className="truncate font-mono text-xs text-(--color-text)">
-                  {ref.path}{ref.type === 'directory' ? '/' : ''}
-                </span>
-              </button>
-            ))}
+            {filteredMentions.map((ref, idx) => {
+              const isDir = ref.type === 'directory'
+              // Show the basename emphasised, the parent directory dimmed.
+              // For a top-level entry (no slash) the whole path is the
+              // basename, so there's nothing to dim — display falls back
+              // to a single span.
+              const slash = ref.path.lastIndexOf('/')
+              const parent = slash === -1 ? '' : ref.path.slice(0, slash + 1)
+              const basename = slash === -1 ? ref.path : ref.path.slice(slash + 1)
+              return (
+                <button
+                  key={`${ref.type}:${ref.path}`}
+                  ref={(node) => { mentionOptionRefs.current[idx] = node }}
+                  role="option"
+                  aria-selected={idx === clampedMentionIndex}
+                  // ``onMouseDown`` + ``preventDefault`` runs before the
+                  // textarea's ``onBlur`` clears the picker, so the click
+                  // actually reaches our handler.
+                  onMouseDown={(e) => { e.preventDefault(); insertMention(ref) }}
+                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
+                    idx === clampedMentionIndex
+                      ? 'bg-(--bg-key) text-(--color-text)'
+                      : 'text-(--color-text-muted) hover:bg-(--bg-key)'
+                  }`}
+                >
+                  {isDir ? (
+                    <Folder className="size-4 shrink-0 text-(--color-accent)" aria-hidden />
+                  ) : (
+                    <File className="size-4 shrink-0 text-(--color-text-subtle)" aria-hidden />
+                  )}
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                    {parent && (
+                      <span className="text-(--color-text-subtle)">{parent}</span>
+                    )}
+                    <span className="text-(--color-text)">{basename}</span>
+                    {isDir && <span className="text-(--color-text-subtle)">/</span>}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         )}
 

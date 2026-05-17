@@ -158,10 +158,18 @@ export function validateAgentName(raw: string): string | null {
 
 export function validateModel(
   raw: string,
-  opts: { required?: boolean } = {}
+  opts: { required?: boolean; validValues?: readonly string[] } = {}
 ): string | null {
   if (!raw) return opts.required ? 'Required' : null
-  return firstError(modelSchema, raw)
+  const shape = firstError(modelSchema, raw)
+  if (shape) return shape
+  // If the caller supplied the list of known registry models, reject any
+  // value that isn't one of them. (The list is omitted while the registry
+  // is loading, in which case we only enforce the shape.)
+  if (opts.validValues && opts.validValues.length > 0 && !opts.validValues.includes(raw)) {
+    return 'Not in the provider model list'
+  }
+  return null
 }
 
 export function validateDescription(raw: string): string | null {

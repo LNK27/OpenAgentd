@@ -9,11 +9,13 @@ users run ``openagentd update`` (see ``app/cli/commands/update.py``).
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
@@ -24,6 +26,8 @@ if TYPE_CHECKING:
     from app.agent.providers.catalog import ProviderEntry
 from app.api.schemas.settings import (
     ProviderInfo,
+    ProviderModelsRequest,
+    ProviderModelsResponse,
     ProviderSaveRequest,
     ProviderSaveResponse,
     ProviderTestRequest,
@@ -35,6 +39,25 @@ from app.api.schemas.settings import (
 )
 
 router = APIRouter()
+
+# Serialises concurrent provider tests. ``build_provider`` reads credentials
+# from ``os.environ`` deep in the factory; the test endpoint has to mutate
+# it temporarily, so a lock prevents two in-flight tests from clobbering
+# each other's keys.
+_TEST_PROVIDER_LOCK = asyncio.Lock()
+
+# Per-provider reachability cache (provider_id → (monotonic_ts, reachable)).
+# Local-daemon providers (Ollama, 9Router, CLIProxyAPI) need an actual ping
+# — without it every install would falsely show "Connected" just because
+# the env var was set or the catalog row exists. We cache the result
+# briefly so listing providers doesn't fan out probes on every render.
+_LOCAL_REACHABLE_TTL_S = 10.0
+_LOCAL_REACHABLE_TIMEOUT_S = 1.0
+_local_reachable_cache: dict[str, tuple[float, bool]] = {}
+
+# Providers that run as a local-ish daemon — even when authed by API key,
+# "Connected" should mean the daemon actually responds.
+_DAEMON_PROVIDER_IDS = frozenset({"ollama", "router9", "cliproxy"})
 
 
 @router.get("/sandbox")
@@ -91,10 +114,11 @@ def _env_has_provider_key(env_file: "Path") -> bool:
 def _provider_is_configured(entry: "ProviderEntry") -> bool:
     """Return True if the user's .env has credentials for this provider.
 
-    OAuth providers (copilot, codex) check for the presence of the OAuth
-    token file under OPENAGENTD_CACHE_DIR — that's where the auth flow
-    persists tokens. Local providers (ollama) are always considered
-    configured because they need no credentials.
+    Synchronous static check — does **not** probe daemons or networks.
+    For ``kind="local"`` (Ollama) this returns optimistically; callers
+    that care about actual reachability should use
+    :func:`_provider_is_reachable` instead, which adds an async daemon
+    ping on top of this.
     """
     kind = entry.get("kind")
     if kind == "local":
@@ -123,13 +147,92 @@ def _provider_is_configured(entry: "ProviderEntry") -> bool:
     return bool(os.environ.get(env_var))
 
 
+def _daemon_base_url(provider_id: str) -> str:
+    """Resolve the daemon base URL for a local/local-proxy provider."""
+    if provider_id == "ollama":
+        return os.getenv("OLLAMA_BASE_URL") or settings.OLLAMA_BASE_URL or ""
+    if provider_id == "router9":
+        return os.getenv("ROUTER9_BASE_URL") or settings.ROUTER9_BASE_URL or ""
+    if provider_id == "cliproxy":
+        return os.getenv("CLIPROXY_BASE_URL") or settings.CLIPROXY_BASE_URL or ""
+    return ""
+
+
+async def _local_provider_reachable(entry: "ProviderEntry") -> bool:
+    """Short-timeout daemon probe for local-daemon providers.
+
+    Returns True only if the daemon actually responds. Cached per-provider
+    for :data:`_LOCAL_REACHABLE_TTL_S` seconds so listing the providers
+    page doesn't fan out one HTTP request per render.
+
+    On any error (connection refused, timeout, DNS failure) returns
+    False — we'd rather show "not connected" than a false positive.
+    """
+    provider_id = entry["id"]
+    now = time.monotonic()
+    cached = _local_reachable_cache.get(provider_id)
+    if cached and now - cached[0] < _LOCAL_REACHABLE_TTL_S:
+        return cached[1]
+
+    base_url = _daemon_base_url(provider_id)
+    reachable = False
+    if base_url:
+        try:
+            async with httpx.AsyncClient(timeout=_LOCAL_REACHABLE_TIMEOUT_S) as client:
+                response = await client.get(f"{base_url.rstrip('/')}/models")
+                reachable = response.status_code < 500
+        except Exception as exc:
+            logger.debug(
+                "local_provider_unreachable provider={} url={} error={}",
+                provider_id,
+                base_url,
+                exc,
+            )
+            reachable = False
+
+    _local_reachable_cache[provider_id] = (now, reachable)
+    return reachable
+
+
+async def _provider_is_reachable(entry: "ProviderEntry") -> bool:
+    """Configuration check including a daemon probe for daemon providers.
+
+    For Ollama / 9Router / CLIProxyAPI we *also* require the daemon to
+    respond on its base URL — otherwise the UI would show "Connected"
+    for a daemon that isn't running. Other providers fall back to the
+    static :func:`_provider_is_configured` check.
+    """
+    provider_id = entry["id"]
+    if provider_id in _DAEMON_PROVIDER_IDS:
+        # For api_key daemon providers (router9, cliproxy) the static
+        # check additionally requires the env var. No env var → don't
+        # bother probing.
+        if entry.get("kind") == "api_key" and not _provider_is_configured(entry):
+            return False
+        return await _local_provider_reachable(entry)
+    return _provider_is_configured(entry)
+
+
 @router.get("/providers")
 async def list_providers() -> ProvidersListBody:
-    """Return the provider catalog enriched with per-provider configuration state."""
+    """Return the provider catalog enriched with per-provider configuration state.
+
+    ``is_configured`` reflects *actual* availability: API keys present,
+    OAuth token files on disk, cloud creds set — and for local daemons
+    (Ollama), an HTTP probe confirming the daemon answers. Static-only
+    catalog inspection would falsely show "Connected" for a daemon that
+    isn't running.
+    """
     from app.agent.providers.catalog import all_providers
 
+    entries = all_providers()
+    reachability = await asyncio.gather(
+        *(_provider_is_reachable(entry) for entry in entries),
+        return_exceptions=False,
+    )
+
     out: list[ProviderInfo] = []
-    for entry in all_providers():
+    for entry, is_configured in zip(entries, reachability, strict=True):
         out.append(
             ProviderInfo(
                 id=entry["id"],
@@ -138,21 +241,74 @@ async def list_providers() -> ProvidersListBody:
                 kind=entry["kind"],
                 env_var=entry.get("env_var", ""),
                 env_vars=list(entry.get("env_vars", [])),
-                default_models=list(entry.get("default_models", [])),
+                fallback_models=list(entry.get("fallback_models", [])),
                 oauth_command=entry.get("oauth_command", ""),
                 docs_url=entry.get("docs_url", ""),
-                is_configured=_provider_is_configured(entry),
+                is_configured=is_configured,
             )
         )
     has_any = any(p.is_configured for p in out)
     return ProvidersListBody(providers=out, has_any_configured=has_any)
 
 
+def _build_overrides(
+    entry: "ProviderEntry", body_api_key: str, body_extra: dict[str, str]
+) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    if body_api_key and entry.get("env_var"):
+        overrides[entry["env_var"]] = body_api_key
+    overrides.update(body_extra)
+    return overrides
+
+
+@router.post("/providers/{provider_id}/models")
+async def list_provider_models(
+    provider_id: str, body: ProviderModelsRequest
+) -> ProviderModelsResponse:
+    """Return live provider models when available, otherwise the catalog fallback.
+
+    Per-request credentials in ``body`` are threaded through to
+    :func:`discover_provider_models` via the ``overrides`` parameter — we
+    never touch ``os.environ`` because a concurrent request would observe
+    the leaked value.
+
+    Most providers respond with a live list. For providers with no
+    listing endpoint upstream (currently just vertexai) we fall back to
+    the curated ``fallback_models`` set in the catalog.
+    """
+    from app.agent.providers.catalog import find
+    from app.agent.providers.model_discovery import discover_provider_models
+
+    entry = find(provider_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_id}'")
+
+    overrides = _build_overrides(entry, body.api_key, body.extra)
+    discovered = await discover_provider_models(entry, overrides=overrides)
+    if discovered:
+        return ProviderModelsResponse(
+            provider=provider_id,
+            models=discovered,
+            source="provider",
+        )
+    return ProviderModelsResponse(
+        provider=provider_id,
+        models=list(entry.get("fallback_models", [])),
+        source="fallback",
+    )
+
+
 @router.post("/providers/{provider_id}/test")
 async def test_provider(
     provider_id: str, body: ProviderTestRequest
 ) -> ProviderTestResponse:
-    """Run a one-token completion to verify the supplied credentials."""
+    """Run a one-token completion to verify the supplied credentials.
+
+    ``build_provider`` reads credentials from ``os.environ`` deep in the
+    factory, so this endpoint has to mutate the environment temporarily.
+    A module-level :class:`asyncio.Lock` serialises concurrent tests so
+    one request's candidate key cannot leak to another.
+    """
     from app.agent.providers.catalog import find
     from app.agent.providers.factory import build_provider
 
@@ -160,40 +316,38 @@ async def test_provider(
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_id}'")
 
-    # Temporarily inject the candidate key into os.environ so build_provider
-    # picks it up without persisting it. The restoration step rolls back
-    # mutations on every exit path.
-    overrides: dict[str, str | None] = {}
-    if body.api_key and entry.get("env_var"):
-        env_var = entry["env_var"]
-        overrides[env_var] = os.environ.get(env_var)
-        os.environ[env_var] = body.api_key
-    for name, value in body.extra.items():
-        overrides[name] = os.environ.get(name)
-        os.environ[name] = value
+    async with _TEST_PROVIDER_LOCK:
+        overrides: dict[str, str | None] = {}
+        if body.api_key and entry.get("env_var"):
+            env_var = entry["env_var"]
+            overrides[env_var] = os.environ.get(env_var)
+            os.environ[env_var] = body.api_key
+        for name, value in body.extra.items():
+            overrides[name] = os.environ.get(name)
+            os.environ[name] = value
 
-    started = time.perf_counter()
-    try:
-        provider = build_provider(f"{provider_id}:{body.model}")
-        from app.agent.schemas.chat import HumanMessage
+        started = time.perf_counter()
+        try:
+            provider = build_provider(f"{provider_id}:{body.model}")
+            from app.agent.schemas.chat import HumanMessage
 
-        await provider.chat(
-            messages=[HumanMessage(content="ping")],
-            max_tokens=1,
-        )
-        latency_ms = int((time.perf_counter() - started) * 1000)
-        return ProviderTestResponse(ok=True, latency_ms=latency_ms)
-    except Exception as exc:
-        logger.warning("provider_test_failed provider={} error={}", provider_id, exc)
-        return ProviderTestResponse(ok=False, error=str(exc))
-    finally:
-        # Roll back env mutations. ``None`` means the var didn't exist
-        # before, so we delete it; otherwise restore the previous value.
-        for name, prev in overrides.items():
-            if prev is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = prev
+            await provider.chat(
+                messages=[HumanMessage(content="ping")],
+                max_tokens=1,
+            )
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            return ProviderTestResponse(ok=True, latency_ms=latency_ms)
+        except Exception as exc:
+            logger.warning(
+                "provider_test_failed provider={} error={}", provider_id, exc
+            )
+            return ProviderTestResponse(ok=False, error=str(exc))
+        finally:
+            for name, prev in overrides.items():
+                if prev is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = prev
 
 
 @router.put("/providers/{provider_id}")
@@ -206,8 +360,9 @@ async def save_provider(
 
     - Updates ``os.environ`` so the next ``build_provider`` call sees the
       new value without restarting the server.
-    - On first-ever provider save, returns ``is_first_provider=True`` so
-      the frontend knows to trigger seed installation afterward.
+    - Returns ``is_first_provider=True`` on the first-ever provider save
+      (kept for the CLI's ``openagentd init`` flow, which still uses the
+      seed installer; the web UI no longer triggers seed install on save).
     """
     from app.agent.providers.catalog import find
     from app.cli.seed import write_env_credentials
@@ -223,6 +378,15 @@ async def save_provider(
         for name in entry.get("env_vars") or []:
             if name in body.extra:
                 creds[name] = body.extra[name]
+    # ``body.extra`` also carries optional knobs like ROUTER9_BASE_URL /
+    # CLIPROXY_BASE_URL / OLLAMA_BASE_URL — users running the proxy on
+    # another host need a way to point at it without hand-editing .env.
+    # Empty string means "remove the override and fall back to the
+    # pydantic-settings default", which ``write_env_credentials`` honours
+    # by deleting the line.
+    for name, value in body.extra.items():
+        if name not in creds:
+            creds[name] = value
     # OAuth/local providers don't write env vars from this endpoint — OAuth
     # uses the auth route, local needs no credentials.
 

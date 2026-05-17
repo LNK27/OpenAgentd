@@ -197,6 +197,35 @@ class TestTeamAgentsRouteExtra:
 
         assert resp.status_code == 422
 
+    def test_agents_picks_up_new_blueprint_file_without_restart(
+        self, app_with_team, test_team, tmp_path, monkeypatch
+    ):
+        """End-to-end guard for the hot-reload fix: a member ``.md`` file
+        created on disk after the team is built must appear in
+        ``GET /api/team/agents`` on the next request, with no server
+        restart or team reload."""
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+        (tmp_path / "newcomer.md").write_text(
+            "---\nname: newcomer\nrole: member\ndescription: just arrived\n---\nbody\n",
+            encoding="utf-8",
+        )
+
+        # ``_serialize_blueprint`` calls ``rebuild_agent_from_disk`` for
+        # each blueprint; stub it so we don't need a working provider.
+        blueprint_agent = Agent(
+            name="newcomer", llm_provider=MockProvider(), system_prompt="Newcomer"
+        )
+        blueprint_agent.description = "just arrived"
+        with patch(
+            "app.agent.loader.rebuild_agent_from_disk", return_value=blueprint_agent
+        ):
+            data = TestClient(app_with_team).get("/api/team/agents").json()
+
+        names = [bp["name"] for bp in data["blueprints"]]
+        assert "newcomer" in names
+
     def test_coding_chat_rejects_session_workspace_mismatch(
         self, app_without_team, tmp_path
     ):

@@ -141,7 +141,7 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed left-1/2 top-1/2 z-50 flex h-[min(90vh,860px)] w-[min(90vw,1180px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl"
+            className="fixed inset-0 z-50 flex flex-col overflow-hidden border-(--color-border) bg-(--bg-card) shadow-2xl sm:left-1/2 sm:top-1/2 sm:inset-auto sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border"
           >
             <header className="flex items-center justify-between border-b border-(--color-border) px-4 py-3">
               <div className="flex items-center gap-2">

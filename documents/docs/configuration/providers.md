@@ -7,7 +7,7 @@ updated: 2026-05-16
 
 # LLM Providers
 
-**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/catalog.py`, `app/api/routes/settings.py`, `app/agent/providers/capabilities.py`, `app/agent/providers/capabilities.yaml`
+**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/catalog.py`, `app/api/routes/settings.py`, `app/agent/providers/capabilities.py`
 
 A model is selected by setting `model: <prefix>:<model-id>` in an agent's `.md` frontmatter. The prefix selects the provider; the rest is passed verbatim to that provider's API.
 
@@ -46,22 +46,10 @@ The model id after the prefix is passed **verbatim** to the upstream — OpenAge
 
 Each model's input/output capabilities (vision, document text, audio, video, etc.) are resolved by `get_capabilities(model_id)` in `capabilities.py`:
 
-1. Exact match in `capabilities.yaml` → use that entry.
-2. Prefix fallback (e.g. `openai:`) → use the per-prefix default.
-3. Global default → text-only.
+1. Longest prefix match (e.g. `openai:`) → use that prefix's default.
+2. Global default → text-only.
 
-To enable vision on a specific model that isn't in the YAML, add an exact override:
-
-```yaml
-"ollama:llava":
-  input:
-    vision: true
-"nvidia:nvidia/llama-3.2-90b-vision-instruct":
-  input:
-    vision: true
-```
-
-`input` and `output` are sparse-merged — only specify fields that differ from the prefix default.
+There are no per-model overrides and no name-substring heuristics. Edge cases (e.g. attaching an image to a text-only model under a vision prefix, or vice versa) surface as a provider-side error on first use. See `documents/techdebts/model-capabilities-registry.md` for the long-term direction.
 
 ## Provider notes
 
@@ -130,7 +118,7 @@ ollama pull llama3.2        # pull any model
 
 **Remote daemon.** Point at a daemon on another machine via `OLLAMA_BASE_URL`.
 
-**Capability defaults:** vision is `false` for the `ollama:` prefix; opt in per-model via `capabilities.yaml`.
+**Capability defaults:** vision is `false` for the `ollama:` prefix. If you run a vision-capable model (e.g. `llava`), attach images via the chat UI and accept that the upload gate is conservative for the whole prefix.
 
 ## Thinking (`thinking_level`)
 

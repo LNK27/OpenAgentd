@@ -344,3 +344,136 @@ async def test_get_or_start_coding_team_uses_agents_dir_coding_agents(
     assert seen["path"] == agents_dir / "coding"
     assert seen["mode"] == "coding"
     assert seen["workspace"] == str(workspace.resolve())
+
+
+# ── refresh_blueprints() ──────────────────────────────────────────────────────
+#
+# Without this rediscovery step, a member ``.md`` file created via Settings →
+# Agents wouldn't appear in the spawnable roster until the team object is
+# evicted (typically a server restart) because ``team.blueprints`` is frozen
+# at ``load_team_from_dir`` time.  These tests pin the contract.
+
+
+def _write_member_md(path, name: str) -> None:
+    path.write_text(
+        f"---\nname: {name}\nrole: member\ndescription: {name} agent\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+
+def _make_real_team(lead_name: str = "lead"):
+    """Build a real (not mock) ``AgentTeam`` so ``refresh_blueprints`` can
+    mutate ``team.blueprints`` and we can read it back."""
+    from app.agent.agent_loop import Agent
+    from app.agent.mode.team.member import TeamLead
+    from app.agent.mode.team.team import AgentTeam
+    from tests.api.routes.test_team_routes_extra import MockProvider
+
+    lead = TeamLead(
+        Agent(name=lead_name, llm_provider=MockProvider(), system_prompt="Lead")
+    )
+    return AgentTeam(lead=lead)
+
+
+def test_refresh_blueprints_adds_new_member_file(tmp_path, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+    team = _make_real_team()
+    assert team.blueprints == {}
+
+    _write_member_md(tmp_path / "executor.md", "executor")
+    team_manager.refresh_blueprints(team)
+
+    assert "executor" in team.blueprints
+    assert team.blueprints["executor"].source_path == tmp_path / "executor.md"
+    assert team.blueprints["executor"].description == "executor agent"
+
+
+def test_refresh_blueprints_removes_blueprint_when_file_deleted(tmp_path, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+    team = _make_real_team()
+    _write_member_md(tmp_path / "executor.md", "executor")
+    team_manager.refresh_blueprints(team)
+    assert "executor" in team.blueprints
+
+    (tmp_path / "executor.md").unlink()
+    team_manager.refresh_blueprints(team)
+
+    assert "executor" not in team.blueprints
+
+
+def test_refresh_blueprints_keeps_removed_blueprint_with_live_instance(
+    tmp_path, monkeypatch
+):
+    """A blueprint with a still-running instance must survive removal so
+    the in-flight conversation can keep addressing the agent by handle."""
+    from app.agent.agent_loop import Agent
+    from app.agent.mode.team.member import TeamMember
+    from app.core.config import settings
+    from tests.api.routes.test_team_routes_extra import MockProvider
+
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+    team = _make_real_team()
+    _write_member_md(tmp_path / "executor.md", "executor")
+    team_manager.refresh_blueprints(team)
+
+    # Simulate a live instance spawned from the blueprint.
+    instance = TeamMember(
+        Agent(name="executor#1", llm_provider=MockProvider(), system_prompt="Worker")
+    )
+    team.members["executor#1"] = instance
+    team._members_by_name["executor#1"] = instance
+
+    (tmp_path / "executor.md").unlink()
+    team_manager.refresh_blueprints(team)
+
+    assert "executor" in team.blueprints  # kept because instance is live
+
+
+def test_refresh_blueprints_skips_lead_file(tmp_path, monkeypatch):
+    """The lead's lifecycle is owned by ``reload``; ``refresh_blueprints``
+    must never register the lead as a member blueprint."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+    team = _make_real_team()
+    (tmp_path / "lead.md").write_text(
+        "---\nname: some-lead\nrole: lead\n---\nbody\n", encoding="utf-8"
+    )
+
+    team_manager.refresh_blueprints(team)
+
+    assert team.blueprints == {}
+
+
+def test_refresh_blueprints_swallows_parse_errors(tmp_path, monkeypatch):
+    """A malformed new file must not 500 the listing endpoint — log and
+    skip, processing the rest of the directory."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+    team = _make_real_team()
+    # Missing frontmatter → ``parse_agent_md`` raises.
+    (tmp_path / "broken.md").write_text("no frontmatter here", encoding="utf-8")
+    _write_member_md(tmp_path / "good.md", "good")
+
+    team_manager.refresh_blueprints(team)  # must not raise
+
+    assert "good" in team.blueprints
+    assert "broken" not in team.blueprints
+
+
+def test_refresh_blueprints_noop_when_agents_dir_missing(tmp_path, monkeypatch):
+    """Missing dir is a valid state (fresh checkout, dev environment) —
+    must not raise."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path / "does-not-exist"))
+    team = _make_real_team()
+
+    team_manager.refresh_blueprints(team)  # must not raise
+
+    assert team.blueprints == {}

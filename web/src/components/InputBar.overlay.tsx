@@ -12,7 +12,7 @@
  */
 import { useEffect, useRef } from 'react'
 
-import { findCommittedMentions } from './InputBar.mentions'
+import { findCommittedMentions, type FileRef } from './InputBar.mentions'
 
 interface MentionOverlayProps {
   /** Current textarea value. */
@@ -25,15 +25,21 @@ interface MentionOverlayProps {
   activeRange: { start: number; end: number } | null
   /** Ref to the textarea so we can mirror its scroll position. */
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
+  /**
+   * Workspace file/folder list used to validate committed mentions —
+   * ``@nonexistent`` and ``@@`` get no chip because they don't resolve.
+   */
+  fileRefs: readonly FileRef[]
 }
 
 export function MentionOverlay({
   value,
   activeRange,
   textareaRef,
+  fileRefs,
 }: MentionOverlayProps) {
   const mirrorRef = useRef<HTMLDivElement>(null)
-  const ranges = findCommittedMentions(value, activeRange)
+  const ranges = findCommittedMentions(value, activeRange, fileRefs)
 
   // Keep the mirror's scroll position in lock-step with the textarea so
   // chips stay aligned when the message overflows the bar's max-height.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -25,7 +27,10 @@ class ProviderInfo(BaseModel):
     kind: str  # "api_key" | "oauth" | "local" | "cloud_creds"
     env_var: str = ""
     env_vars: list[str] = Field(default_factory=list)
-    default_models: list[str] = Field(default_factory=list)
+    # Only set for providers without a live model-listing endpoint
+    # (currently just vertexai). Other providers return an empty list
+    # here and the UI must call the `/models` endpoint to populate.
+    fallback_models: list[str] = Field(default_factory=list)
     oauth_command: str = ""
     docs_url: str = ""
     # State the UI uses to decide whether to render "Connected" or a CTA.
@@ -41,6 +46,25 @@ class ProvidersListBody(BaseModel):
     has_any_configured: bool
 
 
+class ProviderModelsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    # Just model IDs. We deliberately don't ship per-model capability
+    # flags here: the prefix-based resolver is too coarse for a
+    # per-model UI badge ("text-embedding-3-small" would show vision
+    # because `openai:` is vision-true), and a curated registry would be
+    # stale by the time the user upgraded the app. If capability ever
+    # needs to surface on this endpoint, build it from a runtime-fetched
+    # registry — see ``documents/techdebts/model-capabilities-registry.md``.
+    models: list[str] = Field(default_factory=list)
+    # ``provider`` = list returned by the live provider API.
+    # ``fallback`` = curated list from the catalog (provider has no
+    # listing endpoint, or live discovery failed). Only providers with
+    # ``fallback_models`` set in the catalog ever return this.
+    source: Literal["provider", "fallback"]
+
+
 class ProviderTestRequest(BaseModel):
     """``POST /api/settings/providers/{id}/test`` request body."""
 
@@ -52,6 +76,13 @@ class ProviderTestRequest(BaseModel):
     api_key: str = ""
     model: str
     # Multi-field providers (vertexai) pass their extras here.
+    extra: dict[str, str] = Field(default_factory=dict)
+
+
+class ProviderModelsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    api_key: str = ""
     extra: dict[str, str] = Field(default_factory=dict)
 
 
@@ -69,9 +100,6 @@ class ProviderSaveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     api_key: str = ""
-    # Optional: when present, this becomes the default model the seed
-    # installer substitutes into ``__PROVIDER_MODEL__``.
-    default_model: str = ""
     extra: dict[str, str] = Field(default_factory=dict)
 
 

@@ -298,11 +298,11 @@ export function CodingWorkspacePanel({
 
   return (
     <motion.aside
-      initial={{ width: 0, opacity: 0 }}
-      animate={{ width: 440, opacity: 1 }}
-      exit={{ width: 0, opacity: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-      className="flex min-h-0 w-[440px] shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page)"
+      className="fixed inset-y-0 right-0 z-40 flex min-h-0 w-full max-w-[440px] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl sm:relative sm:z-auto sm:w-[440px] sm:shrink-0 sm:shadow-none"
     >
       <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-3">
         <div className="min-w-0">

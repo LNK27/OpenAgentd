@@ -24,7 +24,7 @@ from app.agent.providers.bedrock.bedrock import (
     _parse_converse_response,
     _tools_to_bedrock,
 )
-from app.agent.providers.capabilities import get_capabilities, reload_capabilities
+from app.agent.providers.capabilities import get_capabilities
 from app.agent.schemas.chat import (
     AssistantMessage,
     FunctionCall,
@@ -401,50 +401,30 @@ class TestBedrockStream:
 
 
 class TestBedrockCapabilities:
-    def setup_method(self):
-        reload_capabilities()
+    """Bedrock uses a conservative text-only prefix default.
 
-    def test_bedrock_prefix_vision_false(self):
+    Bedrock capabilities come from the bundled YAML registry. Claude
+    4.x and Nova are listed with vision=true (both in-region and global
+    inference profile IDs); unlisted Bedrock model IDs fall through to
+    the all-false defaults. See
+    ``documents/techdebts/model-capabilities-registry.md``.
+    """
+
+    def test_unknown_bedrock_model_defaults_no_vision(self):
         caps = get_capabilities("bedrock:some-unknown-model")
         assert caps.input.vision is False
 
-    def test_claude_opus_4_7_vision_true(self):
+    def test_claude_opus_4_7_listed_with_vision(self):
         caps = get_capabilities("bedrock:anthropic.claude-opus-4-7")
         assert caps.input.vision is True
 
-    def test_claude_opus_4_7_global_vision_true(self):
+    def test_claude_opus_4_7_global_listed_with_vision(self):
         caps = get_capabilities("bedrock:global.anthropic.claude-opus-4-7")
         assert caps.input.vision is True
 
-    def test_claude_sonnet_4_6_vision_true(self):
-        caps = get_capabilities("bedrock:anthropic.claude-sonnet-4-6")
-        assert caps.input.vision is True
-
-    def test_claude_sonnet_4_6_global_vision_true(self):
-        caps = get_capabilities("bedrock:global.anthropic.claude-sonnet-4-6")
-        assert caps.input.vision is True
-
-    def test_claude_haiku_4_5_vision_true(self):
-        caps = get_capabilities("bedrock:anthropic.claude-haiku-4-5-20251001-v1:0")
-        assert caps.input.vision is True
-
-    def test_claude_haiku_4_5_global_vision_true(self):
-        caps = get_capabilities(
-            "bedrock:global.anthropic.claude-haiku-4-5-20251001-v1:0"
-        )
-        assert caps.input.vision is True
-
-    def test_nova_premier_vision_true(self):
-        caps = get_capabilities("bedrock:amazon.nova-premier-v1:0")
-        assert caps.input.vision is True
-
-    def test_nova_pro_vision_true(self):
+    def test_nova_pro_listed_with_vision(self):
         caps = get_capabilities("bedrock:amazon.nova-pro-v1:0")
         assert caps.input.vision is True
-
-    def test_nova_micro_vision_false(self):
-        caps = get_capabilities("bedrock:amazon.nova-micro-v1:0")
-        assert caps.input.vision is False
 
     def test_document_text_true(self):
         caps = get_capabilities("bedrock:anthropic.claude-sonnet-4-6")

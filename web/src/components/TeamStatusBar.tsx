@@ -35,9 +35,9 @@ export function TeamStatusBar({
   error,
 }: TeamStatusBarProps) {
   return (
-    <div className="flex items-center justify-between border-t border-(--color-border) bg-(--bg-page) px-4 py-1 text-xs text-(--color-text-muted)">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-(--color-border) bg-(--bg-page) px-3 py-1 text-xs text-(--color-text-muted) sm:px-4">
       {/* Left */}
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         {sessionId && (
           <span className="font-mono text-(--color-text-muted)">
             {sessionId.slice(0, 8)}
@@ -62,7 +62,7 @@ export function TeamStatusBar({
       )}
 
       {/* Right: agent pills */}
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center justify-end gap-1">
         {Object.entries(agentStreams).map(([name, stream]) => (
           <div
             key={name}
