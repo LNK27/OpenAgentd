@@ -317,16 +317,17 @@ jobs:
           else
             BUNDLE_DIR=${{ matrix.rust_target }}/release/bundle
           fi
-          # Match Tauri's actual product bundles, which are always named
+          # Match Tauri's actual product bundles. Installers use
           # `{productName}_{version}_{arch}{.lang}.{ext}` (e.g.
-          # `OpenAgentd_1.0.6_aarch64.dmg`). Without the prefix anchor
+          # `OpenAgentd_1.0.6_aarch64.dmg`), while macOS updater
+          # archives use `{productName}.app.tar.gz`. Without the prefix anchor
           # the NSIS toolchain's installer-helper stubs
           # (cli-*.exe, gui-*.exe, t*.exe, w*.exe) get vacuumed up too —
           # they live in `bundle/nsis/` and end in `.exe` but are not
           # something we want on the release page.
           find "$BUNDLE_DIR" -type f \( \
             -name 'OpenAgentd_*.dmg' \
-            -o -name 'OpenAgentd_*.app.tar.gz' -o -name 'OpenAgentd_*.app.tar.gz.sig' \
+            -o -name 'OpenAgentd*.app.tar.gz' -o -name 'OpenAgentd*.app.tar.gz.sig' \
             -o -name 'OpenAgentd_*.exe' -o -name 'OpenAgentd_*.exe.sig' \
             -o -name 'OpenAgentd_*.msi' -o -name 'OpenAgentd_*.msi.sig' \
             -o -name 'OpenAgentd_*.AppImage' -o -name 'OpenAgentd_*.AppImage.sig' \
@@ -364,7 +365,9 @@ jobs:
             --channel "${{ github.event.inputs.channel }}" \
             --tag "${{ needs.prepare.outputs.tag }}" \
             --artefact-dir _release \
-            --out _release/latest.json
+            --out _release/latest.json \
+            --require-platform darwin-aarch64 \
+            --require-platform windows-x86_64
 
       - name: Create or update GitHub release
         # Releases land on the shared ``v<X.Y.Z>`` tag. If

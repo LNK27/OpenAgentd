@@ -53,6 +53,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "category": "Productivity",
     "copyright": "Copyright (c) 2026 OpenAgentd contributors",
     "shortDescription": "On-machine AI agents — streaming chat, tool use, persistent memory.",
