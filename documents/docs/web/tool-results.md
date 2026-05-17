@@ -1,29 +1,29 @@
 ---
 title: Tool Call & Result Rendering
-description: Aside-style tool cards with status dots, per-tool headers, expandable args/result panels, custom renderers.
+description: Inline tool-call rows with per-tool summaries, codeblock-style args/result panels, and custom renderers.
 status: stable
-updated: 2026-05-14
+updated: 2026-05-17
 ---
 
 # Tool Call & Result Rendering
 
-Aside-style rendering for `ToolCall` blocks: a quiet left-rule margin note with an optional per-tool header, italicised argument values, an expandable args/result panel, and tool-aware result renderers.
+Inline rendering for `ToolCall` blocks: a compact `{Tool Name}: {summary}` header, expandable codeblock-style args/result panel, and tool-aware result renderers.
 
 ---
 
 ## Overview
 
-Each tool call renders as a collapsible aside in `ToolCall.tsx`. Visual language mirrors `Thinking.tsx` — no card, no background on the row itself, no tool-type icon. Identity is carried by a **colored status dot** (matching the `AgentCapabilities` vocabulary) plus a tool-specific one-line summary (header) or the bare tool name as a fallback.
+Each tool call renders as a lightweight inline row in `ToolCall/index.tsx`. Collapsed rows have no enclosing card or background; expandable rows reveal a single bordered details container below the header. Identity is carried by a humanized tool label plus a tool-specific one-line summary, or just the tool label as a fallback.
 
 The **header** and **arguments** section are customised per tool via `getToolDisplay()`. The **result** section is rendered by `ToolResult.tsx`, which picks a renderer based on `toolName`.
 
 **Spacing:** `ToolCall` does not set its own inter-block spacing — that is owned by the parent container (`space-y-1` / `space-y-1.5` / `space-y-2` depending on the view).
 
 ```
-ToolCall.tsx                        (aside row + header + expand/collapse)
-  ├── StatusDot                     (6px dot — pending / running / done)
-  ├── Arg                           (italicises argument values in headers)
-  ├── getToolDisplay()              (per-tool header ReactNode & args formatting)
+ToolCall/index.tsx                  (inline row + header + expand/collapse)
+  ├── formatToolLabel()             (custom_tool → Custom Tool)
+  ├── Arg                           (marks argument values in summaries)
+  ├── getToolDisplay()              (per-tool summary ReactNode & args formatting)
   └── ToolResult.tsx                (result section dispatcher)
         ├── WebSearchResult         — web_search
         ├── ShellResult             — shell
@@ -38,55 +38,51 @@ ToolCall.tsx                        (aside row + header + expand/collapse)
 
 ---
 
-## Header row
+## Header Row
 
 The collapsed header is a single flex row:
 
 ```
-[chevron] [●] Reading example.com                   [pending?]
+Shell: Run unit tests [chevron]
 ```
 
-- **Chevron** (`ChevronRight`, 12px, `--color-text-muted`) — rendered only when the block has expandable details; rotates 90° when expanded. Absent for tools with no args and no result (e.g. `date`, `skill`).
-- **Status dot** — 6px round, `shrink-0`. One of:
-  | State | Condition | Dot style |
-  |-------|-----------|-----------|
-  | `pending` | `args === undefined` | `bg-(--color-text-muted)` |
-  | `running` | args set, `done === false` | `bg-(--color-accent)` + pulse + glow shadow |
-  | `done` | `done === true` | `bg-(--color-success)` |
-- **Header content** — either a per-tool `ReactNode` (built by `getToolDisplay()`) rendered inside a `truncate` span, or the raw tool name rendered as a `<code>` element when no custom header exists. `getToolDisplay()` is called for every lifecycle phase — tools that want a friendly **pending-state** header (visible during the `tool_call → tool_start` gap, typically <50 ms) return one from the `if (!args)` branch; today `recall` (`Checking memory…`) and `team_message` (`Preparing message…`) opt in, every other tool falls back to the raw name.
-- **`pending` text** (optional) — appears at the right when the call has no args yet.
+- **Tool label** — humanized from the backend name (`generate_image` → `Generate Image`), rendered bold in mono text.
+- **Summary** — optional per-tool `ReactNode` from `getToolDisplay()`, rendered after `: ` in normal weight. When no custom summary exists, only the tool label is shown.
+- **Chevron** (`ChevronRight`, 13px, `--color-text-muted`) — rendered only when the block has expandable details; rotates 90° when expanded. It sits after the summary so the label and details affordance read as one phrase.
+- **Running state** — running rows pulse the header text; completed/failed state is represented by the result content rather than extra header badges.
 
-The whole row is a `<button>` so the entire strip is the click target — no separate "click here to expand" affordance.
+The whole header is a `<button>` so the entire phrase is the click target. Rows with no details use `cursor-default` and do not show a chevron.
 
-### Italicised argument values (`<Arg>`)
+### Argument Values (`<Arg>`)
 
-Inside the header, only the **argument value** is italicised — the verb/framing text stays upright. This is handled by the `<Arg>` helper, which wraps its children in `<em class="italic">`. For example:
+Inside the summary, wrap only the **argument value** with `<Arg>` so it can be styled consistently while the verb/framing text stays normal. `<Arg>` currently renders a plain span; the visual distinction comes from the bold tool label versus normal summary weight. For example:
 
 ```tsx
-// header produced for `read`:
+// summary produced for `read`:
 <>Reading <Arg>agent_loop.py</Arg></>
-// renders as: Reading <em>agent_loop.py</em>
+// renders in the full header as: Read: Reading agent_loop.py
 ```
 
 Every custom header case returns both a `ReactNode` (for display) and a plain-string `headerTitle` (used for the `title="…"` tooltip when the header is truncated, and for `aria-label`). HTML attributes can't accept ReactNodes, hence the parallel string.
 
 ### Expandable details panel
 
-When expanded, the args and/or result sections slide open below the header. Each section has:
+When expanded, the args and/or result sections slide open below the header inside one codeblock-style container:
 
-- A caption (`arguments` / `bash` / `result`) in uppercase 10px tracked text (`--color-text-subtle`) and an inline copy button on the right.
-- A **subtle surface panel** wrapping the content: `rounded-md`, `border border-(--color-border)`, `bg-(--color-surface-2)`, `px-2.5 py-2`. This restores readability for long arg/result blobs without reverting to the heavy `rgba(0,0,0,0.25)` overlay the redesign removed. `--color-surface-2` is the same token shadcn uses for `--card` / `--muted`, so it auto-themes in light/dark.
+- The container uses `surface-raised`, `rounded-md`, `border border-(--color-border)`, and `bg-(--bg-card)`, matching markdown codeblock chrome.
+- Each section has a header strip (`bg-(--bg-key)`, bottom divider) with an uppercase 10px mono label (`arguments` / `terminal` / `output` / `result`) and a copy button when applicable.
+- Result content is capped with `max-h-80 overflow-auto`; live and terminal output use their own scrollable max heights.
 
 ---
 
 ## Custom ToolCall display
 
-**File:** `web/src/components/ToolCall.tsx` — `getToolDisplay(name, args) → ToolDisplay`
+**File:** `web/src/components/ToolCall/display.tsx` — `getToolDisplay(name, args) → ToolDisplay`
 
 ```ts
 interface ToolDisplay {
-  header: ReactNode | null       // JSX with <Arg> around the argument value;
-                                 // null = fall back to tool name
+  header: ReactNode | null       // summary JSX shown after "Tool Label: ";
+                                 // null = show only the tool label
   headerTitle: string | null     // plain-string mirror for title + aria-label
   formattedArgs: string | null   // simplified args body; null = hide args section
   language?: 'bash' | null       // 'bash' → render formattedArgs as a code block
@@ -97,35 +93,39 @@ interface ToolDisplay {
 }
 ```
 
-Verbs are **deterministic** (no randomised phrase pools). Only argument values shown in brackets below are italicised via `<Arg>`.
+Verbs are **deterministic** (no randomised phrase pools). Argument values shown in brackets below are wrapped with `<Arg>`.
 
 | Tool | Header | Expanded args | Args label |
 |------|--------|---------------|------------|
 | `date` | tool name | hidden | — |
 | `shell` | *[description]* (falls back to tool name if empty) | command string as bash block with non-selectable `$ ` prefix | `bash` |
-| `web_search` | Searching *["query"]* | query string | `arguments` |
-| `web_fetch` | Reading *[domain]* (`www.` stripped) | full URL | `arguments` |
+| `web_search` | Searching *["query"]* | hidden | — |
+| `web_fetch` | Reading *[domain]* (`www.` stripped) | hidden | — |
 | `write` | Writing *[filename]* | file content only (no JSON wrapper) | `arguments` |
 | `read` | Reading *[filename]* — range suffix ` [start:end]` when `offset`/`limit` set | hidden | — |
 | `edit` | Editing *[filename]* | full JSON (`path`, `old_string`, `new_string`, `replace_all`) | `arguments` |
 | `rm` | Removing *[filename]* | hidden | — |
 | `ls` | `Listing workspace` (default path) or `Listing` *[path]* | hidden | — |
-| `glob` | Finding *[pattern]* ` in {dir}` ` (by name)` (optional suffixes) | `pattern: …` / `directory: …` / `match: …` lines when non-default | `arguments` |
-| `grep` | Searching *[pattern]* ` in {dir}` ` ({include})` (optional suffixes) | `pattern: …` / `directory: …` / `include: …` lines when non-default | `arguments` |
+| `glob` | Finding *[pattern]* ` in {dir}` ` (by name)` (optional suffixes) | hidden | — |
+| `grep` | Searching *[pattern]* ` in {dir}` ` ({include})` (optional suffixes) | hidden | — |
 | `remember` | `Saving to memory…` | `[category] key: value` per item | `arguments` |
 | `forget` | `Removing from memory…` | `category: key` per item | `arguments` |
 | `recall` | `Checking memory…` | `category: key` filter, or hidden if empty | `arguments` |
 | `skill` | `Loading skill: `*[skill_name]* (or `Loading skill…`) | hidden | — |
+| `note` | `Recording note…` | note `content` only (no JSON wrapper) | `arguments` |
+| `wiki_search` | `Searching wiki for `*["query"]* | hidden | — |
+| `todo_manage` | Action summary, e.g. `Creating todo: `*[content]*, `Updating `*[N todos]*`…`, `Reading todos…` | simplified action list for create/update/batches; hidden for read/claim/delete | `arguments` when shown |
+| `schedule_task` | Action summary, e.g. `Scheduling `*[name]*, `Listing scheduled tasks…`, `Pausing scheduled task `*[task_id]* | schedule and prompt details for create; hidden for list/pause/resume/delete/trigger | `arguments` when shown |
 | `bg` | Action-based — e.g. `Listing background processes…`, `Checking process `*[pid]*`…`, `Reading output of process `*[pid]*`…`, `Stopping process `*[pid]*`…`, `Managing background process…` | hidden | — |
 | `team_message` | `Preparing message…` (pending, no args yet) → Messaging *[recipients]* (joined by `, `, truncated at 60 chars) | message `content` only (no JSON wrapper) | `arguments` |
-| `team_manage` | `Spawning` *[members]* or `Dismissing` *[members]* | spawn shows one member per line; dismiss hides args because the header is sufficient | `arguments` when shown |
-| `team_configure` | Capability action summary, e.g. `Granting` *[tool: write]* `to` *[executor#1]* | readable `member`, `action`, and `capability` lines (no raw JSON wrapper) | `arguments` |
+| `team_manage` | `Spawning` *[members]* or `Dismissing` *[members]* | hidden | — |
+| `team_configure` | Capability action summary, e.g. `Granting` *[tool: write]* `to` *[executor#1]* | hidden | — |
 | `generate_image` | Painting *[filename]* (normalised: any trailing extension stripped, `.png` appended to match the backend `_sanitise_filename`), or `Painting an image…` when filename is absent | `prompt` string only (`images: …` line prepended in edit mode) | `arguments` |
 | `generate_video` | **Extension mode:** `Extending [filename]` / `Extending a video…`. **Other modes:** `Filming [filename]` / `Filming a video…`. Header switches on `extend_video` being set. | `extend_video` / `first_frame` / `last_frame` / `references` input lines (when set) prepended to the `prompt` | `arguments` |
 
 > Both `generate_image` and `generate_video` set `suppressResult: true` — their markdown return values (`![prompt](file.png)` / `![prompt](file.mp4)`) are already rendered inline in the assistant reply, so the tool-call accordion does not repeat them. The `.mp4` path is rendered as `<video controls>` by `MarkdownVideo` (see [`docs/agent/tools.md#multimodalities-multimodalities`](../agent/tools.md#multimodalities-multimodalities)).
 
-All other tools use the default: tool name as `<code>` header, pretty-printed JSON as args, label `arguments`. Tools called with an empty `{}` args object hide the args section and are not expandable.
+All other tools use the default: humanized tool label as the header, pretty-printed JSON as args, label `arguments`. Tools called with an empty `{}` args object hide the args section and are not expandable.
 
 ---
 
@@ -142,7 +142,7 @@ All other tools use the default: tool name as `<code>` header, pretty-printed JS
 | `toolName` | `string` | Tool name — used for renderer dispatch |
 | `result` | `string` | Raw result string from the backend |
 
-The renderer is always rendered inside the surface panel described above, so individual renderers focus on **content**, not on chrome. The redesign dropped all per-renderer overlays, redundant icons, and captions (e.g. the old `FileText`-headed `file content` caption is gone — the outer `result` caption already identifies the section).
+The renderer is always rendered inside the details container described above, so individual renderers focus on **content**, not on chrome. Per-renderer overlays, redundant icons, and captions are avoided because the outer `result` strip already identifies the section.
 
 ---
 
@@ -163,12 +163,13 @@ Backend returns `list[dict]` with `{title, href, body}` per result. The renderer
 
 Backend returns one of:
 - **Foreground:** `"[Succeeded]\n\n<stdout>"` or `"[Failed — exit code N]\n\n<stdout+stderr>"`
+- **Live foreground output:** optional `tool_output_delta` events append to the running tool card until `tool_end` arrives.
 
 Rendering:
 - First line is parsed as the status token. `Succeeded` uses `--color-success`; `Failed …` uses `--color-error`. No boxed chrome, no icons.
 - Remaining output in a scrollable `<pre>` (`max-h-48`, `break-words`).
 
-> `bg` results are no longer rendered by `ShellResult`. They fall through to `GenericResult` because `bg` returns free-form management text (`PID <pid>: running`, `stopped (exit code N)\nFinal output:\n…`) that does not share the foreground `[Succeeded]` / `[Failed]` header convention.
+> `bg` results are no longer rendered by `ShellResult`. They fall through to `GenericResult` because `bg` returns free-form management text (`PID <pid>: running`, `exited (code N)\nFinal output:\n…`, `stopped (exit code N)\nFinal output:\n…`) that does not share the foreground `[Succeeded]` / `[Failed]` header convention.
 
 ### `FileListResult` — `ls`, `glob`, `grep`
 
@@ -212,7 +213,7 @@ Capability list output (`Capabilities for 'executor#1' ...`) renders as a headin
 
 Both the **arguments** section and the **result** section have independent copy-to-clipboard buttons (`aria-label="Copy arguments"` / `aria-label="Copy result"`). Each uses its own boolean state (`copiedArgs` / `copiedResult`) and flips to a green check for 1.5 s after a successful copy.
 
-The args copy button copies `formattedArgs` — the extracted, human-readable value — not the raw JSON string. For example, copying a `shell` tool call copies the bare command (`date`) rather than the full input object (`{"command":"date","description":"..."}`). If `formattedArgs` is null, it falls back to the raw `args` string.
+The args copy button is rendered only when an args section is visible. It copies `formattedArgs` — the extracted, human-readable value — not the raw JSON string. For example, copying a `shell` tool call copies the bare command (`date`) rather than the full input object (`{"command":"date","description":"..."}`). When `formattedArgs` is null, the args section and its copy button are hidden.
 
 ---
 
@@ -226,11 +227,11 @@ The args copy button copies `formattedArgs` — the extracted, human-readable va
 ## Adding a custom header
 
 1. Add a branch in `getToolDisplay()` before the default fallback.
-2. Return `header` as a `ReactNode` — wrap every argument value in `<Arg>` so it gets italicised. Keep verbs/framing upright.
-3. Return `headerTitle` as the plain-string mirror (used by `title` and `aria-label`). The two strings should match once you strip `<em>` tags.
+2. Return `header` as a `ReactNode` — wrap every argument value in `<Arg>` so it can be styled consistently. Keep verbs/framing text outside `<Arg>`.
+3. Return `headerTitle` as the plain-string mirror (used by `title` and `aria-label`). The string should match the rendered summary text.
 4. Decide on `formattedArgs`:
    - `null` → hide the args section entirely (use this when the header already carries all the useful info and no args panel would add value).
    - A short human-readable string (e.g. just the query, just the filename) → shown as-is.
    - `language: 'bash'` → also render the string as a bash code block with a `$ ` prefix.
-5. **Optional — opt into a pending-state header.** Tools where the `tool_call → tool_start` gap (typically <50 ms) would otherwise flash as the raw tool name can add a branch inside the `if (!args)` early return at the top of `getToolDisplay()`, mirroring `recall` and `team_message`. Without this branch the tool falls back to the raw name — fine for tools whose name already reads well (`shell`, `read`).
-6. Add tests in `web/src/__tests__/components/ToolCall.test.tsx`. Use the `getHeader(fullText)` + `expectItalicArg(header, arg)` helpers so assertions survive the `<span>verb <em>arg</em></span>` split.
+5. **Optional — opt into a pending-state header.** Tools where the `tool_call → tool_start` gap (typically <50 ms) would otherwise flash as just the tool label can add a branch inside the `if (!args)` early return at the top of `getToolDisplay()`, mirroring `recall` and `team_message`. Without this branch the tool falls back to the humanized tool label — fine for tools whose names already read well (`Shell`, `Read`).
+6. Add tests in `web/src/__tests__/components/ToolCall.test.tsx`. Use the `getHeader(fullText)` + `expectPlainArg(header, arg)` helpers so assertions survive the nested header spans.

@@ -112,7 +112,7 @@ Queue items: `ChatCompletionChunk | ToolStartSignal | ToolEndSignal | RateLimitS
 Used by **team members** — the unified SSE event publishing hook for the in-memory stream store. Calls `stream_store.push_event()` directly; no intermediate queue.
 
 - `on_model_delta` → pushes `thinking` / `message` / `tool_call` / `usage` events per delta; accumulates turn-level token totals.
-- `wrap_tool_call` → pushes `tool_start` (before), calls handler, pushes `tool_end` (after).
+- `wrap_tool_call` → pushes `tool_start` (before), streams optional `tool_output_delta` chunks during execution, pushes `tool_end` (after).
 - `on_rate_limit` → pushes `rate_limit` event.
 - `after_agent` → pushes `usage` with `metadata.turn_total=True` (when `>1` model calls made), resets counters.
 

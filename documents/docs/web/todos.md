@@ -38,7 +38,7 @@ Enabled only when `sessionId` is set. `staleTime: 5_000`.
 
 ### Live invalidation
 
-`useTeamStore` suppresses `tool_call`, `tool_start`, and `tool_end` SSE events
+`useTeamStore` suppresses `tool_call`, `tool_start`, `tool_output_delta`, and `tool_end` SSE events
 for `todo_manage` — no tool block is rendered in the chat. `tool_end` still
 triggers a cache invalidation:
 

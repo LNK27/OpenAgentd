@@ -138,8 +138,8 @@ describe("ToolCall generate_video display", () => {
   it("renders without crashing when pending (no args, no done)", () => {
     render(<ToolCall name="generate_video" />);
 
-    // When no args, shows tool name instead of custom header
-    expect(screen.getByText(/generate_video/i)).toBeInTheDocument();
+    // When no args, shows the readable tool label instead of a custom header.
+    expect(screen.getByText(/Generate Video/i)).toBeInTheDocument();
     expect(screen.queryByText(/pending/i)).toBeNull();
   });
 
@@ -155,16 +155,15 @@ describe("ToolCall generate_video display", () => {
     expect(screen.queryByText(/pending/i)).toBeNull();
   });
 
-  it("shows done status when done=true", () => {
+  it("does not pulse header text when done=true", () => {
     const args = JSON.stringify({
       prompt: "Create a video",
       filename: "video",
     });
     render(<ToolCall name="generate_video" args={args} done={true} />);
 
-    // Status dot should be present (done state)
-    const statusDot = document.querySelector("span.inline-block.h-1\\.5");
-    expect(statusDot).not.toBeNull();
+    const btn = screen.getByRole("button");
+    expect(btn.querySelector("span.animate-pulse")).toBeNull();
   });
 
   it("shows running status when done=false", () => {
@@ -174,9 +173,9 @@ describe("ToolCall generate_video display", () => {
     });
     render(<ToolCall name="generate_video" args={args} done={false} />);
 
-    // Status dot should be present (running state)
-    const statusDot = document.querySelector("span.inline-block.h-1\\.5");
-    expect(statusDot).not.toBeNull();
+    const btn = screen.getByRole("button");
+    const header = btn.querySelector("span.animate-pulse");
+    expect(header?.textContent).toContain("Filming video.mp4");
   });
 
   it("handles absent first_frame gracefully", async () => {

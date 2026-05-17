@@ -155,3 +155,26 @@ export function completeTool(
 
   return result
 }
+
+export function appendToolOutput(
+  blocks: ContentBlock[],
+  name: string,
+  toolCallId: string | undefined,
+  text: string,
+): ContentBlock[] {
+  const result = [...blocks]
+
+  for (let i = result.length - 1; i >= 0; i--) {
+    const block = result[i]
+    if (
+      block.type === 'tool' &&
+      ((toolCallId && block.toolCallId === toolCallId) ||
+        (!toolCallId && block.toolName === name && !block.toolDone))
+    ) {
+      result[i] = { ...block, toolOutput: `${block.toolOutput ?? ''}${text}` }
+      return result
+    }
+  }
+
+  return blocks
+}

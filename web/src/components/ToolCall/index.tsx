@@ -1,29 +1,26 @@
 /**
- * ToolCall — paper-card record of a tool invocation.
+ * ToolCall — inline record of a tool invocation.
  *
  * Visual language follows the pencil source (nodes ``dqwZw`` / ``LJOUY``)
  * and the canonical spec at ``applications.md#tool-call-row``:
  *
- *   - Outer card: 1px ``--color-border`` outline, ``rounded-md``, on the
- *     ambient surface (no fill of its own — sits on the chat surface).
- *   - Header row: status dot + mono tool-name (or one-line summary) +
- *     chevron, padded ``px-3 py-2``.
- *   - Expanded body: divider, then the args/result panels on the warm
- *     ``--bg-key`` surface so the actual content gets a calm reading wash.
+ *   - Collapsed row: no card fill; sits on the ambient chat surface.
+ *   - Header row: mono tool label + optional summary + chevron.
+ *   - Expanded body: separate bordered inspector with section panels so
+ *     args/results read as secondary diagnostic content.
  *
- * Identity is carried by a colored status dot for the lifecycle:
- * start / running / success / failed.
+ * Running state is carried by subtle header animation; result content carries
+ * success/failure details.
  *
  * The per-tool header/args customisation lives in ``./display.tsx``;
- * this module owns only the chrome (collapse, copy, status dot, motion).
+ * this module owns only the chrome (collapse, copy, motion).
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
 import { ToolResult } from '../ToolResult'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
-import { StatusDot } from './StatusDot'
 import { getToolDisplay } from './display'
 import type { ToolCallState } from './types'
 
@@ -31,6 +28,7 @@ interface ToolCallProps {
   name: string
   args?: string
   done?: boolean
+  liveOutput?: string
   result?: string // tool response content
 }
 
@@ -45,11 +43,36 @@ function isFailedResult(result: string | undefined): boolean {
   )
 }
 
-export function ToolCall({ name, args, done, result }: ToolCallProps) {
+function formatShellResult(result: string | undefined): { statusLine: string | null; body: string | null } {
+  if (!result) return { statusLine: null, body: null }
+
+  const firstNewline = result.indexOf('\n')
+  const firstLine = firstNewline >= 0 ? result.slice(0, firstNewline).trim() : result.trim()
+  const hasStatusLine = /^\[(Succeeded|Failed|Error)/i.test(firstLine)
+
+  if (!hasStatusLine) {
+    return { statusLine: null, body: result }
+  }
+
+  const body = firstNewline >= 0 ? result.slice(firstNewline + 1).trimStart() : ''
+  return { statusLine: firstLine, body: body || null }
+}
+
+function formatToolLabel(name: string): string {
+  if (!name) return 'Tool'
+  return name
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
-  const [expanded, setExpanded] = useState(false)
+  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const [copiedArgs, setCopiedArgs] = useState(false)
   const [copiedResult, setCopiedResult] = useState(false)
+  const liveOutputRef = useRef<HTMLPreElement>(null)
 
   // Determine status: start (name only) → running (args) → success/failed (result)
   const isPending = args === undefined || args === null
@@ -71,10 +94,22 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
   // below, preserving the previous behaviour for every other tool.
   const visibleHeader = header
   const shownResult = suppressResult ? undefined : result
+  const shownLiveOutput = shownResult ? undefined : liveOutput
+  const isShell = language === 'bash'
+  const isShellTerminal = isShell && Boolean(formattedArgs)
+  const shellResult = isShell ? formatShellResult(shownResult) : null
+  const shellOutput = shellResult?.body ?? shownLiveOutput
+
+  useEffect(() => {
+    const el = liveOutputRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [shownLiveOutput])
 
   const handleCopyArgs = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    const text = formattedArgs || args || ''
+    const text = isShellTerminal
+      ? `${formattedArgs}${shellOutput ? `\n${shellOutput}` : ''}`
+      : formattedArgs || args || ''
     try {
       await navigator.clipboard.writeText(text)
       setCopiedArgs(true)
@@ -96,18 +131,22 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
     }
   }
 
-  const hasDetails = Boolean(formattedArgs || shownResult)
+  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult)
+  const expanded = manualExpanded ?? Boolean(shownLiveOutput)
   const displayName = name || 'tool'
+  const toolLabel = formatToolLabel(displayName)
+  const title = headerTitle ? `${toolLabel}: ${headerTitle}` : toolLabel
+  const headerClassName = `min-w-0 truncate font-mono text-(--color-text) ${state === 'running' ? 'animate-pulse text-(--color-marker-orange)' : ''}`
 
   return (
-    <div className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border)">
-      {/* Header row — card-padded, mono name, chevron at end */}
+    <div className="tool-row-enter my-2">
+      {/* Header row — separate from the details container so collapsed tools stay lightweight. */}
       <button
         type="button"
-        onClick={() => hasDetails && setExpanded((v) => !v)}
-        className={`group flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
+        onClick={() => hasDetails && setManualExpanded(!expanded)}
+        className={`group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-sm transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
           hasDetails
-            ? 'cursor-pointer hover:bg-(--bg-key)'
+            ? 'cursor-pointer text-(--color-text) hover:text-(--color-accent)'
             : 'cursor-default'
         }`}
         aria-expanded={expanded}
@@ -119,27 +158,21 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
             : `${displayName} (no details)`
         }
       >
-        <StatusDot state={state} />
-
         {/* Header content: tool-specific summary or fallback to tool name.
-            Only argument values inside the header are italicised (via <Arg>);
-            the verb/framing text stays upright. Mono+600 per pencil dqwZw. */}
-        {visibleHeader ? (
-          <span
-            className="flex-1 truncate font-mono font-semibold text-(--color-text)"
-            title={headerTitle ?? undefined}
-          >
-            {visibleHeader}
-          </span>
-        ) : (
-          <code className="flex-1 truncate font-mono font-semibold text-(--color-text)">
-            {displayName}
-          </code>
-        )}
+            Mono+600 per pencil dqwZw. */}
+        <span className={headerClassName} title={title}>
+          <span className="font-semibold">{toolLabel}</span>
+          {visibleHeader && (
+            <>
+              <span>: </span>
+              <span title={headerTitle ?? undefined}>{visibleHeader}</span>
+            </>
+          )}
+        </span>
 
         {hasDetails && (
           <ChevronRight
-            size={14}
+            size={13}
             className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
             aria-hidden
           />
@@ -157,18 +190,17 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
             transition={{ duration: DURATIONS_S.base, ease: EASINGS.out }}
             className="overflow-hidden"
           >
-            <div className="border-t border-(--color-border) bg-(--bg-key)">
-              <div className="space-y-3 px-3 py-2.5">
+            <section className="surface-raised group relative mt-1 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
                 {/* Args section — caption + copy sit above the content. */}
                 {formattedArgs && (
-                  <section className="relative">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
-                        {language === 'bash' ? 'bash' : 'arguments'}
+                  <div>
+                    <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
+                      <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+                        {isShellTerminal ? 'terminal' : 'arguments'}
                       </span>
                       <button
                         onClick={handleCopyArgs}
-                        className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+                        className="rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:opacity-0 md:group-hover:opacity-100"
                         aria-label="Copy arguments"
                         title="Copy"
                       >
@@ -179,29 +211,62 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
                         )}
                       </button>
                     </div>
-                    {language === 'bash' ? (
-                      <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-(--color-accent)">
-                        <span className="select-none text-(--color-text-muted)">$ </span>
-                        {formattedArgs}
-                      </pre>
+                    {isShellTerminal ? (
+                      <div className="flex flex-col gap-1 p-2.5">
+                        <pre
+                          ref={shownLiveOutput ? liveOutputRef : undefined}
+                          className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
+                        >
+                          <span className="select-none text-(--color-text-muted)">$ </span>
+                          <span className="text-(--color-accent)">{formattedArgs}</span>
+                          {shellOutput ? `\n${shellOutput}` : ''}
+                        </pre>
+                        {shellResult?.statusLine && (
+                          <span
+                            className={`font-mono text-[11px] font-medium ${
+                              shellResult.statusLine.startsWith('[Succeeded')
+                                ? 'text-(--color-success)'
+                                : 'text-(--color-error)'
+                            }`}
+                          >
+                            {shellResult.statusLine}
+                          </span>
+                        )}
+                      </div>
                     ) : (
-                      <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-(--color-text-2)">
+                      <pre className="overflow-auto whitespace-pre-wrap break-all px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
                         {formattedArgs}
                       </pre>
                     )}
-                  </section>
+                  </div>
+                )}
+
+                {shownLiveOutput && !isShellTerminal && (
+                  <div>
+                    <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 ${formattedArgs ? 'border-t' : ''}`}>
+                      <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+                        output
+                      </span>
+                    </div>
+                    <pre
+                      ref={liveOutputRef}
+                      className="max-h-64 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
+                    >
+                      {shownLiveOutput}
+                    </pre>
+                  </div>
                 )}
 
                 {/* Result section — same caption treatment as args. */}
-                {shownResult && (
-                  <section className="relative">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
+                {shownResult && !isShellTerminal && (
+                  <div>
+                    <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
+                      <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
                         result
                       </span>
                       <button
                         onClick={handleCopyResult}
-                        className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+                        className="rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:opacity-0 md:group-hover:opacity-100"
                         aria-label="Copy result"
                         title="Copy result"
                       >
@@ -212,13 +277,12 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
                         )}
                       </button>
                     </div>
-                    <div className="text-xs leading-relaxed text-(--color-text-2)">
+                    <div className="max-h-80 overflow-auto px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
                       <ToolResult toolName={name} result={shownResult} />
                     </div>
-                  </section>
+                  </div>
                 )}
-              </div>
-            </div>
+            </section>
           </motion.div>
         )}
       </AnimatePresence>

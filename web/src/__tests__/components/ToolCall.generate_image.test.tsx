@@ -28,9 +28,9 @@ afterEach(cleanup)
 // Test helpers
 // ---------------------------------------------------------------------------
 //
-// Header markup is `<span title="full text">verb <em class="italic">arg</em></span>`.
+// Header markup is `<span title="full text">verb <span>arg</span></span>`.
 // These helpers locate the outer header span via its `title` attribute and
-// assert the argument portion is inside an italicised `<em>`.
+// assert the argument is rendered without italics.
 
 function getHeader(fullText: string): HTMLElement {
   // Linear scan by attribute — Happy DOM rejects some CSS.escape outputs
@@ -43,11 +43,10 @@ function getHeader(fullText: string): HTMLElement {
   throw new Error(`Header with title="${fullText}" not found`)
 }
 
-function expectItalicArg(header: HTMLElement, arg: string) {
-  const em = header.querySelector("em")
-  if (!em) throw new Error(`No <em> in header (textContent="${header.textContent}")`)
-  expect(em.textContent).toBe(arg)
-  expect(em.className).toContain("italic")
+function expectPlainArg(header: HTMLElement, arg: string) {
+  expect(header.querySelector("em")).toBeNull()
+  expect(header.textContent).toContain(arg)
+  expect(header.className).not.toContain("italic")
 }
 
 // ---------------------------------------------------------------------------
@@ -55,18 +54,18 @@ function expectItalicArg(header: HTMLElement, arg: string) {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — generate_image header", () => {
-  it("shows 'Painting' with italicised filename when filename provided without extension", () => {
+  it("shows 'Painting' with plain filename when filename provided without extension", () => {
     const args = JSON.stringify({ prompt: "a red cube", filename: "red-cube" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const header = getHeader("Painting red-cube.png")
-    expectItalicArg(header, "red-cube.png")
+    expectPlainArg(header, "red-cube.png")
   })
 
   it("normalises filename ending in .png (case insensitive) to avoid double extension", () => {
     const args = JSON.stringify({ prompt: "a chart", filename: "chart.PNG" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const header = getHeader("Painting chart.png")
-    expectItalicArg(header, "chart.png")
+    expectPlainArg(header, "chart.png")
     // Ensure no double extension like "chart.PNG.png"
     expect(header.textContent).not.toContain("chart.PNG.png")
   })
@@ -75,7 +74,7 @@ describe("ToolCall — generate_image header", () => {
     const args = JSON.stringify({ prompt: "a diagram", filename: "diagram.png" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const header = getHeader("Painting diagram.png")
-    expectItalicArg(header, "diagram.png")
+    expectPlainArg(header, "diagram.png")
   })
 
   it("strips any trailing extension before appending .png (matches backend sanitiser)", () => {
@@ -84,7 +83,7 @@ describe("ToolCall — generate_image header", () => {
     // Backend always saves as PNG regardless of input extension, so the UI
     // must show the true on-disk filename, not ``photo.jpg.png``.
     const header = getHeader("Painting photo.png")
-    expectItalicArg(header, "photo.png")
+    expectPlainArg(header, "photo.png")
     expect(header.textContent).not.toContain("photo.jpg.png")
   })
 
@@ -116,9 +115,9 @@ describe("ToolCall — generate_image header", () => {
     expect(screen.queryByText("generate_image")).toBeNull()
   })
 
-  it("shows 'generate_image' as tool name when args is undefined (pending state)", () => {
+  it("shows humanized tool name when args is undefined (pending state)", () => {
     render(<ToolCall name="generate_image" done={false} />)
-    expect(screen.getByText("generate_image")).toBeTruthy()
+    expect(screen.getByText("Generate Image")).toBeTruthy()
   })
 
   it("does not show a stale pending badge when args is undefined", () => {
@@ -447,9 +446,9 @@ describe("ToolCall — generate_image expand/collapse", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — generate_image status indicators", () => {
-  it("shows start state as just the tool name when no args", () => {
+  it("shows start state as just the humanized tool name when no args", () => {
     render(<ToolCall name="generate_image" done={false} />)
-    expect(screen.getByText("generate_image")).toBeTruthy()
+    expect(screen.getByText("Generate Image")).toBeTruthy()
     expect(screen.queryByText("pending")).toBeNull()
   })
 
@@ -457,8 +456,8 @@ describe("ToolCall — generate_image status indicators", () => {
     const args = JSON.stringify({ prompt: "a cloud", filename: "cloud" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    const pulsingDot = btn.querySelector("span.animate-pulse")
-    expect(pulsingDot).toBeTruthy()
+    const header = btn.querySelector("span.animate-pulse")
+    expect(header?.textContent).toContain("Painting cloud.png")
   })
 
   it("shows done indicator when done", () => {
@@ -480,7 +479,7 @@ describe("ToolCall — generate_image edge cases", () => {
     const args = JSON.stringify({ prompt: "a file", filename: "my.image.file.png" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const header = getHeader("Painting my.image.file.png")
-    expectItalicArg(header, "my.image.file.png")
+    expectPlainArg(header, "my.image.file.png")
   })
 
   it("handles filename with multiple dots and no .png extension", () => {
@@ -489,14 +488,14 @@ describe("ToolCall — generate_image edge cases", () => {
     // Regex strips only the final trailing extension — ``.file`` is treated
     // as one, so output is ``my.image.png``.
     const header = getHeader("Painting my.image.png")
-    expectItalicArg(header, "my.image.png")
+    expectPlainArg(header, "my.image.png")
   })
 
   it("handles special characters in filename", () => {
     const args = JSON.stringify({ prompt: "a scene", filename: "my-image_v2" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const header = getHeader("Painting my-image_v2.png")
-    expectItalicArg(header, "my-image_v2.png")
+    expectPlainArg(header, "my-image_v2.png")
   })
 
   it("handles special characters in prompt", async () => {
@@ -520,7 +519,7 @@ describe("ToolCall — generate_image edge cases", () => {
     const args = JSON.stringify({ prompt: "a scene", filename: "scene", model: "dall-e-3", quality: "hd" })
     render(<ToolCall name="generate_image" args={args} done={false} />)
     const header = getHeader("Painting scene.png")
-    expectItalicArg(header, "scene.png")
+    expectPlainArg(header, "scene.png")
   })
 
   it("handles null prompt", () => {
@@ -544,7 +543,7 @@ describe("ToolCall — generate_image edge cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — generate_image does not regress other tools", () => {
-  it("shell tool still shows result section (suppressResult defaults to false)", async () => {
+  it("shell tool still shows completed output", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ command: "ls", description: "list files" })
     render(
@@ -556,10 +555,9 @@ describe("ToolCall — generate_image does not regress other tools", () => {
       />
     )
     await user.click(screen.getByRole("button"))
-    // Both sections should be visible
-    expect(screen.getByText("bash")).toBeTruthy()
-    expect(screen.getByText("result")).toBeTruthy()
-    // Result content is wrapped in a span, so use a regex matcher
+    expect(screen.getByText("terminal")).toBeTruthy()
+    expect(screen.queryByText("result")).toBeNull()
+    // Terminal output keeps newlines, so use a regex matcher
     expect(screen.getByText(/file1.*file2.*file3/s)).toBeTruthy()
   })
 
@@ -575,7 +573,7 @@ describe("ToolCall — generate_image does not regress other tools", () => {
       />
     )
     await user.click(screen.getByRole("button"))
-    expect(screen.getByText("arguments")).toBeTruthy()
+    expect(screen.queryByText("arguments")).toBeNull()
     expect(screen.getByText("result")).toBeTruthy()
   })
 })

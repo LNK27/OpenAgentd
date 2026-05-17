@@ -72,13 +72,16 @@ def test_tail_text_short_passthrough():
     assert cut is False
 
 
-def test_tail_text_cuts_by_lines():
+def test_tail_text_cuts_by_lines_keeps_head_and_tail():
     text = "\n".join(f"line{i}" for i in range(300))
     tail, cut = _tail_text(text, max_lines=10, max_bytes=131072)
     assert cut is True
     lines = tail.split("\n")
-    assert len(lines) <= 10
+    assert len(lines) <= 11
+    assert "line0" in tail
     assert "line299" in tail
+    assert "line150" not in tail
+    assert "...output truncated..." in tail
 
 
 def test_tail_text_cuts_by_bytes():
@@ -237,6 +240,27 @@ async def test_shell_description_parameter(sandbox_workspace):
     assert "ok" in result
 
 
+@pytest.mark.asyncio
+async def test_shell_emits_foreground_output_delta(sandbox_workspace, monkeypatch):
+    monkeypatch.setattr(
+        "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+    )
+    chunks: list[str] = []
+
+    async def capture(text: str) -> None:
+        chunks.append(text)
+
+    result = await _shell(
+        command="printf 'hello\\nworld\\n'",
+        timeout_seconds=1,
+        _tool_output=capture,
+    )
+
+    assert "[Succeeded]" in result
+    assert "hello" in "".join(chunks)
+    assert "world" in "".join(chunks)
+
+
 # ---------------------------------------------------------------------------
 # workdir parameter
 # ---------------------------------------------------------------------------
@@ -273,9 +297,9 @@ async def test_shell_workdir_default_is_sandbox(sandbox_workspace):
 
 @pytest.mark.asyncio
 async def test_shell_large_output_spills(sandbox_workspace, tmp_path):
-    """Output exceeding _TAIL_MAX_BYTES is spilled to session-scoped shell output."""
-    # Patch _TAIL_MAX_BYTES to a tiny value so we spill even with small output
-    with patch("app.agent.tools.builtin.shell._TAIL_MAX_BYTES", 100):
+    """Output exceeding _OUTPUT_MAX_BYTES is spilled to session-scoped shell output."""
+    # Patch _OUTPUT_MAX_BYTES to a tiny value so we spill even with small output
+    with patch("app.agent.tools.builtin.shell._OUTPUT_MAX_BYTES", 100):
         result = await shell_tool.arun(
             command="echo 'line1' && echo 'line2' && echo 'line3' && echo 'line4'"
         )
@@ -290,7 +314,7 @@ async def test_shell_large_output_spills(sandbox_workspace, tmp_path):
 @pytest.mark.asyncio
 async def test_shell_output_spill_file_readable(sandbox_workspace):
     """When output is spilled, the spill file is readable from the workspace."""
-    with patch("app.agent.tools.builtin.shell._TAIL_MAX_BYTES", 10):
+    with patch("app.agent.tools.builtin.shell._OUTPUT_MAX_BYTES", 10):
         result = await shell_tool.arun(
             command="echo 'some longer output that will be truncated'"
         )
@@ -471,6 +495,24 @@ async def test_background_process_output_and_status(sandbox_workspace, fast_bg):
     assert str(pid) in status
 
     _bg_processes[pid].proc.kill()
+
+
+@pytest.mark.asyncio
+async def test_background_process_wait(sandbox_workspace, fast_bg):
+    """wait blocks until the process exits and returns final output."""
+    await shell_tool.arun(
+        command="printf 'start\\n' && sleep 0.05 && printf 'done\\n'",
+        background=True,
+        timeout_seconds=1,
+    )
+    pid = next(iter(_bg_processes))
+
+    result = await background_process.arun(action="wait", pid=pid)
+
+    assert f"PID {pid}: exited (code 0)" in result
+    assert "start" in result
+    assert "done" in result
+    assert pid in _bg_processes
 
 
 @pytest.mark.asyncio

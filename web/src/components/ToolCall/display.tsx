@@ -18,14 +18,10 @@ import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
 
 /**
- * Italicise an argument value embedded in a header.
- *
- * Only argument-like values (paths, patterns, URLs, queries, recipients)
- * should be italicised — verbs and framing text stay upright.  Using a
- * dedicated component keeps the markup consistent and easy to restyle.
+ * Keep argument values in headers easy to restyle consistently.
  */
 function Arg({ children }: { children: ReactNode }) {
-  return <em className="italic">{children}</em>
+  return <span>{children}</span>
 }
 
 /** Extract a non-empty string field from parsed args. */
@@ -37,6 +33,74 @@ function str(parsed: Record<string, unknown>, key: string): string | null {
 /** Truncate a string to maxLen chars, appending ellipsis if cut. */
 function trunc(s: string, maxLen = 60): string {
   return s.length > maxLen ? s.slice(0, maxLen) + '…' : s
+}
+
+function actionList(parsed: Record<string, unknown>): Record<string, unknown>[] {
+  return Array.isArray(parsed.actions)
+    ? (parsed.actions as unknown[]).filter((item): item is Record<string, unknown> => (
+        typeof item === 'object' && item !== null && !Array.isArray(item)
+      ))
+    : []
+}
+
+function formatTodoAction(action: Record<string, unknown>): string {
+  const type = str(action, 'action')
+  const taskId = str(action, 'task_id')
+  if (type === 'create') {
+    const content = str(action, 'content') ?? 'Untitled task'
+    const status = str(action, 'status')
+    const priority = str(action, 'priority')
+    const assignedTo = str(action, 'assigned_to')
+    const dependencies = Array.isArray(action.dependencies)
+      ? (action.dependencies as unknown[]).map(String).filter(Boolean)
+      : []
+    const metadata = [
+      status ? `[${status}]` : null,
+      priority ? `(${priority})` : null,
+      assignedTo ? `assigned=${assignedTo}` : null,
+      dependencies.length > 0 ? `deps=[${dependencies.join(', ')}]` : null,
+    ].filter(Boolean).join(' ')
+    return `create${metadata ? ` ${metadata}` : ''}: ${content}`
+  }
+  if (type === 'update') {
+    const fields = ['status', 'priority', 'content', 'assigned_to']
+      .map((key) => {
+        const value = str(action, key)
+        return value ? `${key}=${value}` : null
+      })
+      .filter(Boolean)
+    const dependencies = Array.isArray(action.dependencies)
+      ? (action.dependencies as unknown[]).map(String).filter(Boolean)
+      : []
+    if (dependencies.length > 0) fields.push(`dependencies=[${dependencies.join(', ')}]`)
+    return `update ${taskId ?? 'todo'}${fields.length > 0 ? `: ${fields.join(', ')}` : ''}`
+  }
+  if (type === 'claim') return `claim ${taskId ?? 'todo'}`
+  if (type === 'delete') return `delete ${taskId ?? 'todo'}`
+  if (type === 'read') return 'read todos'
+  return type ? `${type} ${taskId ?? ''}`.trim() : JSON.stringify(action)
+}
+
+function formatSchedule(parsed: Record<string, unknown>): string | null {
+  const scheduleType = str(parsed, 'schedule_type')
+  const timezone = str(parsed, 'timezone')
+  const prompt = str(parsed, 'prompt')
+  const enabled = parsed.enabled === false ? 'enabled: false' : null
+  let schedule: string | null = null
+  if (scheduleType === 'at') {
+    const at = str(parsed, 'at_datetime')
+    schedule = at ? `schedule: at ${at}${timezone ? ` (${timezone})` : ''}` : 'schedule: at ?'
+  } else if (scheduleType === 'every') {
+    const seconds = parsed.every_seconds != null ? String(parsed.every_seconds) : '?'
+    schedule = `schedule: every ${seconds}s`
+  } else if (scheduleType === 'cron') {
+    const expression = str(parsed, 'cron_expression') ?? '?'
+    schedule = `schedule: cron ${expression}${timezone ? ` (${timezone})` : ''}`
+  } else if (scheduleType) {
+    schedule = `schedule: ${scheduleType}`
+  }
+  const lines = [schedule, enabled, prompt ? `prompt: ${prompt}` : null].filter(Boolean)
+  return lines.length > 0 ? lines.join('\n') : null
 }
 
 export function getToolDisplay(name: string, args: string | undefined): ToolDisplay {
@@ -80,7 +144,7 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     return {
       header: truncated ? <>Searching <Arg>"{truncated}"</Arg></> : null,
       headerTitle: truncated ? `Searching "${truncated}"` : null,
-      formattedArgs: query,
+      formattedArgs: null,
     }
   }
 
@@ -100,7 +164,7 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     return {
       header: truncated ? <>Reading <Arg>{truncated}</Arg></> : null,
       headerTitle: truncated ? `Reading ${truncated}` : null,
-      formattedArgs: url,
+      formattedArgs: null,
     }
   }
 
@@ -207,6 +271,110 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     }
   }
 
+  // ── note: conversational header, note body as args ─────────────
+  if (name === 'note') {
+    return {
+      header: 'Recording note…',
+      headerTitle: 'Recording note…',
+      formattedArgs: str(parsed, 'content'),
+    }
+  }
+
+  // ── wiki_search: query in header, hide redundant args ──────────
+  if (name === 'wiki_search') {
+    const query = str(parsed, 'query')
+    const truncated = query ? trunc(query) : null
+    return {
+      header: truncated ? <>Searching wiki for <Arg>"{truncated}"</Arg></> : 'Searching wiki…',
+      headerTitle: truncated ? `Searching wiki for "${truncated}"` : 'Searching wiki…',
+      formattedArgs: null,
+    }
+  }
+
+  // ── todo_manage: action summary in header, simplified action list ─
+  if (name === 'todo_manage') {
+    const actions = actionList(parsed)
+    const first = actions[0]
+    const firstAction = first ? str(first, 'action') : null
+    if (actions.length === 1 && firstAction === 'read') {
+      return { header: 'Reading todos…', headerTitle: 'Reading todos…', formattedArgs: null }
+    }
+    if (actions.length === 1 && firstAction === 'claim') {
+      const taskId = str(first, 'task_id')
+      return {
+        header: taskId ? <>Claiming todo <Arg>{taskId}</Arg></> : 'Claiming todo…',
+        headerTitle: taskId ? `Claiming todo ${taskId}` : 'Claiming todo…',
+        formattedArgs: null,
+      }
+    }
+    if (actions.length === 1 && firstAction === 'delete') {
+      const taskId = str(first, 'task_id')
+      return {
+        header: taskId ? <>Deleting todo <Arg>{taskId}</Arg></> : 'Deleting todo…',
+        headerTitle: taskId ? `Deleting todo ${taskId}` : 'Deleting todo…',
+        formattedArgs: null,
+      }
+    }
+    if (actions.length === 1 && firstAction === 'create') {
+      const content = str(first, 'content')
+      const truncated = content ? trunc(content) : null
+      return {
+        header: truncated ? <>Creating todo: <Arg>{truncated}</Arg></> : 'Creating todo…',
+        headerTitle: truncated ? `Creating todo: ${truncated}` : 'Creating todo…',
+        formattedArgs: formatTodoAction(first),
+      }
+    }
+    if (actions.length === 1 && firstAction === 'update') {
+      const taskId = str(first, 'task_id')
+      return {
+        header: taskId ? <>Updating todo <Arg>{taskId}</Arg></> : 'Updating todo…',
+        headerTitle: taskId ? `Updating todo ${taskId}` : 'Updating todo…',
+        formattedArgs: formatTodoAction(first),
+      }
+    }
+    if (actions.length > 1) {
+      return {
+        header: <>Updating <Arg>{actions.length} todos</Arg>…</>,
+        headerTitle: `Updating ${actions.length} todos…`,
+        formattedArgs: actions.map(formatTodoAction).join('\n'),
+      }
+    }
+    return { header: 'Managing todos…', headerTitle: 'Managing todos…', formattedArgs: null }
+  }
+
+  // ── schedule_task: action summary in header, prompt/schedule as args ─
+  if (name === 'schedule_task') {
+    const action = str(parsed, 'action')
+    const taskName = str(parsed, 'name')
+    const taskId = str(parsed, 'task_id')
+    if (action === 'list') {
+      return { header: 'Listing scheduled tasks…', headerTitle: 'Listing scheduled tasks…', formattedArgs: null }
+    }
+    if (action === 'create') {
+      const truncated = taskName ? trunc(taskName) : null
+      return {
+        header: truncated ? <>Scheduling <Arg>{truncated}</Arg></> : 'Scheduling task…',
+        headerTitle: truncated ? `Scheduling ${truncated}` : 'Scheduling task…',
+        formattedArgs: formatSchedule(parsed),
+      }
+    }
+    if (action === 'pause' || action === 'resume' || action === 'delete' || action === 'trigger') {
+      const verb = action === 'pause'
+        ? 'Pausing'
+        : action === 'resume'
+          ? 'Resuming'
+          : action === 'delete'
+            ? 'Deleting'
+            : 'Triggering'
+      return {
+        header: taskId ? <>{verb} scheduled task <Arg>{taskId}</Arg></> : `${verb} scheduled task…`,
+        headerTitle: taskId ? `${verb} scheduled task ${taskId}` : `${verb} scheduled task…`,
+        formattedArgs: null,
+      }
+    }
+    return { header: 'Managing scheduled tasks…', headerTitle: 'Managing scheduled tasks…', formattedArgs: null }
+  }
+
   // ── write: file name in header, content as args ───────────────────
   if (name === 'write') {
     const path = str(parsed, 'path')
@@ -277,9 +445,7 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     }
   }
 
-  // ── glob: pattern in header, directory/match as secondary args ─────
-  // Pattern is the hero; show directory & non-default match mode only
-  // when they add information beyond the defaults.
+  // ── glob: pattern in header, hide redundant args ─────
   if (name === 'glob') {
     const pattern = str(parsed, 'pattern')
     const directory = str(parsed, 'directory')
@@ -287,10 +453,6 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     const hasScope = directory && directory !== '.' && directory !== './'
     const scope = hasScope ? ` in ${directory}` : ''
     const modeSuffix = match === 'name' ? ' (by name)' : ''
-    const lines: string[] = []
-    if (pattern) lines.push(`pattern: ${pattern}`)
-    if (hasScope) lines.push(`directory: ${directory}`)
-    if (match === 'name') lines.push('match: name')
     const truncatedPattern = pattern ? trunc(pattern) : null
     return {
       header: truncatedPattern
@@ -299,11 +461,11 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
       headerTitle: truncatedPattern
         ? `Finding ${truncatedPattern}${scope}${modeSuffix}`
         : 'Finding files…',
-      formattedArgs: lines.length > 0 ? lines.join('\n') : null,
+      formattedArgs: null,
     }
   }
 
-  // ── grep: pattern in header, directory/include as secondary args ───
+  // ── grep: pattern in header, hide redundant args ───
   if (name === 'grep') {
     const pattern = str(parsed, 'pattern')
     const directory = str(parsed, 'directory')
@@ -312,10 +474,6 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     const scope = hasScope ? ` in ${directory}` : ''
     const hasFilter = include && include !== '*'
     const filter = hasFilter ? ` (${include})` : ''
-    const lines: string[] = []
-    if (pattern) lines.push(`pattern: ${pattern}`)
-    if (hasScope) lines.push(`directory: ${directory}`)
-    if (hasFilter) lines.push(`include: ${include}`)
     const truncatedPattern = pattern ? trunc(pattern) : null
     return {
       header: truncatedPattern
@@ -324,7 +482,7 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
       headerTitle: truncatedPattern
         ? `Searching ${truncatedPattern}${scope}${filter}`
         : 'Searching files…',
-      formattedArgs: lines.length > 0 ? lines.join('\n') : null,
+      formattedArgs: null,
     }
   }
 
@@ -403,7 +561,7 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     }
   }
 
-  // ── team_manage: roster action in header, members as args ───────────
+  // ── team_manage: roster action in header, hide redundant args ───────
   if (name === 'team_manage') {
     const action = str(parsed, 'action')
     const members = Array.isArray(parsed.members)
@@ -415,7 +573,7 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
       return {
         header: <>Spawning <Arg>{truncated}</Arg></>,
         headerTitle: `Spawning ${truncated}`,
-        formattedArgs: members.length > 0 ? members.join('\n') : null,
+        formattedArgs: null,
       }
     }
     if (action === 'dismiss') {
@@ -428,7 +586,7 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     return {
       header: 'Managing team roster…',
       headerTitle: 'Managing team roster…',
-      formattedArgs: members.length > 0 ? members.join('\n') : null,
+      formattedArgs: null,
     }
   }
 
@@ -440,37 +598,31 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     const capabilityName = str(parsed, 'name')
     const target = member ?? 'member'
     const capability = [kind, capabilityName].filter(Boolean).join(': ')
-    const lines = [
-      member ? `member: ${member}` : null,
-      action ? `action: ${action}` : null,
-      capability ? `capability: ${capability}` : null,
-    ].filter(Boolean) as string[]
-
     if (action === 'list') {
       return {
         header: <>Checking capabilities for <Arg>{target}</Arg></>,
         headerTitle: `Checking capabilities for ${target}`,
-        formattedArgs: lines.length > 0 ? lines.join('\n') : null,
+        formattedArgs: null,
       }
     }
     if (action === 'add' && capability) {
       return {
         header: <>Granting <Arg>{capability}</Arg> to <Arg>{target}</Arg></>,
         headerTitle: `Granting ${capability} to ${target}`,
-        formattedArgs: lines.join('\n'),
+        formattedArgs: null,
       }
     }
     if (action === 'remove' && capability) {
       return {
         header: <>Revoking <Arg>{capability}</Arg> from <Arg>{target}</Arg></>,
         headerTitle: `Revoking ${capability} from ${target}`,
-        formattedArgs: lines.join('\n'),
+        formattedArgs: null,
       }
     }
     return {
       header: <>Configuring <Arg>{target}</Arg></>,
       headerTitle: `Configuring ${target}`,
-      formattedArgs: lines.length > 0 ? lines.join('\n') : null,
+      formattedArgs: null,
     }
   }
 

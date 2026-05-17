@@ -98,6 +98,30 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(collapseButtons.length).toBe(1)
   })
 
+  it("collapses long single-paragraph messages", async () => {
+    const user = userEvent.setup()
+    const longContent = `${"word ".repeat(160)}tail-marker`
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: longContent,
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    expect(screen.queryByText(/tail-marker/)).toBeNull()
+
+    const buttons = screen.queryAllByRole("button")
+    const collapseBtn = buttons.find((btn) => btn.getAttribute("aria-expanded") !== null)
+    expect(collapseBtn).toBeTruthy()
+
+    await user.click(collapseBtn!)
+    expect(screen.getByText(/tail-marker/)).toBeTruthy()
+  })
+
   it("collapse button has aria-expanded=false initially", () => {
     const longContent = Array.from({ length: 15 }, (_, i) => `line${i + 1}`).join("\n")
     const blocks: ContentBlock[] = [
@@ -517,6 +541,36 @@ describe("AgentPane — UserBubble collapse feature", () => {
     const buttons = screen.queryAllByRole("button")
     const collapseButtons = buttons.filter((btn) => btn.getAttribute("aria-expanded") !== null)
     expect(collapseButtons.length).toBe(1)
+  })
+
+  it("collapses long single-paragraph messages in AgentPane", async () => {
+    const user = userEvent.setup()
+    const longContent = `${"word ".repeat(160)}tail-marker`
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: longContent,
+        timestamp: new Date(),
+      },
+    ]
+
+    render(
+      <AgentPane
+        name="TestAgent"
+        stream={createMockStream(blocks)}
+        isLead={true}
+      />
+    )
+
+    expect(screen.queryByText(/tail-marker/)).toBeNull()
+
+    const buttons = screen.queryAllByRole("button")
+    const collapseBtn = buttons.find((btn) => btn.getAttribute("aria-expanded") !== null)
+    expect(collapseBtn).toBeTruthy()
+
+    await user.click(collapseBtn!)
+    expect(screen.getByText(/tail-marker/)).toBeTruthy()
   })
 
   // ── Expand behavior ──────────────────────────────────────────────────────

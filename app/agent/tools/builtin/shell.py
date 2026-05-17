@@ -6,8 +6,8 @@ Design parity with opencode's bash.ts:
   Incompatible shells (fish, nu) are rejected in favour of zsh/bash.
 - Streaming output: bytes are read incrementally and spilled to a temp file
   in the workspace when they exceed ``max_output_bytes``.  The LLM receives
-  the last N lines as an inline tail, with the spill path advertised so it
-  can ``read`` the full output if needed.
+  the first and last output lines inline, with the spill path advertised so
+  it can ``read`` the full output if needed.
 - ``workdir`` parameter (optional): run the command in a specific directory.
   Relative paths resolve inside the sandbox workspace. Absolute paths are
   allowed when the caller intentionally needs to run outside the workspace.
@@ -21,7 +21,7 @@ Output format (foreground)::
 
     [Succeeded]
 
-    <last lines of output>
+    <output>
 
 Or when truncated::
 
@@ -29,7 +29,9 @@ Or when truncated::
 
     ...output truncated (full output saved to .openagentd/sessions/<sid>/.shell_output/<id>.txt)
 
-    <last N lines>
+    <first N/2 lines>
+    ...output truncated...
+    <last N/2 lines>
 
 ``[Failed — exit code N]`` prefix when the command exits non-zero.
 """
@@ -41,6 +43,7 @@ import os
 import signal
 import uuid
 from collections import deque
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -49,7 +52,7 @@ from pydantic import Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin import shell_runtime as _shell_mod
-from app.agent.tools.registry import Tool
+from app.agent.tools.registry import InjectedArg, Tool
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -59,10 +62,10 @@ _DEFAULT_TIMEOUT_SECONDS = (
 _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
 _SHELL_OUTPUT_SUBDIR = ".shell_output"
 
-# Maximum lines and bytes to include as inline tail in the result
-_TAIL_MAX_LINES = 200
+# Maximum lines and bytes to include inline in the result
+_OUTPUT_MAX_LINES = 300
 # Bytes kept inline; output beyond this spills to a temp file
-_TAIL_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
+_OUTPUT_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
 
 
 # ── Background process registry ──────────────────────────────────────────────
@@ -119,6 +122,11 @@ class _BgProcess:
                 _kill_process_group(self.proc, signal.SIGKILL)
                 await self.proc.wait()
         self._reader_task.cancel()
+        return self.proc.returncode
+
+    async def wait(self) -> int | None:
+        await self.proc.wait()
+        await self._reader_task
         return self.proc.returncode
 
 
@@ -180,7 +188,7 @@ def _kill_process_group(proc: asyncio.subprocess.Process, sig: signal.Signals) -
 
 
 def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
-    """Return the last *max_lines* lines that fit within *max_bytes*.
+    """Return first and last lines that fit within *max_lines* and *max_bytes*.
 
     Returns ``(tail_text, was_cut)`` where ``was_cut`` is True when not all
     output is included.
@@ -189,17 +197,15 @@ def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
     if len(lines) <= max_lines and len(text.encode()) <= max_bytes:
         return text, False
 
-    out: list[str] = []
-    used = 0
-    for line in reversed(lines):
-        encoded = line.encode("utf-8")
-        size = len(encoded) + (1 if out else 0)  # +1 for newline separator
-        if used + size > max_bytes and out:
-            break
-        if len(out) >= max_lines:
-            break
-        out.insert(0, line)
-        used += size
+    head_limit = max_lines // 2
+    tail_limit = max_lines - head_limit
+    out = lines[:head_limit] + ["...output truncated..."] + lines[-tail_limit:]
+
+    while len("\n".join(out).encode()) > max_bytes and len(out) > 1:
+        if len(out) % 2 == 0:
+            del out[-2]
+        else:
+            del out[0]
 
     return "\n".join(out), True
 
@@ -227,6 +233,18 @@ def _resolve_workdir(workdir: str | None) -> Path:
     if p.is_absolute():
         return p
     return (workspace / p).resolve()
+
+
+async def _emit_tool_output(
+    callback: Callable[[str], Awaitable[None]] | None,
+    text: str,
+) -> None:
+    if callback is None or not text:
+        return
+    try:
+        await callback(text)
+    except Exception:
+        pass
 
 
 # ── Foreground execute ────────────────────────────────────────────────────────
@@ -281,12 +299,16 @@ async def _shell(
             )
         ),
     ] = False,
+    _tool_output: Annotated[
+        Callable[[str], Awaitable[None]] | None,
+        InjectedArg(),
+    ] = None,
 ) -> str:
     """Run a shell command and return combined stdout+stderr.
 
     Uses the user's preferred POSIX shell (``$SHELL`` → zsh → bash → sh).
     Supports ``&&``, ``||``, pipes, ``$VAR``, subshells.
-    Large output is streamed: the last 200 lines are returned inline;
+    Large output is streamed: the first and last output lines are returned inline;
     the full output is saved to ``.openagentd/sessions/<sid>/.shell_output/`` in the workspace.
     Set ``background=true`` for long-running processes.
     """
@@ -394,6 +416,9 @@ async def _shell(
                         break
                     chunks.append(chunk)
                     total_bytes += len(chunk)
+                    await _emit_tool_output(
+                        _tool_output, chunk.decode("utf-8", errors="replace")
+                    )
 
         except asyncio.TimeoutError:
             _kill_process_group(proc, signal.SIGKILL)
@@ -403,6 +428,10 @@ async def _shell(
                     remaining = await proc.stdout.read()
                     if remaining:
                         chunks.append(remaining)
+                        await _emit_tool_output(
+                            _tool_output,
+                            remaining.decode("utf-8", errors="replace"),
+                        )
             except (asyncio.TimeoutError, Exception):
                 pass
             await proc.wait()
@@ -434,7 +463,7 @@ async def _shell(
         )
 
         # Spill to file if output is large
-        tail, was_cut = _tail_text(text, _TAIL_MAX_LINES, _TAIL_MAX_BYTES)
+        tail, was_cut = _tail_text(text, _OUTPUT_MAX_LINES, _OUTPUT_MAX_BYTES)
 
         if was_cut:
             call_id = str(uuid.uuid4())[:8]
@@ -495,9 +524,9 @@ shell_tool = Tool(
 
 async def _background_process(
     action: Annotated[
-        Literal["list", "status", "output", "stop"],
+        Literal["list", "status", "output", "stop", "wait"],
         Field(
-            description="Action: 'list' (all processes), 'status', 'output', or 'stop' (requires pid)."
+            description="Action: 'list' (all processes), 'status', 'output', 'stop', or 'wait' (requires pid)."
         ),
     ],
     pid: Annotated[
@@ -507,11 +536,11 @@ async def _background_process(
     last_n_lines: Annotated[
         int | None,
         Field(
-            description="Lines to return for 'output' action (default all, max 200)."
+            description="Lines to return for 'output' and 'wait' actions (default all, max 200)."
         ),
     ] = None,
 ) -> str:
-    """Manage background processes started with shell(background=true). Actions: list, status, output, stop."""
+    """Manage background processes started with shell(background=true). Actions: list, status, output, stop, wait."""
     if action == "list":
         if not _bg_processes:
             return "No background processes running."
@@ -544,6 +573,13 @@ async def _background_process(
             return f"PID {pid}: no output captured yet."
         return f"PID {pid} output:\n{text}"
 
+    if action == "wait":
+        exit_code = await bg.wait()
+        text = bg.read_output(last_n=last_n_lines)
+        if not text:
+            return f"PID {pid}: exited (code {exit_code})\nNo output captured."
+        return f"PID {pid}: exited (code {exit_code})\nFinal output:\n{text}"
+
     # action == "stop"
     exit_code = await bg.stop()
     _bg_processes.pop(pid, None)
@@ -553,5 +589,5 @@ async def _background_process(
 background_process = Tool(
     _background_process,
     name="bg",
-    description="Manage background processes started with shell(background=true). Actions: list, status, output, stop.",
+    description="Manage background processes started with shell(background=true). Actions: list, status, output, stop, wait.",
 )

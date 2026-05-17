@@ -25,6 +25,7 @@ from app.agent.schemas.events import (
     ThinkingEvent,
     ToolCallEvent,
     ToolEndEvent,
+    ToolOutputDeltaEvent,
     ToolStartEvent,
     UsageEvent,
 )
@@ -227,12 +228,38 @@ class StreamPublisherHook(BaseAgentHook):
                 arguments=tool_call.function.arguments if tool_call.function else None,
             )
         )
-        result = await handler(ctx, state, tool_call)
-        tc_id = self._resolver.resolve_end(tool_call.id)
+
+        callbacks: dict[str, object] = state.metadata.setdefault(
+            "_tool_output_callbacks", {}
+        )
+        sequence = 0
+
+        async def _emit_output_delta(text: str) -> None:
+            nonlocal sequence
+            if not text:
+                return
+            sequence += 1
+            await self._push(
+                ToolOutputDeltaEvent(
+                    agent=self._agent_name,
+                    tool_call_id=tc_id,
+                    name=fn_name,
+                    text=text,
+                    sequence=sequence,
+                )
+            )
+
+        callbacks[tool_call.id] = _emit_output_delta
+        try:
+            result = await handler(ctx, state, tool_call)
+        finally:
+            callbacks.pop(tool_call.id, None)
+
+        end_tc_id = self._resolver.resolve_end(tool_call.id)
         await self._push(
             ToolEndEvent(
                 agent=self._agent_name,
-                tool_call_id=tc_id,
+                tool_call_id=end_tc_id,
                 name=fn_name,
                 result=result or None,
             )

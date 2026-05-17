@@ -133,6 +133,7 @@ uv run python -m manual.note --cat 2026-04-30-manual-test.md
 | `summarization_test.py` | Drive summarization hook by sending many turns | requires low `token_threshold` in `.openagentd/config/summarization.md` |
 | `summarization_max_tokens_test.py` | Test max_token_length cap on summary output | requires `max_token_length` set in `.openagentd/config/summarization.md` |
 | `tool_result_offload_test.py` | Verify large tool results are offloaded to workspace | — |
+| `shell_output_delta.py` | Verify live `tool_output_delta` events from shell output | `--base URL`, `--message TEXT`, `--wait N` |
 
 ```bash
 # Check server health + configured agents
@@ -161,6 +162,9 @@ uv run python -m manual.otel_inspect --trace <TRACE_ID>
 
 # Metrics summary
 uv run python -m manual.otel_inspect --metrics
+
+# Verify live shell output deltas
+uv run python -m manual.shell_output_delta
 ```
 
 ### Provider tests (`try_providers/`)

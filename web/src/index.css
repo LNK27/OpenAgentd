@@ -589,12 +589,8 @@
   color: var(--color-syn-string);
 }
 .oa-prose pre {
-  background: var(--color-surface);
-  border-radius: 8px;
-  padding: 1em 1.25em;
   overflow-x: auto;
   margin: 0;
-  border: 1px solid var(--color-border);
 }
 
 .oa-prose pre code {
@@ -649,4 +645,3 @@
 }
 .oa-prose strong { color: var(--color-text); font-weight: 600; }
 .oa-prose em     { color: var(--color-text-2); font-style: italic; }
-

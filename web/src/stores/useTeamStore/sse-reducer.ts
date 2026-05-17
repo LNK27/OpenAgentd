@@ -15,6 +15,7 @@
  *   - ``message``        — model message-stream chunk for one agent.
  *   - ``tool_call``      — tool reservation (creates an empty tool block).
  *   - ``tool_start``     — tool args arrive (may stream as JSON fragments).
+ *   - ``tool_output_delta`` — live output chunk from a running tool.
  *   - ``tool_end``       — tool result arrives; may invalidate query caches
  *                          (wiki / workspace files / scheduler / todos)
  *                          based on which root the tool touched.
@@ -41,6 +42,7 @@ import {
   appendText,
   initTool,
   addTool,
+  appendToolOutput,
   completeTool,
   generateBlockId,
 } from '@/utils/blocks'
@@ -128,6 +130,21 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             d.name as string,
             d.arguments as string | undefined,
             d.tool_call_id as string | undefined,
+          )
+        })
+        break
+      }
+
+      case 'tool_output_delta': {
+        if (TODO_MUTATING_TOOLS.has(d.name as string)) break
+        const agent = d.agent as string
+        set((draft) => {
+          ensureAgent(draft, agent)
+          draft.agentStreams[agent].currentBlocks = appendToolOutput(
+            draft.agentStreams[agent].currentBlocks,
+            d.name as string,
+            d.tool_call_id as string | undefined,
+            d.text as string,
           )
         })
         break

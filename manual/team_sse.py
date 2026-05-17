@@ -48,6 +48,7 @@ EVENT_COLORS: dict[str, str] = {
     "thinking": DIM,
     "tool_call": BLUE,
     "tool_start": BLUE,
+    "tool_output_delta": BLUE,
     "tool_end": BLUE,
     "usage": DIM,
     "rate_limit": YELLOW,
@@ -87,6 +88,9 @@ def _fmt_event(evt: str, data: dict) -> str:
     elif evt == "tool_start":
         args = data.get("arguments") or ""
         body = f"{agent} ▶ {data.get('name', '?')}({_truncate(args, 70)})"
+    elif evt == "tool_output_delta":
+        text = data.get("text") or ""
+        body = f"{agent} ▷ {data.get('name', '?')} output {_truncate(str(text), 70)}"
     elif evt == "tool_end":
         result = data.get("result") or ""
         body = f"{agent} ◀ {data.get('name', '?')} → {_truncate(str(result), 70)}"

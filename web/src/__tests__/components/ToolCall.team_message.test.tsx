@@ -28,11 +28,11 @@ afterEach(cleanup)
 // Test helpers
 // ---------------------------------------------------------------------------
 //
-// Header markup is now `<span title="full text">verb <em class="italic">arg</em></span>`.
+// Header markup is now `<span title="full text">verb <span>arg</span></span>`.
 // `getByText("Messaging researcher")` no longer matches because the text spans
 // two elements. These helpers locate the outer header span via its `title`
-// attribute (which mirrors the full plain-text header) and assert the
-// argument portion is inside an italicised `<em>`.
+// attribute (which mirrors the full plain-text header) and assert the argument
+// is rendered without italics.
 
 function getHeader(fullText: string): HTMLElement {
   // Linear scan by attribute — Happy DOM rejects some CSS.escape outputs
@@ -46,11 +46,10 @@ function getHeader(fullText: string): HTMLElement {
   throw new Error(`Header with title="${fullText}" not found`)
 }
 
-function expectItalicArg(header: HTMLElement, arg: string) {
-  const em = header.querySelector("em")
-  if (!em) throw new Error(`No <em> in header (textContent="${header.textContent}")`)
-  expect(em.textContent).toBe(arg)
-  expect(em.className).toContain("italic")
+function expectPlainArg(header: HTMLElement, arg: string) {
+  expect(header.querySelector("em")).toBeNull()
+  expect(header.textContent).toContain(arg)
+  expect(header.className).not.toContain("italic")
 }
 
 // ---------------------------------------------------------------------------
@@ -61,25 +60,25 @@ describe("ToolCall — team_message header", () => {
   it("shows 'Messaging researcher' for single recipient", () => {
     const args = JSON.stringify({ to: ["researcher"], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging researcher"), "researcher")
+    expectPlainArg(getHeader("Messaging researcher"), "researcher")
   })
 
   it("shows 'Messaging researcher, writer' for multiple recipients", () => {
     const args = JSON.stringify({ to: ["researcher", "writer"], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging researcher, writer"), "researcher, writer")
+    expectPlainArg(getHeader("Messaging researcher, writer"), "researcher, writer")
   })
 
   it("shows 'Messaging team' when recipients array is empty", () => {
     const args = JSON.stringify({ to: [], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging team"), "team")
+    expectPlainArg(getHeader("Messaging team"), "team")
   })
 
   it("shows 'Messaging team' when 'to' field is missing", () => {
     const args = JSON.stringify({ content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging team"), "team")
+    expectPlainArg(getHeader("Messaging team"), "team")
   })
 
   it("truncates recipient list when exceeds 60 chars", () => {
@@ -92,13 +91,13 @@ describe("ToolCall — team_message header", () => {
     expect(header!.textContent).toContain("…")
   })
 
-  it("italicises the recipient argument in the header", () => {
+  it("renders the recipient argument in the header", () => {
     const args = JSON.stringify({ to: ["researcher"], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
     const header = getHeader("Messaging researcher")
-    // The verb stays upright on the span, only the <em> carries italic.
+    // The verb and argument both stay upright.
     expect(header.className).not.toContain("italic")
-    expectItalicArg(header, "researcher")
+    expectPlainArg(header, "researcher")
   })
 
   it("does not render raw tool name 'team_message' when args provided", () => {
@@ -117,26 +116,22 @@ describe("ToolCall — team_message header", () => {
     expect(screen.queryByText("team_message")).toBeNull()
   })
 
-  it("shows no pending badge when args is undefined (start state is dot-only)", () => {
+  it("shows no pending badge when args is undefined", () => {
     render(<ToolCall name="team_message" done={false} />)
-    // Lifecycle refactor removed the legacy "pending" text badge; the
-    // start state is communicated by the muted status dot only.
     expect(screen.queryByText("pending")).toBeNull()
-    const btn = screen.getByRole("button")
-    const dot = btn.querySelector("span.bg-\\(--color-text-muted\\)")
-    expect(dot).toBeTruthy()
+    expect(screen.getByText("Preparing message…")).toBeTruthy()
   })
 
   it("handles numeric recipient IDs", () => {
     const args = JSON.stringify({ to: [1, 2, 3], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging 1, 2, 3"), "1, 2, 3")
+    expectPlainArg(getHeader("Messaging 1, 2, 3"), "1, 2, 3")
   })
 
   it("handles mixed string and numeric recipients", () => {
     const args = JSON.stringify({ to: ["researcher", 42, "writer"], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging researcher, 42, writer"), "researcher, 42, writer")
+    expectPlainArg(getHeader("Messaging researcher, 42, writer"), "researcher, 42, writer")
   })
 })
 
@@ -355,22 +350,18 @@ describe("ToolCall — team_message with result", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — team_message status indicators", () => {
-  it("shows muted start dot when no args (lifecycle 'start' state)", () => {
+  it("shows start state without pending badge", () => {
     render(<ToolCall name="team_message" done={false} />)
     expect(screen.queryByText("pending")).toBeNull()
-    const btn = screen.getByRole("button")
-    const dot = btn.querySelector("span.bg-\\(--color-text-muted\\)")
-    expect(dot).toBeTruthy()
+    expect(screen.getByText("Preparing message…")).toBeTruthy()
   })
 
   it("shows running indicator when running (args set, not done)", () => {
     const args = JSON.stringify({ to: ["researcher"], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    // When running, the status dot pulses. It's the `<span>` with the
-    // accent background + animate-pulse class sitting inside the header.
     const btn = screen.getByRole("button")
-    const pulsingDot = btn.querySelector("span.animate-pulse")
-    expect(pulsingDot).toBeTruthy()
+    const header = btn.querySelector("span.animate-pulse")
+    expect(header?.textContent).toContain("Messaging researcher")
   })
 
   it("shows check icon when done", () => {
@@ -391,13 +382,13 @@ describe("ToolCall — team_message edge cases", () => {
     const args = JSON.stringify({ to: "researcher", content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
     // Should show "Messaging team" since to is not an array
-    expectItalicArg(getHeader("Messaging team"), "team")
+    expectPlainArg(getHeader("Messaging team"), "team")
   })
 
   it("handles null 'to' field", () => {
     const args = JSON.stringify({ to: null, content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging team"), "team")
+    expectPlainArg(getHeader("Messaging team"), "team")
   })
 
   it("handles whitespace-only content", async () => {
@@ -425,7 +416,7 @@ describe("ToolCall — team_message edge cases", () => {
   it("handles special characters in recipient names", () => {
     const args = JSON.stringify({ to: ["agent-1", "agent_2", "agent.3"], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(
+    expectPlainArg(
       getHeader("Messaging agent-1, agent_2, agent.3"),
       "agent-1, agent_2, agent.3",
     )
@@ -450,6 +441,6 @@ describe("ToolCall — team_message edge cases", () => {
   it("handles extra fields in args (ignored)", () => {
     const args = JSON.stringify({ to: ["researcher"], content: "hello", priority: "high", metadata: { foo: "bar" } })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging researcher"), "researcher")
+    expectPlainArg(getHeader("Messaging researcher"), "researcher")
   })
 })
