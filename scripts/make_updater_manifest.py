@@ -47,8 +47,6 @@ from pathlib import Path
 # .AppImage on Linux, not the .dmg / .deb.
 PLATFORM_RULES: list[tuple[str, str]] = [
     (".app.tar.gz", "darwin-aarch64"),
-    ("_aarch64.dmg", "darwin-aarch64"),
-    ("_x64.dmg", "darwin-x86_64"),
     ("-setup.exe", "windows-x86_64"),
     (".msi", "windows-x86_64"),
     (".AppImage", "linux-x86_64"),
@@ -60,6 +58,16 @@ def _release_base_url(version: str, tag: str) -> str:
     return f"https://github.com/{repo}/releases/download/{tag}"
 
 
+def _read_signature(artefact: Path) -> str:
+    sig_path = artefact.parent / f"{artefact.name}.sig"
+    if not sig_path.is_file():
+        raise ValueError(f"missing updater signature for {artefact.name}")
+    signature = sig_path.read_text().strip()
+    if not signature:
+        raise ValueError(f"empty updater signature in {sig_path.name}")
+    return signature
+
+
 def _build_platforms(artefact_dir: Path, base_url: str) -> dict[str, dict[str, str]]:
     platforms: dict[str, dict[str, str]] = {}
     files = sorted(p for p in artefact_dir.iterdir() if p.is_file())
@@ -69,17 +77,9 @@ def _build_platforms(artefact_dir: Path, base_url: str) -> dict[str, dict[str, s
                 continue
             if key in platforms:
                 continue  # already chose a preferred artefact for this platform
-            sig_path = f.with_suffix(f.suffix + ".sig")
-            if not sig_path.is_file():
-                # Try common alternate sig path (foo.exe + foo.exe.sig).
-                alt = artefact_dir / (f.name + ".sig")
-                sig_path = alt if alt.is_file() else sig_path
-            signature = ""
-            if sig_path.is_file():
-                signature = sig_path.read_text().strip()
             platforms[key] = {
                 "url": f"{base_url}/{f.name}",
-                "signature": signature,
+                "signature": _read_signature(f),
             }
             break
     return platforms
@@ -100,17 +100,33 @@ def main() -> int:
         default=None,
         help="GitHub release tag (defaults to v<version>).",
     )
+    ap.add_argument(
+        "--require-platform",
+        action="append",
+        help="Platform key that must be present; may be passed more than once.",
+    )
     args = ap.parse_args()
 
     tag = args.tag or f"v{args.version}"
     base_url = _release_base_url(args.version, tag)
-    platforms = _build_platforms(args.artefact_dir, base_url)
+
+    try:
+        platforms = _build_platforms(args.artefact_dir, base_url)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     if not platforms:
+        print(f"error: no updater artefacts matched in {args.artefact_dir}", file=sys.stderr)
+        return 1
+
+    missing_platforms = sorted(set(args.require_platform or []) - set(platforms))
+    if missing_platforms:
         print(
-            f"warning: no platform artefacts matched in {args.artefact_dir}",
+            f"error: missing required updater platform(s): {', '.join(missing_platforms)}",
             file=sys.stderr,
         )
+        return 1
 
     manifest = {
         "version": args.version,
