@@ -177,12 +177,11 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
     }
   }
 
-  const showModelCount = modelSource === 'provider' && models.length > 0
   const listing = modelsMutation.isPending || autoModelsQ.isFetching
 
   return (
-    <Card size="sm" className="border-(--color-border) bg-(--bg-card)">
-      <CardContent className="space-y-3 p-3">
+    <Card size="sm" className="rounded-md border-(--color-border) bg-(--bg-card)">
+      <CardContent className="space-y-3">
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)">
@@ -196,11 +195,6 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-success)">
               <CheckCircle2 size={12} aria-hidden="true" />
               Connected
-            </span>
-          )}
-          {showModelCount && (
-            <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted)">
-              {models.length} models
             </span>
           )}
           <div className="flex-1" />
