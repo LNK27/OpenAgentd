@@ -24,6 +24,9 @@ struct AppState {
     quitting: Arc<AtomicBool>,
     tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
     tray_session: Arc<Mutex<Option<MenuItem<Wry>>>>,
+    /// Current webview zoom factor, mutated by the View > Zoom menu
+    /// items. Session-only — not persisted across restarts.
+    zoom: Arc<Mutex<f64>>,
 }
 
 const MAIN_WINDOW: &str = "main";
@@ -36,8 +39,19 @@ const MENU_STATUS: &str = "status";
 const MENU_SESSION: &str = "session";
 const MENU_RELOAD: &str = "reload";
 const MENU_FORCE_RELOAD: &str = "force_reload";
+const MENU_ZOOM_IN: &str = "zoom_in";
+const MENU_ZOOM_OUT: &str = "zoom_out";
+const MENU_ZOOM_RESET: &str = "zoom_reset";
 const MENU_CHECK_UPDATES: &str = "check_updates";
 const MENU_QUIT: &str = "quit";
+
+/// Zoom factor bounds and step. ``ZOOM_STEP`` is the multiplier per
+/// ⌘+/⌘- press (≈20%, matching Chrome). Bounds keep the factor from
+/// reaching values where the UI becomes unusable.
+const ZOOM_MIN: f64 = 0.5;
+const ZOOM_MAX: f64 = 3.0;
+const ZOOM_STEP: f64 = 1.2;
+const ZOOM_DEFAULT: f64 = 1.0;
 
 /// Label shown in the tray when no chat/coding session is active.
 const TRAY_SESSION_IDLE: &str = "No active session";
@@ -163,9 +177,46 @@ fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_TELEMETRY => navigate_main_window(app, "/telemetry"),
         MENU_RELOAD => reload_main_window(app, false),
         MENU_FORCE_RELOAD => reload_main_window(app, true),
+        MENU_ZOOM_IN => adjust_zoom(app, ZOOM_STEP),
+        MENU_ZOOM_OUT => adjust_zoom(app, 1.0 / ZOOM_STEP),
+        MENU_ZOOM_RESET => set_zoom(app, ZOOM_DEFAULT),
         MENU_CHECK_UPDATES => check_for_updates(app),
         MENU_QUIT => quit_app(app),
         _ => {}
+    }
+}
+
+/// Multiply the current zoom factor by ``factor`` and apply it, clamping
+/// to ``[ZOOM_MIN, ZOOM_MAX]`` so the user can't shrink the UI to nothing
+/// or blow it up past readable.
+fn adjust_zoom(app: &AppHandle, factor: f64) {
+    let state: tauri::State<'_, AppState> = app.state();
+    let zoom = state.zoom.clone();
+    let app_for_apply = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut guard = zoom.lock().await;
+        let next = (*guard * factor).clamp(ZOOM_MIN, ZOOM_MAX);
+        *guard = next;
+        apply_zoom_to_main(&app_for_apply, next);
+    });
+}
+
+fn set_zoom(app: &AppHandle, value: f64) {
+    let state: tauri::State<'_, AppState> = app.state();
+    let zoom = state.zoom.clone();
+    let app_for_apply = app.clone();
+    let clamped = value.clamp(ZOOM_MIN, ZOOM_MAX);
+    tauri::async_runtime::spawn(async move {
+        *zoom.lock().await = clamped;
+        apply_zoom_to_main(&app_for_apply, clamped);
+    });
+}
+
+fn apply_zoom_to_main(app: &AppHandle, factor: f64) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        if let Err(e) = window.set_zoom(factor) {
+            log::warn!("set_zoom({factor}) failed: {e}");
+        }
     }
 }
 
@@ -412,6 +463,30 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+Shift+R"),
     )?;
+    // ``CmdOrCtrl+=`` (not ``CmdOrCtrl++``) so the shortcut fires from the
+    // bare ``=`` key — matches Chrome/Safari/VS Code and avoids requiring
+    // Shift on US layouts.
+    let view_zoom_in = MenuItem::with_id(
+        app,
+        MENU_ZOOM_IN,
+        "Zoom In",
+        true,
+        Some("CmdOrCtrl+="),
+    )?;
+    let view_zoom_out = MenuItem::with_id(
+        app,
+        MENU_ZOOM_OUT,
+        "Zoom Out",
+        true,
+        Some("CmdOrCtrl+-"),
+    )?;
+    let view_zoom_reset = MenuItem::with_id(
+        app,
+        MENU_ZOOM_RESET,
+        "Actual Size",
+        true,
+        Some("CmdOrCtrl+0"),
+    )?;
 
     // Edit submenu is required on macOS so ⌘A/⌘C/⌘V/⌘X/⌘Z reach the webview.
     let edit_undo = PredefinedMenuItem::undo(app, None)?;
@@ -450,6 +525,10 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&view_reload)
         .item(&view_force_reload)
+        .separator()
+        .item(&view_zoom_in)
+        .item(&view_zoom_out)
+        .item(&view_zoom_reset)
         .separator()
         .item(&view_settings)
         .item(&view_telemetry)
@@ -672,6 +751,7 @@ fn main() {
         quitting: Arc::new(AtomicBool::new(false)),
         tray_status: Arc::new(Mutex::new(None)),
         tray_session: Arc::new(Mutex::new(None)),
+        zoom: Arc::new(Mutex::new(ZOOM_DEFAULT)),
     };
 
     let log_plugin = tauri_plugin_log::Builder::new()
