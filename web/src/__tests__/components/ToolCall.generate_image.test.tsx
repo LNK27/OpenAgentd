@@ -544,7 +544,7 @@ describe("ToolCall — generate_image edge cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — generate_image does not regress other tools", () => {
-  it("shell tool still shows result section (suppressResult defaults to false)", async () => {
+  it("shell tool still shows completed output", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ command: "ls", description: "list files" })
     render(
@@ -556,10 +556,9 @@ describe("ToolCall — generate_image does not regress other tools", () => {
       />
     )
     await user.click(screen.getByRole("button"))
-    // Both sections should be visible
-    expect(screen.getByText("bash")).toBeTruthy()
-    expect(screen.getByText("result")).toBeTruthy()
-    // Result content is wrapped in a span, so use a regex matcher
+    expect(screen.getByText("terminal")).toBeTruthy()
+    expect(screen.queryByText("result")).toBeNull()
+    // Terminal output keeps newlines, so use a regex matcher
     expect(screen.getByText(/file1.*file2.*file3/s)).toBeTruthy()
   })
 

@@ -116,7 +116,7 @@ describe("ToolCall — shell display", () => {
     const args = JSON.stringify({ command: "echo hi" })
     render(<ToolCall name="shell" args={args} done={false} liveOutput={"hi\n"} />)
 
-    expect(screen.getByText("output")).toBeTruthy()
+    expect(screen.getByText("terminal")).toBeTruthy()
     expect(screen.getByText("hi")).toBeTruthy()
   })
 
@@ -752,16 +752,16 @@ describe("ToolCall — copy buttons", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Recent changes: shell bash label, $ prefix, formattedArgs copy, empty args
+// Recent changes: shell terminal label, $ prefix, formattedArgs copy, empty args
 // ---------------------------------------------------------------------------
 
-describe("ToolCall — shell bash label and formatting", () => {
-  it("shows 'bash' label instead of 'arguments' for shell tool", async () => {
+describe("ToolCall — shell terminal label and formatting", () => {
+  it("shows 'terminal' label instead of 'arguments' for shell tool", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ command: "npm test", description: "Run tests" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    expect(screen.getByText("bash")).toBeTruthy()
+    expect(screen.getByText("terminal")).toBeTruthy()
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
@@ -774,8 +774,28 @@ describe("ToolCall — shell bash label and formatting", () => {
     expect(pre).toBeTruthy()
     // Check for $ prefix in the pre element
     expect(pre!.textContent).toContain("$ npm test")
-    // Check for accent color class
-    expect(pre!.className).toContain("color-accent")
+    // Check for accent color class on the command text
+    expect(screen.getByText("npm test").className).toContain("color-accent")
+  })
+
+  it("renders completed shell command and output as one terminal block", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ command: "npm test", description: "Run tests" })
+    render(
+      <ToolCall
+        name="shell"
+        args={args}
+        done={true}
+        result={"[Succeeded]\n\nall tests passed\n"}
+      />,
+    )
+
+    await user.click(screen.getByRole("button"))
+    const pre = screen.getByText("npm test").closest("pre")
+    expect(pre).toBeTruthy()
+    expect(pre!.textContent).toContain("$ npm test\nall tests passed")
+    expect(screen.getByText("terminal")).toBeTruthy()
+    expect(screen.queryByText("result")).toBeNull()
   })
 
   it("$ prefix is non-selectable (select-none class)", async () => {
@@ -790,7 +810,7 @@ describe("ToolCall — shell bash label and formatting", () => {
     expect(dollarSpan!.textContent).toBe("$ ")
   })
 
-  it("copies only the command string, not the full JSON", async () => {
+  it("copies the terminal command and output, not the full JSON", async () => {
     const user = userEvent.setup()
     let copiedText = ""
     const mockWriteText = async (text: string) => {
@@ -803,11 +823,18 @@ describe("ToolCall — shell bash label and formatting", () => {
 
     try {
       const args = JSON.stringify({ command: "npm test", description: "Run tests" })
-      render(<ToolCall name="shell" args={args} done={false} />)
+      render(
+        <ToolCall
+          name="shell"
+          args={args}
+          done={true}
+          result={"[Succeeded]\n\nall tests passed\n"}
+        />,
+      )
       await user.click(screen.getByRole("button"))
       const copyBtn = screen.getByLabelText("Copy arguments")
       await user.click(copyBtn)
-      expect(copiedText).toBe("npm test")
+      expect(copiedText).toBe("npm test\nall tests passed\n")
       expect(copiedText).not.toContain("command")
       expect(copiedText).not.toContain("description")
     } finally {

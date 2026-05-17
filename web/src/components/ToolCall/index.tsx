@@ -46,6 +46,21 @@ function isFailedResult(result: string | undefined): boolean {
   )
 }
 
+function formatShellResult(result: string | undefined): { statusLine: string | null; body: string | null } {
+  if (!result) return { statusLine: null, body: null }
+
+  const firstNewline = result.indexOf('\n')
+  const firstLine = firstNewline >= 0 ? result.slice(0, firstNewline).trim() : result.trim()
+  const hasStatusLine = /^\[(Succeeded|Failed|Error)/i.test(firstLine)
+
+  if (!hasStatusLine) {
+    return { statusLine: null, body: result }
+  }
+
+  const body = firstNewline >= 0 ? result.slice(firstNewline + 1).trimStart() : ''
+  return { statusLine: firstLine, body: body || null }
+}
+
 export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
@@ -74,6 +89,10 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
   const visibleHeader = header
   const shownResult = suppressResult ? undefined : result
   const shownLiveOutput = shownResult ? undefined : liveOutput
+  const isShell = language === 'bash'
+  const isShellTerminal = isShell && Boolean(formattedArgs)
+  const shellResult = isShell ? formatShellResult(shownResult) : null
+  const shellOutput = shellResult?.body ?? shownLiveOutput
 
   useEffect(() => {
     const el = liveOutputRef.current
@@ -82,7 +101,9 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
 
   const handleCopyArgs = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    const text = formattedArgs || args || ''
+    const text = isShellTerminal
+      ? `${formattedArgs}${shellOutput ? `\n${shellOutput}` : ''}`
+      : formattedArgs || args || ''
     try {
       await navigator.clipboard.writeText(text)
       setCopiedArgs(true)
@@ -173,7 +194,7 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
                   <section className="relative">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
-                        {language === 'bash' ? 'bash' : 'arguments'}
+                        {isShellTerminal ? 'terminal' : 'arguments'}
                       </span>
                       <button
                         onClick={handleCopyArgs}
@@ -188,11 +209,28 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
                         )}
                       </button>
                     </div>
-                    {language === 'bash' ? (
-                      <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-(--color-accent)">
-                        <span className="select-none text-(--color-text-muted)">$ </span>
-                        {formattedArgs}
-                      </pre>
+                    {isShellTerminal ? (
+                      <div className="flex flex-col gap-1">
+                        <pre
+                          ref={shownLiveOutput ? liveOutputRef : undefined}
+                          className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text-2)"
+                        >
+                          <span className="select-none text-(--color-text-muted)">$ </span>
+                          <span className="text-(--color-accent)">{formattedArgs}</span>
+                          {shellOutput ? `\n${shellOutput}` : ''}
+                        </pre>
+                        {shellResult?.statusLine && (
+                          <span
+                            className={`font-mono text-[11px] font-medium ${
+                              shellResult.statusLine.startsWith('[Succeeded')
+                                ? 'text-(--color-success)'
+                                : 'text-(--color-error)'
+                            }`}
+                          >
+                            {shellResult.statusLine}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-(--color-text-2)">
                         {formattedArgs}
@@ -201,7 +239,7 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
                   </section>
                 )}
 
-                {shownLiveOutput && (
+                {shownLiveOutput && !isShellTerminal && (
                   <section className="relative">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
@@ -218,7 +256,7 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
                 )}
 
                 {/* Result section — same caption treatment as args. */}
-                {shownResult && (
+                {shownResult && !isShellTerminal && (
                   <section className="relative">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
