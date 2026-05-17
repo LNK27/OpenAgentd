@@ -17,6 +17,22 @@
 
 ---
 
+## Screenshots
+
+| Home | Coding workspace |
+|---|---|
+| ![OpenAgentd home screen with active agent session](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/homepage.png) | ![Coding mode with chat, files, and diff sidebars](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/coding-screen-with-2sidebars.png) |
+
+| Agents settings | Sandbox settings |
+|---|---|
+| ![Settings page for configuring lead and member agents](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/settings-agents.png) | ![Settings page for filesystem sandbox and permission controls](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/settings-sandbox.png) |
+
+| Voice settings | Telemetry dashboard |
+|---|---|
+| ![Settings page for local voice transcription](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/settings-voice.png) | ![Telemetry dashboard with traces, tokens, and latency](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/telemetry.png) |
+
+---
+
 ## What you get
 
 **A cockpit, not a chat box.** Command palette (Ctrl+P), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back.
