@@ -33,8 +33,7 @@ app/agent/
 ├── plugins/            # User-authored plugin loader + role contextvar (see plugins.md)
 ├── providers/          # LLM provider adapters
 │   ├── factory.py          # build_provider("provider:model") — one match statement over the prefix
-│   ├── capabilities.py     # Dataclasses, defaults, prefix fallbacks, YAML loader
-│   └── capabilities.yaml   # Exact per-model capability overrides
+│   └── capabilities.py     # Dataclasses, defaults, prefix-only fallbacks
 ├── schemas/            # Pydantic wire types
 │   ├── chat.py             # SystemMessage / HumanMessage / AssistantMessage / ToolMessage / ChatMessage
 │   ├── agent.py            # RunConfig, AgentContext, SummarizationConfig

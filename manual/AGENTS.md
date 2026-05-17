@@ -128,6 +128,7 @@ uv run python -m manual.note --cat 2026-04-30-manual-test.md
 | Script | Purpose | Key flags |
 |--------|---------|-----------|
 | `health.py` | `GET /health/ready` + team agent roster with tools/skills/vision | `--base URL` |
+| `provider_models.py` | List discovered provider models, falling back to catalog defaults | provider IDs, `--limit N` |
 | `inspect_prompt.py` | Reconstruct full LLM payload (system prompt + tools JSON) — **no server required** | `--dir`, `--agent`, `--no-date`, `--date`, `--out`, `--stats-only` |
 | `otel_inspect.py` | Read OTel spans/metrics from `.openagentd/otel/` JSONL files | `--session ID`, `--trace ID`, `--metrics` |
 | `summarization_test.py` | Drive summarization hook by sending many turns | requires low `token_threshold` in `.openagentd/config/summarization.md` |
@@ -138,6 +139,9 @@ uv run python -m manual.note --cat 2026-04-30-manual-test.md
 ```bash
 # Check server health + configured agents
 uv run python -m manual.health
+
+# Check provider model listing
+uv run python -m manual.provider_models openai googlegenai openrouter nvidia copilot codex
 
 # Print char/token breakdown for the chat agent payload
 uv run python -m manual.inspect_prompt --stats-only
