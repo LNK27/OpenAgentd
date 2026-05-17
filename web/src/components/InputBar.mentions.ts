@@ -54,7 +54,8 @@ export function findActiveMention(
 
 /**
  * Find every `@mention` token in ``value`` that has been "committed" —
- * i.e. terminated by whitespace or end-of-string.
+ * i.e. terminated by whitespace or end-of-string **and** (when ``refs``
+ * is provided) resolves to a known workspace file or folder.
  *
  * Used by the highlight overlay to paint colored backgrounds behind each
  * mention. Callers may pass an ``activeRange`` to exclude the token at the
@@ -66,13 +67,36 @@ export function findActiveMention(
  *     (so ``user@host.com`` is ignored).
  *   - The token runs from the `@` to the next whitespace.
  *   - A bare `@` with nothing after it is ignored.
+ *   - Trailing sentence punctuation (``,`` ``.`` ``;`` ``:`` ``!`` ``?``
+ *     ``)``) is stripped before resolution so "look at @README.md, please"
+ *     renders one chip over ``@README.md`` and leaves the comma plain.
+ *   - When ``refs`` is provided, the post-punctuation token must match a
+ *     ref's ``@${path}`` (file) or ``@${path}/`` (directory) exactly.
+ *     Unresolved tokens — ``@@``, ``@nonexistent``, ``@foo@bar`` —
+ *     produce no chip. This is the same exact-match semantics opencode
+ *     uses for its pill rendering.
+ *
+ * When ``refs`` is undefined the resolution check is skipped (back-compat
+ * with the small number of callers that just want range geometry).
  *
  * Returned ranges are sorted left-to-right and never overlap.
  */
 export function findCommittedMentions(
   value: string,
   activeRange?: { start: number; end: number } | null,
+  refs?: readonly FileRef[],
 ): { start: number; end: number }[] {
+  // Build a set of valid mention tokens once per call — O(refs) up-front,
+  // O(1) per candidate. Files are matched as ``@path``; directories
+  // additionally allow a trailing slash since the picker inserts one.
+  const valid = refs
+    ? new Set(
+        refs.flatMap((r) =>
+          r.type === 'directory' ? [`@${r.path}`, `@${r.path}/`] : [`@${r.path}`],
+        ),
+      )
+    : null
+
   const out: { start: number; end: number }[] = []
   for (let i = 0; i < value.length; i++) {
     if (value.charAt(i) !== '@') continue
@@ -83,14 +107,31 @@ export function findCommittedMentions(
     let j = i + 1
     while (j < value.length && !/\s/.test(value.charAt(j))) j++
 
+    // Strip a single run of trailing sentence punctuation so the chip
+    // ends at the path, not at the surrounding prose. We don't recurse —
+    // ".," is uncommon and "@foo)." would mark only the ``)`` as prose;
+    // good enough for the realistic cases.
+    let end = j
+    while (end > i + 1 && /[,.;:!?)]/.test(value.charAt(end - 1))) end--
+
     // Need at least one character after the `@` to be a real mention.
-    if (j === i + 1) continue
+    if (end === i + 1) continue
 
     // Skip the actively-edited mention so the chip doesn't flash on every
     // keystroke. The picker already provides feedback there.
-    if (activeRange && activeRange.start === i) continue
+    if (activeRange && activeRange.start === i) {
+      i = j
+      continue
+    }
 
-    out.push({ start: i, end: j })
+    // Resolution check: only chip tokens that actually resolve to a known
+    // ref. This is what kills the ``@@`` / ``@nonexistent`` false positive.
+    if (valid && !valid.has(value.slice(i, end))) {
+      i = j
+      continue
+    }
+
+    out.push({ start: i, end })
     i = j // jump past this token to avoid double-matching inside it
   }
   return out
