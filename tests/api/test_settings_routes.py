@@ -598,17 +598,15 @@ def test_list_provider_models_falls_back_to_defaults(
     body = response.json()
     assert body["source"] == "default"
     assert isinstance(body["models"], list)
-    assert all("id" in entry and "vision" in entry for entry in body["models"])
-    # Google models inherit the googlegenai: prefix → vision=True.
-    if body["models"]:
-        assert body["models"][0]["vision"] is True
+    assert all(isinstance(model_id, str) for model_id in body["models"])
 
 
 def test_list_provider_models_returns_discovered_models(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When discovery succeeds, response carries source='provider' and each model
-    is shaped as ``{id, vision}``."""
+    """When discovery succeeds, response carries source='provider' with a flat
+    list of model IDs (no per-model capability data — see techdebts/model-
+    capabilities-registry.md for why)."""
 
     async def _two_models(_entry, **_kwargs):  # type: ignore[no-untyped-def]
         return ["model-a", "model-b"]
@@ -628,10 +626,7 @@ def test_list_provider_models_returns_discovered_models(
     body = response.json()
     assert body["provider"] == "openai"
     assert body["source"] == "provider"
-    assert body["models"] == [
-        {"id": "model-a", "vision": True},
-        {"id": "model-b", "vision": True},
-    ]
+    assert body["models"] == ["model-a", "model-b"]
 
 
 def test_list_provider_models_does_not_mutate_os_environ(

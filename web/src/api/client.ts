@@ -713,14 +713,9 @@ export type ProviderSaveRequest = {
   extra?: Record<string, string>
 }
 
-export type ModelEntry = {
-  id: string
-  vision: boolean
-}
-
 export type ProviderModelsResponse = {
   provider: string
-  models: ModelEntry[]
+  models: string[]
   source: 'provider' | 'default'
 }
 

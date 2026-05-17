@@ -19,14 +19,12 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
-from app.agent.providers.capabilities import get_capabilities
 from app.agent.sandbox_config import SandboxFileConfig, load_config, save_config
 from app.core.config import settings
 
 if TYPE_CHECKING:
     from app.agent.providers.catalog import ProviderEntry
 from app.api.schemas.settings import (
-    ModelEntry,
     ProviderInfo,
     ProviderModelsRequest,
     ProviderModelsResponse,
@@ -263,14 +261,6 @@ def _build_overrides(
     return overrides
 
 
-def _model_entries(provider_id: str, model_ids: list[str]) -> list[ModelEntry]:
-    out: list[ModelEntry] = []
-    for model in model_ids:
-        caps = get_capabilities(f"{provider_id}:{model}")
-        out.append(ModelEntry(id=model, vision=caps.input.vision))
-    return out
-
-
 @router.post("/providers/{provider_id}/models")
 async def list_provider_models(
     provider_id: str, body: ProviderModelsRequest
@@ -294,12 +284,12 @@ async def list_provider_models(
     if discovered:
         return ProviderModelsResponse(
             provider=provider_id,
-            models=_model_entries(provider_id, discovered),
+            models=discovered,
             source="provider",
         )
     return ProviderModelsResponse(
         provider=provider_id,
-        models=_model_entries(provider_id, list(entry.get("default_models", []))),
+        models=list(entry.get("default_models", [])),
         source="default",
     )
 

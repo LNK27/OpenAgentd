@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
-  Eye,
   KeyRound,
   Loader2,
   ShieldCheck,
@@ -18,7 +17,6 @@ import {
   installSeed,
   listProviderModels,
   oauthLoginStream,
-  type ModelEntry,
   type OAuthLoginEvent,
   type ProviderInfo,
 } from '@/api/client'
@@ -108,7 +106,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
   })
 
   // Derived (not state) — single source of truth is the query cache.
-  const models = useMemo<ModelEntry[]>(
+  const models = useMemo<string[]>(
     () => autoModelsQ.data?.models ?? [],
     [autoModelsQ.data?.models],
   )
@@ -358,7 +356,6 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
  *  *and* the value the user sees / copies, so search and display stay in
  *  sync. */
 type IndexedModel = {
-  model: ModelEntry
   qualifiedId: string
 }
 
@@ -371,7 +368,7 @@ function ModelsPanel({
   onToggle,
 }: {
   providerId: string
-  models: ModelEntry[]
+  models: string[]
   search: string
   onSearchChange: (v: string) => void
   expanded: boolean
@@ -394,7 +391,7 @@ function ModelsPanel({
   // string means searching for ``"openai:gpt-5"`` works just as well as
   // searching for ``"gpt5"``.
   const indexed = useMemo<IndexedModel[]>(
-    () => models.map((model) => ({ model, qualifiedId: `${providerId}:${model.id}` })),
+    () => models.map((id) => ({ qualifiedId: `${providerId}:${id}` })),
     [models, providerId],
   )
 
@@ -438,7 +435,7 @@ function ModelsPanel({
             {visible.length === 0 ? (
               <li className="px-2 py-3 text-center text-xs text-(--color-text-muted)">No matching models.</li>
             ) : (
-              visible.map(({ model, qualifiedId }) => (
+              visible.map(({ qualifiedId }) => (
                 <li
                   key={qualifiedId}
                   className="flex items-center gap-2 rounded px-2 py-1 hover:bg-(--bg-key)"
@@ -446,15 +443,6 @@ function ModelsPanel({
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--color-text)">
                     {qualifiedId}
                   </span>
-                  {model.vision && (
-                    <span
-                      className="inline-flex items-center gap-0.5 rounded bg-(--color-success-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--color-success)"
-                      title="Vision-capable"
-                    >
-                      <Eye size={10} aria-hidden="true" />
-                      vision
-                    </span>
-                  )}
                   <button
                     type="button"
                     onClick={() => void handleCopy(qualifiedId)}

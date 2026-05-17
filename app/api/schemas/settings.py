@@ -43,24 +43,18 @@ class ProvidersListBody(BaseModel):
     has_any_configured: bool
 
 
-class ModelEntry(BaseModel):
-    """One model entry returned by the provider-models endpoint."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str
-    # Whether the model accepts image inputs. Resolved from the provider
-    # prefix in ``app.agent.providers.capabilities`` — same source as the
-    # attachment-upload gate, so what the UI shows matches what the
-    # backend actually enforces.
-    vision: bool = False
-
-
 class ProviderModelsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     provider: str
-    models: list[ModelEntry] = Field(default_factory=list)
+    # Just model IDs. We deliberately don't ship per-model capability
+    # flags here: the prefix-based resolver is too coarse for a
+    # per-model UI badge ("text-embedding-3-small" would show vision
+    # because `openai:` is vision-true), and a curated registry would be
+    # stale by the time the user upgraded the app. If capability ever
+    # needs to surface on this endpoint, build it from a runtime-fetched
+    # registry — see ``documents/techdebts/model-capabilities-registry.md``.
+    models: list[str] = Field(default_factory=list)
     # ``provider`` = list returned by the live provider API.
     # ``default`` = curated fallback from the catalog (provider unreachable).
     source: Literal["provider", "default"]
