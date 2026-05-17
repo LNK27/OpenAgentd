@@ -17,7 +17,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app.agent.loader import AgentConfig
-from app.agent.providers.capabilities import _PREFIX_FALLBACKS, get_capabilities
+from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.catalog import ProviderEntry, all_providers
 from app.agent.providers.model_discovery import discover_provider_models
 from app.agent.tools.builtin.skill import discover_skills
@@ -213,7 +213,10 @@ async def get_registry() -> RegistryResponse:
         key=lambda s: s.name,
     )
 
-    providers = sorted({p.rstrip(":") for p, _ in _PREFIX_FALLBACKS})
+    # Provider IDs straight from the catalog — single source of truth.
+    # Previously this was derived from the capability resolver's prefix
+    # table; the resolver no longer has one (see capabilities.py).
+    providers = sorted(entry["id"] for entry in all_providers())
 
     seen: set[str] = set()
     models: list[ModelCatalogEntry] = []

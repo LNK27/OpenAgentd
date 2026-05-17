@@ -3,67 +3,74 @@ title: Model capabilities registry
 status: open
 owner: providers
 opened: 2026-05-17
+updated: 2026-05-18
 ---
 
 # Tech debt: per-model capability metadata
 
 ## Current state
 
-`app/agent/providers/capabilities.py` resolves vision / document / output
-flags from **provider prefix only**. There are no per-model overrides
-and no name-substring heuristics. Edge cases surface as a provider-side
-error on first use.
+`app/agent/providers/capabilities.py` resolves capability flags via an
+**exact-match lookup** against a curated YAML registry shipped inside
+the wheel (`app/agent/providers/capabilities.yaml`).
 
-Concretely:
+Lookup rule:
 
-- The `bedrock:` prefix defaults to `vision=false`. Real-world Bedrock
-  hosts both vision-capable (Claude 4.x, Nova Pro) and text-only (Titan,
-  Nova Micro) models — the prefix default rejects image attachments for
-  every Bedrock model, even ones that would accept them.
-- The `openai:` prefix defaults to `vision=true`. Discovered models
-  like `openai:text-embedding-3-small` inherit that and would only fail
-  at upload if the user actually attaches an image.
-- The `ollama:` prefix defaults to `vision=false`; running `llava`
-  through Ollama needs the user to know it's vision-capable, since the
-  attachment gate will reject images.
+1. Exact `provider:model` match in the YAML → those flags, sparse-merged
+   onto the all-false defaults.
+2. Otherwise → all-false / text-out-only defaults.
 
-The user-visible result: the **attachment-upload gate**
-(`app/services/agent_service.py:325`) and the **read tool's image
-handler** (`app/agent/tools/builtin/filesystem/read.py:37`) are
-conservative on prefixes that span both modes, and permissive on
-prefixes that don't.
+There are no prefix fallbacks and no name-substring heuristics. The
+YAML is therefore the authoritative document — reading it tells you
+exactly what every flagship model can do.
 
-## Why we accepted this
+## Why this shape
 
-The previous design carried:
+- **YAML lists only special-capability models.** A model that does
+  plain text-in / text-out doesn't need an entry — it gets the right
+  defaults by virtue of *not* being listed. That keeps the file small
+  and the maintenance question trivial: "does this new model have
+  vision / image-output / audio / video?" If no, do nothing.
 
-- `capabilities.yaml` — per-model exact overrides, ~190 lines, grew
-  with every provider model release.
-- `_VISION_MARKERS` / `_TEXT_ONLY_MARKERS` — name-substring heuristics
-  that classified live-discovered models. Wrong on edge cases
-  (`claude-instant` is not vision; `gemini-embedding-001` is not
-  vision; etc.).
+- **Conservative on unknowns.** An un-curated model can't accidentally
+  trip the chat attachment gate or the read tool's image handler. The
+  worst-case for a forgotten entry is a vision-capable model refusing
+  images until someone notices and adds a one-liner.
 
-Both were maintenance hot-spots: each new provider model required a
-human to decide "does this need a YAML entry?" or "does this trip the
-substring heuristic correctly?". The YAML was also redundant for the
-hot path — most agents end up running a flagship model where the prefix
-default already gives the right answer.
+- **Fresh on every release.** The YAML ships inside the wheel
+  (`[tool.hatch.build.targets.wheel] packages = ["app"]`). Users
+  upgrading the CLI (`uv tool upgrade openagentd` / `pip install -U`)
+  or the desktop app (Tauri auto-update) get the new file atomically
+  as part of package replacement — no merge, no migration, no init
+  step. The YAML deliberately does *not* live under
+  `{OPENAGENTD_CONFIG_DIR}` to avoid the "user copy shadows the bundle
+  forever" trap that bites our agents/skills/`mcp.json` seeds.
 
-Trimming the system back to prefix-only:
+## Why the previous prefix-fallback design was discarded
 
-- Deletes ~150 lines of capability code and the entire YAML.
-- Removes a class of subtle bugs (heuristics misclassifying edge cases).
-- Matches the system's existing "we don't curate a model catalog"
-  philosophy (`providers.md` already says model IDs are passed
-  verbatim).
+The interim design (commits before this one) resolved capabilities by
+longest-prefix match on the `provider:` portion of the ID, e.g.
+`openai:` → vision-true, `deepseek:` → vision-false. That was simpler
+than a per-model table but had two failure modes:
+
+- **Over-permissive.** `openai:text-embedding-3-small` inherited
+  vision=true from the `openai:` prefix and would only fail at the
+  upload boundary if a user actually attached an image to a request
+  bound for an embedding endpoint.
+- **Over-conservative.** `bedrock:` defaulted to vision=false because
+  Bedrock hosts both vision (Claude 4.x, Nova) and text-only (Titan
+  small) models. Real Claude-on-Bedrock requests rejected image
+  attachments needlessly.
+
+The exact-match table fixes both — but only as long as someone keeps
+the YAML current, which is the actual tech debt.
 
 ## Long-term direction
 
-If we ever need richer per-model metadata (context length, image-output,
-thinking levels, etc.), adopt a **single curated JSON registry** rather
-than re-introducing scattered overrides + heuristics. The clearest
-reference is CLIProxyAPI's `models.json`:
+If we ever need richer per-model metadata (context length,
+image-output, audio in/out, thinking levels, etc.), or if the curation
+burden becomes painful, replace the YAML with a **runtime-fetched
+registry**. The clearest reference is CLIProxyAPI's `models.json`:
 
 - <https://github.com/router-for-me/CLIProxyAPI/blob/main/internal/registry/models/models.json>
 - <https://github.com/router-for-me/CLIProxyAPI/blob/main/internal/registry/model_definitions.go>
@@ -75,26 +82,28 @@ grouped by channel/provider.
 
 If we adopt it:
 
-- Replace `_PREFIX_FALLBACKS` and `get_capabilities` with a JSON lookup.
-- Optionally hot-refresh from a remote URL the way CLIProxyAPI does
+- Replace the YAML resolver with a JSON registry fetched at daemon
+  startup (and cached on disk with a TTL for offline use).
+- Hot-refresh from a URL we control, the way CLIProxyAPI does
   (`model_updater.go`).
-- Keep the prefix table as a final fallback so unknown models don't
-  break.
+- Keep an embedded snapshot of the JSON as the offline-fallback so
+  first-launch / air-gapped installs still resolve common models.
 
 ## Out of scope until then
 
-- Re-introducing `capabilities.yaml` or any other per-model override
-  file. If you find yourself wanting to "just pin one model", that's
-  the trigger to design the JSON registry instead.
-- Name-substring heuristics. They drift faster than provider catalogs
-  evolve.
+- Re-introducing prefix fallbacks or name-substring heuristics. They
+  drift faster than provider catalogs evolve.
+- Per-user override files at `{OPENAGENTD_CONFIG_DIR}/capabilities.yaml`.
+  If users start asking for that, it's the signal that the curated
+  YAML is too stale and we should be doing the runtime-fetched
+  registry instead.
 
 ## Symptoms that warrant prioritising this
 
-- Users routinely surprised that an attached image was rejected by a
-  Bedrock or Ollama model they know is vision-capable.
-- Need for any capability beyond vision (e.g. routing decisions based
-  on context length, gating reasoning effort, distinguishing
+- The YAML grows past ~200 entries and PRs adding new models start
+  blocking on review latency.
+- Users routinely surprised that a model is missing a capability the
+  provider already supports.
+- Need for any capability beyond the current axes (e.g. routing on
+  context length, gating reasoning effort, distinguishing
   image-generation vs. chat models).
-- A new provider whose model namespace doesn't cleanly map to a single
-  prefix default.

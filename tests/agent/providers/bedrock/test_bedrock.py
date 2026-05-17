@@ -403,20 +403,28 @@ class TestBedrockStream:
 class TestBedrockCapabilities:
     """Bedrock uses a conservative text-only prefix default.
 
-    Without per-model YAML overrides the whole ``bedrock:`` namespace
-    inherits ``vision=False``. Image uploads to vision-capable Bedrock
-    models (Claude 4.x, Nova) will fail at the attachment gate — users
-    can still call those models directly without attachments. See
+    Bedrock capabilities come from the bundled YAML registry. Claude
+    4.x and Nova are listed with vision=true (both in-region and global
+    inference profile IDs); unlisted Bedrock model IDs fall through to
+    the all-false defaults. See
     ``documents/techdebts/model-capabilities-registry.md``.
     """
 
-    def test_bedrock_prefix_vision_false(self):
+    def test_unknown_bedrock_model_defaults_no_vision(self):
         caps = get_capabilities("bedrock:some-unknown-model")
         assert caps.input.vision is False
 
-    def test_bedrock_claude_inherits_prefix(self):
+    def test_claude_opus_4_7_listed_with_vision(self):
         caps = get_capabilities("bedrock:anthropic.claude-opus-4-7")
-        assert caps.input.vision is False
+        assert caps.input.vision is True
+
+    def test_claude_opus_4_7_global_listed_with_vision(self):
+        caps = get_capabilities("bedrock:global.anthropic.claude-opus-4-7")
+        assert caps.input.vision is True
+
+    def test_nova_pro_listed_with_vision(self):
+        caps = get_capabilities("bedrock:amazon.nova-pro-v1:0")
+        assert caps.input.vision is True
 
     def test_document_text_true(self):
         caps = get_capabilities("bedrock:anthropic.claude-sonnet-4-6")

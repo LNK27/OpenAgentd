@@ -324,7 +324,10 @@ class TestHumanMessageIsMultimodal:
 
 
 # ---------------------------------------------------------------------------
-# capabilities.py — get_capabilities (prefix-only resolution)
+# capabilities.py — exact-match resolution against the bundled YAML
+# (See tests/agent/providers/test_capabilities.py for the resolver's
+# detailed contract. The cases below cover schema-adjacent behaviour
+# that should keep working even if the YAML contents shift.)
 # ---------------------------------------------------------------------------
 
 
@@ -336,24 +339,13 @@ class TestGetCapabilities:
         assert caps.input.vision is False
         assert caps.input.document_text is True
 
-    def test_zai_prefix_text_only(self):
+    def test_unknown_model_returns_default(self):
         from app.agent.providers.capabilities import get_capabilities
 
-        # The whole zai: prefix is text-only under the conservative default.
-        assert get_capabilities("zai:glm-5v-turbo").input.vision is False
-        assert get_capabilities("zai:glm-5-turbo").input.vision is False
-
-    def test_prefix_fallback_googlegenai(self):
-        from app.agent.providers.capabilities import get_capabilities
-
-        caps = get_capabilities("googlegenai:some-new-model")
-        assert caps.input.vision is True
-
-    def test_prefix_fallback_openai(self):
-        from app.agent.providers.capabilities import get_capabilities
-
+        # No prefix matching — a made-up openai:* falls through to defaults.
         caps = get_capabilities("openai:gpt-unknown-future-model")
-        assert caps.input.vision is True
+        assert caps.input.vision is False
+        assert caps.input.document_text is True
 
     def test_unknown_provider_returns_default(self):
         from app.agent.providers.capabilities import get_capabilities
@@ -362,11 +354,17 @@ class TestGetCapabilities:
         assert caps.input.vision is False
         assert caps.input.document_text is True
 
+    def test_listed_vision_model(self):
+        from app.agent.providers.capabilities import get_capabilities
+
+        # openai:gpt-5.5 is in the bundled YAML with vision=true.
+        assert get_capabilities("openai:gpt-5.5").input.vision is True
+
     def test_case_insensitive_lookup(self):
         from app.agent.providers.capabilities import get_capabilities
 
-        caps_lower = get_capabilities("openai:gpt-5")
-        caps_upper = get_capabilities("OPENAI:GPT-5")
+        caps_lower = get_capabilities("openai:gpt-5.5")
+        caps_upper = get_capabilities("OPENAI:GPT-5.5")
         assert caps_lower == caps_upper
 
     def test_to_dict(self):
@@ -386,15 +384,13 @@ class TestGetCapabilities:
                 "audio": False,
                 "video": False,
             },
-            "output": {"text": True, "image": False, "audio": False},
+            "output": {
+                "text": True,
+                "image": False,
+                "audio": False,
+                "video": False,
+            },
         }
-
-    def test_prefix_fallback_nvidia(self):
-        from app.agent.providers.capabilities import get_capabilities
-
-        caps = get_capabilities("nvidia:meta/llama-3.1-8b-instruct")
-        assert caps.input.vision is False
-        assert caps.input.document_text is True
 
 
 # ---------------------------------------------------------------------------

@@ -132,7 +132,10 @@ _CATALOG: list[ProviderEntry] = [
         "description": "xAI's Grok family.",
         "kind": "api_key",
         "env_var": "XAI_API_KEY",
-        "default_models": ["grok-4", "grok-4-fast", "grok-code-fast-1"],
+        # grok-4, grok-4-fast, grok-code-fast-1 retire 2026-05-15 — they
+        # redirect to grok-4.3 in the meantime. See:
+        # https://docs.x.ai/docs/models
+        "default_models": ["grok-4.3", "grok-4", "grok-4-fast"],
         "docs_url": "https://console.x.ai",
     },
     {
@@ -202,7 +205,7 @@ _CATALOG: list[ProviderEntry] = [
             "gpt-5.4-mini",
             "claude-opus-4-7",
             "claude-sonnet-4-6",
-            "claude-haiku-4.5",
+            "claude-haiku-4-5",
             "gemini-3.1-pro-preview",
         ],
         "oauth_command": "openagentd auth copilot",

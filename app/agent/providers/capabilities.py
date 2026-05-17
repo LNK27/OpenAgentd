@@ -1,33 +1,53 @@
-"""Model capability detection.
+"""Model capability resolution.
 
-Resolves input and output capabilities from the fully-qualified
-``provider:model`` string stored in ``Agent.model_id``.
+Looks up input/output capabilities for a fully-qualified
+``provider:model`` string against a curated YAML registry.
 
-Lookup order:
+Lookup rule (intentionally trivial):
 
-1. Longest prefix match in :data:`_PREFIX_FALLBACKS`.
-2. :data:`_DEFAULT`.
+1. **Exact match** in ``capabilities.yaml`` → return those flags merged
+   onto the all-false defaults.
+2. **Anything else** → return the all-false / text-out-only defaults.
 
-No per-model overrides and no name-substring heuristics: discovered
-models trust the prefix, and edge cases (e.g. ``deepseek:foo-vision``)
-fail at the provider boundary with a clear error. The benefit is a
-maintenance-free registry — see ``documents/techdebts/model-capabilities-registry.md``
-for the long-term direction if richer metadata becomes necessary.
+There are **no prefix fallbacks and no name-substring heuristics**. A
+model that isn't listed is treated as text-in / text-out. The YAML is
+therefore the authoritative document — read it to know what each
+flagship model can do.
+
+Why this is fine:
+
+- The chat-attachment gate (``app/services/agent_service.py``) and the
+  read tool's image handler (``app/agent/tools/builtin/filesystem/read.py``)
+  ask :func:`get_capabilities` before allowing image input. An
+  un-curated model just refuses images, which is the safe default.
+- The YAML ships *inside* the ``app`` package
+  (see ``pyproject.toml`` ``[tool.hatch.build.targets.wheel] packages``).
+  ``uv tool upgrade openagentd`` / ``pip install -U`` / Tauri
+  auto-update all replace the package directory atomically, so users
+  get the latest registry whenever they upgrade.
+- Long-term direction: a runtime-fetched registry — see
+  ``documents/techdebts/model-capabilities-registry.md``.
 
 Usage::
 
     from app.agent.providers.capabilities import get_capabilities
 
     caps = get_capabilities("googlegenai:gemini-3.1-pro-preview")
-    caps.input.vision          # True — accepts image/png, image/jpeg, etc.
-    caps.input.document_text   # True — markitdown for pdf/docx/txt/csv/json/md
-    caps.output.text           # True — generates text responses
+    caps.input.vision          # True
+    caps.input.document_text   # True  (always — markitdown handles this)
+    caps.output.text           # True
     caps.to_dict()             # {"input": {...}, "output": {...}}
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+from importlib.resources import files
+from typing import Any
+
+import yaml
+from loguru import logger
 
 
 # ── Dataclasses ──────────────────────────────────────────────────────────────
@@ -37,13 +57,15 @@ from dataclasses import dataclass
 class ModelInputCapabilities:
     """What the model can accept as input."""
 
-    # Vision — accepts image/* files (png/jpg/gif/webp)
+    # Vision — accepts image/* attachments (png/jpg/gif/webp).
     vision: bool = False
-    # Document text — markitdown conversion for pdf/docx/txt/csv/json/md
+    # Document text — markitdown converts pdf/docx/txt/csv/json/md to
+    # text before the model sees it. True for every model: the
+    # conversion happens on the client side, not at the model boundary.
     document_text: bool = True
-    # Audio input (not yet implemented — reserved for future use)
+    # Audio input (reserved — not yet wired through the chat layer).
     audio: bool = False
-    # Video input (not yet implemented — reserved for future use)
+    # Video input (reserved — not yet wired through the chat layer).
     video: bool = False
 
     def to_dict(self) -> dict[str, bool]:
@@ -59,24 +81,28 @@ class ModelInputCapabilities:
 class ModelOutputCapabilities:
     """What the model can generate as output."""
 
-    # Text — generates text responses (almost all models)
+    # Text — generates text responses (most chat models).
     text: bool = True
-    # Image generation (not yet implemented — reserved for future use)
+    # Image generation (gpt-image-2, glm-image, cogview, etc.). Image-
+    # only models like ``gpt-image-2`` also need ``text: false``.
     image: bool = False
-    # Audio generation (not yet implemented — reserved for future use)
+    # Audio generation (TTS / realtime audio models).
     audio: bool = False
+    # Video generation (sora-2, veo-3, vidu, cogvideox, etc.).
+    video: bool = False
 
     def to_dict(self) -> dict[str, bool]:
         return {
             "text": self.text,
             "image": self.image,
             "audio": self.audio,
+            "video": self.video,
         }
 
 
 @dataclass(frozen=True)
 class ModelCapabilities:
-    """Composite input + output capabilities for a specific provider:model pair."""
+    """Composite input + output capabilities for one ``provider:model`` pair."""
 
     input: ModelInputCapabilities = ModelInputCapabilities()
     output: ModelOutputCapabilities = ModelOutputCapabilities()
@@ -88,70 +114,102 @@ class ModelCapabilities:
         }
 
 
-# ── Defaults & prefix fallbacks ──────────────────────────────────────────────
-
 _DEFAULT = ModelCapabilities()
 
-_PREFIX_FALLBACKS: list[tuple[str, ModelCapabilities]] = [
-    # All Gemini providers: vision-capable
-    ("googlegenai:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    ("vertexai:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    ("geminicli:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    # OpenAI generic: vision-capable (GPT-4o family and newer)
-    ("openai:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    # Copilot generic: conservative — no vision
-    ("copilot:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # Codex (ChatGPT subscription): conservative — no vision
-    ("codex:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # xAI (Grok): vision on grok-4 family
-    ("xai:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    # ZAI generic: conservative — no vision
-    ("zai:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # DeepSeek: text-only
-    ("deepseek:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # OpenRouter: too varied — conservative text-only
-    ("openrouter:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # NVIDIA NIM: too varied — conservative text-only
-    ("nvidia:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # Ollama: catalog spans text-only and vision; conservative default
-    ("ollama:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-    # 9Router: aggregator proxy fronts vision-capable upstreams
-    ("router9:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    # CLIProxyAPI: wraps Gemini/ChatGPT/Claude
-    ("cliproxy:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),
-    # AWS Bedrock: too varied — conservative text-only default
-    ("bedrock:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
-]
+
+# ── YAML loader ──────────────────────────────────────────────────────────────
 
 
-# ── Public API ───────────────────────────────────────────────────────────────
+def _load_registry() -> dict[str, ModelCapabilities]:
+    """Load ``capabilities.yaml`` from the installed package.
+
+    Uses :mod:`importlib.resources` rather than a ``__file__``-relative
+    path so the loader also works inside PyInstaller / Tauri-bundled
+    sidecars where package data lives in a zip archive.
+
+    Malformed entries are logged and skipped — one bad row should not
+    crash the whole resolver. The file shipping inside the wheel means
+    bad rows are a maintainer bug, not a user-visible failure mode.
+    """
+    resource = files("app.agent.providers").joinpath("capabilities.yaml")
+    raw = resource.read_text(encoding="utf-8")
+    parsed = yaml.safe_load(raw) or {}
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "capabilities.yaml did not parse to a mapping (got {}); ignoring",
+            type(parsed).__name__,
+        )
+        return {}
+
+    registry: dict[str, ModelCapabilities] = {}
+    for key, value in parsed.items():
+        if not isinstance(key, str) or not isinstance(value, dict):
+            logger.warning("capabilities.yaml: skipping malformed entry key={!r}", key)
+            continue
+        try:
+            registry[key.lower()] = _merge_caps(value)
+        except (TypeError, ValueError) as exc:
+            logger.warning("capabilities.yaml: skipping entry {!r} ({})", key, exc)
+    logger.debug("capabilities.yaml: loaded {} entries", len(registry))
+    return registry
+
+
+def _merge_caps(spec: dict[str, Any]) -> ModelCapabilities:
+    """Sparse-merge a YAML mapping onto :data:`_DEFAULT`.
+
+    Only fields explicitly present in ``spec`` override defaults. This
+    lets entries write ``input: { vision: true }`` without spelling out
+    every other flag.
+    """
+    input_spec = spec.get("input") or {}
+    output_spec = spec.get("output") or {}
+    if not isinstance(input_spec, dict) or not isinstance(output_spec, dict):
+        raise TypeError("`input` and `output` must be mappings")
+
+    return ModelCapabilities(
+        input=ModelInputCapabilities(
+            vision=bool(input_spec.get("vision", _DEFAULT.input.vision)),
+            document_text=bool(
+                input_spec.get("document_text", _DEFAULT.input.document_text)
+            ),
+            audio=bool(input_spec.get("audio", _DEFAULT.input.audio)),
+            video=bool(input_spec.get("video", _DEFAULT.input.video)),
+        ),
+        output=ModelOutputCapabilities(
+            text=bool(output_spec.get("text", _DEFAULT.output.text)),
+            image=bool(output_spec.get("image", _DEFAULT.output.image)),
+            audio=bool(output_spec.get("audio", _DEFAULT.output.audio)),
+            video=bool(output_spec.get("video", _DEFAULT.output.video)),
+        ),
+    )
+
+
+@lru_cache(maxsize=1)
+def _registry() -> dict[str, ModelCapabilities]:
+    """Cached access to the parsed registry.
+
+    Cached because (a) the file is bundled and cannot change at runtime
+    without a process restart, and (b) :func:`get_capabilities` is called
+    on every chat turn — the lookup needs to be O(1) without re-parsing
+    YAML each time.
+    """
+    return _load_registry()
+
+
+# ── Public API ──────────────────────────────────────────────────────────────
 
 
 def get_capabilities(model_id: str | None) -> ModelCapabilities:
-    """Return capability set for a fully-qualified provider:model string.
-
-    Lookup order:
-
-    1. Longest prefix match in :data:`_PREFIX_FALLBACKS`.
-    2. :data:`_DEFAULT`.
+    """Return capabilities for a fully-qualified ``provider:model`` string.
 
     Args:
-        model_id: e.g. ``"googlegenai:gemini-3.1-pro-preview"``, ``"openai:gpt-5"``.
-            ``None`` returns the defaults.
+        model_id: e.g. ``"openai:gpt-5"``. ``None`` or ``""`` returns
+            :data:`_DEFAULT`.
+
+    Returns:
+        The exact-match entry from ``capabilities.yaml`` if listed; the
+        all-false defaults otherwise.
     """
     if not model_id:
         return _DEFAULT
-
-    key = model_id.lower()
-
-    best_prefix = ""
-    best_caps: ModelCapabilities | None = None
-    for prefix, caps in _PREFIX_FALLBACKS:
-        if key.startswith(prefix) and len(prefix) > len(best_prefix):
-            best_prefix = prefix
-            best_caps = caps
-
-    if best_caps is not None:
-        return best_caps
-
-    return _DEFAULT
+    return _registry().get(model_id.lower(), _DEFAULT)
