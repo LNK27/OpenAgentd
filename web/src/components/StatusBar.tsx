@@ -17,9 +17,9 @@ export function StatusBar({
   usage,
 }: StatusBarProps) {
   return (
-    <div className="flex items-center justify-between border-t border-(--color-border) bg-(--bg-page) px-4 py-1 text-xs text-(--color-text-subtle)">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-(--color-border) bg-(--bg-page) px-3 py-1 text-xs text-(--color-text-subtle) sm:px-4">
       {/* Left: session ID */}
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
          {sessionId && (
            <span className="font-mono text-(--color-text-subtle)">
              {shortId(sessionId)}
@@ -51,7 +51,7 @@ export function StatusBar({
              )}
            </span>
          )}
-         <span className="text-(--color-text-subtle)">Ctrl+N new</span>
+         <span className="hidden text-(--color-text-subtle) sm:inline">Ctrl+N new</span>
        </div>
      </div>
    )
