@@ -23,7 +23,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
 import { ToolResult } from '../ToolResult'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
-import { StatusDot } from './StatusDot'
 import { getToolDisplay } from './display'
 import type { ToolCallState } from './types'
 
@@ -128,6 +127,7 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
   const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult)
   const expanded = manualExpanded ?? Boolean(shownLiveOutput)
   const displayName = name || 'tool'
+  const headerClassName = `flex-1 truncate font-mono font-semibold text-(--color-text) ${state === 'running' ? 'animate-pulse text-(--color-marker-orange)' : ''}`
 
   return (
     <div className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border)">
@@ -149,20 +149,17 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
             : `${displayName} (no details)`
         }
       >
-        <StatusDot state={state} />
-
         {/* Header content: tool-specific summary or fallback to tool name.
-            Only argument values inside the header are italicised (via <Arg>);
-            the verb/framing text stays upright. Mono+600 per pencil dqwZw. */}
+            Mono+600 per pencil dqwZw. */}
         {visibleHeader ? (
           <span
-            className="flex-1 truncate font-mono font-semibold text-(--color-text)"
+            className={headerClassName}
             title={headerTitle ?? undefined}
           >
             {visibleHeader}
           </span>
         ) : (
-          <code className="flex-1 truncate font-mono font-semibold text-(--color-text)">
+          <code className={headerClassName}>
             {displayName}
           </code>
         )}

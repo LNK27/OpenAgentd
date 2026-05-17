@@ -18,14 +18,10 @@ import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
 
 /**
- * Italicise an argument value embedded in a header.
- *
- * Only argument-like values (paths, patterns, URLs, queries, recipients)
- * should be italicised — verbs and framing text stay upright.  Using a
- * dedicated component keeps the markup consistent and easy to restyle.
+ * Keep argument values in headers easy to restyle consistently.
  */
 function Arg({ children }: { children: ReactNode }) {
-  return <em className="italic">{children}</em>
+  return <span>{children}</span>
 }
 
 /** Extract a non-empty string field from parsed args. */

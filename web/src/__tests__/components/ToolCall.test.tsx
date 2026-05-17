@@ -18,10 +18,9 @@ beforeEach(() => {
 // Test helpers
 // ---------------------------------------------------------------------------
 //
-// Header markup is `<span title="…">verb <em class="italic">arg</em></span>`.
-// Only the `<em>` is italicised; the outer span is not. These helpers find
-// the header span by its `title` attribute (which mirrors the full text) and
-// assert the italicised argument is inside an `<em>`.
+// Header markup is `<span title="…">verb <span>arg</span></span>`.
+// These helpers find the header span by its `title` attribute (which mirrors
+// the full text) and assert the argument is rendered without italics.
 
 /** Find the header span via its title tooltip (matches the full header text). */
 function getHeader(fullText: string): HTMLElement {
@@ -36,12 +35,11 @@ function getHeader(fullText: string): HTMLElement {
   throw new Error(`Header with title="${fullText}" not found`)
 }
 
-/** Assert the argument portion is inside an italicised <em> in the header. */
-function expectItalicArg(header: HTMLElement, arg: string) {
-  const em = header.querySelector("em")
-  if (!em) throw new Error(`No <em> in header (textContent="${header.textContent}")`)
-  expect(em.textContent).toBe(arg)
-  expect(em.className).toContain("italic")
+/** Assert the argument portion is present without italic markup. */
+function expectPlainArg(header: HTMLElement, arg: string) {
+  expect(header.querySelector("em")).toBeNull()
+  expect(header.textContent).toContain(arg)
+  expect(header.className).not.toContain("italic")
 }
 
 // ---------------------------------------------------------------------------
@@ -82,12 +80,11 @@ describe("ToolCall — header", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — shell display", () => {
-  it("replaces tool name with italic description when present", () => {
+  it("replaces tool name with plain description when present", () => {
     const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
     render(<ToolCall name="shell" args={args} done={false} />)
-    // Description is the whole header — wrapped in <em class="italic">.
     const header = getHeader("Run unit tests")
-    expectItalicArg(header, "Run unit tests")
+    expectPlainArg(header, "Run unit tests")
     expect(screen.queryByText("shell")).toBeNull()
   })
 
@@ -148,9 +145,9 @@ describe("ToolCall — web_search display", () => {
   it("shows conversational header with query", () => {
     const args = JSON.stringify({ query: "latest python release" })
     render(<ToolCall name="web_search" args={args} done={false} />)
-    // Verb stays upright; only the quoted query is italicised.
+    // Verb stays upright; only the quoted query is plain.
     const header = getHeader('Searching "latest python release"')
-    expectItalicArg(header, '"latest python release"')
+    expectPlainArg(header, '"latest python release"')
     expect(screen.queryByText("web_search")).toBeNull()
   })
 
@@ -172,7 +169,7 @@ describe("ToolCall — web_fetch display", () => {
     const args = JSON.stringify({ url: "https://docs.python.org/3/library/asyncio.html" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
     const header = getHeader("Reading docs.python.org")
-    expectItalicArg(header, "docs.python.org")
+    expectPlainArg(header, "docs.python.org")
     expect(screen.queryByText("web_fetch")).toBeNull()
   })
 
@@ -180,7 +177,7 @@ describe("ToolCall — web_fetch display", () => {
     const args = JSON.stringify({ url: "https://www.example.com/page" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
     const header = getHeader("Reading example.com")
-    expectItalicArg(header, "example.com")
+    expectPlainArg(header, "example.com")
   })
 
   it("shows full URL in args section", async () => {
@@ -200,7 +197,7 @@ describe("ToolCall — remember display", () => {
   it("shows conversational header", () => {
     const args = JSON.stringify({ items: [{ category: "preference", key: "style", value: "concise" }] })
     render(<ToolCall name="remember" args={args} done={false} />)
-    // Header is a plain conversational string — no italicised argument.
+    // Header is a plain conversational string — no plain argument.
     const header = getHeader("Saving to memory…")
     expect(header.textContent).toBe("Saving to memory…")
     expect(header.querySelector("em")).toBeNull()
@@ -404,13 +401,13 @@ describe("ToolCall — team_message display", () => {
   it("shows Messaging header with recipient name", () => {
     const args = JSON.stringify({ content: "task details", to: ["researcher"] })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging researcher"), "researcher")
+    expectPlainArg(getHeader("Messaging researcher"), "researcher")
   })
 
   it("shows Messaging team when to is empty", () => {
     const args = JSON.stringify({ content: "broadcast", to: [] })
     render(<ToolCall name="team_message" args={args} done={false} />)
-    expectItalicArg(getHeader("Messaging team"), "team")
+    expectPlainArg(getHeader("Messaging team"), "team")
   })
 })
 
@@ -424,7 +421,7 @@ describe("ToolCall — team_manage display", () => {
     const args = JSON.stringify({ action: "spawn", members: ["executor", "explorer"] })
     render(<ToolCall name="team_manage" args={args} done={false} />)
 
-    expectItalicArg(getHeader("Spawning executor, explorer"), "executor, explorer")
+    expectPlainArg(getHeader("Spawning executor, explorer"), "executor, explorer")
     await user.click(screen.getByRole("button"))
     expect(screen.getAllByText(/executor/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/explorer/).length).toBeGreaterThan(0)
@@ -454,7 +451,7 @@ describe("ToolCall — team_manage display", () => {
     const args = JSON.stringify({ action: "dismiss", members: ["executor#1"] })
     render(<ToolCall name="team_manage" args={args} done={false} />)
 
-    expectItalicArg(getHeader("Dismissing executor#1"), "executor#1")
+    expectPlainArg(getHeader("Dismissing executor#1"), "executor#1")
     await user.click(screen.getByRole("button"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
@@ -504,8 +501,8 @@ describe("ToolCall — skill display", () => {
   it("shows conversational header with skill name", () => {
     const args = JSON.stringify({ skill_name: "web-design-guidelines" })
     render(<ToolCall name="skill" args={args} done={false} />)
-    // Skill name is italicised inside "Loading skill: <name>".
-    expectItalicArg(
+    // Skill name is plain inside "Loading skill: <name>".
+    expectPlainArg(
       getHeader("Loading skill: web-design-guidelines"),
       "web-design-guidelines",
     )
@@ -525,7 +522,7 @@ describe("ToolCall — skill display", () => {
     const args = JSON.stringify({})
     render(<ToolCall name="skill" args={args} done={false} />)
     const header = getHeader("Loading skill…")
-    // Fallback has no argument, so no <em>/italic markup.
+    // Fallback has no argument, so no <em> markup.
     expect(header.textContent).toBe("Loading skill…")
     expect(header.querySelector("em")).toBeNull()
   })
@@ -561,13 +558,13 @@ describe("ToolCall — skill display", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — bg display", () => {
-  // Plain-string headers (no argument to italicise):
+  // Plain-string headers (no decorated argument):
   //   Listing background processes…
   //   Checking process status…
   //   Reading process output…
   //   Stopping process…
   //   Managing background process…
-  // PID-bearing headers italicise the pid only.
+  // PID-bearing headers include the pid as plain text.
 
   it("shows 'Listing background processes…' for action=list", () => {
     const args = JSON.stringify({ action: "list" })
@@ -581,7 +578,7 @@ describe("ToolCall — bg display", () => {
   it("shows 'Checking process {pid}…' for action=status with pid", () => {
     const args = JSON.stringify({ action: "status", pid: 1234 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    expectItalicArg(getHeader("Checking process 1234…"), "1234")
+    expectPlainArg(getHeader("Checking process 1234…"), "1234")
   })
 
   it("shows 'Checking process status…' for action=status without pid", () => {
@@ -595,7 +592,7 @@ describe("ToolCall — bg display", () => {
   it("shows 'Reading output of process {pid}…' for action=output with pid", () => {
     const args = JSON.stringify({ action: "output", pid: 5678 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    expectItalicArg(getHeader("Reading output of process 5678…"), "5678")
+    expectPlainArg(getHeader("Reading output of process 5678…"), "5678")
   })
 
   it("shows 'Reading process output…' for action=output without pid", () => {
@@ -609,7 +606,7 @@ describe("ToolCall — bg display", () => {
   it("shows 'Stopping process {pid}…' for action=stop with pid", () => {
     const args = JSON.stringify({ action: "stop", pid: 9999 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    expectItalicArg(getHeader("Stopping process 9999…"), "9999")
+    expectPlainArg(getHeader("Stopping process 9999…"), "9999")
   })
 
   it("shows 'Stopping process…' for action=stop without pid", () => {
@@ -663,8 +660,8 @@ describe("ToolCall — bg display", () => {
   it("handles mixed case action", () => {
     const args = JSON.stringify({ action: "Status", pid: 42 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    // Pid is italicised in status headers.
-    expectItalicArg(getHeader("Checking process 42…"), "42")
+    // Pid is plain in status headers.
+    expectPlainArg(getHeader("Checking process 42…"), "42")
   })
 
   it("is not expandable (no details to show)", () => {
