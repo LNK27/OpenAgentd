@@ -215,6 +215,41 @@ class TestWrapToolCall:
         assert "tool_end" in event_types
 
     @pytest.mark.asyncio
+    async def test_tool_output_callback_pushes_delta(self):
+        hook = _make_hook()
+        pushed = []
+
+        async def fake_push(sid, event):
+            pushed.append(event)
+
+        hook._resolver.register("shell", "queued-shell-id")
+
+        tool_call = MagicMock()
+        tool_call.id = "internal-shell-id"
+        tool_call.function = MagicMock()
+        tool_call.function.name = "shell"
+        tool_call.function.arguments = '{"command":"echo hi"}'
+        state = MagicMock()
+        state.metadata = {}
+
+        async def mock_handler(ctx, state, tc):
+            callback = state.metadata["_tool_output_callbacks"][tc.id]
+            await callback("hi\n")
+            return "[Succeeded]\n\nhi\n"
+
+        with patch("app.services.memory_stream_store.push_event", new=fake_push):
+            result = await hook.wrap_tool_call(
+                MagicMock(), state, tool_call, mock_handler
+            )
+
+        assert result == "[Succeeded]\n\nhi\n"
+        delta = next(e for e in pushed if e.event == "tool_output_delta")
+        assert delta.data["tool_call_id"] == "queued-shell-id"
+        assert delta.data["name"] == "shell"
+        assert delta.data["text"] == "hi\n"
+        assert delta.data["sequence"] == 1
+
+    @pytest.mark.asyncio
     async def test_tool_end_carries_result(self):
         hook = _make_hook()
         pushed = []

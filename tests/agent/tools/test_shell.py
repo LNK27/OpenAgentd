@@ -237,6 +237,27 @@ async def test_shell_description_parameter(sandbox_workspace):
     assert "ok" in result
 
 
+@pytest.mark.asyncio
+async def test_shell_emits_foreground_output_delta(sandbox_workspace, monkeypatch):
+    monkeypatch.setattr(
+        "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+    )
+    chunks: list[str] = []
+
+    async def capture(text: str) -> None:
+        chunks.append(text)
+
+    result = await _shell(
+        command="printf 'hello\\nworld\\n'",
+        timeout_seconds=1,
+        _tool_output=capture,
+    )
+
+    assert "[Succeeded]" in result
+    assert "hello" in "".join(chunks)
+    assert "world" in "".join(chunks)
+
+
 # ---------------------------------------------------------------------------
 # workdir parameter
 # ---------------------------------------------------------------------------

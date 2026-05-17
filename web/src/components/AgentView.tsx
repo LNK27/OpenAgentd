@@ -185,6 +185,7 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
           name={block.toolName || ''}
           args={block.toolArgs}
           done={block.toolDone}
+          liveOutput={block.toolOutput}
           result={block.toolResult}
         />
       )

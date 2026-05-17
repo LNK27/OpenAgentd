@@ -348,6 +348,7 @@ data: {"name": "web_search", "tool_call_id": "tc_abc"}
 | `message` | `{text, agent?}` | Text token delta |
 | `tool_call` | `{name, tool_call_id, agent?}` | First tool call delta arrives |
 | `tool_start` | `{name, arguments, tool_call_id, agent?}` | Full args assembled, tool about to execute |
+| `tool_output_delta` | `{name, text, stream, sequence, tool_call_id, agent?}` | Live output from a running tool. Currently emitted by foreground `shell`. |
 | `tool_end` | `{name, result, tool_call_id, agent?}` | Tool result returned |
 | `usage` | `{prompt_tokens, completion_tokens, cached_tokens?, agent?}` | End of turn |
 | `rate_limit` | `{retry_after?, attempt?, max_attempts?}` | Provider rate limit hit; if `fallback_model` is configured, agent will switch to it after exhausting primary retries |
@@ -371,16 +372,17 @@ Split-view clients should compute pane layout from currently visible, non-`offli
 ### 3-phase tool lifecycle
 
 ```
-tool_call  → signals a tool is being called (first delta, args may be partial)
-tool_start → full arguments assembled, execution begins
-tool_end   → result returned
+tool_call          → signals a tool is being called (first delta, args may be partial)
+tool_start         → full arguments assembled, execution begins
+tool_output_delta* → optional live output chunks
+tool_end           → result returned
 ```
 
 Clients should handle all three phases idempotently — reconnect replays the full event sequence.
 
 ### Reconnect-safe events
 
-The following event types are stored in the in-memory state blob and replayed on reconnect: `thinking`, `tool_call`, `tool_start`, `tool_end`, `message`, `inbox`, and `agent_status`. Events like `rate_limit` and `session` are pub/sub-only (live delivery). `agent_done` no longer exists — per-agent completion is signalled by `agent_status: idle`.
+The following event types are stored in the in-memory state blob and replayed on reconnect: `thinking`, `tool_call`, `tool_start`, `tool_end`, `message`, `inbox`, and `agent_status`. Events like `tool_output_delta`, `rate_limit`, and `session` are pub/sub-only (live delivery). `agent_done` no longer exists — per-agent completion is signalled by `agent_status: idle`.
 
 `thinking` and `message` are replayed **per agent** — the state blob stores `content` and `thinking` as `{agent_name: accumulated_text}` dicts so each agent's stream is re-emitted with the correct `agent` field after a mid-turn reconnect. `agent_status` is stored as a latest-wins `{agent_name: status}` map and replayed **before** any thinking/message events so the frontend's "working" indicator flips on before text starts arriving.
 

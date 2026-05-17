@@ -175,6 +175,7 @@ export type SSEEventType =
   | 'message'
   | 'tool_call'
   | 'tool_start'
+  | 'tool_output_delta'
   | 'tool_end'
   | 'usage'
   | 'done'
@@ -198,6 +199,7 @@ export interface ContentBlock {
   toolArgs?: string
   toolDone?: boolean
   toolCallId?: string   // for matching tool results
+  toolOutput?: string   // live output streamed before tool_end
   toolResult?: string   // the role:"tool" response content
   /** Extra metadata from DB — inbox messages carry from_agent, to_agent, etc. */
   extra?: Record<string, unknown> | null

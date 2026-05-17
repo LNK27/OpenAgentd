@@ -41,6 +41,7 @@ import os
 import signal
 import uuid
 from collections import deque
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -49,7 +50,7 @@ from pydantic import Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin import shell_runtime as _shell_mod
-from app.agent.tools.registry import Tool
+from app.agent.tools.registry import InjectedArg, Tool
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -234,6 +235,18 @@ def _resolve_workdir(workdir: str | None) -> Path:
     return (workspace / p).resolve()
 
 
+async def _emit_tool_output(
+    callback: Callable[[str], Awaitable[None]] | None,
+    text: str,
+) -> None:
+    if callback is None or not text:
+        return
+    try:
+        await callback(text)
+    except Exception:
+        pass
+
+
 # ── Foreground execute ────────────────────────────────────────────────────────
 
 
@@ -286,6 +299,10 @@ async def _shell(
             )
         ),
     ] = False,
+    _tool_output: Annotated[
+        Callable[[str], Awaitable[None]] | None,
+        InjectedArg(),
+    ] = None,
 ) -> str:
     """Run a shell command and return combined stdout+stderr.
 
@@ -399,6 +416,9 @@ async def _shell(
                         break
                     chunks.append(chunk)
                     total_bytes += len(chunk)
+                    await _emit_tool_output(
+                        _tool_output, chunk.decode("utf-8", errors="replace")
+                    )
 
         except asyncio.TimeoutError:
             _kill_process_group(proc, signal.SIGKILL)
@@ -408,6 +428,10 @@ async def _shell(
                     remaining = await proc.stdout.read()
                     if remaining:
                         chunks.append(remaining)
+                        await _emit_tool_output(
+                            _tool_output,
+                            remaining.decode("utf-8", errors="replace"),
+                        )
             except (asyncio.TimeoutError, Exception):
                 pass
             await proc.wait()

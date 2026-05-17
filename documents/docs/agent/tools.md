@@ -181,7 +181,7 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 
 #### Large output handling
 
-Foreground shell output is read incrementally while the command runs, but returned only when the command exits or times out. Large output is saved under `.openagentd/sessions/<session_id>/.shell_output/` and the tool returns a readable relative path plus the last 200 lines inline. A `<shell_metadata>` advisory block is appended on timeout.
+Foreground shell output is read incrementally while the command runs and emits live `tool_output_delta` SSE events for connected clients. The final tool result is still returned only when the command exits or times out. Large output is saved under `.openagentd/sessions/<session_id>/.shell_output/` and the tool returns a readable relative path plus the last 200 lines inline. A `<shell_metadata>` advisory block is appended on timeout.
 
 For tool result offloading (applied across all tools), `ToolResultOffloadHook` kicks in when the result string exceeds `DEFAULT_CHAR_THRESHOLD` (default 40000 chars — see `app/agent/hooks/tool_result_offload.py`). See [Tool Result Offload](hooks.md#toolresultoffloadhook).
 
@@ -426,7 +426,7 @@ Each item has these fields:
 
 For team work, spawn members before assigning their todos and use the returned concrete handle in `assigned_to` (for example, `executor#1`, not `executor` or `executor/explorer`). For dependent team work, create downstream tasks with `dependencies=["task_1"]` and keep them `pending`. Members call `claim` before starting; claims are rejected while dependencies are incomplete, assigned to another handle, or already claimed, so blocked agents do not start early. If a member is stopped or fails, unfinished todos assigned to or claimed by it are unassigned; claimed `in_progress` todos are also reset to `pending`.
 
-**Frontend:** `tool_call`, `tool_start`, and `tool_end` SSE events for `todo_manage` are suppressed in the UI — no tool block is rendered in the chat. `tool_end` still invalidates `queryKeys.todos(sessionId)`, refetching `GET /api/team/sessions/{id}/todos`. History reload (`parseTeamBlocks`) also filters out `todo_manage` tool calls so they never appear on page refresh. The **Todos** popover in the chat header (`Ctrl+T`) displays the result — see [`documents/docs/web/todos.md`](../../docs/web/todos.md).
+**Frontend:** `tool_call`, `tool_start`, `tool_output_delta`, and `tool_end` SSE events for `todo_manage` are suppressed in the UI — no tool block is rendered in the chat. `tool_end` still invalidates `queryKeys.todos(sessionId)`, refetching `GET /api/team/sessions/{id}/todos`. History reload (`parseTeamBlocks`) also filters out `todo_manage` tool calls so they never appear on page refresh. The **Todos** popover in the chat header (`Ctrl+T`) displays the result — see [`documents/docs/web/todos.md`](../../docs/web/todos.md).
 
 ### Scheduler (`builtin/schedule.py`)
 

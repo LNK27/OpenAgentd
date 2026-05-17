@@ -94,6 +94,9 @@ def make_tool_executor(
                     "_state": s,
                     "_mode": injected_mode,
                     "_workspace": injected_workspace,
+                    "_tool_output": s.metadata.get("_tool_output_callbacks", {}).get(
+                        tc.id
+                    ),
                 },
                 **args,
             )

@@ -111,6 +111,33 @@ describe("ToolCall — shell display", () => {
     render(<ToolCall name="shell" args={args} done={false} />)
     expect(screen.getByText("shell")).toBeTruthy()
   })
+
+  it("auto-expands live output before the final result arrives", () => {
+    const args = JSON.stringify({ command: "echo hi" })
+    render(<ToolCall name="shell" args={args} done={false} liveOutput={"hi\n"} />)
+
+    expect(screen.getByText("output")).toBeTruthy()
+    expect(screen.getByText("hi")).toBeTruthy()
+  })
+
+  it("does not keep auto-expanded state after final result replaces live output", () => {
+    const args = JSON.stringify({ command: "printf live" })
+    const { rerender } = render(
+      <ToolCall name="shell" args={args} done={false} liveOutput={"live-output\n"} />,
+    )
+
+    rerender(
+      <ToolCall
+        name="shell"
+        args={args}
+        done={true}
+        liveOutput={"live-output\n"}
+        result={"[Succeeded]\n\nfinal-output\n"}
+      />,
+    )
+
+    expect(screen.getAllByRole("button")[0].getAttribute("aria-expanded")).toBe("false")
+  })
 })
 
 // ---------------------------------------------------------------------------

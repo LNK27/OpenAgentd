@@ -352,7 +352,7 @@ All events carry an `agent` field to identify the source.
 | `inbox` | `TeamInboxHook.before_model()` + `_run_activation()` | `{agent, content, from_agent}` |
 | `error` | `TeamLead._on_turn_error()` | `{message, metadata: {agent, exception}}` — emitted only when the **lead** fails; member failures route through the mailbox instead |
 | `done` | `AgentTeam._try_emit_done()` | `{}` |
-| `message`, `thinking`, `tool_call`, `tool_start`, `tool_end`, `usage` | `StreamPublisherHook` | Same as single-agent, plus `agent` field |
+| `message`, `thinking`, `tool_call`, `tool_start`, `tool_output_delta`, `tool_end`, `usage` | `StreamPublisherHook` | Same as single-agent, plus `agent` field |
 
 > **Note:** `agent_done` was removed. `agent_status: idle` is the sole signal that an individual live agent has finished its turn. Dismissed members emit/render as `offline`; `done` preserves `offline` and `error` rather than reviving them. The frontend uses `agent_status` for per-agent indicators and `done` for the team-wide "all idle" state.
 >

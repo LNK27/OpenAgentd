@@ -200,7 +200,7 @@ web/src/__tests__/
 See [`documents/architecture.md`](architecture.md) for:
 - C4 context, container, component diagrams
 - In-memory SSE streaming protocol (state blob + asyncio queues)
-- 3-phase tool event lifecycle (`tool_call` → `tool_start` → `tool_end`)
+- Tool event lifecycle (`tool_call` → `tool_start` → optional `tool_output_delta` → `tool_end`)
 - Agent reasoning loop with hooks
 - Logging architecture
 

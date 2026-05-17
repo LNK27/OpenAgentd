@@ -187,6 +187,40 @@ describe("useTeamStore — todo_manage suppression and event emission", () => {
     })
   })
 
+  // ── tool_output_delta: live tool output ──────────────────────────────────
+
+  describe("tool_output_delta event", () => {
+    it("appends live output to a matching tool block", () => {
+      primeBlock("lead", "shell", "tc-shell-1", { command: "echo hi" })
+
+      useTeamStore.getState()._handleSSEEvent("tool_output_delta", {
+        agent: "lead",
+        name: "shell",
+        tool_call_id: "tc-shell-1",
+        text: "hello\n",
+      })
+      useTeamStore.getState()._handleSSEEvent("tool_output_delta", {
+        agent: "lead",
+        name: "shell",
+        tool_call_id: "tc-shell-1",
+        text: "world\n",
+      })
+
+      const block = useTeamStore.getState().agentStreams["lead"].currentBlocks[0]
+      expect(block.toolOutput).toBe("hello\nworld\n")
+    })
+
+    it("does NOT create a block for todo_manage output", () => {
+      useTeamStore.getState()._handleSSEEvent("tool_output_delta", {
+        agent: "lead",
+        name: "todo_manage",
+        tool_call_id: "tc-todo-1",
+        text: "hidden",
+      })
+      expect(useTeamStore.getState().agentStreams["lead"]).toBeUndefined()
+    })
+  })
+
   // ── tool_end: no block completion for todo_manage ──────────────────────
 
   describe("tool_end event: block completion suppression", () => {

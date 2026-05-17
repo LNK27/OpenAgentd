@@ -85,6 +85,19 @@ class ToolEndEvent(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ToolOutputDeltaEvent(BaseModel):
+    """A live output chunk emitted while a tool is still running."""
+
+    type: Literal["tool_output_delta"] = "tool_output_delta"
+    agent: str
+    tool_call_id: str | None = None
+    name: str
+    text: str
+    stream: Literal["stdout", "stderr", "combined"] = "combined"
+    sequence: int
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class UsageEvent(BaseModel):
     """Token usage for a model call or turn."""
 

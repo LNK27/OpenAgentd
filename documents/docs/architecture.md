@@ -130,7 +130,7 @@ The state blob holds **only unpersisted live content**. After `checkpointer.sync
 3. **`attach(session_id)`** — called by `GET /api/team/{session_id}/stream`. Subscribe-before-read two-phase protocol:
    - If `is_streaming=False` → return immediately (DB is authoritative).
    - Register a subscriber `asyncio.Queue` BEFORE replaying state (closes the gap window).
-   - Replay accumulated state as synthetic events in order: `agent_status` (per agent) → `thinking` (per agent) → `tool_call` / `tool_start` / `tool_end` → `message` (per agent).
+   - Replay accumulated state as synthetic events in order: `agent_status` (per agent) → `thinking` (per agent) → `tool_call` / `tool_start` / `tool_end` → `message` (per agent). Live `tool_output_delta` events are not replayed.
    - Yield live events from the queue until sentinel arrives.
 4. **`mark_done(session_id)`** — sets `is_streaming=False`, pushes sentinel to all queues. Called after the turn completes.
 
@@ -155,6 +155,7 @@ All events flow server→client. Schemas live in `app/agent/schemas/events.py`; 
 | `message` | `StreamPublisherHook.on_model_delta` | `agent`, `text` |
 | `tool_call` | `StreamPublisherHook.on_model_delta` | `agent`, `tool_call_id`, `name` — first delta, no args yet |
 | `tool_start` | `StreamPublisherHook.wrap_tool_call` | `agent`, `tool_call_id`, `name`, `arguments` — full args, execution beginning |
+| `tool_output_delta` | Running tools via injected output callback | `agent`, `tool_call_id`, `name`, `text`, `stream`, `sequence` — live-only output chunk |
 | `tool_end` | `StreamPublisherHook.wrap_tool_call` | `agent`, `tool_call_id`, `name`, `result` — execution done |
 | `usage` | `StreamPublisherHook` after each model call + `after_agent` turn total | `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `thoughts_tokens` |
 | `inbox` | `TeamInboxHook.before_model` | `agent`, `text`, `from_agent` — peer message injected into LLM context |
@@ -173,9 +174,11 @@ All events flow server→client. Schemas live in `app/agent/schemas/events.py`; 
 tool_call   ← fired from model streaming delta (first name appearance)
                → frontend shows spinner card immediately, no args
 tool_start  ← fired from wrap_tool_call BEFORE execution (full args assembled)
-               → frontend fills in args
+                → frontend fills in args
+tool_output_delta* ← optional live output while the tool runs
+                → frontend appends to the running tool card; not persisted
 tool_end    ← fired from wrap_tool_call AFTER execution
-               → frontend marks done, shows result
+                → frontend marks done, shows result
 ```
 
 `tool_call_id` is the LLM-assigned call ID (e.g. `call_f70e3244...`). It flows through all three events so the frontend can match them reliably, even when the same tool is called multiple times in parallel.

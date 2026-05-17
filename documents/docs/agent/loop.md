@@ -136,7 +136,7 @@ agent.run(messages, checkpointer=checkpointer)
     ├─ _gather_or_cancel([_run_tool(ctx, state, tc) for tc in tc_list], interrupt_event)
     │    ├─ Each tool: semaphore-bounded → tool hook chain → execute_fn
                 │    │    ├─ StreamingHook.wrap_tool_call: queue ToolStartSignal, execute, queue ToolEndSignal
-                │    │    └─ StreamPublisherHook.wrap_tool_call: push tool_start, execute, push tool_end
+                │    │    └─ StreamPublisherHook.wrap_tool_call: push tool_start, execute with optional output deltas, push tool_end
     │    └─ On interrupt mid-execution:
     │         ├─ Completed tools keep their real results
     │         ├─ Still-running tools are cancelled → ToolMessage("Cancelled by user.")

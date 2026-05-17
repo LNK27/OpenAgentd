@@ -18,7 +18,7 @@
  * this module owns only the chrome (collapse, copy, status dot, motion).
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
 import { ToolResult } from '../ToolResult'
@@ -31,6 +31,7 @@ interface ToolCallProps {
   name: string
   args?: string
   done?: boolean
+  liveOutput?: string
   result?: string // tool response content
 }
 
@@ -45,11 +46,12 @@ function isFailedResult(result: string | undefined): boolean {
   )
 }
 
-export function ToolCall({ name, args, done, result }: ToolCallProps) {
+export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
-  const [expanded, setExpanded] = useState(false)
+  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const [copiedArgs, setCopiedArgs] = useState(false)
   const [copiedResult, setCopiedResult] = useState(false)
+  const liveOutputRef = useRef<HTMLPreElement>(null)
 
   // Determine status: start (name only) → running (args) → success/failed (result)
   const isPending = args === undefined || args === null
@@ -71,6 +73,12 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
   // below, preserving the previous behaviour for every other tool.
   const visibleHeader = header
   const shownResult = suppressResult ? undefined : result
+  const shownLiveOutput = shownResult ? undefined : liveOutput
+
+  useEffect(() => {
+    const el = liveOutputRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [shownLiveOutput])
 
   const handleCopyArgs = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -96,7 +104,8 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
     }
   }
 
-  const hasDetails = Boolean(formattedArgs || shownResult)
+  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult)
+  const expanded = manualExpanded ?? Boolean(shownLiveOutput)
   const displayName = name || 'tool'
 
   return (
@@ -104,7 +113,7 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
       {/* Header row — card-padded, mono name, chevron at end */}
       <button
         type="button"
-        onClick={() => hasDetails && setExpanded((v) => !v)}
+        onClick={() => hasDetails && setManualExpanded(!expanded)}
         className={`group flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
           hasDetails
             ? 'cursor-pointer hover:bg-(--bg-key)'
@@ -189,6 +198,22 @@ export function ToolCall({ name, args, done, result }: ToolCallProps) {
                         {formattedArgs}
                       </pre>
                     )}
+                  </section>
+                )}
+
+                {shownLiveOutput && (
+                  <section className="relative">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-[10px] uppercase tracking-wider text-(--color-text-subtle)">
+                        output
+                      </span>
+                    </div>
+                    <pre
+                      ref={liveOutputRef}
+                      className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)"
+                    >
+                      {shownLiveOutput}
+                    </pre>
                   </section>
                 )}
 
