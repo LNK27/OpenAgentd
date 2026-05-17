@@ -280,12 +280,15 @@ async def test_run_dream_nothing_to_process(setup_db, _wiki_dir: Path):
 
 
 @pytest.mark.asyncio
-async def test_run_dream_processes_sessions(setup_db, _wiki_dir: Path):
-    """run_dream marks sessions as processed (infra-only mode when no dream.md)."""
+async def test_run_dream_keeps_sessions_pending_without_config(
+    setup_db, _wiki_dir: Path
+):
+    """Non-empty sessions must not be marked processed when dream cannot run."""
     from sqlmodel import select
 
     from app.core.db import async_session_factory
 
+    _remove_dream_md()
     session = ChatSession(agent_name="test-agent")
     async with async_session_factory() as db:
         db.add(session)
@@ -302,11 +305,70 @@ async def test_run_dream_processes_sessions(setup_db, _wiki_dir: Path):
 
     async with async_session_factory() as db:
         result = await run_dream(db)
-    assert result["sessions_processed"] == 1
+    assert result["sessions_processed"] == 0
+    assert result["remaining"] == 1
+    assert result["skipped"] == "no_dream_config"
 
     async with async_session_factory() as db:
         rows = (await db.exec(select(DreamLog))).all()
-    assert len(rows) == 1
+    assert len(rows) == 0
+
+
+@pytest.mark.asyncio
+async def test_run_dream_keeps_sessions_pending_without_model(
+    setup_db, _wiki_dir: Path
+):
+    """A model-less dream.md must not consume sessions without synthesis."""
+    from sqlmodel import select
+
+    from app.core.db import async_session_factory
+
+    _write_dream_md(model="")
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(SessionMessage(session_id=session.id, role="user", content="Hello!"))
+        await db.commit()
+
+    async with async_session_factory() as db:
+        result = await run_dream(db)
+
+    assert result["sessions_processed"] == 0
+    assert result["remaining"] == 1
+    assert result["skipped"] == "no_model_configured"
+    async with async_session_factory() as db:
+        rows = (await db.exec(select(DreamLog))).all()
+    assert len(rows) == 0
+
+
+@pytest.mark.asyncio
+async def test_run_dream_keeps_sessions_pending_when_agent_load_fails(
+    setup_db, _wiki_dir: Path
+):
+    """Loader failures must retry later instead of marking sessions processed."""
+    from sqlmodel import select
+
+    from app.core.db import async_session_factory
+
+    _write_dream_md(model="mock:model")
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(SessionMessage(session_id=session.id, role="user", content="Hello!"))
+        await db.commit()
+
+    with patch("app.services.dream._load_dream_agent", return_value=None):
+        async with async_session_factory() as db:
+            result = await run_dream(db)
+
+    assert result["sessions_processed"] == 0
+    assert result["remaining"] == 1
+    assert result["failed"] == 1
+    async with async_session_factory() as db:
+        rows = (await db.exec(select(DreamLog))).all()
+    assert len(rows) == 0
 
 
 # ── _load_dream_agent ─────────────────────────────────────────────────────────
@@ -620,6 +682,7 @@ async def test_run_dream_empty_sessions_not_counted_in_sessions_processed(setup_
 
     from app.core.db import async_session_factory
 
+    _remove_dream_md()
     empty_session = ChatSession(agent_name="test-agent")
     session_with_msg = ChatSession(agent_name="test-agent")
 
@@ -640,11 +703,12 @@ async def test_run_dream_empty_sessions_not_counted_in_sessions_processed(setup_
     async with async_session_factory() as db:
         result = await run_dream(db)
 
-    # The session-with-message gets processed (infra-only mode marks it).
-    assert result["sessions_processed"] == 1
+    assert result["sessions_processed"] == 0
+    assert result["remaining"] == 1
+    assert result["skipped"] == "no_dream_config"
     async with async_session_factory() as db:
         rows = (await db.exec(select(DreamLog))).all()
-    assert len(rows) == 2  # Both sessions logged
+    assert len(rows) == 1  # Only the empty session is logged
 
 
 @pytest.mark.asyncio
@@ -1407,6 +1471,12 @@ def _write_dream_md(batch_size: int = 1, model: str = "mock:model") -> None:
     )
 
 
+def _remove_dream_md() -> None:
+    from app.core.config import settings
+
+    (Path(settings.OPENAGENTD_CONFIG_DIR) / "dream.md").unlink(missing_ok=True)
+
+
 async def _make_real_session(content: str = "Hello!") -> ChatSession:
     """Helper: insert a session with one user message and return it."""
     from app.core.db import async_session_factory
@@ -1793,33 +1863,31 @@ def test_parse_dream_md_empty_body_uses_default_prompt(tmp_path: Path):
     assert cfg.system_prompt.strip() != ""
 
 
-# ── Coverage gap: infrastructure-only mode for notes ─────────────────────────
+# ── Coverage gap: missing dream config for notes ─────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_run_dream_infra_only_marks_notes_without_synthesis(
-    setup_db, _wiki_dir: Path
-):
-    """When dream.md is absent (infra-only mode), notes must be drained
-    too — not just sessions — so a stale wiki/notes/ never blocks future
-    real runs.
-    """
+async def test_run_dream_keeps_notes_pending_without_config(setup_db, _wiki_dir: Path):
+    """When dream.md is absent, notes must remain pending for a future run."""
     from sqlmodel import select
 
     from app.core.db import async_session_factory
     from app.models.chat import DreamNotesLog
 
     # NB: deliberately do NOT call _write_dream_md → dream_cfg=None.
+    _remove_dream_md()
     (_wiki_dir / "notes" / "2026-05-13.md").write_text("note", encoding="utf-8")
 
     async with async_session_factory() as db:
         result = await run_dream(db)
 
-    assert result["notes_processed"] == 1
+    assert result["notes_processed"] == 0
+    assert result["remaining"] == 1
     assert result["failed"] == 0
+    assert result["skipped"] == "no_dream_config"
     async with async_session_factory() as db:
         rows = (await db.exec(select(DreamNotesLog))).all()
-    assert "2026-05-13.md" in {r.filename for r in rows}
+    assert "2026-05-13.md" not in {r.filename for r in rows}
 
 
 # ── Coverage gap: empty-session drain interacts with real sessions ───────────

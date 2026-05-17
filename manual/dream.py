@@ -11,6 +11,8 @@ Usage:
   uv run python -m manual.dream log               # show dream_log entries
   uv run python -m manual.dream log --notes       # show dream_notes_log entries
   uv run python -m manual.dream log --all         # show both logs
+  uv run python -m manual.dream unmark --session ID  # requeue a processed session
+  uv run python -m manual.dream unmark --note FILE   # requeue a processed note
   uv run python -m manual.dream lint              # health-check wiki via API
   uv run python -m manual.dream lint --direct     # health-check wiki directly (no server)
 """
@@ -21,6 +23,7 @@ import argparse
 import asyncio
 import json
 import sys
+import uuid
 from datetime import timezone
 from typing import TYPE_CHECKING
 
@@ -272,6 +275,52 @@ async def _cmd_log_inner(
     print()
 
 
+# ── Unmark / requeue ─────────────────────────────────────────────────────────
+
+
+async def cmd_unmark(session_id: str | None, note: str | None) -> int:
+    """Remove dream log rows so selected items are processed again."""
+    try:
+        async with async_session_factory() as db:
+            removed = 0
+
+            if session_id:
+                try:
+                    sid = uuid.UUID(session_id)
+                except ValueError:
+                    print(f"Invalid session UUID: {session_id}")
+                    return 1
+                row = (
+                    await db.exec(select(DreamLog).where(DreamLog.session_id == sid))
+                ).first()
+                if row is not None:
+                    await db.delete(row)
+                    removed += 1
+                    print(f"Requeued session: {sid}")
+                else:
+                    print(f"No dream_log row for session: {sid}")
+
+            if note:
+                row = (
+                    await db.exec(select(DreamNotesLog).where(DreamNotesLog.filename == note))
+                ).first()
+                if row is not None:
+                    await db.delete(row)
+                    removed += 1
+                    print(f"Requeued note: {note}")
+                else:
+                    print(f"No dream_notes_log row for note: {note}")
+
+            if removed:
+                await db.commit()
+            return 0
+    except Exception as exc:
+        if _is_missing_tables(exc):
+            _print_missing_tables_hint()
+            return 2
+        raise
+
+
 # ── Lint ──────────────────────────────────────────────────────────────────────
 
 
@@ -360,6 +409,12 @@ def main() -> None:
     log_p.add_argument("--notes", action="store_true", help="Show notes log only")
     log_p.add_argument("--all", dest="show_all", action="store_true", help="Show both session and notes log")
 
+    unmark_p = sub.add_parser(
+        "unmark", help="Remove dream log rows so items are processed again"
+    )
+    unmark_p.add_argument("--session", help="Session UUID to requeue")
+    unmark_p.add_argument("--note", help="Note filename to requeue, e.g. 2026-05-17.md")
+
     lint_p = sub.add_parser(
         "lint", help="Run a dream-agent lint pass on the wiki"
     )
@@ -382,6 +437,10 @@ def main() -> None:
         exit_code = asyncio.run(
             cmd_log(show_sessions=show_sessions, show_notes=show_notes)
         )
+    elif args.cmd == "unmark":
+        if not args.session and not args.note:
+            p.error("unmark requires --session and/or --note")
+        exit_code = asyncio.run(cmd_unmark(args.session, args.note))
     elif args.cmd == "lint":
         exit_code = asyncio.run(cmd_lint(base_url=args.base, direct=args.direct))
 

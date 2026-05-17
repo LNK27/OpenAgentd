@@ -218,6 +218,14 @@ export function DreamSettingsPage() {
   const handleRunNow = async () => {
     try {
       const result = await dreamMut.mutateAsync()
+      if (result.skipped) {
+        push({
+          tone: 'info',
+          title: 'Dream skipped',
+          description: `${result.skipped}. ${result.remaining} pending.`,
+        })
+        return
+      }
       push({
         tone: 'success',
         title: 'Dream run complete',

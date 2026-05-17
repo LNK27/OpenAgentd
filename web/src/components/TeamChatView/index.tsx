@@ -256,6 +256,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const handleDreamRun = useCallback(() => {
     dreamMutation.mutate(undefined, {
       onSuccess: (result) => {
+        if (result.skipped) {
+          pushToast({
+            tone: 'info',
+            title: 'Dream skipped',
+            description: `${result.skipped}. ${result.remaining} pending.`,
+          })
+          return
+        }
         const { sessions_processed, notes_processed, remaining } = result
         const processed = sessions_processed + notes_processed
         pushToast({

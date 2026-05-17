@@ -401,7 +401,13 @@ export async function putDreamConfig(content: string): Promise<DreamConfig> {
   return res.json()
 }
 
-export async function triggerDreamRun(): Promise<{ sessions_processed: number; notes_processed: number; remaining: number }> {
+export async function triggerDreamRun(): Promise<{
+  sessions_processed: number
+  notes_processed: number
+  remaining: number
+  failed: number
+  skipped?: string
+}> {
   const res = await fetch(`${API}/dream/run`, { method: 'POST' })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')

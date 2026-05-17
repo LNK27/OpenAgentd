@@ -156,7 +156,7 @@ Paths are relative to `OPENAGENTD_WIKI_DIR`. See [`agent/memory.md`](../agent/me
 |--------|------|---------|
 | `GET` | `/api/dream/config` | `{content, exists}` — raw `dream.md` content |
 | `PUT` | `/api/dream/config` | `{content, exists}` — overwrite `dream.md` and reload the scheduler |
-| `POST` | `/api/dream/run` | `{sessions_processed, notes_processed, remaining}` — trigger dream synthesis immediately |
+| `POST` | `/api/dream/run` | `{sessions_processed, notes_processed, remaining, failed, skipped?}` — trigger dream synthesis immediately; `skipped` is present when dream is not configured and pending items were preserved |
 
 ## Scheduler endpoints
 
