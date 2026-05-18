@@ -498,3 +498,75 @@ describe("_handleSSEEvent: title_update", () => {
     expect(s.agentStreams.lead.blocks[0].content).toBe("old");
   });
 });
+
+// ── _handleSSEEvent: summarization ────────────────────────────────────────────
+
+describe("_handleSSEEvent: summarization", () => {
+  it("summarization_start appends a compacting block to the agent's currentBlocks", () => {
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("compaction");
+    expect(blocks[0].extra?.state).toBe("compacting");
+  });
+
+  it("summarization_content streams text onto the trailing compacting block", () => {
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "Hello " });
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "world." });
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    expect(blocks[0].content).toBe("Hello world.");
+    expect(blocks[0].extra?.state).toBe("compacting");
+  });
+
+  it("summarization_end flips the block to compacted and uses the final summary", () => {
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "partial" });
+    useTeamStore.getState()._handleSSEEvent("summarization_end", {
+      agent: "lead",
+      summary: "final summary",
+    });
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].extra?.state).toBe("compacted");
+    expect(blocks[0].content).toBe("final summary");
+  });
+
+  it("summarization_end with metadata.error sets the error flag", () => {
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    useTeamStore.getState()._handleSSEEvent("summarization_end", {
+      agent: "lead",
+      summary: "",
+      metadata: { error: true },
+    });
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    expect(blocks[0].extra?.state).toBe("compacted");
+    expect(blocks[0].extra?.error).toBe(true);
+  });
+
+  it("re-emitted summarization_start during replay does not duplicate the block", () => {
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "halfway" });
+    // Reconnect replay re-emits start — must not append a fresh block.
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toBe("halfway");
+  });
+
+  it("compaction blocks flush to blocks on done so they persist across the turn", () => {
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    useTeamStore.getState()._handleSSEEvent("summarization_end", { agent: "lead", summary: "done" });
+    useTeamStore.getState()._handleSSEEvent("done", {});
+    const stream = useTeamStore.getState().agentStreams.lead;
+    expect(stream.currentBlocks).toHaveLength(0);
+    expect(stream.blocks).toHaveLength(1);
+    expect(stream.blocks[0].type).toBe("compaction");
+    expect(stream.blocks[0].extra?.state).toBe("compacted");
+  });
+
+  it("ignores events with empty agent", () => {
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "" });
+    expect(useTeamStore.getState().agentStreams).toEqual({});
+  });
+});

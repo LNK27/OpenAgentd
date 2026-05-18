@@ -122,9 +122,18 @@ describe("parseTeamBlocks", () => {
     expect(blocks[0].content).toBe("let me think");
   });
 
-  it("skips summary messages", () => {
-    const msgs = [makeMsg({ is_summary: true, role: "assistant", content: "summary text" })];
-    expect(parseTeamBlocks(msgs)).toHaveLength(0);
+  it("renders summary messages as compaction divider blocks", () => {
+    const msgs = [makeMsg({
+      is_summary: true,
+      role: "assistant",
+      content: "[Summary of earlier conversation]\nthe gist",
+    })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("compaction");
+    expect(blocks[0].extra?.state).toBe("compacted");
+    // Backend's "[Summary of earlier conversation]\n" prefix is stripped for display.
+    expect(blocks[0].content).toBe("the gist");
   });
 
   it("shows hidden messages (user sees full history)", () => {
@@ -232,9 +241,18 @@ describe("parseApiMessages", () => {
     expect(toolBlock?.toolResult).toBe("result!");
   });
 
-  it("skips summary messages", () => {
-    const msgs = [makeMsg({ is_summary: true, role: "assistant", content: "summary" })];
-    expect(parseApiMessages(msgs)).toHaveLength(0);
+  it("renders summary messages as a compaction divider assistant message", () => {
+    const msgs = [makeMsg({
+      is_summary: true,
+      role: "assistant",
+      content: "[Summary of earlier conversation]\nshort summary",
+    })];
+    const result = parseApiMessages(msgs);
+    expect(result).toHaveLength(1);
+    expect(result[0].blocks).toHaveLength(1);
+    expect(result[0].blocks[0].type).toBe("compaction");
+    expect(result[0].blocks[0].extra?.state).toBe("compacted");
+    expect(result[0].blocks[0].content).toBe("short summary");
   });
 
   it("extracts usage from extra field", () => {

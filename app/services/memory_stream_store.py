@@ -19,6 +19,9 @@ from loguru import logger
 from app.agent.schemas.events import (
     AgentStatusEvent,
     MessageEvent,
+    SummarizationContentEvent,
+    SummarizationEndEvent,
+    SummarizationStartEvent,
     ThinkingEvent,
     ToolCallEvent,
     ToolEndEvent,
@@ -42,6 +45,7 @@ class _TurnState:
         "thinking",
         "tool_calls",
         "agent_statuses",
+        "summarization",
         "usage",
         "error",
         "subscribers",
@@ -62,6 +66,13 @@ class _TurnState:
         # isTeamWorking flag would stay false even while tokens were still
         # streaming in. Overwritten per event so only the latest sticks.
         self.agent_statuses: dict[str, str] = {}
+        # Me in-flight summarisation state per agent.  Carries the streaming
+        # summary text and a done flag so a mid-compaction reconnect can
+        # rebuild the "Session compacting" divider with the right state.
+        # Cleared on a fresh ``init_turn`` (next turn) — the assistant
+        # message persistence path doesn't apply here because summaries are
+        # stored as DB rows and rehydrated separately on session load.
+        self.summarization: dict[str, dict[str, Any]] = {}
         self.usage: dict | None = None
         self.error: str | None = None
         # Me keep list of queues — one per SSE client
@@ -183,6 +194,41 @@ async def push_event(session_id: str, envelope: StreamEnvelope) -> None:
             status = data.get("status", "")
             if agent and status:
                 state.agent_statuses[agent] = status
+
+        elif event_type == "summarization_start":
+            agent = envelope.agent
+            if agent:
+                state.summarization[agent] = {
+                    "text": "",
+                    "done": False,
+                    "error": False,
+                }
+
+        elif event_type == "summarization_content":
+            agent = envelope.agent
+            text = data.get("text", "")
+            if agent and text:
+                entry = state.summarization.setdefault(
+                    agent, {"text": "", "done": False, "error": False}
+                )
+                entry["text"] = entry.get("text", "") + text
+
+        elif event_type == "summarization_end":
+            agent = envelope.agent
+            if agent:
+                entry = state.summarization.setdefault(
+                    agent, {"text": "", "done": False, "error": False}
+                )
+                # Final summary text supersedes accumulated deltas — the
+                # ``end`` payload is authoritative (it carries the trimmed
+                # full summary that was actually persisted).
+                summary = data.get("summary", "")
+                if summary:
+                    entry["text"] = summary
+                entry["done"] = True
+                meta = data.get("metadata") or {}
+                if isinstance(meta, dict) and meta.get("error"):
+                    entry["error"] = True
 
         # Me refresh TTL on every write
         _schedule_cleanup(session_id, state)
@@ -350,6 +396,32 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
                         ),
                     )
                 ).to_wire()
+
+            # Me replay summarisation state so a mid-compaction reconnect
+            # shows the divider in its current state.  We replay as a
+            # ``start`` + (optional accumulated ``content``) + (optional
+            # ``end``) sequence — the frontend reducer treats each as
+            # idempotent state transitions, so even a fully-completed
+            # compaction re-arrives cleanly.
+            for agent, entry in state.summarization.items():
+                if not agent:
+                    continue
+                yield StreamEnvelope.from_event(
+                    SummarizationStartEvent(agent=agent)
+                ).to_wire()
+                text = entry.get("text", "")
+                if text and not entry.get("done"):
+                    yield StreamEnvelope.from_event(
+                        SummarizationContentEvent(agent=agent, text=text)
+                    ).to_wire()
+                if entry.get("done"):
+                    yield StreamEnvelope.from_event(
+                        SummarizationEndEvent(
+                            agent=agent,
+                            summary=text,
+                            metadata={"error": True} if entry.get("error") else {},
+                        )
+                    ).to_wire()
 
             # Me replay accumulated thinking per-agent so the frontend can
             # route each chunk to the correct agent panel. A single empty-

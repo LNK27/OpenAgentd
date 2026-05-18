@@ -178,3 +178,85 @@ export function appendToolOutput(
 
   return blocks
 }
+
+/** Read ``state`` off a ``compaction`` block's ``extra`` bag. */
+function getCompactionState(block: ContentBlock): 'compacting' | 'compacted' | null {
+  if (block.type !== 'compaction') return null
+  const state = block.extra?.state
+  return state === 'compacting' || state === 'compacted' ? state : null
+}
+
+/** summarization_start — append a fresh "compacting" divider block, or
+ *  re-use the trailing one if it's still in the ``compacting`` state.
+ *  Idempotent against reconnect replay (the backend re-emits ``start``
+ *  whenever a subscriber attaches mid-compaction). */
+export function startCompaction(blocks: ContentBlock[]): ContentBlock[] {
+  const last = blocks[blocks.length - 1]
+  if (last && getCompactionState(last) === 'compacting') {
+    // Reconnect replay — block already exists, leave it alone.
+    return blocks
+  }
+  return [
+    ...blocks,
+    {
+      id: generateBlockId(),
+      type: 'compaction',
+      content: '',
+      extra: { state: 'compacting' },
+    },
+  ]
+}
+
+/** summarization_content — append streaming summary text onto the most
+ *  recent ``compacting`` block. If no such block exists (events out of
+ *  order), drop the chunk silently. */
+export function appendCompactionContent(
+  blocks: ContentBlock[],
+  text: string,
+): ContentBlock[] {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]
+    if (getCompactionState(block) === 'compacting') {
+      const result = [...blocks]
+      result[i] = { ...block, content: block.content + text }
+      return result
+    }
+  }
+  return blocks
+}
+
+/** summarization_end — flip the trailing ``compacting`` block to
+ *  ``compacted`` and overwrite its content with the final summary text
+ *  (which supersedes any accumulated deltas). Creates a fresh block if
+ *  one doesn't exist (defensive — e.g. on cold reconnect after end). */
+export function endCompaction(
+  blocks: ContentBlock[],
+  summary: string,
+  error: boolean,
+): ContentBlock[] {
+  const extra: Record<string, unknown> = { state: 'compacted' }
+  if (error) extra.error = true
+
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]
+    if (getCompactionState(block) === 'compacting') {
+      const result = [...blocks]
+      result[i] = {
+        ...block,
+        content: summary || block.content,
+        extra,
+      }
+      return result
+    }
+  }
+  // No in-flight block — synthesize a completed one so the divider still renders.
+  return [
+    ...blocks,
+    {
+      id: generateBlockId(),
+      type: 'compaction',
+      content: summary,
+      extra,
+    },
+  ]
+}

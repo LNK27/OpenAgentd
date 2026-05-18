@@ -23,6 +23,7 @@ import { ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { InboxBubble } from './InboxBubble'
+import { CompactionDivider } from './CompactionDivider'
 import { StreamingCursor } from './motion'
 import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
@@ -182,6 +183,11 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
+    case 'compaction': {
+      const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
+      const error = Boolean(block.extra?.error)
+      return <CompactionDivider state={state} error={error} />
+    }
     case 'tool':
       return (
         <ToolCall
