@@ -126,9 +126,13 @@ class TestLoadSkill:
 
     @pytest.mark.asyncio
     async def test_load_skill_dir_missing(self, tmp_path, monkeypatch):
+        # Multi-root discovery means the "no roots" message is only
+        # produced when *every* root is absent. Force all four to point
+        # under tmp_path so the developer's real opencode-global library
+        # doesn't leak in.
+        gone = tmp_path / "gone"
         monkeypatch.setattr(
-            "app.agent.tools.builtin.skill._SKILLS_DIR",
-            tmp_path / "gone",
+            "app.agent.tools.builtin.skill._iter_skill_roots", lambda: [gone]
         )
         result = await load_skill("anything")
         assert "Skills directory not found" in result
@@ -233,3 +237,113 @@ class TestTokenSubstitution:
 
         body = await load_skill("demo")
         assert body == body_text
+
+
+# ---------------------------------------------------------------------------
+# Multi-root discovery (project/global × openagentd/opencode)
+#
+# Skills are discovered from four roots in this precedence order:
+#   1. {cwd}/.openagentd/skills/
+#   2. {cwd}/.opencode/skills/
+#   3. _SKILLS_DIR  (openagentd global, typically {CONFIG_DIR}/skills)
+#   4. ~/.config/opencode/skills/
+#
+# We isolate every root under tmp_path by patching ``_iter_skill_roots``
+# so the developer's real ``~/.config/opencode/skills/`` doesn't leak in.
+# ---------------------------------------------------------------------------
+
+
+class TestMultiRootDiscovery:
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        from app.agent.tools.builtin.skill import _discover_skills_cached
+
+        _discover_skills_cached.cache_clear()
+        yield
+        _discover_skills_cached.cache_clear()
+
+    @pytest.fixture
+    def roots(self, tmp_path, monkeypatch):
+        """Patch ``_iter_skill_roots`` to a fresh four-root layout under tmp_path."""
+        project_oad = tmp_path / "proj" / ".openagentd" / "skills"
+        project_oc = tmp_path / "proj" / ".opencode" / "skills"
+        global_oad = tmp_path / "config" / "skills"
+        global_oc = tmp_path / "home" / ".config" / "opencode" / "skills"
+        ordered = [project_oad, project_oc, global_oad, global_oc]
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.skill._iter_skill_roots", lambda: ordered
+        )
+        return ordered
+
+    def _write_skill(self, root, name, description, body):
+        d = root / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: {description}\n---\n{body}"
+        )
+
+    def test_opencode_global_skill_discovered(self, roots):
+        _project_oad, _project_oc, _global_oad, global_oc = roots
+        self._write_skill(global_oc, "research", "From opencode", "Body.")
+
+        result = discover_skills()
+
+        assert "research" in result
+        assert result["research"]["description"] == "From opencode"
+
+    def test_precedence_openagentd_wins_over_opencode_on_collision(self, roots):
+        project_oad, _project_oc, _global_oad, global_oc = roots
+        self._write_skill(global_oc, "research", "opencode", "opencode body")
+        self._write_skill(project_oad, "research", "openagentd", "openagentd body")
+
+        result = discover_skills()
+
+        assert result["research"]["description"] == "openagentd"
+        assert result["research"]["file"] == "research/SKILL.md"
+        # The winning ``dir`` must point at the openagentd-project copy.
+        assert str(project_oad / "research") == result["research"]["dir"]
+
+    def test_skills_from_all_roots_merged(self, roots):
+        project_oad, project_oc, global_oad, global_oc = roots
+        self._write_skill(project_oad, "alpha", "a", "ab")
+        self._write_skill(project_oc, "beta", "b", "bb")
+        self._write_skill(global_oad, "gamma", "g", "gb")
+        self._write_skill(global_oc, "delta", "d", "db")
+
+        result = discover_skills()
+
+        assert set(result.keys()) == {"alpha", "beta", "gamma", "delta"}
+
+    @pytest.mark.asyncio
+    async def test_load_skill_finds_opencode_skill(self, roots):
+        _project_oad, _project_oc, _global_oad, global_oc = roots
+        self._write_skill(global_oc, "research", "x", "Opencode body.")
+
+        body = await load_skill("research")
+
+        assert body == "Opencode body."
+
+    @pytest.mark.asyncio
+    async def test_load_skill_precedence_openagentd_wins(self, roots):
+        project_oad, _project_oc, _global_oad, global_oc = roots
+        self._write_skill(global_oc, "research", "x", "Opencode body.")
+        self._write_skill(project_oad, "research", "x", "Openagentd body.")
+
+        body = await load_skill("research")
+
+        assert body == "Openagentd body."
+
+    def test_cache_invalidates_when_opencode_root_changes(self, roots):
+        _project_oad, _project_oc, _global_oad, global_oc = roots
+        self._write_skill(global_oc, "alpha", "a", "ab")
+        first = discover_skills()
+        assert set(first.keys()) == {"alpha"}
+
+        # Adding a skill to the opencode-global root must invalidate the
+        # cache. We use ``write_text`` after a fresh mkdir to guarantee a
+        # different signature; the directory mtime alone might tie at the
+        # nanosecond on some filesystems.
+        self._write_skill(global_oc, "beta", "b", "bb")
+        second = discover_skills()
+
+        assert set(second.keys()) == {"alpha", "beta"}
