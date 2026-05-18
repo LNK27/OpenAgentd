@@ -173,7 +173,9 @@ class TestHandleContinuePreconditions:
         assert "not an assistant message" in exc_info.value.reason.lower()
 
     @pytest.mark.asyncio
-    async def test_rejects_when_last_assistant_has_tool_calls(self, lead_only_team):
+    async def test_heals_last_assistant_tool_calls_before_continue(
+        self, lead_only_team, monkeypatch
+    ):
         sid = uuid.uuid7()
         await _seed_session(sid)
         await _seed_message(sid, role="user", content="run shell")
@@ -189,10 +191,31 @@ class TestHandleContinuePreconditions:
                 }
             ],
         )
-        with pytest.raises(ContinuePreconditionError) as exc_info:
-            await lead_only_team.handle_continue(str(sid))
-        assert exc_info.value.status == 409
-        assert "tool call" in exc_info.value.reason.lower()
+
+        monkeypatch.setattr(
+            lead_only_team.lead, "activate_for_continuation", lambda: None
+        )
+
+        returned = await lead_only_team.handle_continue(str(sid))
+
+        assert returned == str(sid)
+        import app.core.db as _db
+
+        async with _db.async_session_factory() as db:
+            rows = (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sid)
+                    .order_by(col(SessionMessage.created_at))
+                )
+            ).all()
+
+        assert [row.role for row in rows] == ["user", "assistant", "tool", "user"]
+        assert rows[2].tool_call_id == "call_1"
+        assert rows[2].content == (
+            "Tool execution was interrupted before a result could be recorded."
+        )
+        assert rows[-1].content == CONTINUATION_DIRECTIVE
 
     @pytest.mark.asyncio
     async def test_allows_when_tail_is_matching_tool_result(

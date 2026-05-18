@@ -321,6 +321,7 @@ Accepts `application/json`. Runs a control operation against an existing session
 Resume the prior assistant turn — useful after the user pressed Stop or the server restarted mid-stream.
 
 - The command persists a short hidden `HumanMessage` directive before activation. It tells the model to continue exactly where the prior response stopped, is hidden from UI history and summarization, and remains in LLM context so persisted history matches the provider payload for prompt-cache consistency.
+- If the previous assistant turn stopped during tool execution, unresolved tool calls are completed with synthetic interrupted tool results before continuation.
 - The new assistant row is flagged with `extra["is_continuation"] = true` so the UI can render it tight against the prior bubble.
 - The directive never appears in the frontend's history view.
 
@@ -331,7 +332,6 @@ Returns 409 (`{"detail": "..."}`) when continuation is not meaningful:
 - **Session belongs to '<name>', not '<lead>'.** — ownership guard.
 - **Session has no messages to continue from.** — empty session.
 - **Last message is not an assistant message — nothing to continue. Send a new message instead.** — last visible row is a user/tool message.
-- **Last assistant message is mid tool call — cannot safely continue.** — partial JSON args; resubmit the original turn instead.
 - **Last assistant message has no content — nothing to continue.** — e.g. interrupted before any content tokens arrived; resubmit the original turn.
 - **Cannot continue while <lead> is working — wait for the turn to finish.** — concurrent `/continue` requests; the working-state guard is atomic inside `activate_for_continuation`.
 

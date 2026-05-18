@@ -532,6 +532,9 @@ class AgentTeam:
                 raise ContinuePreconditionError(
                     f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
                 )
+            healed = await heal_orphaned_tool_calls(db, lead_uuid)
+            if healed:
+                await db.commit()
             messages = await get_messages_for_llm(db, lead_uuid)
             if _is_interrupted_thinking_only_tail(messages):
                 tail = messages[-1]
