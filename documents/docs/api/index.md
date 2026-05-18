@@ -296,11 +296,46 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 - `message` must be absent.
 - Returns `{"status": "interrupted", "session_id": "..."}` with HTTP 200.
 - The agent loop breaks mid-stream; the checkpointer has already saved partial output. Completed tools keep their real results; still-running tools return `"Cancelled by user."`.
+- The interrupted assistant row is stamped with `extra["interrupted"] = true` (invisible to the LLM, available to UI/audit) — content itself is left intact.
 - The SSE stream emits a final `done` event with `cancelled: true` in metadata:
   ```json
   { "type": "done", "metadata": { "cancelled": true } }
   ```
   Clients should reload the session from `GET /api/team/sessions/{id}` on receiving this event.
+
+---
+
+## POST /api/team/commands — slash-command dispatch
+
+Accepts `application/json`. Runs a control operation against an existing session — no new user message is persisted. The agent loop runs against the existing DB history and streams via the standard `GET /api/team/{session_id}/stream` endpoint.
+
+### Body
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `command` | `"continue"` | The only command currently supported. |
+| `session_id` | string | Existing team-lead session id. |
+
+### `command: "continue"`
+
+Resume the prior assistant turn — useful after the user pressed Stop or the server restarted mid-stream.
+
+- The agent loop loads the session's existing history (ending in the prior assistant message), appends a short ephemeral `HumanMessage` directive (`"Your previous response was interrupted… Continue from exactly where it stopped…"`) for the **first model call only**, and streams the continuation.
+- The new assistant row is flagged with `extra["is_continuation"] = true` so the UI can render it tight against the prior bubble.
+- The ephemeral directive is never persisted to DB and never appears in the frontend's history view.
+
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "continue"}`. Subscribe to `GET /api/team/{session_id}/stream` for the SSE feed.
+
+Returns 409 (`{"detail": "..."}`) when continuation is not meaningful:
+- **Session not found.**
+- **Session belongs to '<name>', not '<lead>'.** — ownership guard.
+- **Session has no messages to continue from.** — empty session.
+- **Last message is not an assistant message — nothing to continue. Send a new message instead.** — last visible row is a user/tool message.
+- **Last assistant message is mid tool call — cannot safely continue.** — partial JSON args; resubmit the original turn instead.
+- **Last assistant message has no content — nothing to continue.** — e.g. interrupted before any content tokens arrived; resubmit the original turn.
+- **Cannot continue while <lead> is working — wait for the turn to finish.** — concurrent `/continue` requests; the working-state guard is atomic inside `activate_for_continuation`.
+
+Returns 422 for unknown commands (rejected by the `Literal["continue"]` validator before any handler runs).
 
 ---
 

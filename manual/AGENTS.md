@@ -20,6 +20,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `team_sse.py` | Capture + pretty-print every SSE event from a team turn, including lifecycle states (`idle`, `working`, `offline`, `error`) | `--session ID`, `--wait N`, `--out FILE`, `--no-summary` |
 | `team_spawn.py` | Drive a turn that exercises `team_manage` spawn/dismiss; snapshots `/team/agents`, streams per-agent content, prints spawn/dismiss and lifecycle timelines | `--message TEXT`, `--session ID`, `--wait N`, `--out FILE`, `--no-color`, `--no-history` |
 | `team_roster_lifecycle.py` | Verify fresh sessions do not carry member rosters and stop moves running members to `offline` | `--base URL`, `--wait N` |
+| `continue_smoketest.py` | End-to-end test of `/continue`: send long prompt, wait, interrupt, inspect truncated assistant row, dispatch `/continue`, stream resumption inline, print final history | `--wait-before-stop N`, `--wait N`, `--base URL` |
 
 ```bash
 # New team turn
@@ -48,6 +49,10 @@ uv run python -m manual.team_spawn --out .openagentd/spawn.jsonl       # also sa
 
 # Smoke-test per-session roster isolation and stop/offline lifecycle
 uv run python -m manual.team_roster_lifecycle
+
+# End-to-end /continue smoke test: send → stop → /continue → stream → history
+uv run python -m manual.continue_smoketest
+uv run python -m manual.continue_smoketest --wait-before-stop 5     # later stop
 ```
 
 ---

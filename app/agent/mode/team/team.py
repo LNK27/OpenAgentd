@@ -29,18 +29,27 @@ from loguru import logger
 from sqlmodel import col, select
 
 from app.agent.mode.team.mailbox import Message, TeamMailbox
-from app.agent.mode.team.member import TeamLead, TeamMember, TeamMemberBase
+from app.agent.mode.team.member import (
+    AlreadyWorkingError,
+    TeamLead,
+    TeamMember,
+    TeamMemberBase,
+)
 from app.agent.mode.team.manage import make_team_configure_tool, make_team_manage_tool
 from app.agent.mode.team.tools import make_team_message_tool
 from app.agent.multimodal import build_parts_from_metas
-from app.agent.schemas.chat import HumanMessage
+from app.agent.schemas.chat import AssistantMessage, HumanMessage
 from app.agent.schemas.events import DoneEvent
 from app.agent.tools.registry import Tool
 from app.core.db import DbFactory, resolve_db_factory
 from app.models.chat import ChatSession
 from app.services import memory_stream_store as stream_store
 from app.services.stream_envelope import StreamEnvelope
-from app.services.chat_service import heal_orphaned_tool_calls, save_message
+from app.services.chat_service import (
+    get_messages_for_llm,
+    heal_orphaned_tool_calls,
+    save_message,
+)
 
 if TYPE_CHECKING:
     from app.agent.providers.factory import ProviderFactory
@@ -92,6 +101,21 @@ def parse_instance_handle(handle: str) -> tuple[str, int] | None:
 def make_instance_handle(blueprint: str, n: int) -> str:
     """Format an instance handle from a blueprint name + counter."""
     return f"{blueprint}#{n}"
+
+
+class ContinuePreconditionError(Exception):
+    """Raised when ``/continue`` is requested on a session that can't be continued.
+
+    Carries a ``reason`` (human-readable, surfaced to the user) and an HTTP
+    ``status`` so the route layer can map straight to a response.  All
+    precondition failures use 409 (Conflict) — the session exists but is in
+    a state where continuation is not meaningful.
+    """
+
+    def __init__(self, reason: str, *, status: int = 409) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.status = status
 
 
 def _truncate_hint(text: str, *, limit: int = 80) -> str:
@@ -433,6 +457,107 @@ class AgentTeam:
         )
         await self.mailbox.send(to=self.lead.name, message=msg)
 
+        return session_id
+
+    async def handle_continue(self, session_id: str) -> str:
+        """Continue the prior assistant turn on *session_id* — no new user message.
+
+        Runs the agent against the existing DB history verbatim.  The provider
+        sees a trailing assistant message and continues from there; the
+        resulting first assistant row is flagged ``extra["is_continuation"]``.
+
+        Preconditions (all raise :class:`ContinuePreconditionError`, HTTP 409):
+
+        * Session must exist and belong to the lead.
+        * Lead must not already be working.
+        * Last visible message must be an :class:`AssistantMessage` with
+          non-empty content and no pending ``tool_calls`` (continuing a
+          half-emitted tool call is unsafe — partial JSON args).
+
+        Returns the session_id.  Caller subscribes to
+        ``GET /team/stream/{session_id}`` for the SSE feed.
+        """
+        try:
+            lead_uuid = UUID(session_id)
+        except ValueError as exc:
+            raise ContinuePreconditionError("Invalid session id.") from exc
+
+        # Validate session + load history BEFORE any side effects (no
+        # _ensure_db_session, no roster realign) so that 409s leave the
+        # team object untouched.  We deliberately use
+        # ``get_messages_for_llm`` rather than ``get_messages`` because that
+        # is the exact view the agent loop will pass to the LLM — if the
+        # session has been auto-compacted such that the LLM-facing tail is
+        # a summary row rather than an assistant turn, the precondition
+        # must reject regardless of what the broader visible history says.
+        db_factory = resolve_db_factory(self.lead.db_factory)
+        async with db_factory() as db:
+            row = await db.get(ChatSession, lead_uuid)
+            if row is None:
+                raise ContinuePreconditionError("Session not found.")
+            # Session-ownership guard — refuse to continue a session that
+            # belongs to a different agent.  Older rows may have
+            # ``agent_name`` unset; allow those (back-compat).
+            if row.agent_name and row.agent_name != self.lead.name:
+                raise ContinuePreconditionError(
+                    f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
+                )
+            messages = await get_messages_for_llm(db, lead_uuid)
+
+        if not messages:
+            raise ContinuePreconditionError("Session has no messages to continue from.")
+
+        last = messages[-1]
+        if not isinstance(last, AssistantMessage):
+            raise ContinuePreconditionError(
+                "Last message is not an assistant message — nothing to continue. "
+                "Send a new message instead."
+            )
+        if last.tool_calls:
+            raise ContinuePreconditionError(
+                "Last assistant message is mid tool call — cannot safely continue."
+            )
+        if not (last.content and last.content.strip()):
+            raise ContinuePreconditionError(
+                "Last assistant message has no content — nothing to continue."
+            )
+
+        # Preconditions satisfied — now realign the lead onto this session.
+        is_new_session = self.lead.session_id != session_id
+        if is_new_session:
+            self.lead.session_id = session_id
+            for bp in self.blueprints.values():
+                bp.counter_reconciled_for = None
+            self._restorable_index = {}
+            await self._restore_or_drop_members_for_lead(session_id)
+
+        # Init the SSE stream blob synchronously so client GETs after this
+        # find the bucket in place (same contract as handle_user_message).
+        try:
+            await stream_store.init_turn(session_id)
+        except Exception as exc:
+            logger.warning("team_init_turn_failed error={}", exc)
+
+        self._has_active_turn = True
+
+        try:
+            await self.refresh_restorable_index()
+        except Exception as exc:
+            logger.warning("team_restorable_index_prerefresh_failed error={}", exc)
+
+        logger.info(
+            "team_continue_dispatched session_id={} agent={}",
+            session_id,
+            self.lead.name,
+        )
+
+        # Activation enforces the working-state guard atomically — translate
+        # its error to our precondition type so the route layer can map it
+        # to a 409 like every other precondition violation.
+        try:
+            self.lead.activate_for_continuation()
+        except AlreadyWorkingError as exc:
+            raise ContinuePreconditionError(str(exc)) from exc
         return session_id
 
     async def _restore_or_drop_members_for_lead(self, lead_session_id: str) -> None:
