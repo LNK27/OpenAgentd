@@ -3,10 +3,11 @@ import { generateBlockId } from './blocks'
 
 // Me sort messages by timestamp asc, assistant before tool on ties
 
-/** Strip the backend's ``[Summary of earlier conversation]\n`` prefix from a
- *  summary message body before rendering. The prefix is an internal LLM
- *  marker (see ``app/agent/hooks/summarization.py``) and adds no value in
- *  the UI divider. */
+/** Legacy-row guard: pre-2026-05 summary rows had a hardcoded
+ *  ``[Summary of earlier conversation]\n`` prefix on the body. The hook
+ *  no longer emits it (see ``app/agent/hooks/summarization.py``) but
+ *  old sessions still carry it — strip on read so the UI divider stays
+ *  clean across legacy + new rows. */
 function stripCompactionPrefix(content: string): string {
   const prefix = '[Summary of earlier conversation]\n'
   return content.startsWith(prefix) ? content.slice(prefix.length) : content

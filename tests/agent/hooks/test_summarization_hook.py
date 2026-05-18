@@ -12,7 +12,13 @@ import pytest
 
 from app.agent.state import AgentState, RunContext, UsageInfo
 from app.agent.hooks.summarization import SummarizationHook
-from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    FunctionCall,
+    HumanMessage,
+    ToolCall,
+    ToolMessage,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1195,3 +1201,103 @@ async def test_assistant_with_none_content_renders_as_empty_string(mock_provider
 
     assert "None" not in convo_blob, "'None' must not appear in summariser input"
     assert "[assistant]:" in convo_blob
+
+
+# ---------------------------------------------------------------------------
+# Skill tool preservation — skill call/result pairs survive summarisation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_skill_tool_messages_preserved_through_summarisation(mock_provider):
+    """``ToolMessage(name='skill')`` and its paired ``AssistantMessage`` must:
+
+    1. Be filtered out of the summariser LLM input (no skill body sent to the LLM).
+    2. Remain in ``state.messages`` with ``exclude_from_context=False`` so the
+       agent keeps seeing the skill instructions on subsequent turns.
+
+    A non-skill tool pair sitting next to it should be summarised normally.
+    """
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        keep_last_assistants=0,
+    )
+    ctx = _make_ctx()
+
+    skill_asst = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_skill_1",
+                function=FunctionCall(name="skill", arguments='{"name":"guidelines"}'),
+            )
+        ],
+    )
+    skill_result = ToolMessage(
+        tool_call_id="call_skill_1",
+        name="skill",
+        content="# Guidelines\nLong skill instructions body...",
+    )
+    other_asst = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_shell_1",
+                function=FunctionCall(name="shell", arguments='{"cmd":"ls"}'),
+            )
+        ],
+    )
+    other_result = ToolMessage(
+        tool_call_id="call_shell_1",
+        name="shell",
+        content="file1.txt\nfile2.txt",
+    )
+
+    state = AgentState(
+        messages=[
+            HumanMessage(content="load skill"),
+            skill_asst,
+            skill_result,
+            HumanMessage(content="now list files"),
+            other_asst,
+            other_result,
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    captured: list = []
+
+    async def _capturing_stream(messages, **__):
+        captured.extend(messages)
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Summary."
+        chunk.usage = None
+        yield chunk
+
+    mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
+
+    await hook.before_model(ctx, state)
+
+    # 1) Skill body must not appear in summariser input.
+    human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
+    convo_blob = " ".join(m.content or "" for m in human_msgs)
+    assert "Long skill instructions body" not in convo_blob
+    assert "skill" not in convo_blob.lower() or "[tool/skill]" not in convo_blob
+    # Non-skill tool call should still be summarised (its assistant turn appears).
+    assert "[assistant]:" in convo_blob
+
+    # 2) Skill messages stay visible in state — not excluded.
+    assert skill_asst.exclude_from_context is False
+    assert skill_result.exclude_from_context is False
+
+    # 3) Other (non-skill) messages got excluded as part of summarisation.
+    assert other_asst.exclude_from_context is True
+    assert other_result.exclude_from_context is True
+
+    # 4) Summary was inserted.
+    summaries = [m for m in state.messages if m.is_summary]
+    assert len(summaries) == 1
+    assert summaries[0].content == "Summary."

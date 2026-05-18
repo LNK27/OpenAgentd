@@ -122,7 +122,7 @@ describe("parseTeamBlocks", () => {
     expect(blocks[0].content).toBe("let me think");
   });
 
-  it("renders summary messages as compaction divider blocks", () => {
+  it("renders summary messages as compaction divider blocks (legacy prefix stripped)", () => {
     const msgs = [makeMsg({
       is_summary: true,
       role: "assistant",
@@ -132,8 +132,21 @@ describe("parseTeamBlocks", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe("compaction");
     expect(blocks[0].extra?.state).toBe("compacted");
-    // Backend's "[Summary of earlier conversation]\n" prefix is stripped for display.
+    // Legacy DB rows (pre-2026-05) carried this prefix — still stripped on read.
     expect(blocks[0].content).toBe("the gist");
+  });
+
+  it("renders new-style summary rows verbatim (no prefix in DB)", () => {
+    const msgs = [makeMsg({
+      is_summary: true,
+      role: "user",
+      content: "## Goal\nDo the thing.\n\n## Progress\nDone.",
+    })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("compaction");
+    expect(blocks[0].extra?.state).toBe("compacted");
+    expect(blocks[0].content).toBe("## Goal\nDo the thing.\n\n## Progress\nDone.");
   });
 
   it("shows hidden messages (user sees full history)", () => {

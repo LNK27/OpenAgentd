@@ -45,6 +45,7 @@ from opentelemetry.trace import SpanKind, StatusCode
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase
 from app.agent.schemas.chat import (
+    AssistantMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
@@ -74,7 +75,7 @@ if TYPE_CHECKING:
 #   the full pre-threshold history collapses into the summary. Coding sessions
 #   benefit from a single authoritative "state of the world" record over
 #   partially-summarised history.
-DEFAULT_PROMPT_TOKEN_THRESHOLD = 8000
+DEFAULT_PROMPT_TOKEN_THRESHOLD = 50000
 DEFAULT_KEEP_LAST_ASSISTANTS = 3
 CODING_KEEP_LAST_ASSISTANTS = 0
 DEFAULT_MAX_TOKEN_LENGTH = 10000
@@ -185,6 +186,47 @@ def _find_assistant_cutoff(msgs: list, keep_last: int) -> int:
             if remaining == 0:
                 return i
     return 0  # not enough assistant turns — protect everything
+
+
+# Tool names whose call/result pairs survive summarisation: they stay in
+# context indefinitely and are never sent to the summariser LLM. Skill
+# loads carry instructions the agent needs every turn; replacing them
+# with a stubbed summary line throws away the actual skill body.
+_PRESERVED_TOOL_NAMES: frozenset[str] = frozenset({"skill"})
+
+
+def _collect_preserved_ids(messages: list) -> set[int]:
+    """Return ``id()`` of every message that must survive summarisation.
+
+    Currently preserves:
+
+    * ``ToolMessage`` whose ``name`` is in :data:`_PRESERVED_TOOL_NAMES`
+      (the tool result body — e.g. skill instructions).
+    * The matching ``AssistantMessage`` (the one whose ``tool_calls`` list
+      contains a call with the preserved name) — keeping the result without
+      its preceding call would orphan the ``tool_call_id`` and break the
+      assistant→tool pairing invariant required by OpenAI/ZAI/etc.
+    """
+    preserved_call_ids: set[str] = set()
+    preserved: set[int] = set()
+
+    for m in messages:
+        if isinstance(m, ToolMessage) and m.name in _PRESERVED_TOOL_NAMES:
+            preserved.add(id(m))
+            if m.tool_call_id:
+                preserved_call_ids.add(m.tool_call_id)
+
+    if not preserved_call_ids:
+        return preserved
+
+    for m in messages:
+        if isinstance(m, AssistantMessage) and m.tool_calls:
+            for tc in m.tool_calls:
+                if tc.id in preserved_call_ids:
+                    preserved.add(id(m))
+                    break
+
+    return preserved
 
 
 def build_summarization_hook(
@@ -372,11 +414,18 @@ class SummarizationHook(BaseAgentHook):
             span.set_status(StatusCode.OK)
             return
 
+        # Preserved messages (skill tool calls + their assistant pair) are
+        # neither summarised nor excluded — they stay in the live context
+        # so the agent keeps seeing the skill instructions.
+        preserved_ids = _collect_preserved_ids(state.messages)
+
         cutoff_idx = _find_assistant_cutoff(eligible, self._keep_last_assistants)
         if cutoff_idx > 0:
-            to_summarise = eligible[:cutoff_idx]
+            to_summarise = [
+                m for m in eligible[:cutoff_idx] if id(m) not in preserved_ids
+            ]
         else:
-            to_summarise = eligible
+            to_summarise = [m for m in eligible if id(m) not in preserved_ids]
 
         if not to_summarise:
             logger.debug(
@@ -412,6 +461,7 @@ class SummarizationHook(BaseAgentHook):
             "summarization.keep_last_assistants", self._keep_last_assistants
         )
         span.set_attribute("summarization.has_prior_summary", has_prior_summary)
+        span.set_attribute("summarization.preserved_messages", len(preserved_ids))
 
         # SSE start/content/end drive the frontend "Session compacting"
         # divider. session_id is None for headless/test runs — skip then.
@@ -472,9 +522,12 @@ class SummarizationHook(BaseAgentHook):
 
         # HumanMessage as the summary anchor: ZAI and most OpenAI-compat
         # APIs require system → user → … so this shape is safe regardless
-        # of what the kept window starts with.
+        # of what the kept window starts with. The summary text itself is
+        # stored verbatim — no prefix — so it renders cleanly in the UI
+        # divider; the ``is_summary=True`` flag is the marker the LLM and
+        # the frontend both key off of.
         summary_msg = HumanMessage(
-            content="[Summary of earlier conversation]\n" + summary_text,
+            content=summary_text,
             is_summary=True,
         )
         state.messages.insert(first_kept_idx, summary_msg)
