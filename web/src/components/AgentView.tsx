@@ -19,7 +19,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { MarkdownBlock } from '@/utils/markdown'
-import { ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { InboxBubble } from './InboxBubble'
@@ -61,7 +61,7 @@ interface AgentViewProps {
 const USER_COLLAPSE_LINES = 10
 const USER_COLLAPSE_CHARS = 700
 
-function UserBubble({ content, timestamp, attachments }: { content: string; timestamp?: Date; attachments?: MessageAttachment[] }) {
+function UserBubble({ content, timestamp, attachments, onRevert }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -148,9 +148,19 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
          {/* Copy button + timestamp row */}
          {timestamp && (
            <div className={`flex items-center gap-1.5 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
-             <button
-               onClick={handleCopy}
-               className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+              {onRevert && (
+                <button
+                  onClick={onRevert}
+                  className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+                  aria-label="Revert latest message"
+                  title="Revert latest message"
+                >
+                  <Undo2 size={11} />
+                </button>
+              )}
+              <button
+                onClick={handleCopy}
+                className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
                aria-label="Copy message"
                title="Copy"
              >
@@ -175,7 +185,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
 }
 
 
-function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = true }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string; showCursor?: boolean }) {
+function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = true, onRevert }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string; showCursor?: boolean; onRevert?: () => void }) {
   switch (block.type) {
     case 'user': {
       // Me check if this is an inbox message (from another agent, not real user)
@@ -183,7 +193,7 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
       if (fromAgent && fromAgent !== 'user') {
         return <InboxBubble content={block.content} fromAgent={fromAgent} />
       }
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -240,8 +250,13 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
 
+  const handleRevert = useCallback(() => {
+    void useTeamStore.getState().undoTeam()
+  }, [])
+
   const allBlocks = [...blocks, ...currentBlocks]
   const totalLen = allBlocks.length
+  const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
 
   const isAtBottom = useCallback(() => {
     const el = scrollRef.current
@@ -333,9 +348,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                        key={item.block.id}
                        block={item.block}
                        isStreaming={false}
-                       isLast={item.index === allBlocks.length - 1}
-                       sessionId={sessionId}
-                     />
+                        isLast={item.index === allBlocks.length - 1}
+                        sessionId={sessionId}
+                        onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                      />
                    )
                  }
                  // Me only the trailing turn (no user block after) can be "live"

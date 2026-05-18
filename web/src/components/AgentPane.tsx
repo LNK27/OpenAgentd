@@ -14,7 +14,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 
 import { MarkdownBlock } from '@/utils/markdown'
-import { ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { InboxBubble } from './InboxBubble'
@@ -44,7 +44,7 @@ function isDirectUserBlock(block: ContentBlock): boolean {
   return block.type === 'user' && !block.extra?.from_agent
 }
 
-function UserBubble({ content, timestamp, attachments }: { content: string; timestamp?: Date; attachments?: MessageAttachment[] }) {
+function UserBubble({ content, timestamp, attachments, onRevert }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -131,9 +131,19 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
          {/* Copy button + timestamp row (compact) */}
          {timestamp && (
            <div className={`flex items-center gap-1 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
-             <button
-               onClick={handleCopy}
-               className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+              {onRevert && (
+                <button
+                  onClick={onRevert}
+                  className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+                  aria-label="Revert latest message"
+                  title="Revert latest message"
+                >
+                  <Undo2 size={10} />
+                </button>
+              )}
+              <button
+                onClick={handleCopy}
+                className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
                aria-label="Copy message"
                title="Copy"
              >
@@ -158,14 +168,14 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
 }
 
 
-function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = true }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string; showCursor?: boolean }) {
+function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = true, onRevert }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string; showCursor?: boolean; onRevert?: () => void }) {
   switch (block.type) {
     case 'user': {
       const fromAgent = block.extra?.from_agent as string | undefined
       if (fromAgent && fromAgent !== 'user') {
         return <InboxBubble content={block.content} fromAgent={fromAgent} compact />
       }
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -221,6 +231,9 @@ export function AgentPane({
 }: AgentPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
+  const handleRevert = useCallback(() => {
+    void useTeamStore.getState().undoTeam()
+  }, [])
   const isWorking = stream.status === 'working'
   const isError   = stream.status === 'error'
   const isOffline = stream.status === 'offline'
@@ -269,6 +282,7 @@ export function AgentPane({
   }, [isAtBottom])
 
   const allBlocks = [...stream.blocks, ...stream.currentBlocks]
+  const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
 
   // Me single scroll effect — block count or last block text changed
   const lastBlockContent = allBlocks[allBlocks.length - 1]?.content ?? ''
@@ -353,9 +367,10 @@ export function AgentPane({
                          key={item.block.id}
                          block={item.block}
                          isStreaming={false}
-                         isLast={item.index === allBlocks.length - 1}
-                         sessionId={sessionId}
-                       />
+                          isLast={item.index === allBlocks.length - 1}
+                          sessionId={sessionId}
+                          onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                        />
                      )
                    }
                    // Me only the trailing turn (no user block after) can be "live"
