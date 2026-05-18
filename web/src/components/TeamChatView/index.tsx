@@ -62,7 +62,7 @@ import type { AgentStream } from '@/stores/useTeamStore'
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { type InputBarHandle, type SlashCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
-import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
+import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
@@ -73,6 +73,18 @@ interface TeamChatViewProps {
   sessionId?: string
   mode?: 'normal' | 'coding'
   workspace?: string | null
+}
+
+async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
+  if (!att.url) return null
+  const res = await fetch(att.url)
+  if (!res.ok) return null
+  const blob = await res.blob()
+  return new File(
+    [blob],
+    att.original_name ?? att.filename ?? 'attachment',
+    { type: att.media_type ?? blob.type },
+  )
 }
 
 export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: TeamChatViewProps) {
@@ -341,6 +353,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
     { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
     { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
+    { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
+    { id: 'redo', label: 'Redo', description: 'Restore the next undone message' },
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
     ...(commandsQ.data?.commands ?? []).map((c) => ({
       id: c.name,
@@ -360,6 +374,25 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         break
       case 'compact':
         useTeamStore.getState().compactTeam()
+        break
+      case 'undo':
+        void useTeamStore.getState().undoTeam().then(async (response) => {
+          const message = response?.message
+          if (!message || message.role !== 'user' || message.is_summary) return
+          inputRef.current?.setValue(message.content ?? '')
+          const attachments = message.attachments ?? []
+          const files = (
+            await Promise.all(attachments.map((att) => attachmentToFile(att)))
+          ).filter((file): file is File => file !== null)
+          inputRef.current?.setFiles(files)
+          inputRef.current?.focus()
+        })
+        break
+      case 'redo':
+        void useTeamStore.getState().redoTeam().then(() => {
+          inputRef.current?.setValue('')
+          inputRef.current?.setFiles([])
+        })
         break
       case 'new':
         handleNewSession()
@@ -743,6 +776,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           }
           capabilities={leadCapabilities}
           voiceEnabled={voiceEnabled}
+          revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
+          revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
+          onRedo={() => { void useTeamStore.getState().redoTeam() }}
         />
         </div>
         <AnimatePresence initial={false}>

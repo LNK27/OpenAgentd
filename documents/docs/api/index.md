@@ -313,7 +313,7 @@ Accepts `application/json`. Runs a control operation against an existing session
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `command` | `"continue" \| "compact"` | Control operation to run. |
+| `command` | `"continue" \| "compact" \| "undo" \| "redo"` | Control operation to run. |
 | `session_id` | string | Existing team-lead session id. |
 
 ### `command: "continue"`
@@ -347,7 +347,19 @@ Returns 409 (`{"detail": "..."}`) when compaction cannot run:
 - **Session belongs to '<name>', not '<lead>'.** — ownership guard.
 - **Session has no messages to compact.** — empty session.
 
-Returns 422 for unknown commands (rejected by the `Literal["continue", "compact"]` validator before any handler runs).
+### `command: "undo"`
+
+Move the session revert boundary to the latest visible user message. Messages at or after that boundary remain in history for redo, but future LLM context and the web UI render only messages before the boundary. The response includes the reverted user message so the client can place it back into the composer for editing.
+
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "undo", "message": {...}}`.
+
+### `command: "redo"`
+
+Move the session revert boundary forward to the next undone user message, or clear it when no later undone user message exists. Repeated redo calls advance through undone turns until all messages are visible again.
+
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "redo"}`.
+
+Returns 422 for unknown commands (rejected by the `Literal["continue", "compact", "undo", "redo"]` validator before any handler runs).
 
 ---
 

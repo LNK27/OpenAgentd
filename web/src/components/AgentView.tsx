@@ -363,9 +363,9 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                    />
                  )
                })
-             })()}
+              })()}
 
-           {/* Me show dots when:
+            {/* Me show dots when:
              *   1. pending — user just sent, agent hasn't woken yet (no agent_status event yet), OR
              *   2. working with no agent content yet (user bubbles don't count).
              * Covers the POST → first SSE event gap so the user always gets immediate feedback.

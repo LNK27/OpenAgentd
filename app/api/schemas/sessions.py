@@ -22,6 +22,7 @@ class SessionResponse(_ExcludeNoneModel):
     scheduled_task_name: str | None = None
     mode: str = "normal"
     workspace: str | None = None
+    revert: dict | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

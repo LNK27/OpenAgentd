@@ -23,7 +23,7 @@
  * (defaults, sse-reducer, the store creator) can take exactly the slice
  * they need without depending on the full union.
  */
-import type { ContentBlock, AgentUsage } from '@/api/types'
+import type { ContentBlock, AgentUsage, TeamCommandResponse } from '@/api/types'
 
 /** A message waiting to be dispatched after the current agent turn completes. */
 export interface PendingMessage {
@@ -59,6 +59,8 @@ export interface AgentStream {
   _completionBase: number
   model: string | null
   lastError: string | null
+  revertedCount: number
+  revertedMessages: Array<{ role: string; content: string }>
 }
 
 export interface TeamStoreState {
@@ -93,6 +95,8 @@ export interface TeamStoreActions {
   sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null }) => Promise<void>
   continueTeam: () => Promise<void>
   compactTeam: () => Promise<void>
+  undoTeam: () => Promise<TeamCommandResponse | undefined>
+  redoTeam: () => Promise<void>
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
   loadTeamStatus: (workspace?: string | null) => Promise<void>

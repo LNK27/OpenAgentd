@@ -83,7 +83,7 @@ export async function postTeamChat(
 }
 
 export async function postTeamCommand(
-  command: 'continue' | 'compact',
+  command: 'continue' | 'compact' | 'undo' | 'redo',
   sessionId: string,
 ): Promise<TeamCommandResponse> {
   const res = await fetch(`${API}/team/commands`, {

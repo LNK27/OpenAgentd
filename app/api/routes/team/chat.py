@@ -35,6 +35,7 @@ from app.services import (
 )
 from app.services.agent_service import AttachmentError, RawAttachment
 from app.services.chat_service import (
+    cleanup_reverted_tail,
     delete_session,
     get_team_history,
     list_sessions_page,
@@ -169,6 +170,10 @@ async def team_chat(
     # At this point message is guaranteed non-None by ChatForm validator
     assert message is not None
 
+    if session_id:
+        async with db.begin():
+            await cleanup_reverted_tail(db, UUID(session_id))
+
     # Materialise the multipart uploads into transport-neutral attachments
     # so agent_service can validate + persist them without knowing about
     # FastAPI ``UploadFile``.
@@ -201,7 +206,7 @@ async def team_chat(
 class CommandRequest(BaseModel):
     """Request body for ``POST /team/commands``."""
 
-    command: Literal["continue", "compact"]
+    command: Literal["continue", "compact", "undo", "redo"]
     session_id: str
 
 
@@ -221,6 +226,8 @@ async def team_command(
       against the prior bubble.
     * ``compact`` — force the existing summariser before the next model call
       without adding a visible user message.
+    * ``undo`` / ``redo`` — move the visible conversation boundary backward or
+      forward without adding a user message.
 
     Returns 202 with the session_id.  Subscribe to
     ``GET /team/stream/{session_id}`` for the SSE feed.
@@ -246,6 +253,27 @@ async def team_command(
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_compact session_id={}", sid)
         return {"status": "accepted", "session_id": sid, "command": "compact"}
+
+    if body.command == "undo":
+        try:
+            sid, message = await team_obj.handle_undo(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("team_command_undo session_id={}", sid)
+        return {
+            "status": "accepted",
+            "session_id": sid,
+            "command": "undo",
+            "message": _message_response(message).model_dump(mode="json"),
+        }
+
+    if body.command == "redo":
+        try:
+            sid = await team_obj.handle_redo(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("team_command_redo session_id={}", sid)
+        return {"status": "accepted", "session_id": sid, "command": "redo"}
 
     # Defensive — the Literal makes this unreachable, but pyright/ty wants it.
     raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")

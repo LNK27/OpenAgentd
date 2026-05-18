@@ -55,8 +55,8 @@ different things in different projects without manual switching.
 
 ## Picker behaviour
 
-- **Built-in commands** (`/stop`, `/continue`, `/compact`, `/new`) execute immediately on pick.
-  `/continue` resumes the last assistant response; `/compact` runs the session summarizer.
+- **Built-in commands** (`/stop`, `/continue`, `/compact`, `/undo`, `/redo`, `/new`) execute immediately on pick.
+  `/continue` resumes the last assistant response; `/compact` runs the session summarizer; `/undo` reverts to the latest user turn and puts its text back in the composer; `/redo` restores the next undone turn.
 - **Discovered commands** insert `/<name> ` into the textarea so you
   can type arguments before submitting.
 

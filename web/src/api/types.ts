@@ -127,6 +127,7 @@ export interface SessionResponse {
   id: string
   title: string | null
   agent_name: string | null
+  revert?: { message_id?: string } | null
   created_at: string | null
   updated_at: string | null
   scheduled_task_name?: string | null
@@ -372,7 +373,8 @@ export interface CommandRenderResponse {
 export interface TeamCommandResponse {
   status: string
   session_id: string
-  command: 'continue' | 'compact'
+  command: 'continue' | 'compact' | 'undo' | 'redo'
+  message?: MessageResponse
 }
 
 // ── Registry (dropdown catalog) ─────────────────────────────────────────────

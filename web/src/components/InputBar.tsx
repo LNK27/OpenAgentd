@@ -103,6 +103,7 @@ interface InputBarProps {
 export interface InputBarHandle {
   focus: () => void
   setValue: (text: string) => void
+  setFiles: (files: File[]) => void
 }
 
 const CHAR_WARN_THRESHOLD = 500
@@ -236,6 +237,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       setMentionRange(null)
       // Trigger height recalculation after injecting text programmatically
       requestAnimationFrame(resize)
+    },
+    setFiles: (nextFiles: File[]) => {
+      setFiles(nextFiles)
     },
   }))
 

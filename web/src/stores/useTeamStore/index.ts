@@ -24,6 +24,47 @@ import { revokeBlobUrlsFromBlocks } from './helpers'
 import { createSSEHandler } from './sse-reducer'
 import { useToastStore } from '@/stores/useToastStore'
 import type { TeamStore } from './types'
+import type { MessageResponse } from '@/api/types'
+
+function revertBoundaryTime(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): number | null {
+  const boundaryId = session.revert?.message_id
+  if (!boundaryId) return null
+  const boundary = session.messages.find((msg) => msg.id === boundaryId)
+  return boundary?.created_at ? new Date(boundary.created_at).getTime() : null
+}
+
+function messagesBeforeTime(messages: MessageResponse[], boundaryTime: number | null): MessageResponse[] {
+  if (boundaryTime === null) return messages
+  return messages.filter((msg) => {
+    if (!msg.created_at) return true
+    return new Date(msg.created_at).getTime() < boundaryTime
+  })
+}
+
+function messagesBeforeRevert(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): MessageResponse[] {
+  return messagesBeforeTime(session.messages, revertBoundaryTime(session))
+}
+
+function revertedMessageCount(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): number {
+  const boundaryTime = revertBoundaryTime(session)
+  if (boundaryTime === null) return 0
+  return session.messages.filter((msg) => {
+    if (!msg.created_at) return false
+    return msg.role === 'user' && new Date(msg.created_at).getTime() >= boundaryTime
+  }).length
+}
+
+function revertedMessagePreview(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): Array<{ role: string; content: string }> {
+  const boundaryTime = revertBoundaryTime(session)
+  if (boundaryTime === null) return []
+  return session.messages
+    .filter((msg) => msg.role === 'user' && msg.created_at && new Date(msg.created_at).getTime() >= boundaryTime)
+    .map((msg) => ({
+      role: msg.role,
+      content: msg.is_summary ? 'Session compacted' : (msg.content ?? ''),
+    }))
+    .filter((msg) => msg.content.trim().length > 0)
+}
 
 // Re-export types so existing ``import type { AgentStream } from
 // '@/stores/useTeamStore'`` consumers keep working.
@@ -97,6 +138,8 @@ export const useTeamStore = create<TeamStore>()(
           state.agentStreams[name].lastError = null
           state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
           state.agentStreams[name]._completionBase = 0
+          state.agentStreams[name].revertedCount = 0
+          state.agentStreams[name].revertedMessages = []
         })
       })
     },
@@ -132,6 +175,8 @@ export const useTeamStore = create<TeamStore>()(
           draft.setupRequired = null
         // Push user message as an optimistic block into the lead's stream
         if (leadName && draft.agentStreams[leadName]) {
+          draft.agentStreams[leadName].revertedCount = 0
+          draft.agentStreams[leadName].revertedMessages = []
           draft.agentStreams[leadName].currentBlocks.push({
             id: `user-${Date.now()}`,
             type: 'user',
@@ -205,6 +250,44 @@ export const useTeamStore = create<TeamStore>()(
         set((draft) => {
           draft.error = err instanceof Error ? err.message : 'Failed to compact'
           draft.isTeamWorking = false
+        })
+      }
+    },
+
+    undoTeam: async () => {
+      const sessionId = get().sessionId
+      if (!sessionId) {
+        set((draft) => { draft.error = 'No active session to undo' })
+        return
+      }
+
+      try {
+        set((draft) => { draft.error = null })
+        const response = await postTeamCommand('undo', sessionId)
+        await get().loadSession(sessionId)
+        return response
+      } catch (err) {
+        set((draft) => {
+          draft.error = err instanceof Error ? err.message : 'Failed to undo'
+        })
+        return undefined
+      }
+    },
+
+    redoTeam: async () => {
+      const sessionId = get().sessionId
+      if (!sessionId) {
+        set((draft) => { draft.error = 'No active session to redo' })
+        return
+      }
+
+      try {
+        set((draft) => { draft.error = null })
+        await postTeamCommand('redo', sessionId)
+        await get().loadSession(sessionId)
+      } catch (err) {
+        set((draft) => {
+          draft.error = err instanceof Error ? err.message : 'Failed to redo'
         })
       }
     },
@@ -334,6 +417,7 @@ export const useTeamStore = create<TeamStore>()(
           const memberNames = history.members.map((m) => m.name)
           const allNames = leadName ? [leadName, ...memberNames] : memberNames
           draft.agentNames = allNames
+          const leadRevertTime = revertBoundaryTime(history.lead)
 
           // Load lead blocks (includes user blocks from parseTeamBlocks)
           if (leadName) {
@@ -342,12 +426,15 @@ export const useTeamStore = create<TeamStore>()(
             }
             // Revoke blob URLs from old blocks before replacing them
             revokeBlobUrlsFromBlocks(draft.agentStreams[leadName].currentBlocks)
-            draft.agentStreams[leadName].blocks = parseTeamBlocks(history.lead.messages)
+            const leadMessages = messagesBeforeRevert(history.lead)
+            draft.agentStreams[leadName].blocks = parseTeamBlocks(leadMessages)
+            draft.agentStreams[leadName].revertedCount = revertedMessageCount(history.lead)
+            draft.agentStreams[leadName].revertedMessages = revertedMessagePreview(history.lead)
             draft.agentStreams[leadName].currentBlocks = []
             draft.agentStreams[leadName].currentText = ''
             draft.agentStreams[leadName].currentThinking = ''
             draft.agentStreams[leadName].status = 'idle'
-            const leadUsage = sumUsageFromMessages(history.lead.messages)
+            const leadUsage = sumUsageFromMessages(leadMessages)
             draft.agentStreams[leadName].usage = leadUsage
             // Seed _completionBase so next live turn accumulates correctly
             draft.agentStreams[leadName]._completionBase = leadUsage.completionTokens
@@ -362,7 +449,8 @@ export const useTeamStore = create<TeamStore>()(
             }
             // Revoke blob URLs from old blocks before replacing them
             revokeBlobUrlsFromBlocks(draft.agentStreams[member.name].currentBlocks)
-            draft.agentStreams[member.name].blocks = parseTeamBlocks(member.messages)
+            const memberMessages = messagesBeforeTime(member.messages, leadRevertTime)
+            draft.agentStreams[member.name].blocks = parseTeamBlocks(memberMessages)
             draft.agentStreams[member.name].currentBlocks = []
             draft.agentStreams[member.name].currentText = ''
             draft.agentStreams[member.name].currentThinking = ''
@@ -370,7 +458,7 @@ export const useTeamStore = create<TeamStore>()(
               !isLiveMember
                 ? 'offline'
                 : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
-            const memberUsage = sumUsageFromMessages(member.messages)
+            const memberUsage = sumUsageFromMessages(memberMessages)
             draft.agentStreams[member.name].usage = memberUsage
             // Seed _completionBase so next live turn accumulates correctly
             draft.agentStreams[member.name]._completionBase = memberUsage.completionTokens

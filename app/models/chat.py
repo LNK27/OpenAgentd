@@ -93,6 +93,13 @@ class ChatSession(SQLModel, table=True):
         sa_column=Column(sa.String(20), nullable=False, server_default="normal"),
     )
     workspace: str | None = Field(default=None)
+    revert: dict | None = Field(
+        default=None,
+        sa_column=Column(
+            JSON().with_variant(pg.JSONB(), "postgresql"),
+            nullable=True,
+        ),
+    )
     created_at: datetime = Field(
         default_factory=_utcnow,
         sa_column=Column(TZDateTime(), nullable=False),

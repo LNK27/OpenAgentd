@@ -49,7 +49,9 @@ from app.services.stream_envelope import StreamEnvelope
 from app.services.chat_service import (
     get_messages_for_llm,
     heal_orphaned_tool_calls,
+    redo_session_messages,
     save_message,
+    undo_session_messages,
 )
 
 if TYPE_CHECKING:
@@ -659,6 +661,65 @@ class AgentTeam:
 
         logger.info(
             "team_compact_dispatched session_id={} agent={}", session_id, self.lead.name
+        )
+        return session_id
+
+    async def handle_undo(self, session_id: str) -> tuple[str, SessionMessage]:
+        """Move the revert boundary to the latest visible user turn."""
+        if self._has_active_turn:
+            raise ContinuePreconditionError("Lead is already working.")
+
+        try:
+            lead_uuid = UUID(session_id)
+        except ValueError as exc:
+            raise ContinuePreconditionError("Invalid session id.") from exc
+
+        db_factory = resolve_db_factory(self.lead.db_factory)
+        async with db_factory() as db:
+            row = await db.get(ChatSession, lead_uuid)
+            if row is None:
+                raise ContinuePreconditionError("Session not found.")
+            if row.agent_name and row.agent_name != self.lead.name:
+                raise ContinuePreconditionError(
+                    f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
+                )
+            message = await undo_session_messages(db, lead_uuid)
+            if message is None:
+                raise ContinuePreconditionError("No user message to undo.")
+            await db.commit()
+            await db.refresh(message)
+
+        logger.info(
+            "team_undo_applied session_id={} agent={}", session_id, self.lead.name
+        )
+        return session_id, message
+
+    async def handle_redo(self, session_id: str) -> str:
+        """Move the revert boundary forward or clear it."""
+        if self._has_active_turn:
+            raise ContinuePreconditionError("Lead is already working.")
+
+        try:
+            lead_uuid = UUID(session_id)
+        except ValueError as exc:
+            raise ContinuePreconditionError("Invalid session id.") from exc
+
+        db_factory = resolve_db_factory(self.lead.db_factory)
+        async with db_factory() as db:
+            row = await db.get(ChatSession, lead_uuid)
+            if row is None:
+                raise ContinuePreconditionError("Session not found.")
+            if row.agent_name and row.agent_name != self.lead.name:
+                raise ContinuePreconditionError(
+                    f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
+                )
+            changed = await redo_session_messages(db, lead_uuid)
+            if not changed:
+                raise ContinuePreconditionError("No undone message to redo.")
+            await db.commit()
+
+        logger.info(
+            "team_redo_applied session_id={} agent={}", session_id, self.lead.name
         )
         return session_id
 

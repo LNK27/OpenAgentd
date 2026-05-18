@@ -382,9 +382,9 @@ export function AgentPane({
                      />
                    )
                  })
-               })()}
-             </div>
-           )}
+                })()}
+              </div>
+            )}
 
           {/* Me show dots when pending (user sent, agent not woken) or working with no agent content yet.
             * `[].every()` returns true, so the working branch also requires a non-empty
