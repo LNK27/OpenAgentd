@@ -10,6 +10,7 @@ tools:
   - read
   - write
   - edit
+  - patch
   - bg
   - ls
   - glob

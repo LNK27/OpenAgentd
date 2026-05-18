@@ -12,6 +12,7 @@ tools:
   - glob
   - grep
   - ls
+  - patch
   - read
   - rm
   - shell
