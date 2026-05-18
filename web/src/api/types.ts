@@ -68,6 +68,7 @@ export interface WorkspaceGitDiffResponse {
   workspace: string
   is_git_repo: boolean
   diff: string
+  untracked?: string[]
   truncated?: boolean
 }
 

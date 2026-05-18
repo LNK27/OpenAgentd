@@ -69,6 +69,7 @@ def workspace(tmp_path):
 async def test_write_and_read_file(sandbox_workspace):
     result = await write_file.arun(path="test.txt", content="hello world")
     assert "Written" in result
+    assert f"Resolved path: {sandbox_workspace / 'test.txt'}" in result
     assert (sandbox_workspace / "test.txt").read_text() == "hello world"
 
     read_content = await read_file.arun(path="test.txt")
@@ -407,6 +408,7 @@ async def test_remove_path_file(sandbox):
     f.write_text("bye")
     result = await _remove_path("del.txt")
     assert "Removed file" in result
+    assert f"Resolved path: {f}" in result
     assert not f.exists()
 
 

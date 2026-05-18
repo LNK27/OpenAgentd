@@ -82,8 +82,8 @@ function TreeNodeView({ node, depth }: { node: TreeNode; depth: number }) {
 function diffLineClass(line: string) {
   if (line.startsWith('+++') || line.startsWith('---')) return 'text-(--color-accent)'
   if (line.startsWith('@@')) return 'bg-(--color-accent)/10 text-(--color-accent)'
-  if (line.startsWith('+')) return 'bg-emerald-500/10 text-emerald-400'
-  if (line.startsWith('-')) return 'bg-red-500/10 text-red-400'
+  if (line.startsWith('+')) return 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)'
+  if (line.startsWith('-')) return 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)'
   if (line.startsWith('diff --git') || line.startsWith('index ')) return 'text-(--color-text)'
   return 'text-(--color-text-2)'
 }
@@ -120,7 +120,7 @@ function parseUnifiedDiff(diff: string): ParsedDiffFile[] {
         path: match?.[2] ?? line.replace('diff --git ', ''),
         additions: 0,
         deletions: 0,
-        lines: [{ kind: 'meta', content: line, oldLine: null, newLine: null }],
+        lines: [],
       }
       files.push(current)
       oldLineNo = 0
@@ -136,7 +136,7 @@ function parseUnifiedDiff(diff: string): ParsedDiffFile[] {
         oldLineNo = Number(match[1])
         newLineNo = Number(match[2])
       }
-      current.lines.push({ kind: 'hunk', content: line, oldLine: null, newLine: null })
+      continue
     } else if (line.startsWith('+') && !line.startsWith('+++')) {
       current.additions += 1
       current.lines.push({ kind: 'add', content: line, oldLine: null, newLine: newLineNo })
@@ -146,7 +146,7 @@ function parseUnifiedDiff(diff: string): ParsedDiffFile[] {
       current.lines.push({ kind: 'delete', content: line, oldLine: oldLineNo, newLine: null })
       oldLineNo += 1
     } else if (line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
-      current.lines.push({ kind: 'meta', content: line, oldLine: null, newLine: null })
+      continue
     } else {
       current.lines.push({ kind: 'context', content: line || ' ', oldLine: oldLineNo, newLine: newLineNo })
       oldLineNo += 1
@@ -158,8 +158,8 @@ function parseUnifiedDiff(diff: string): ParsedDiffFile[] {
 }
 
 function diffLineClassName(kind: ParsedDiffLine['kind']) {
-  if (kind === 'add') return 'bg-emerald-500/10 text-emerald-300'
-  if (kind === 'delete') return 'bg-red-500/10 text-red-300'
+  if (kind === 'add') return 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)'
+  if (kind === 'delete') return 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)'
   if (kind === 'hunk') return 'bg-(--color-accent)/10 text-(--color-accent)'
   if (kind === 'meta') return 'text-(--color-text-muted)'
   return 'text-(--color-text-2)'
@@ -202,16 +202,15 @@ function DiffGutter({ value }: { value: number | null }) {
 }
 
 function DiffFileSection({ file }: { file: ParsedDiffFile }) {
-  const [open, setOpen] = useState(true)
-  const lineCount = file.additions + file.deletions
+  const [open, setOpen] = useState(false)
   return (
-    <section className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-page)">
+    <section className="overflow-hidden bg-(--bg-page)">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-label={`${open ? 'Collapse' : 'Expand'} diff for ${file.path}`}
-        className="flex w-full items-center gap-3 border-b border-(--color-border) px-3 py-2 text-left hover:bg-(--bg-key)"
+        className="flex w-full items-center gap-3 border-b border-(--color-border)/50 px-3 py-1.5 text-left hover:bg-(--bg-key)"
       >
         <span
           className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-(--color-text)"
@@ -236,11 +235,7 @@ function DiffFileSection({ file }: { file: ParsedDiffFile }) {
             </span>
           ))}
         </pre>
-      ) : (
-        <p className="px-3 py-1.5 text-[11px] text-(--color-text-subtle)">
-          {lineCount} line{lineCount === 1 ? '' : 's'} hidden
-        </p>
-      )}
+      ) : null}
     </section>
   )
 }
@@ -249,7 +244,7 @@ function DiffPreview({ diff }: { diff: string }) {
   const files = parseUnifiedDiff(diff)
   if (files.length > 0) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-0">
         {files.map((file) => (
           <DiffFileSection key={file.path} file={file} />
         ))}
@@ -329,7 +324,7 @@ export function CodingWorkspacePanel({
           <GitCompare size={13} /> Diff
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-2">
+      <div className={cn('min-h-0 flex-1 overflow-auto', tab === 'files' && 'p-2')}>
         {tab === 'files' ? (
           files.isLoading ? (
             <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading files…</p>
@@ -349,10 +344,10 @@ export function CodingWorkspacePanel({
         ) : !diff.data.diff ? (
           <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No uncommitted diff</p>
         ) : (
-          <>
+          <div className="space-y-0">
             {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Diff truncated for display.</p>}
             <DiffPreview diff={diff.data.diff} />
-          </>
+          </div>
         )}
       </div>
       <button

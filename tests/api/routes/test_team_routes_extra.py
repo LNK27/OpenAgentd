@@ -385,6 +385,31 @@ class TestTeamAgentsRouteExtra:
         assert resp.json()["diff"] == "x" * 10
         assert resp.json()["truncated"] is True
 
+    def test_workspace_git_diff_includes_untracked(
+        self, app_without_team, tmp_path, monkeypatch
+    ):
+        (tmp_path / ".git").mkdir()
+        (tmp_path / "test.py").write_text('print("hello")\n', encoding="utf-8")
+
+        def fake_run(*args, **kwargs):
+            command = args[0]
+            if command[3:6] == ["ls-files", "--others", "--exclude-standard"]:
+                return SimpleNamespace(returncode=0, stdout="test.py\n", stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("app.api.routes.team.files.subprocess.run", fake_run)
+        client = TestClient(app_without_team)
+
+        resp = client.get(
+            "/api/team/workspace/git-diff/view", params={"workspace": str(tmp_path)}
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["untracked"] == ["test.py"]
+        assert "diff --git a/test.py b/test.py" in body["diff"]
+        assert '+print("hello")' in body["diff"]
+
     def test_workspace_status_non_repo(self, app_without_team, tmp_path):
         client = TestClient(app_without_team)
 

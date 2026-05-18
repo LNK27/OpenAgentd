@@ -186,6 +186,10 @@
     --color-error-subtle:   rgba(248, 113, 113, 0.12);
     --color-info:           var(--accent-blue);
     --color-info-subtle:    var(--accent-blue-soft);
+    --color-diff-add-bg:    rgba(16, 185, 129, 0.10);
+    --color-diff-add-text:  #86EFAC;
+    --color-diff-del-bg:    rgba(239, 68, 68, 0.10);
+    --color-diff-del-text:  #FCA5A5;
 
     /* Syntax highlighting */
     --color-syn-comment:  #9C8A72;
@@ -335,6 +339,10 @@
     --color-error-subtle:   rgba(185, 28, 28, 0.08);
     --color-info:           var(--accent-blue);
     --color-info-subtle:    var(--accent-blue-soft);
+    --color-diff-add-bg:    rgba(22, 163, 74, 0.16);
+    --color-diff-add-text:  #166534;
+    --color-diff-del-bg:    rgba(185, 28, 28, 0.14);
+    --color-diff-del-text:  #991B1B;
 
     /* Syntax */
     --color-syn-comment:  #7A6B58;
