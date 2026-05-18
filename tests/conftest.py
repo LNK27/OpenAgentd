@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,14 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.providers.zai.zai import ZAIProvider
 
-_TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+# Me on-disk SQLite file in a tempdir for the test session.  ``:memory:``
+# databases are per-connection, so any code that opens a fresh connection
+# (e.g. async_sessionmaker auto-opening one) sees an empty database with no
+# schema.  A file-backed test DB sidesteps that entirely — every connection
+# opens the same DB, schema persists for the whole session, and ``clean_db``
+# can DELETE between tests without recreating tables.
+_test_db_tmpdir: tempfile.TemporaryDirectory | None = None
+_TEST_DB_URL: str = ""
 
 # Me keep engine ref so cleanup fixture can access it
 _test_engine = None
@@ -80,9 +88,14 @@ def zai_provider(api_key):
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_db():
-    """Create schema once per session in-memory and redirect app.core.db to it."""
-    global _test_engine
+    """Create schema once per session in a file-backed SQLite DB and redirect
+    ``app.core.db`` to it."""
+    global _test_engine, _test_db_tmpdir, _TEST_DB_URL
     import app.core.db as _db_module
+
+    _test_db_tmpdir = tempfile.TemporaryDirectory(prefix="openagentd-test-db-")
+    db_path = Path(_test_db_tmpdir.name) / "test.sqlite"
+    _TEST_DB_URL = f"sqlite+aiosqlite:///{db_path}"
 
     engine = create_async_engine(
         _TEST_DB_URL,
@@ -93,7 +106,7 @@ async def setup_db():
         await conn.run_sync(SQLModel.metadata.drop_all)
         await conn.run_sync(SQLModel.metadata.create_all)
 
-    # Redirect the shared app engine / session factory to the in-memory DB
+    # Redirect the shared app engine / session factory to the test DB.
     _orig_engine = _db_module.engine
     _orig_factory = _db_module.async_session_factory
     _db_module.engine = engine
@@ -107,6 +120,8 @@ async def setup_db():
     _db_module.async_session_factory = _orig_factory
     await engine.dispose()
     _test_engine = None
+    _test_db_tmpdir.cleanup()
+    _test_db_tmpdir = None
 
 
 @pytest_asyncio.fixture(autouse=True)
