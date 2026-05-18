@@ -33,6 +33,7 @@ interface AgentPaneProps {
   name: string
   stream: AgentStream
   isLead: boolean
+  isContinuing?: boolean
 }
 
 const USER_COLLAPSE_LINES = 10
@@ -156,7 +157,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
 }
 
 
-function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string }) {
+function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = true }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string; showCursor?: boolean }) {
   switch (block.type) {
     case 'user': {
       const fromAgent = block.extra?.from_agent as string | undefined
@@ -203,7 +204,7 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
       return (
         <div>
           <MarkdownBlock content={block.content} sessionId={sessionId} />
-          {isStreaming && isLast && (
+          {showCursor && isStreaming && isLast && (
             <StreamingCursor className="ml-0.5 text-(--color-accent)" />
           )}
         </div>
@@ -215,7 +216,7 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
 }
 
 export function AgentPane({
-  name, stream, isLead,
+  name, stream, isLead, isContinuing = false,
 }: AgentPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
@@ -371,9 +372,10 @@ export function AgentPane({
                          <BlockRenderer
                            block={block}
                            isStreaming={isStreaming}
-                           isLast={isLast}
-                           sessionId={sessionId}
-                         />
+                            isLast={isLast}
+                            sessionId={sessionId}
+                            showCursor={!isContinuing}
+                          />
                        )}
                      />
                    )
@@ -387,8 +389,10 @@ export function AgentPane({
             * currentBlocks list — otherwise dots persist after `done` flushes the buffer
             * if a stale `working` status briefly survives. */}
           {(isPending ||
-            (isWorking && stream.currentBlocks.length > 0 &&
-              stream.currentBlocks.every((b) => b.type === 'user'))) && (
+            (isWorking && (
+              (isContinuing && stream.currentBlocks.length === 0) ||
+              (stream.currentBlocks.length > 0 && stream.currentBlocks.every((b) => b.type === 'user'))
+            ))) && (
             <div className="flex items-center gap-1.5 px-3 pt-3">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />

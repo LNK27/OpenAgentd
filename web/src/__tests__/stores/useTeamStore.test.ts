@@ -12,6 +12,7 @@ const INITIAL = {
   sidebarOpen: false,
   sessionId: null,
   isTeamWorking: false,
+  isContinuing: false,
   isConnected: false,
   error: null,
   _pendingMessages: [] as import('@/stores/useTeamStore').PendingMessage[],

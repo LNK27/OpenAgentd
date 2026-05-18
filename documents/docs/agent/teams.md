@@ -109,7 +109,7 @@ Inside `handle_continue`:
 The activation differs from `_maybe_activate` only in that it sets `is_continuation=True` on `_run_activation`, which skips the inbox drain/persist/SSE-emit steps and installs `ContinuationHook` for the agent run. The hook does two one-shot jobs:
 
 - **`before_model`**: appends an ephemeral `HumanMessage` carrying the continuation directive (`"Your previous response was interrupted… Continue from exactly where it stopped…"`) to the message list. Not persisted; not visible to the frontend. Without this directive, providers in plain-prose continuation cases tend to restart instead of resume — see `manual/try_providers/try_continue_probe.py` for the empirical finding.
-- **`after_model`**: stamps `extra["is_continuation"] = True` on the resulting first assistant row so the frontend can render it tight against the prior bubble.
+- **`after_model`**: stamps `extra["is_continuation"] = True` on the resulting first assistant row so the frontend can render it tight against the prior bubble. The provider request shape is unchanged for prompt-cache compatibility; continuation reasoning may still be persisted for audit, but live `thinking` SSE events are suppressed and `GET /api/team/{id}/history` omits `reasoning_content` for continuation rows.
 
 Subsequent assistant messages in the same `/continue` run (e.g. after a tool call) are not stamped; only the very first one is a continuation of the prior turn.
 

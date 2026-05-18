@@ -31,7 +31,7 @@ function assistantBlocks(
 ): ContentBlock[] {
   const blocks: ContentBlock[] = []
 
-  if (msg.reasoning_content) {
+  if (msg.reasoning_content && !msg.extra?.is_continuation) {
     blocks.push({ id: generateBlockId(), type: 'thinking', content: msg.reasoning_content, timestamp })
   }
 

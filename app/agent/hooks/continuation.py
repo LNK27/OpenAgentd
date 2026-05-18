@@ -13,9 +13,10 @@ doing in that run, both one-shot on the very first model call:
    user→assistant alternation pattern fixes that.
 
 2. **Stamp the first assistant response** with
-   ``extra["is_continuation"] = True`` so the frontend can render it
-   tight against the prior assistant bubble (no avatar repeat, tight
-   top margin) instead of as a fresh turn.
+   ``extra["is_continuation"] = True`` so the frontend can render it tight
+   against the prior assistant bubble.  The API response layer uses this same
+   flag to omit reasoning content from client-facing history while keeping the
+   provider request shape unchanged for prompt-cache compatibility.
 
 Both behaviours are one-shot per run.  Within a single ``/continue``
 turn the model may emit several assistant messages (content → tool

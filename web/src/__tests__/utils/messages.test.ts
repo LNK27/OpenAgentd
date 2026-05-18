@@ -122,6 +122,19 @@ describe("parseTeamBlocks", () => {
     expect(blocks[0].content).toBe("let me think");
   });
 
+  it("skips reasoning_content for continuation assistant messages", () => {
+    const msgs = [makeMsg({
+      role: "assistant",
+      reasoning_content: "do not render",
+      content: "continued answer",
+      extra: { is_continuation: true },
+    })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("text");
+    expect(blocks[0].content).toBe("continued answer");
+  });
+
   it("renders summary messages as compaction divider blocks (legacy prefix stripped)", () => {
     const msgs = [makeMsg({
       is_summary: true,

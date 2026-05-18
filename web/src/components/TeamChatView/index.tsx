@@ -122,6 +122,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const agentStreams   = useTeamStore((s) => s.agentStreams)
   const agentNames     = useTeamStore((s) => s.agentNames)
   const isTeamWorking  = useTeamStore((s) => s.isTeamWorking)
+  const isContinuing   = useTeamStore((s) => s.isContinuing)
   const sessionIdState = useTeamStore((s) => s.sessionId)
   const sessionTitle   = useTeamStore((s) => s.sessionTitle)
   const leadName       = useTeamStore((s) => s.leadName)
@@ -659,6 +660,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               agentNames={splitAgentNames}
               leadName={leadName}
               agentStreams={agentStreams}
+              isContinuing={isContinuing}
             />
           </div>
         ) : mode === 'coding' && workspace && teamAgentsLoading ? (
@@ -691,6 +693,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             isWorking={(activeStatus ?? agentStreams[activeAgent].status) === 'working'}
             isError={(activeStatus ?? agentStreams[activeAgent].status) === 'error'}
             lastError={agentStreams[activeAgent].lastError}
+            isContinuing={isContinuing && activeAgent === leadName}
             emptyState={
               mode === 'coding' && workspace ? (
                 <div className="flex flex-col items-center justify-center py-16">

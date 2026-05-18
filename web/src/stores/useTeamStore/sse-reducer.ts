@@ -289,6 +289,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'done': {
         set((draft) => {
           draft.isTeamWorking = false
+          draft.isContinuing = false
           const completedAt = new Date()
           Object.keys(draft.agentStreams).forEach((name) => {
             const stream = draft.agentStreams[name]
@@ -329,6 +330,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           draft.error = d.message as string
           draft.isTeamWorking = false
+          draft.isContinuing = false
         })
         break
       }

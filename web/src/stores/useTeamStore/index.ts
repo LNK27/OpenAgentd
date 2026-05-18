@@ -48,6 +48,7 @@ export const useTeamStore = create<TeamStore>()(
     sessionId: null,
     sessionTitle: null,
     isTeamWorking: false,
+    isContinuing: false,
     isConnected: false,
     error: null,
     setupRequired: null,
@@ -63,6 +64,7 @@ export const useTeamStore = create<TeamStore>()(
         state.sessionId = null
         state.sessionTitle = null
         state.isTeamWorking = false
+        state.isContinuing = false
         state.isConnected = false
         state.error = null
         state.setupRequired = null
@@ -125,6 +127,7 @@ export const useTeamStore = create<TeamStore>()(
 
       set((draft) => {
           draft.isTeamWorking = true
+          draft.isContinuing = false
           draft.error = null
           draft.setupRequired = null
         // Push user message as an optimistic block into the lead's stream
@@ -170,6 +173,7 @@ export const useTeamStore = create<TeamStore>()(
       try {
         set((draft) => {
           draft.isTeamWorking = true
+          draft.isContinuing = true
           draft.error = null
         })
         await postTeamCommand('continue', sessionId)
@@ -178,6 +182,7 @@ export const useTeamStore = create<TeamStore>()(
         set((draft) => {
           draft.error = err instanceof Error ? err.message : 'Failed to continue'
           draft.isTeamWorking = false
+          draft.isContinuing = false
         })
       }
     },
@@ -297,6 +302,7 @@ export const useTeamStore = create<TeamStore>()(
           // user switched to session B, isTeamWorking would remain true and
           // the "..." indicator would persist indefinitely.
           draft.isTeamWorking = false
+          draft.isContinuing = false
           draft.error = null
 
           const leadName = history.lead.agent_name
@@ -356,6 +362,7 @@ export const useTeamStore = create<TeamStore>()(
         if (get()._sessionGeneration !== gen) return
         set((draft) => {
           draft.error = err instanceof Error ? err.message : 'Failed to load session'
+          draft.isContinuing = false
         })
       }
     },

@@ -27,6 +27,7 @@ interface SplitGridProps {
   agentNames: string[]
   leadName: string | null
   agentStreams: Record<string, AgentStream>
+  isContinuing?: boolean
 }
 
 // Easing + durations mirror tokens in index.css so the motion matches sibling
@@ -38,7 +39,7 @@ const MOTION_BASE_S = 0.24 // matches --motion-base (240ms)
 const MOTION_FAST_S = 0.15 // matches --motion-fast (150ms)
 
 export function SplitGrid({
-  agentNames, leadName, agentStreams,
+  agentNames, leadName, agentStreams, isContinuing = false,
 }: SplitGridProps) {
   const prefersReducedMotion = useReducedMotion()
 
@@ -72,6 +73,7 @@ export function SplitGrid({
           name={name}
           stream={stream}
           isLead={name === leadName}
+          isContinuing={isContinuing && name === leadName}
         />
       </motion.div>
     )

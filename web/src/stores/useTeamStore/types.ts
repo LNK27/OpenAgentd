@@ -71,6 +71,7 @@ export interface TeamStoreState {
   sessionId: string | null
   sessionTitle: string | null
   isTeamWorking: boolean
+  isContinuing: boolean
   isConnected: boolean
   error: string | null
   setupRequired: SetupRequiredNotice | null

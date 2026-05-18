@@ -722,6 +722,7 @@ class TeamMemberBase(abc.ABC):
         publisher_hook = StreamPublisherHook(
             session_id=lead_session_id,
             agent_name=self.name,
+            publish_reasoning=not is_continuation,
         )
 
         # Inject team protocol via hook

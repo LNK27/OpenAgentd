@@ -50,6 +50,8 @@ interface AgentViewProps {
   isError?: boolean
   /** Error message to display when isError is true. */
   lastError?: string | null
+  /** True while this turn was started by /continue. */
+  isContinuing?: boolean
   /** Optional slot rendered in place of the default mascot empty state. */
   emptyState?: React.ReactNode
 }
@@ -171,7 +173,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
 }
 
 
-function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string }) {
+function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = true }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string; showCursor?: boolean }) {
   switch (block.type) {
     case 'user': {
       // Me check if this is an inbox message (from another agent, not real user)
@@ -219,7 +221,7 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
       return (
         <div>
           <MarkdownBlock content={block.content} sessionId={sessionId} />
-          {isStreaming && isLast && (
+          {showCursor && isStreaming && isLast && (
             <StreamingCursor className="ml-0.5 text-(--color-accent)" />
           )}
         </div>
@@ -230,7 +232,7 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
   }
 }
 
-export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, emptyState }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, isContinuing = false, emptyState }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -350,9 +352,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                        <BlockRenderer
                          block={block}
                          isStreaming={isStreaming}
-                         isLast={isLast}
-                         sessionId={sessionId}
-                       />
+                          isLast={isLast}
+                          sessionId={sessionId}
+                          showCursor={!isContinuing}
+                        />
                      )}
                    />
                  )
@@ -370,7 +373,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
              * `working` status briefly survives.
              */}
             {((!isWorking && !isError && currentBlocks.some(isDirectUserBlock)) ||
-              (isWorking && currentBlocks.length > 0 && currentBlocks.every((b) => b.type === 'user'))) && (
+              (isWorking && (
+                (isContinuing && currentBlocks.length === 0) ||
+                (currentBlocks.length > 0 && currentBlocks.every((b) => b.type === 'user'))
+              ))) && (
              <div className="flex items-center gap-1.5 py-1">
                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />

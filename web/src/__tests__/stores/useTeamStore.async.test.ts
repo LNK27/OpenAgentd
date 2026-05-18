@@ -82,6 +82,7 @@ const INITIAL_STATE = {
   sidebarOpen: false,
   sessionId: null,
   isTeamWorking: false,
+  isContinuing: false,
   isConnected: false,
   error: null,
   _pendingMessages: [] as import('@/stores/useTeamStore').PendingMessage[],
@@ -197,6 +198,29 @@ describe("continueTeam", () => {
     await useTeamStore.getState().continueTeam()
 
     expect(mockPostTeamCommand).toHaveBeenCalledWith("continue", "team-sid")
+  })
+
+  it("marks the active turn as a continuation while waiting", async () => {
+    let resolveCommand!: () => void
+    mockPostTeamCommand.mockImplementation(() => new Promise((resolve) => {
+      resolveCommand = () => resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
+    }))
+    useTeamStore.setState({ sessionId: "team-sid" })
+
+    const promise = useTeamStore.getState().continueTeam()
+    expect(useTeamStore.getState().isContinuing).toBe(true)
+
+    resolveCommand()
+    await promise
+  })
+
+  it("clears continuation state when the command fails", async () => {
+    mockPostTeamCommand.mockImplementation(() => Promise.reject(new Error("last message is not assistant")))
+    useTeamStore.setState({ sessionId: "team-sid" })
+
+    await useTeamStore.getState().continueTeam()
+
+    expect(useTeamStore.getState().isContinuing).toBe(false)
   })
 
   it("connects the stream after the command is accepted", async () => {
