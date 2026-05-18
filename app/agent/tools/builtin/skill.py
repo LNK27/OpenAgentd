@@ -35,6 +35,31 @@ def _default_skills_dir() -> Path:
 _SKILLS_DIR: Path = _default_skills_dir()
 
 
+def _iter_skill_roots() -> list[Path]:
+    """Roots scanned by discovery, in precedence order.
+
+    Mirrors the slash-command precedence so a user's curated library
+    works in both tools:
+
+    1. ``{cwd}/.openagentd/skills/``  (project, OpenAgentd-native)
+    2. ``{cwd}/.opencode/skills/``    (project, opencode reuse)
+    3. ``_SKILLS_DIR``                (global, OpenAgentd — typically
+                                        ``{OPENAGENTD_CONFIG_DIR}/skills``)
+    4. ``~/.config/opencode/skills/`` (global, opencode reuse)
+
+    Earlier entries win on a name collision. ``_SKILLS_DIR`` is
+    referenced indirectly (via the module-level binding) so existing
+    tests that monkeypatch it keep working.
+    """
+    cwd = Path.cwd()
+    return [
+        cwd / ".openagentd" / "skills",
+        cwd / ".opencode" / "skills",
+        _SKILLS_DIR,
+        Path.home() / ".config" / "opencode" / "skills",
+    ]
+
+
 def _render_tokens(text: str, *, skill_dir: Path | None = None) -> str:
     """Replace ``{OPENAGENTD_CONFIG_DIR}`` / ``{SKILLS_DIR}`` / ``{AGENTS_DIR}`` /
     ``{SKILL_DIR}`` placeholders so the agent sees concrete paths it can
@@ -87,17 +112,29 @@ def discover_skills(
 
     Returns a dict mapping skill name → metadata dict.
 
+    With ``skills_dir`` omitted, walks the four roots in
+    ``_iter_skill_roots()`` (project + global, OpenAgentd + opencode) in
+    precedence order — first source wins on a name collision. Pass an
+    explicit ``skills_dir`` to scan a single root (used by tests).
+
     Uses an mtime-keyed cache so the next call after a skill is added,
-    removed, or its ``SKILL.md`` edited returns the fresh listing without
-    requiring an explicit invalidation. The cache key is
-    ``(directory, max(dir_mtime_ns, max(SKILL.md mtime_ns)))`` — the
-    directory mtime catches add/remove, the file mtimes catch in-place
-    edits (which don't bump the parent dir mtime on most filesystems).
+    removed, or its ``SKILL.md`` edited returns the fresh listing
+    without an explicit invalidation. The signature aggregates every
+    root we scan, so a mutation in any one of them invalidates the
+    cache.
     """
-    directory = skills_dir or _SKILLS_DIR
-    if not directory.is_dir():
+    if skills_dir is not None:
+        if not skills_dir.is_dir():
+            return {}
+        return _discover_skills_cached(
+            (str(skills_dir),), _skills_dir_signature(skills_dir)
+        )
+
+    roots = [r for r in _iter_skill_roots() if r.is_dir()]
+    if not roots:
         return {}
-    return _discover_skills_cached(str(directory), _skills_dir_signature(directory))
+    signature = max(_skills_dir_signature(r) for r in roots)
+    return _discover_skills_cached(tuple(str(r) for r in roots), signature)
 
 
 def _skills_dir_signature(directory: Path) -> int:
@@ -125,51 +162,57 @@ def _skills_dir_signature(directory: Path) -> int:
 
 
 @lru_cache(maxsize=16)
-def _discover_skills_cached(directory_str: str, signature: int) -> dict[str, dict]:
-    """Cache keyed by ``(dir, mtime signature)``.
+def _discover_skills_cached(
+    directories: tuple[str, ...], signature: int
+) -> dict[str, dict]:
+    """Cache keyed by ``(roots, mtime signature)``.
 
-    The signature changes on any add/remove/edit inside ``directory``, so
-    subsequent calls automatically pick up filesystem mutations.  Stale
-    cache entries from prior signatures are evicted by the LRU bound.
+    *directories* is the ordered tuple of roots to walk; the first
+    occurrence of a skill name wins. The signature changes on any
+    add/remove/edit inside any root, so subsequent calls automatically
+    pick up filesystem mutations.  Stale cache entries from prior
+    signatures are evicted by the LRU bound.
     """
-    return _discover_skills_uncached(Path(directory_str))
+    skills: dict[str, dict] = {}
+    for directory_str in directories:
+        directory = Path(directory_str)
+        for path, stem in _iter_skill_paths(directory):
+            text = path.read_text(encoding="utf-8")
+            meta, _ = _parse_frontmatter(text)
+            name = meta.get("name", stem)
+            if name in skills:
+                continue  # earlier root wins on collision
+            # Substitute path tokens in description so the skill list shown
+            # to the agent ("## Available skills" section) renders concrete
+            # paths instead of literal {OPENAGENTD_CONFIG_DIR}/etc placeholders.
+            description = _render_tokens(
+                meta.get("description", ""), skill_dir=path.parent
+            )
+            skills[name] = {
+                "name": name,
+                "description": description,
+                "file": str(path.relative_to(directory)),
+                # Absolute path to the skill's directory — needed by callers
+                # that want to render {SKILL_DIR} in the body without a
+                # second filesystem walk.
+                "dir": str(path.parent),
+            }
+    return skills
 
 
 def _iter_skill_paths(directory: Path):
     """Yield (skill_file_path, stem) for all skills in *directory*.
 
     Only the directory layout is supported: ``skills/{name}/SKILL.md``.
+    Returns nothing for non-existent or non-directory paths so callers
+    can pass roots that may not be present on this machine.
     """
+    if not directory.is_dir():
+        return
     for subdir in sorted(p for p in directory.iterdir() if p.is_dir()):
         skill_file = subdir / "SKILL.md"
         if skill_file.is_file():
             yield skill_file, subdir.name
-
-
-def _discover_skills_uncached(directory: Path) -> dict[str, dict]:
-    """Walk directory and parse skill frontmatter."""
-    if not directory.is_dir():
-        return {}
-
-    skills: dict[str, dict] = {}
-    for path, stem in _iter_skill_paths(directory):
-        text = path.read_text(encoding="utf-8")
-        meta, _ = _parse_frontmatter(text)
-        name = meta.get("name", stem)
-        # Substitute path tokens in description so the skill list shown
-        # to the agent ("## Available skills" section) renders concrete
-        # paths instead of literal {OPENAGENTD_CONFIG_DIR}/etc placeholders.
-        description = _render_tokens(meta.get("description", ""), skill_dir=path.parent)
-        skills[name] = {
-            "name": name,
-            "description": description,
-            "file": str(path.relative_to(directory)),
-            # Absolute path to the skill's directory — needed by callers
-            # that want to render {SKILL_DIR} in the body without a
-            # second filesystem walk.
-            "dir": str(path.parent),
-        }
-    return skills
 
 
 @tool(name="skill")
@@ -182,21 +225,22 @@ async def load_skill(
     ],
 ) -> str:
     """Load skill instructions into context. Call before starting skill-matched work."""
-    skills_dir = _SKILLS_DIR
-    if not skills_dir.is_dir():
+    roots = [r for r in _iter_skill_roots() if r.is_dir()]
+    if not roots:
         return "Skills directory not found."
 
-    for path, stem in _iter_skill_paths(skills_dir):
-        text = await asyncio.to_thread(path.read_text, encoding="utf-8")
-        meta, body = _parse_frontmatter(text)
-        name = meta.get("name", stem)
-        if name == skill_name or stem == skill_name:
-            rel = path.relative_to(skills_dir)
-            logger.info("skill_loaded name={} file={}", name, rel)
-            # Expand placeholders ({OPENAGENTD_CONFIG_DIR}, {SKILL_DIR}, etc.)
-            # so the agent receives concrete paths it can hand to its
-            # file/shell tools without further interpretation.
-            return _render_tokens(body, skill_dir=path.parent)
+    for skills_dir in roots:
+        for path, stem in _iter_skill_paths(skills_dir):
+            text = await asyncio.to_thread(path.read_text, encoding="utf-8")
+            meta, body = _parse_frontmatter(text)
+            name = meta.get("name", stem)
+            if name == skill_name or stem == skill_name:
+                rel = path.relative_to(skills_dir)
+                logger.info("skill_loaded name={} file={}", name, rel)
+                # Expand placeholders ({OPENAGENTD_CONFIG_DIR}, {SKILL_DIR}, etc.)
+                # so the agent receives concrete paths it can hand to its
+                # file/shell tools without further interpretation.
+                return _render_tokens(body, skill_dir=path.parent)
 
-    available = list(discover_skills(skills_dir).keys())
+    available = list(discover_skills().keys())
     return f"Skill '{skill_name}' not found. Available: {available}"

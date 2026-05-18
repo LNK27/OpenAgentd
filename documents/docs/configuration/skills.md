@@ -13,7 +13,7 @@ Skills are domain-specific instruction sets that an agent loads **on demand** vi
 
 ## Layout
 
-Each skill lives in its own subdirectory under `{OPENAGENTD_CONFIG_DIR}/skills/`:
+Each skill lives in its own subdirectory:
 
 ```
 {OPENAGENTD_CONFIG_DIR}/skills/
@@ -22,6 +22,26 @@ Each skill lives in its own subdirectory under `{OPENAGENTD_CONFIG_DIR}/skills/`
     ├── creating.md       ← optional supporting files the agent can read
     └── reference/        ← optional subdir with extra reference material
 ```
+
+### Discovery roots
+
+Skills are discovered from four roots in this precedence order — first match
+wins on a name collision, so an OpenAgentd-native override silently shadows
+the upstream copy:
+
+| # | Root | Use it for |
+|---|------|------------|
+| 1 | `{cwd}/.openagentd/skills/`     | Project-specific, OpenAgentd-native |
+| 2 | `{cwd}/.opencode/skills/`       | Project-specific, opencode reuse |
+| 3 | `{OPENAGENTD_CONFIG_DIR}/skills/` | Your global OpenAgentd library |
+| 4 | `~/.config/opencode/skills/`    | Your global opencode library (reused as-is) |
+
+`{cwd}` is the working directory the OpenAgentd server was launched from.
+Opencode skills are read-only from OpenAgentd's perspective: the CRUD API
+(`POST/PUT/DELETE /api/skills`) only writes into `{OPENAGENTD_CONFIG_DIR}/skills/`,
+so the web UI's editable list shows just that root. Skills from the other
+three roots are visible to the agent but not editable in the UI — edit them
+where they live.
 
 `SKILL.md` follows this layout:
 
@@ -80,4 +100,4 @@ The `skill` tool itself is **always injected** into every agent — do not list 
 - **One paragraph in `description`.** It goes into every system prompt registered with the skill — keep it tight.
 - **Body is what the LLM reads when `skill(name)` is called.** Be explicit about steps, expected output, common pitfalls.
 - **Supporting files** (`creating.md`, `reference/`, etc.) are reachable by the agent's filesystem tools as long as the workspace allows it — the skill body should reference them by relative path.
-- **Hot reload.** `discover_skills()` is cached via `lru_cache` by directory mtime, so saving a `SKILL.md` is live on the next listing without a server restart.
+- **Hot reload.** `discover_skills()` is cached via `lru_cache` by an mtime signature aggregated across all four discovery roots, so editing a `SKILL.md` in any root — including an opencode one — is live on the next listing without a server restart.

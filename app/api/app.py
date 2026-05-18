@@ -15,6 +15,7 @@ from loguru import logger
 from app.agent.mcp import mcp_manager
 from app.api.routes.agents import router as agents_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.commands import router as commands_router
 from app.api.routes.diagnostics import router as diagnostics_router
 from app.api.routes.dream import router as dream_router
 from app.api.routes.health import router as health_router
@@ -206,6 +207,7 @@ def create_app() -> FastAPI:
     app.include_router(wiki_router, prefix="/api/wiki", tags=["wiki"])
     app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
     app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
+    app.include_router(commands_router, prefix="/api/commands", tags=["commands"])
     app.include_router(
         observability_router, prefix="/api/observability", tags=["observability"]
     )

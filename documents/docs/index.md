@@ -25,6 +25,7 @@ Connects to LLM providers (Gemini, Vertex AI, OpenAI, OpenRouter, Copilot OAuth,
 | [Migration](../../MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs. |
 | [CLI reference](./cli.md) | Every `openagentd` subcommand (`init`, `auth`, `stop`, `doctor`, `upgrade`, …). |
 | [Configuration](./configuration.md) | Env vars, XDG paths, agent `.md` files, providers, tools, skills, sandbox, hooks. |
+| [Slash commands](./commands.md) | Reusable `/name` prompt templates; reuses your opencode command library. |
 | [Troubleshooting](./troubleshooting.md) | Common install & runtime issues. |
 | [Comparison](./comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent. |
 

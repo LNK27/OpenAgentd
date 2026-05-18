@@ -346,6 +346,23 @@ export interface SkillListResponse {
   skills: SkillSummary[]
 }
 
+// ── Slash commands ──────────────────────────────────────────────────────────
+
+export interface CommandSummary {
+  name: string
+  description: string
+  source: string
+}
+
+export interface CommandListResponse {
+  commands: CommandSummary[]
+}
+
+export interface CommandRenderResponse {
+  name: string
+  content: string
+}
+
 // ── Registry (dropdown catalog) ─────────────────────────────────────────────
 
 export interface ToolCatalogEntry {
