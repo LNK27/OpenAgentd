@@ -170,7 +170,14 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
     case 'compaction': {
       const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
       const error = Boolean(block.extra?.error)
-      return <CompactionDivider state={state} error={error} />
+      return (
+        <CompactionDivider
+          state={state}
+          error={error}
+          summary={block.content}
+          sessionId={sessionId}
+        />
+      )
     }
     case 'tool':
       return (
