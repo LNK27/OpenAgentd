@@ -408,6 +408,33 @@ class TestResponsesHandler:
         assert result.reasoning_content == "Let me think..."
         assert result.content == "The answer is 42."
 
+    def test_parse_response_joins_multiple_reasoning_summary_parts_with_blank_line(
+        self, handler
+    ):
+        """Multiple ``summary_text`` parts in a single reasoning item must be
+        joined by a blank line — each part carries its own ``**Header**`` and
+        single-newline joins would glue the next header onto the prior body.
+        """
+        data = {
+            "output": [
+                {
+                    "type": "reasoning",
+                    "summary": [
+                        {"type": "summary_text", "text": "**One**\n\nFirst body."},
+                        {"type": "summary_text", "text": "**Two**\n\nSecond body."},
+                    ],
+                },
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "final"}],
+                },
+            ]
+        }
+        result = handler.parse_response(data)
+        assert result.reasoning_content is not None
+        assert "First body.\n\n**Two**" in result.reasoning_content
+        assert "First body.**Two**" not in result.reasoning_content
+
     def test_parse_response_with_tool_calls(self, handler):
         """Parse response with function calls."""
         data = {

@@ -1,43 +1,85 @@
-import { describe, it, expect, afterEach } from "bun:test"
-import { render, screen, cleanup } from "@testing-library/react"
-import { Thinking } from "@/components/Thinking"
+/**
+ * Tests for ``Thinking`` reasoning trace renderer.
+ *
+ * Focus: ``splitSections`` correctness for the multi-``**Header**`` reasoning
+ * format produced by OpenAI's ``/responses`` API.
+ */
 
-afterEach(cleanup)
+import { describe, expect, it } from 'bun:test'
+import { render } from '@testing-library/react'
+import { Thinking } from '@/components/Thinking'
+import { splitSections } from '@/utils/thinking'
 
-describe("Thinking — inline rendering", () => {
-  it("renders plain reasoning content inline", () => {
-    render(<Thinking content="Done thinking" />)
-
-    expect(screen.getByText("Done thinking")).toBeTruthy()
-    expect(screen.queryByRole("button")).toBeNull()
+describe('splitSections', () => {
+  it('returns a single empty-header section for plain text', () => {
+    const sections = splitSections('Just thinking out loud.')
+    expect(sections).toEqual([
+      { header: null, body: 'Just thinking out loud.' },
+    ])
   })
 
-  it("preserves multiline reasoning text", () => {
-    const content = "Determining response\n\nThe user is asking about capabilities."
-    const { container } = render(<Thinking content={content} />)
-
-    expect(container.textContent).toBe(content)
+  it('parses a single bold header followed by a body', () => {
+    const text = '**Planning**\n\nFirst I need to enumerate options.'
+    expect(splitSections(text)).toEqual([
+      { header: 'Planning', body: 'First I need to enumerate options.' },
+    ])
   })
 
-  it("promotes a leading bold line to an inline header", () => {
-    render(<Thinking content={"**Determining response needs**\n\nBody text here"} />)
-
-    const header = screen.getByText("Determining response needs")
-    expect(header.tagName).toBe("P")
-    expect(screen.getByText("Body text here")).toBeTruthy()
-    expect(screen.queryByText(/\*\*/)).toBeNull()
+  it('parses multiple bold headers with separate bodies', () => {
+    const text =
+      '**Planning**\n\nFirst body.\n\n**Refining**\n\nSecond body.\n\n**Wrap-up**\n\nThird body.'
+    expect(splitSections(text)).toEqual([
+      { header: 'Planning', body: 'First body.' },
+      { header: 'Refining', body: 'Second body.' },
+      { header: 'Wrap-up', body: 'Third body.' },
+    ])
   })
 
-  it("does not require special streaming chrome", () => {
-    render(<Thinking content="Determining response" isStreaming={true} />)
-
-    expect(screen.getByText("Determining response")).toBeTruthy()
-    expect(screen.queryByText("Reasoning")).toBeNull()
+  it('handles a leading prose paragraph before the first header', () => {
+    const text = 'Some prelude.\n\n**Section**\n\nBody.'
+    expect(splitSections(text)).toEqual([
+      { header: null, body: 'Some prelude.' },
+      { header: 'Section', body: 'Body.' },
+    ])
   })
 
-  it("renders no body text for empty content", () => {
-    const { container } = render(<Thinking content="" />)
+  it('still splits when headers are glued onto prior prose (legacy DB rows)', () => {
+    // Pre-2026-05 rows had no blank line between sections; the frontend
+    // must defensively split so the second header still renders correctly.
+    const text = '...essential redesign.**Summarizing**\n\nThe transition.'
+    const result = splitSections(text)
+    expect(result).toHaveLength(2)
+    expect(result[0]).toEqual({
+      header: null,
+      body: '...essential redesign.',
+    })
+    expect(result[1]).toEqual({
+      header: 'Summarizing',
+      body: 'The transition.',
+    })
+  })
 
-    expect(container.textContent).toBe("")
+  it('handles a header with no body (streaming mid-section)', () => {
+    expect(splitSections('**Just-started section**')).toEqual([
+      { header: 'Just-started section', body: '' },
+    ])
+  })
+
+  it('handles empty input', () => {
+    expect(splitSections('')).toEqual([])
+  })
+})
+
+describe('Thinking', () => {
+  it('renders each section header as a separate styled run', () => {
+    const text = '**One**\n\nfirst.\n\n**Two**\n\nsecond.'
+    const { container, getByText } = render(<Thinking content={text} />)
+
+    expect(getByText('One')).toBeTruthy()
+    expect(getByText('Two')).toBeTruthy()
+    expect(getByText('first.')).toBeTruthy()
+    expect(getByText('second.')).toBeTruthy()
+    // No raw asterisks should leak into the rendered text.
+    expect(container.textContent).not.toContain('**')
   })
 })
