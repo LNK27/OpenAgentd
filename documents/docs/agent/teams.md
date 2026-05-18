@@ -101,7 +101,7 @@ session_id = await team.handle_continue(existing_session_id)
 
 Inside `handle_continue`:
 1. Validate the session id parses, exists in DB, and (when `ChatSession.agent_name` is set) belongs to this lead.
-2. Load history via `get_messages_for_llm` — the same view the agent loop will pass to the LLM — and verify the trailing message is an `AssistantMessage` with non-empty content and no pending `tool_calls`. All precondition failures raise `ContinuePreconditionError` (HTTP 409); the team object is untouched on failure.
+2. Load history via `get_messages_for_llm` — the same view the agent loop will pass to the LLM — and validate the tail. A trailing `AssistantMessage` must have non-empty content and no unresolved `tool_calls`. A trailing `ToolMessage` is allowed only when it links to a prior assistant tool call, which covers stopped/cancelled tool executions that already wrote a tool result such as "interrupted/cancelled by user". If Stop left a trailing interrupted, thinking-only assistant row, that row is deleted and the previous tail is re-evaluated. All precondition failures raise `ContinuePreconditionError` (HTTP 409); the team object is untouched on failure.
 3. Realign the lead onto this session (skip the user-message persistence and inbox delivery steps from `handle_user_message`).
 4. `stream_store.init_turn(session_id)` and set `_has_active_turn = True`.
 5. Call `lead.activate_for_continuation()` — atomic state guard inside; raises `AlreadyWorkingError` if the lead is already mid-turn, which `handle_continue` catches and rethrows as `ContinuePreconditionError`.

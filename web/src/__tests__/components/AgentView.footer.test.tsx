@@ -166,6 +166,18 @@ describe("AgentView — AssistantFooter", () => {
 
       expect(screen.queryByRole("button", { name: /continue response/i })).toBeNull()
     })
+
+    it("renders continue button without copy for a tool-only turn", () => {
+      renderStream({
+        blocks: [makeToolBlock("tool1", "shell")],
+        currentBlocks: [],
+        isWorking: false,
+        onContinue: () => {},
+      })
+
+      expect(screen.queryByRole("button", { name: /copy response/i })).toBeNull()
+      expect(screen.queryByRole("button", { name: /continue response/i })).toBeTruthy()
+    })
   })
 
   describe("copy functionality", () => {

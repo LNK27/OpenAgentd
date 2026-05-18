@@ -27,8 +27,9 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
   const textContent = lastTurnText(turnBlocks)
   const lastBlock = turnBlocks[turnBlocks.length - 1]
   const timestamp = lastBlock?.timestamp
+  const canContinue = Boolean(onContinue && (textContent || turnBlocks.some((b) => b.type === 'tool')))
 
-  if (!textContent && !timestamp) return null
+  if (!textContent && !timestamp && !canContinue) return null
 
   const handleCopy = async () => {
     try {
@@ -55,7 +56,7 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
             : <Copy size={iconSize} />}
         </button>
       )}
-      {textContent && onContinue && (
+      {canContinue && onContinue && (
         <button
           onClick={onContinue}
           className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"

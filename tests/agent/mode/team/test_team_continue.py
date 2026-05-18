@@ -156,6 +156,8 @@ async def _seed_message(
     content: str | None,
     *,
     tool_calls: list[dict] | None = None,
+    tool_call_id: str | None = None,
+    extra: dict | None = None,
 ) -> None:
     """Insert a single ``SessionMessage`` row."""
     import app.core.db as _db
@@ -168,6 +170,8 @@ async def _seed_message(
                     role=role,
                     content=content,
                     tool_calls=tool_calls,
+                    tool_call_id=tool_call_id,
+                    extra=extra,
                 )
             )
 
@@ -235,6 +239,110 @@ class TestHandleContinuePreconditions:
             await lead_only_team.handle_continue(str(sid))
         assert exc_info.value.status == 409
         assert "tool call" in exc_info.value.reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_allows_when_tail_is_matching_tool_result(
+        self, lead_only_team, monkeypatch
+    ):
+        sid = uuid.uuid7()
+        await _seed_session(sid)
+        await _seed_message(sid, role="user", content="run shell")
+        await _seed_message(
+            sid,
+            role="assistant",
+            content=None,
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "shell", "arguments": "{}"},
+                }
+            ],
+        )
+        await _seed_message(
+            sid,
+            role="tool",
+            content="interrupted/cancelled by user",
+            tool_call_id="call_1",
+        )
+
+        monkeypatch.setattr(
+            lead_only_team.lead, "activate_for_continuation", lambda: None
+        )
+
+        returned = await lead_only_team.handle_continue(str(sid))
+
+        assert returned == str(sid)
+
+    @pytest.mark.asyncio
+    async def test_deletes_interrupted_thinking_only_tail_before_tool_continue(
+        self, lead_only_team, monkeypatch
+    ):
+        sid = uuid.uuid7()
+        await _seed_session(sid)
+        await _seed_message(sid, role="user", content="run shell")
+        await _seed_message(
+            sid,
+            role="assistant",
+            content=None,
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "shell", "arguments": "{}"},
+                }
+            ],
+        )
+        await _seed_message(
+            sid,
+            role="tool",
+            content="interrupted/cancelled by user",
+            tool_call_id="call_1",
+        )
+        await _seed_message(
+            sid,
+            role="assistant",
+            content=None,
+            extra={"interrupted": True},
+        )
+
+        monkeypatch.setattr(
+            lead_only_team.lead, "activate_for_continuation", lambda: None
+        )
+
+        returned = await lead_only_team.handle_continue(str(sid))
+
+        assert returned == str(sid)
+        import app.core.db as _db
+
+        async with _db.async_session_factory() as db:
+            from sqlmodel import col, select
+
+            rows = (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sid)
+                    .order_by(col(SessionMessage.created_at))
+                )
+            ).all()
+        assert [row.role for row in rows] == ["user", "assistant", "tool"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_unmatched_tool_tail(self, lead_only_team):
+        sid = uuid.uuid7()
+        await _seed_session(sid)
+        await _seed_message(sid, role="user", content="run shell")
+        await _seed_message(
+            sid,
+            role="tool",
+            content="interrupted/cancelled by user",
+            tool_call_id="missing_call",
+        )
+
+        with pytest.raises(ContinuePreconditionError) as exc_info:
+            await lead_only_team.handle_continue(str(sid))
+
+        assert "not linked" in exc_info.value.reason.lower()
 
     @pytest.mark.asyncio
     async def test_rejects_when_last_assistant_has_empty_content(self, lead_only_team):

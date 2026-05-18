@@ -38,11 +38,11 @@ from app.agent.mode.team.member import (
 from app.agent.mode.team.manage import make_team_configure_tool, make_team_manage_tool
 from app.agent.mode.team.tools import make_team_message_tool
 from app.agent.multimodal import build_parts_from_metas
-from app.agent.schemas.chat import AssistantMessage, HumanMessage
+from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
 from app.agent.schemas.events import DoneEvent
 from app.agent.tools.registry import Tool
 from app.core.db import DbFactory, resolve_db_factory
-from app.models.chat import ChatSession
+from app.models.chat import ChatSession, SessionMessage
 from app.services import memory_stream_store as stream_store
 from app.services.stream_envelope import StreamEnvelope
 from app.services.chat_service import (
@@ -116,6 +116,33 @@ class ContinuePreconditionError(Exception):
         super().__init__(reason)
         self.reason = reason
         self.status = status
+
+
+def _is_interrupted_thinking_only_tail(messages: list) -> bool:
+    """Return true for a stopped assistant row that has no visible output."""
+    if not messages:
+        return False
+    last = messages[-1]
+    return (
+        isinstance(last, AssistantMessage)
+        and not (last.content and last.content.strip())
+        and not last.tool_calls
+        and bool(last.extra and last.extra.get("interrupted"))
+    )
+
+
+def _tool_tail_has_matching_assistant_call(messages: list) -> bool:
+    """A trailing tool result is continuable only if a prior assistant called it."""
+    if not messages or not isinstance(messages[-1], ToolMessage):
+        return False
+    tool_call_id = messages[-1].tool_call_id
+    if not tool_call_id:
+        return False
+    for msg in reversed(messages[:-1]):
+        if not isinstance(msg, AssistantMessage):
+            continue
+        return any(tc.id == tool_call_id for tc in msg.tool_calls or [])
+    return False
 
 
 def _truncate_hint(text: str, *, limit: int = 80) -> str:
@@ -503,24 +530,39 @@ class AgentTeam:
                     f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
                 )
             messages = await get_messages_for_llm(db, lead_uuid)
+            if _is_interrupted_thinking_only_tail(messages):
+                tail = messages[-1]
+                if tail.db_id is not None:
+                    row_to_delete = await db.get(SessionMessage, tail.db_id)
+                    if row_to_delete is not None:
+                        await db.delete(row_to_delete)
+                        await db.commit()
+                messages = messages[:-1]
 
         if not messages:
             raise ContinuePreconditionError("Session has no messages to continue from.")
 
         last = messages[-1]
-        if not isinstance(last, AssistantMessage):
+        if isinstance(last, ToolMessage):
+            if not _tool_tail_has_matching_assistant_call(messages):
+                raise ContinuePreconditionError(
+                    "Last tool result is not linked to an assistant tool call — "
+                    "cannot safely continue."
+                )
+        elif not isinstance(last, AssistantMessage):
             raise ContinuePreconditionError(
                 "Last message is not an assistant message — nothing to continue. "
                 "Send a new message instead."
             )
-        if last.tool_calls:
-            raise ContinuePreconditionError(
-                "Last assistant message is mid tool call — cannot safely continue."
-            )
-        if not (last.content and last.content.strip()):
-            raise ContinuePreconditionError(
-                "Last assistant message has no content — nothing to continue."
-            )
+        else:
+            if last.tool_calls:
+                raise ContinuePreconditionError(
+                    "Last assistant message is mid tool call — cannot safely continue."
+                )
+            if not (last.content and last.content.strip()):
+                raise ContinuePreconditionError(
+                    "Last assistant message has no content — nothing to continue."
+                )
 
         # Preconditions satisfied — now realign the lead onto this session.
         is_new_session = self.lead.session_id != session_id
