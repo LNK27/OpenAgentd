@@ -268,11 +268,13 @@ export function CodingWorkspacePanel({
   open,
   initialTab = 'files',
   onClose,
+  mobile = false,
 }: {
   workspace: string
   open: boolean
   initialTab?: 'files' | 'diff'
   onClose: () => void
+  mobile?: boolean
 }) {
   const [tab, setTab] = useState<'files' | 'diff'>(initialTab)
   const files = useQuery({
@@ -293,12 +295,13 @@ export function CodingWorkspacePanel({
 
   return (
     <motion.aside
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={mobile ? { opacity: 0 } : { width: 0 }}
+      animate={mobile ? { opacity: 1 } : { width: 440 }}
+      exit={mobile ? { opacity: 0 } : { width: 0 }}
       transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-      className="fixed inset-y-0 right-0 z-40 flex min-h-0 w-full max-w-[440px] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl sm:relative sm:z-auto sm:w-[440px] sm:shrink-0 sm:shadow-none"
+      className="fixed inset-y-0 right-0 z-40 min-h-0 w-full max-w-[440px] overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl sm:relative sm:z-auto sm:w-auto sm:shrink-0 sm:shadow-none"
     >
+      <div className="flex min-h-0 w-full max-w-[440px] flex-col sm:w-[440px]">
       <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-3">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">Workspace</p>
@@ -357,6 +360,7 @@ export function CodingWorkspacePanel({
       >
         <RefreshCw size={12} /> Refresh
       </button>
+      </div>
     </motion.aside>
   )
 }

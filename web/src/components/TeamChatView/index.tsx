@@ -788,6 +788,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               workspace={workspace}
               open
               initialTab={codingPanel}
+              mobile={isMobile}
               onClose={() => setCodingPanel(null)}
             />
           )}
