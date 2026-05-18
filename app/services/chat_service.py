@@ -7,7 +7,7 @@ from typing import NamedTuple
 from uuid import UUID
 
 from loguru import logger
-from sqlmodel import and_, col, not_, or_, select
+from sqlmodel import and_, col, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from pydantic import TypeAdapter
@@ -567,19 +567,23 @@ async def get_team_history(
         limit: Pagination limit applied to each message query.
 
     Returns:
-        A :class:`TeamHistoryData` with the lead session, its non-summary
-        paginated messages, and one :class:`TeamHistoryMemberData` per child
-        session. Returns ``None`` if the lead session does not exist.
+        A :class:`TeamHistoryData` with the lead session, its paginated
+        messages (summaries included — the frontend renders them as
+        "Session compacted" dividers), and one :class:`TeamHistoryMemberData`
+        per child session. Returns ``None`` if the lead session does not exist.
     """
     lead_session = await db.get(ChatSession, lead_session_id)
     if lead_session is None:
         return None
 
+    # Me: summaries are NOT filtered here. The compaction divider in the
+    # web UI keys off ``is_summary=True`` rows to render the inline
+    # "Session compacted" marker + summary body; hiding them would make
+    # the divider vanish on reload.
     lead_msgs = (
         await db.exec(
             select(SessionMessage)
             .where(col(SessionMessage.session_id) == lead_session_id)
-            .where(not_(SessionMessage.is_summary))
             .order_by(col(SessionMessage.created_at).asc())
             .offset(offset)
             .limit(limit)
@@ -604,7 +608,7 @@ async def get_team_history(
             await db.exec(
                 select(SessionMessage)
                 .where(col(SessionMessage.session_id) == sub.id)
-                .where(not_(SessionMessage.is_summary))
+                # Me: summaries kept — see comment on lead_msgs above.
                 .order_by(col(SessionMessage.created_at).asc())
                 .offset(offset)
                 .limit(limit)
