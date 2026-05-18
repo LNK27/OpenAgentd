@@ -18,7 +18,6 @@ Each agent is a single `.md` file with **YAML frontmatter** (config) and a **Mar
 | `{OPENAGENTD_CONFIG_DIR}/agents/*.md` | Normal-mode agents. Each directory loads as one team — exactly one file must have `role: lead`. |
 | `{OPENAGENTD_CONFIG_DIR}/agents/coding/*.md` | Coding-mode team. Same rules — exactly one `role: lead`. |
 | `{OPENAGENTD_CONFIG_DIR}/dream.md` | Dream agent config (`enabled`, `model`, `schedule`, `tools`). See [`agent/memory.md`](../agent/memory.md#dream-agent-config). |
-| `{OPENAGENTD_CONFIG_DIR}/summarization.md` | Global summarization defaults. |
 | `{OPENAGENTD_CONFIG_DIR}/title_generation.md` | Global title-generation defaults. |
 | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | Image / video generation backends. |
 | `{OPENAGENTD_CONFIG_DIR}/speech.yaml` | Voice / speech config. |
@@ -47,14 +46,6 @@ skills:
 mcp:
   - context7
 # fallback_model: copilot:gpt-5-mini
-# Per-agent summarization overrides (all optional; unset fields fall back to
-# {CONFIG_DIR}/summarization.md, then module defaults in app/agent/hooks/summarization.py):
-# summarization:
-#   enabled: true
-#   token_threshold: 80000
-#   keep_last_assistants: 2
-#   max_token_length: 5000
-#   model: googlegenai:gemini-flash-lite
 ---
 
 You are openagentd. Be concise and direct.
@@ -79,7 +70,8 @@ All from `AgentConfig` in `app/agent/loader.py`. Field types match the Pydantic 
 | `thinking_level` | No | `"low"\|"medium"\|"high"` | Extended-reasoning effort. See [`providers.md`](./providers.md#thinking-thinking_level). |
 | `fallback_model` | No | `str` | `provider:model` used after primary exhausts retries. |
 | `responses_api` | No | `bool` | Force OpenAI Responses API on/off (overrides the auto-route from `thinking_level`). |
-| `summarization` | No | `SummarizationConfig` | Per-agent summarization overrides. See [`agent/summarization.md`](../agent/summarization.md). |
+
+Summarisation has no per-agent overrides — see [`agent/summarization.md`](../agent/summarization.md). All tuning lives as constants in `app/agent/hooks/summarization.py`; the only per-session variation is the team mode (chat vs. coding), which selects the bundled prompt and keep window.
 
 The `team_message` tool is **always injected** into team agents — do not list it. `todo_manage` is injected into the lead (and into members in team mode) — also do not list it manually.
 

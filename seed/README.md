@@ -21,9 +21,14 @@ seed/
 ├── skills/                # one subdirectory per skill, each containing SKILL.md
 ├── mcp.json               # default MCP server config (context7 enabled)
 ├── multimodal.yaml        # image / video provider config
-├── summarization.md       # global summarization config + system prompt
 └── title_generation.md    # title-generation config + system prompt
 ```
+
+> Summarisation has no file-based config and is not seeded. All tuning
+> (prompts + numeric thresholds + keep window) lives in
+> ``app/agent/hooks/summarization.py`` — see
+> ``documents/docs/agent/summarization.md`` for the rationale and the full
+> list of constants.
 
 `README.md` (this file) is the only top-level item not copied — every
 other top-level entry ships, but `init` skips files the user already
@@ -42,6 +47,5 @@ has, so re-running `init` after a release won't clobber edits.
 - **Keep skills self-contained.** Each `skills/<name>/` should run with no
   outside files. Bundle reference scripts and templates in the same dir.
 - **Top-level configs are fill-in-gap defaults.** `mcp.json`,
-  `multimodal.yaml`, `summarization.md`, `title_generation.md` only
-  land if the target file doesn't exist. Existing files are never
-  overwritten.
+  `multimodal.yaml`, `title_generation.md` only land if the target
+  file doesn't exist. Existing files are never overwritten.

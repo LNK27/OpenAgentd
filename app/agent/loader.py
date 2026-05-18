@@ -30,10 +30,6 @@ Each file::
     tools: [date, read, ls]
     skills: [web-research]
     fallback_model: copilot:gpt-5-mini
-    summarization:
-      enabled: true
-      token_threshold: 80000
-      model: googlegenai:gemini-flash-lite
     ---
 
     You are the team orchestrator. Coordinate — do not do the work yourself.
@@ -62,8 +58,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from app.agent.schemas.agent import (
     AgentContext,
-    SummarizationConfig,
-    SummarizationFileConfig,
     TitleGenerationFileConfig,
 )
 
@@ -112,7 +106,6 @@ class AgentConfig(BaseModel):
     temperature: float | None = None
     thinking_level: str | None = None
     responses_api: bool | None = None
-    summarization: SummarizationConfig | None = None
 
     @model_validator(mode="after")
     def _validate(self) -> "AgentConfig":
@@ -159,74 +152,10 @@ def parse_agent_md(path: Path) -> AgentConfig:
 
 
 # ---------------------------------------------------------------------------
-# Summarization file config loader
-# ---------------------------------------------------------------------------
-
-_SENTINEL = object()
-_summarization_file_cfg_cache: SummarizationFileConfig | None | object = _SENTINEL
-
-
-def load_summarization_file_config(
-    path: str | Path | None = None,
-) -> SummarizationFileConfig | None:
-    """Load global summarization defaults from a ``.md`` file with YAML frontmatter.
-
-    Returns ``None`` if the file does not exist.  Raises ``ValueError`` if the
-    file exists but is malformed.
-
-    The result is cached after the first successful load.  Pass an explicit
-    *path* to bypass the cache (e.g. in tests).
-    """
-    global _summarization_file_cfg_cache  # noqa: PLW0603
-
-    # Use cached result when no explicit path is given
-    if path is None:
-        if _summarization_file_cfg_cache is not _SENTINEL:
-            return cast("SummarizationFileConfig | None", _summarization_file_cfg_cache)
-        from app.agent.hooks.summarization import summarization_config_path
-
-        resolved = summarization_config_path()
-    else:
-        resolved = Path(path)
-
-    if not resolved.exists():
-        if path is None:
-            _summarization_file_cfg_cache = None
-        return None
-
-    text = resolved.read_text(encoding="utf-8")
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        raise ValueError(
-            f"Summarization config '{resolved}' is missing YAML frontmatter. "
-            "Expected '---\\n<yaml>\\n---\\n'."
-        )
-    raw = yaml.safe_load(m.group(1)) or {}
-    # ``prompt`` is sourced from the file body, never from frontmatter, to
-    # prevent YAML escaping gymnastics for multi-line prompts.
-    raw.pop("prompt", None)
-    body = m.group(2).strip()
-    if body:
-        raw["prompt"] = body
-    result = SummarizationFileConfig.model_validate(raw)
-
-    if path is None:
-        _summarization_file_cfg_cache = result
-        logger.info(
-            "summarization_file_config_loaded path={} model={} token_threshold={} "
-            "prompt_override={}",
-            resolved,
-            result.model or "(agent default)",
-            result.token_threshold,
-            result.prompt is not None,
-        )
-    return result
-
-
-# ---------------------------------------------------------------------------
 # Title generation file config loader
 # ---------------------------------------------------------------------------
 
+_SENTINEL = object()
 _title_generation_file_cfg_cache: TitleGenerationFileConfig | None | object = _SENTINEL
 
 
@@ -495,7 +424,6 @@ def _build_agent(
         mcp_servers=cfg.mcp,
         fallback_provider=fallback_provider,
         fallback_model_id=cfg.fallback_model,
-        summarization_config=cfg.summarization,
     )
 
     # Stamp config dependencies for end-of-turn drift detection.

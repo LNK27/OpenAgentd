@@ -131,8 +131,9 @@ uv run python -m manual.note --cat 2026-04-30-manual-test.md
 | `provider_models.py` | List discovered provider models, falling back to catalog defaults | provider IDs, `--limit N` |
 | `inspect_prompt.py` | Reconstruct full LLM payload (system prompt + tools JSON) — **no server required** | `--dir`, `--agent`, `--no-date`, `--date`, `--out`, `--stats-only` |
 | `otel_inspect.py` | Read OTel spans/metrics from `.openagentd/otel/` JSONL files | `--session ID`, `--trace ID`, `--metrics` |
-| `summarization_test.py` | Drive summarization hook by sending many turns | requires low `token_threshold` in `.openagentd/config/summarization.md` |
-| `summarization_max_tokens_test.py` | Test max_token_length cap on summary output | requires `max_token_length` set in `.openagentd/config/summarization.md` |
+| `summarization_test.py` | Drive summarization hook by sending many turns | requires low `DEFAULT_PROMPT_TOKEN_THRESHOLD` in `app/agent/hooks/summarization.py` |
+| `summarization_max_tokens_test.py` | Test max_token_length cap on summary output | requires `DEFAULT_MAX_TOKEN_LENGTH` set in `app/agent/hooks/summarization.py` |
+| `summarization_sse.py` | Capture `summarization_start` / `_content` / `_end` SSE events from a team turn and verify deltas reconstruct the final summary | `--session ID`, `--warmup N`, `--wait N`, `--out FILE` |
 | `tool_result_offload_test.py` | Verify large tool results are offloaded to workspace | — |
 | `shell_output_delta.py` | Verify live `tool_output_delta` events from shell output | `--base URL`, `--message TEXT`, `--wait N` |
 
@@ -169,6 +170,11 @@ uv run python -m manual.otel_inspect --metrics
 
 # Verify live shell output deltas
 uv run python -m manual.shell_output_delta
+
+# Verify summarisation SSE events fire on a team turn (needs low token_threshold)
+uv run python -m manual.summarization_sse
+uv run python -m manual.summarization_sse --session <ID>                 # follow-up on existing session
+uv run python -m manual.summarization_sse --out .openagentd/state/summ_sse.jsonl
 ```
 
 ### Provider tests (`try_providers/`)

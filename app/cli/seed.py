@@ -9,9 +9,12 @@ What ships
 - ``skills/`` — one subdirectory per skill, each with at minimum a
   ``SKILL.md``.
 - Top-level config files: ``mcp.json``, ``multimodal.yaml``, ``speech.yaml``,
-  ``summarization.md``, ``title_generation.md``. These are the
-  defaults the user can edit later; any file already present in the
-  user's config dir is left untouched.
+  ``title_generation.md``. These are the defaults the user can edit later;
+  any file already present in the user's config dir is left untouched.
+  ``summarization.md`` is **not** seeded — the summariser prompt lives in
+  code (see ``CHAT_SUMMARY_PROMPT`` / ``CODING_SUMMARY_PROMPT`` in
+  ``app.agent.hooks.summarization``). The file is still honoured as an
+  optional source of NUMERIC overrides if an operator creates one.
 
 Sources, in order of preference
 -------------------------------
@@ -59,7 +62,6 @@ _SEED_ROOT_FILES: frozenset[str] = frozenset(
         "mcp.json",
         "multimodal.yaml",
         "speech.yaml",
-        "summarization.md",
         "title_generation.md",
     }
 )

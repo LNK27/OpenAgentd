@@ -3,9 +3,9 @@
  *
  * We intentionally hand-roll a minimal YAML serialiser instead of shipping a
  * JS yaml library, because the agent frontmatter we produce is a strict
- * subset: scalars + lists of strings. Everything else (nested `summarization`
- * blocks, arbitrary keys) is preserved verbatim in the raw body when the
- * user drops to the raw editor.
+ * subset: scalars + lists of strings. Anything more exotic (nested blocks,
+ * arbitrary keys) is preserved verbatim in the raw body when the user drops
+ * to the raw editor.
  */
 
 export interface AgentFrontmatter {
@@ -79,9 +79,9 @@ export function combine(fm: AgentFrontmatter, body: string): string {
  *
  * This is deliberately cheap and lossy: the parser only understands the
  * subset of YAML the form actually produces.  For anything more exotic
- * (comments, nested ``summarization:`` blocks, anchors) the comparison
- * falls back to byte-wise equality of the untouched portion via a
- * whitespace-tolerant body match plus a raw frontmatter equality guard.
+ * (comments, nested blocks, anchors) the comparison falls back to
+ * byte-wise equality of the untouched portion via a whitespace-tolerant
+ * body match plus a raw frontmatter equality guard.
  */
 export function contentEquals(a: string, b: string): boolean {
   if (a === b) return true

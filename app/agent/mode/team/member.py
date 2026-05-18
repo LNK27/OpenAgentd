@@ -700,7 +700,8 @@ class TeamMemberBase(abc.ABC):
             # (see app.agent.hooks.tool_result_offload.DEFAULT_CHAR_THRESHOLD).
             hooks.append(ToolResultOffloadHook())
             summ_hook = build_summarization_hook(
-                self.agent.llm_provider, self.agent.summarization_config
+                self.agent.llm_provider,
+                mode=self._team.mode,
             )
             if summ_hook:
                 # Flush memory before the summariser compresses the window —

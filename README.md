@@ -213,9 +213,6 @@ skills:
   - web-research
 mcp:
   - context7
-summarization:
-  token_threshold: 80000
-  keep_last_assistants: 2
 ---
 
 System prompt goes here.
@@ -289,7 +286,7 @@ Included skills:
 
 | Skill | Purpose |
 |---|---|
-| `self-healing` | Agent edits its own config (model, tools, skills, summarization thresholds) |
+| `self-healing` | Agent edits its own config (model, tools, skills) |
 | `mcp-installer` | Install new MCP servers from the UI or by description |
 | `skill-installer` | Install new skills from a URL or from scratch |
 | `plugin-installer` | Install agent plugins |

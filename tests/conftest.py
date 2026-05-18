@@ -16,24 +16,11 @@ _test_engine = None
 
 
 # ---------------------------------------------------------------------------
-# Test fixture config files — .tests/ is gitignored, so the fixtures below
-# are materialised on-demand the first time the test session runs. Both
-# SummarizationHook (required) and TitleGenerationHook (soft-required) load
-# their prompts from these files; pytest.ini pins the four XDG dirs to
-# .tests/{data,config,state,cache}.
+# Test fixture config files — .tests/ is gitignored, so the fixture below is
+# materialised on-demand the first time the test session runs. TitleGeneration
+# still loads its prompt from a file; SummarizationHook now uses in-code
+# constants. pytest.ini pins the four XDG dirs to .tests/{data,config,state,cache}.
 # ---------------------------------------------------------------------------
-
-_SUMMARIZATION_FIXTURE = """\
----
-# Test-only summarization config. The prompt body is required.
-token_threshold: 100000
-keep_last_assistants: 3
-max_token_length: 10000
----
-
-You are a conversation summariser. Produce a concise summary of the
-conversation so far. This prompt is used by the test suite only.
-"""
 
 _TITLE_GENERATION_FIXTURE = """\
 ---
@@ -49,21 +36,17 @@ This prompt is used by the test suite only.
 
 @pytest.fixture(scope="session", autouse=True)
 def _materialise_openagentd_config(tmp_path_factory):
-    """Ensure ``{CONFIG_DIR}/{summarization,title_generation}.md`` exist.
+    """Ensure ``{CONFIG_DIR}/title_generation.md`` exists.
 
     CI and local runs both point the four XDG dirs at ``.tests/*`` (see
     ``pytest.ini``). The directory is gitignored by design, so the config
-    files must be generated before any agent-building code runs.
+    file must be generated before any agent-building code runs.
     """
     from app.core.config import settings
 
     # settings already resolved — CONFIG_DIR = .tests/config.
     config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
     config_dir.mkdir(parents=True, exist_ok=True)
-
-    summ = config_dir / "summarization.md"
-    if not summ.exists():
-        summ.write_text(_SUMMARIZATION_FIXTURE)
 
     title = config_dir / "title_generation.md"
     if not title.exists():

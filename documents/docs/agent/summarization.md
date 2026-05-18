@@ -2,7 +2,7 @@
 title: Rolling-Window Context Summarization
 description: Automatic conversation compression when context window approaches token threshold.
 status: stable
-updated: 2026-04-21
+updated: 2026-05-19
 ---
 
 # Summarization
@@ -25,90 +25,75 @@ updated: 2026-04-21
 | **Tool result stubbing** | `ToolMessage` content is replaced with `[tool/name]: [tool result omitted]` in the summariser input. Raw shell output, file contents, and JSON blobs are noise for summarisation; the tool name is sufficient. |
 | **Merge vs. fresh summary** | When the window being summarised contains a prior summary (`is_summary=True`), the hook sends a merge instruction (`_MERGE_REQUEST`) instead of the default request. The summariser is told explicitly to fold old and new content together. |
 | **LLM exception** | Calls an LLM to generate the summary text — the only I/O this hook performs. |
+| **No reasoning** | The hook always passes ``thinking_level="none"`` to the provider on every summariser call, even if the agent's primary model has ``thinking_level`` set to ``low``/``medium``/``high``. Reasoning adds latency and cost without improving compression quality; for OpenAI's reasoning models it also buffers the entire output behind the reasoning phase, defeating delta streaming. |
 
 ---
 
 ## Configuration
 
-Settings are resolved from three tiers in priority order (first non-`None` wins):
+Summarization has **no operator-facing configuration surface**. All tuning lives as constants in `app/agent/hooks/summarization.py`. There is no per-agent `summarization:` block, no `.openagentd/config/summarization.md` file, and no environment variables. To change anything, edit the source and ship a new build — this guarantees a single source of truth and removes the risk of drift from a stale config file.
 
-1. **Per-agent frontmatter** — `summarization:` block in the agent's `.md` file
-2. **Global file config** — `.openagentd/config/summarization.md` (YAML frontmatter)
-3. **Module-level defaults** — `DEFAULT_*` constants in `app/agent/hooks/summarization.py`
+### Bundled prompts (selected by session mode)
 
-### Global file config (`.openagentd/config/summarization.md`)
+| Constant | Used when | Shape |
+|----------|-----------|-------|
+| `CHAT_SUMMARY_PROMPT` | session mode is `normal` (or omitted) | Prose: "produce a concise summary in third-person narrative form…" |
+| `CODING_SUMMARY_PROMPT` | session mode is `coding` | Structured Markdown template (Goal / Constraints / Progress / Decisions / Next Steps / Critical Context / Relevant Files) — much higher signal density for follow-up turns. Borrowed from the opencode project's compaction module. |
 
-The primary way to set the summarizer prompt, shared summarizer model, and default thresholds for all agents. Create or edit `.openagentd/config/summarization.md`:
+`build_summarization_hook` selects the prompt via `prompt_for_mode(mode)`. The team member call site (`app/agent/mode/team/member.py`) passes `mode=self._team.mode`.
 
-```markdown
----
-model: googlegenai:gemini-2.0-flash   # default summarizer model for all agents
-token_threshold: 100000
-keep_last_assistants: 3
-max_token_length: 10000
----
+### Mode-aware keep window
 
-You are a conversation summariser. Produce a concise but complete summary of
-the conversation so far. Capture key facts, decisions, and outcomes.
-```
+`keep_last_assistants` is **also** mode-aware, via `keep_last_for_mode(mode)`:
 
-All frontmatter fields are optional — any field omitted falls back to the module-level defaults.
+| Mode | Constant | Value | Rationale |
+|------|----------|-------|-----------|
+| `normal` (default) | `DEFAULT_KEEP_LAST_ASSISTANTS` | `3` | Preserve recent conversational context verbatim so the next reply stays grounded in the most recent exchanges. |
+| `coding` | `CODING_KEEP_LAST_ASSISTANTS` | `0` | Compact **everything** below the threshold into the structured summary. Coding sessions benefit from a single authoritative "state of the world" record over partially-summarised history. |
 
-**The Markdown body is the summariser system prompt, and it is required.** If the file is missing while summarization is enabled (`token_threshold > 0`), `build_summarization_hook` logs a warning and returns `None` (the hook is skipped — sessions run without summarization). An empty body does the same. There is no bundled fallback prompt — the config file is the single source of truth. Set per-agent `summarization.enabled: false` (or `token_threshold: 0` in the file config) to disable summarization entirely.
+### Module-level defaults (single source of truth)
 
-The path is `{OPENAGENTD_CONFIG_DIR}/summarization.md`, computed by `summarization_config_path()` in `app/agent/hooks/summarization.py`.
+| Constant | Default | Meaning |
+|----------|---------|---------|
+| `DEFAULT_PROMPT_TOKEN_THRESHOLD` | `100000` | Trigger threshold for `state.usage.last_prompt_tokens`. Set to `0` to disable summarization entirely. |
+| `DEFAULT_KEEP_LAST_ASSISTANTS` | `3` | Chat-mode keep window. |
+| `CODING_KEEP_LAST_ASSISTANTS` | `0` | Coding-mode keep window. |
+| `DEFAULT_MAX_TOKEN_LENGTH` | `10000` | Cap on the summariser LLM response length. `0` = unlimited. |
+| `DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY` | `4` | Skip if fewer than N new messages since the last summarisation — prevents thrashing when the kept window sits close to the threshold. |
 
-`SummarizationFileConfig` (defined in `app/agent/schemas/agent.py`) is the Pydantic model for this file. `load_summarization_file_config()` in `app/agent/loader.py` parses the frontmatter, captures the body as `prompt`, and caches the result; pass an explicit `path` argument to bypass the cache (useful in tests).
+### Factory call
 
-### Module-level defaults
-
-Final fallback when neither per-agent config nor the global file config specifies a field. The `DEFAULT_*` constants live at the top of `app/agent/hooks/summarization.py`. To tune for local testing (e.g. `token_threshold: 2000`) prefer setting it in `.openagentd/config/summarization.md` rather than editing the source.
-
-### Per-agent overrides (YAML frontmatter)
-
-Each agent can override any tier-2 or tier-3 value with a `summarization:` block in its `.md` frontmatter. All fields are optional; any field omitted falls through to the file config, then to the module-level defaults.
-
-```yaml
-summarization:
-  enabled: true                         # false = disable summarization for this agent only
-  token_threshold: 60000                # overrides file config / DEFAULT_PROMPT_TOKEN_THRESHOLD
-  keep_last_assistants: 2               # overrides file config / DEFAULT_KEEP_LAST_ASSISTANTS
-  max_token_length: 5000                # overrides file config / DEFAULT_MAX_TOKEN_LENGTH
-  model: googlegenai:gemini-flash-lite  # overrides file config model (agent-specific summarizer)
-```
-
-Team agents have independent configs — one member can have summarization disabled while another uses a lower threshold.
-
-The per-agent config is stored on `agent.summarization_config` (a `SummarizationConfig` instance or `None`) and is read by `build_summarization_hook` in `chat.py` and `team/member.py` when constructing the hook for each turn.
-
-`SummarizationConfig` is defined in `app/agent/schemas/agent.py` and re-exported from `app/agent/loader.py`.
-
-### In code
-
-Use `build_summarization_hook` to construct a hook from a `SummarizationConfig` with settings fallback:
+`build_summarization_hook` has exactly two inputs: the agent's own LLM provider (used as the summariser too — no separate summariser model) and the session mode.
 
 ```python
 from app.agent.hooks.summarization import build_summarization_hook
 
-hook = build_summarization_hook(default_provider=provider, cfg=agent.summarization_config)
+hook = build_summarization_hook(
+    default_provider=provider,
+    mode=team.mode,             # "coding" → CODING_SUMMARY_PROMPT + keep=0; else CHAT_SUMMARY_PROMPT + keep=3
+)
 if hook:
     hooks.append(hook)
 ```
 
-Returns `None` when summarization is disabled (`cfg.enabled=False` or `threshold <= 0`), so the caller only needs an `if` check.
+Returns `None` only when `DEFAULT_PROMPT_TOKEN_THRESHOLD <= 0` — the operator-level kill switch.
 
-To construct `SummarizationHook` directly (e.g. for custom integrations):
+To construct `SummarizationHook` directly (e.g. for custom integrations), pass any non-empty prompt string and your own numeric tuning:
 
 ```python
-from app.agent.hooks.summarization import SummarizationHook
+from app.agent.hooks.summarization import (
+    SummarizationHook,
+    CHAT_SUMMARY_PROMPT,
+    CODING_SUMMARY_PROMPT,
+)
 
 hook = SummarizationHook(
     llm_provider=provider,                    # can be a cheaper/faster model
+    summary_prompt=CHAT_SUMMARY_PROMPT,        # or CODING_SUMMARY_PROMPT, or a custom string
     prompt_token_threshold=100000,
-    keep_last_assistants=3,                   # keep last 3 assistant turns + their preceding context
-    summary_prompt="...",                     # system prompt for summariser
-    max_token_length=10000,                   # limit response to 10k tokens (0 = unlimited)
-    min_messages_since_last_summary=4,        # skip if fewer than 4 new messages since last run
+    keep_last_assistants=3,                   # 0 = summarise everything below threshold
+    max_token_length=10000,                   # 0 = unlimited
+    min_messages_since_last_summary=4,
 )
 ```
 
@@ -217,26 +202,9 @@ The loop sends `state.messages_for_llm` to the LLM (see `app/agent/state.py:Agen
 
 ## Using a different model for summarization
 
-The recommended approach is to set `model` in `.openagentd/config/summarization.md` — this applies the same cheap/fast summarizer model to all agents at once:
+`build_summarization_hook` always reuses the agent's own LLM provider as the summariser. There is no operator-facing way to point summarisation at a cheaper/faster model.
 
-```markdown
----
-model: googlegenai:gemini-2.0-flash   # all agents use this for summarization
----
-```
-
-To override for a specific agent, add `model` to the agent's `summarization:` block:
-
-```yaml
-summarization:
-  model: googlegenai:gemini-flash-lite   # only this agent uses a different summarizer
-```
-
-Priority: per-agent `model` → file config `model` → agent's own provider (no separate summarizer).
-
-A separate provider instance is created at startup from the resolved model string and passed to `SummarizationHook`. The agent's main `llm_provider` is unaffected.
-
-In code, `build_summarization_hook` handles the model resolution automatically. For manual construction, pass any `LLMProviderBase` as `llm_provider`:
+If you need a different summariser for a custom integration, construct `SummarizationHook` directly with an arbitrary `LLMProviderBase`:
 
 ```python
 summarizer_provider = ZAIProvider(api_key="...", model="glm-4-flash")
@@ -244,25 +212,19 @@ main_provider = GoogleGenAIProvider(api_key="...", model="gemini-2.0-flash")
 
 hook = SummarizationHook(
     llm_provider=summarizer_provider,   # cheap summarizer
+    summary_prompt=CHAT_SUMMARY_PROMPT,
     prompt_token_threshold=100000,
 )
 agent = Agent(llm_provider=main_provider, hooks=[hook])
 ```
 
+The factory path stays simple on purpose: one knob (`mode`) drives both the prompt and the keep window.
+
 ---
 
 ## Disabling summarization
 
-**Globally:** set `token_threshold: 0` in `.openagentd/config/summarization.md`. The hook becomes a no-op immediately in `before_model`.
-
-**Per agent:** set `enabled: false` in the agent's `summarization:` block (YAML):
-
-```yaml
-summarization:
-  enabled: false
-```
-
-When `enabled: false`, the hook is not added to that agent's hook list at all for the turn.
+Set `DEFAULT_PROMPT_TOKEN_THRESHOLD = 0` in `app/agent/hooks/summarization.py` and rebuild. `build_summarization_hook` returns `None` and the hook is never attached. There is no per-agent or per-session disable knob.
 
 ---
 
@@ -361,28 +323,6 @@ Prior to this fix, `SummarizationHook` marked all summarised messages (`to_summa
 
 `SummarizationHook` is attached to each `TeamMemberBase` (lead or member) independently in `_handle_messages()`. Each agent has its own `AgentState` and its own `state.usage.last_prompt_tokens` accumulation. Summarization fires per-agent when that agent's prompt tokens exceed the threshold — not globally across the team. Each agent's `SQLiteCheckpointer` persists the resulting state mutations independently.
 
-Each team agent can carry its own `summarization:` block in its `.md` frontmatter. Any field not set in the agent's block falls back to the global `.openagentd/config/summarization.md` file, then to module-level defaults:
-
-```markdown
----
-name: orchestrator
-role: lead
-model: zai:glm-5v-turbo
-summarization:
-  token_threshold: 80000
----
-```
-
-```markdown
----
-name: explorer
-role: member
-model: zai:glm-5-turbo
-summarization:
-  enabled: false     # explorer has short turns — skip summarization
----
-```
-
-Agents with no `summarization:` block fall back to the global file config, then to module-level defaults.
+All members share the same tuning (the module-level defaults). The only per-team variation is the session `mode` — which is the same value for every member of a given team because it is set at team construction time and read from `self._team.mode` in `member.py`. So within a team all members use the same prompt + keep window; coding teams summarise everything below the threshold, chat teams keep the last three assistant turns verbatim.
 
 Token seeding on team member resume works identically to single-agent: `mark_loaded()` + `seed_state()` are called inside `_handle_messages()` before every `agent.run()`, so each member wakes up with the correct prior token count regardless of which HTTP request triggered the turn.

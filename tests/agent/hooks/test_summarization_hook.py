@@ -562,6 +562,55 @@ async def test_max_token_length_default_value():
 
 
 # ---------------------------------------------------------------------------
+# thinking_level — always forced to "none" on the summariser call
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_summariser_call_always_passes_thinking_level_none():
+    """Summarisation never benefits from reasoning — the hook must override
+    the agent's primary ``thinking_level`` with ``"none"`` on every call so
+    reasoning tokens are not spent (cost + latency + streaming behaviour).
+
+    The per-call kwarg wins over constructor ``model_kwargs`` thanks to
+    ``LLMProviderBase._merged_kwargs`` — see ``app/agent/providers/base.py``.
+    """
+    provider = MagicMock()
+
+    async def _stream(*_, **__):
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Summary."
+        chunk.usage = None
+        yield chunk
+
+    provider.stream.return_value = _stream()
+
+    hook = SummarizationHook(
+        llm_provider=provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1000,
+        keep_last_assistants=1,
+    )
+    ctx = _make_ctx()
+    state = AgentState(
+        messages=[
+            HumanMessage(content="msg1"),
+            AssistantMessage(content="msg2"),
+            HumanMessage(content="msg3"),
+            AssistantMessage(content="msg4"),
+        ],
+        usage=UsageInfo(last_prompt_tokens=1000),
+    )
+
+    await hook.before_model(ctx, state)
+
+    provider.stream.assert_called_once()
+    call_kwargs = provider.stream.call_args[1]
+    assert call_kwargs.get("thinking_level") == "none"
+
+
+# ---------------------------------------------------------------------------
 # is BaseAgentHook subclass
 # ---------------------------------------------------------------------------
 

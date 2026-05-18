@@ -32,7 +32,6 @@ from app.agent.schemas.agent import (
     AgentContext,
     AgentStats,
     RunConfig,
-    SummarizationConfig,
 )
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -96,7 +95,6 @@ class Agent(Generic[TContext]):
         model_id: str | None = None,
         fallback_provider: LLMProviderBase | None = None,
         fallback_model_id: str | None = None,
-        summarization_config: SummarizationConfig | None = None,
     ):
         self.id = _uuid7()
         self.name = name
@@ -122,7 +120,6 @@ class Agent(Generic[TContext]):
         # Fallback provider — used when primary exhausts retries on retryable errors
         self.fallback_provider: LLMProviderBase | None = fallback_provider
         self.fallback_model_id: str | None = fallback_model_id
-        self.summarization_config = summarization_config
 
         # Build internal tool lookup from Tool objects or plain callables
         self._tools: dict[str, Tool] = {}

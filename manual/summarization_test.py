@@ -1,13 +1,13 @@
 """Test SummarizationHook by inspecting DB for is_summary rows.
 
-This script does NOT restart the server. It assumes you started it with
-a low ``token_threshold`` configured in ``.openagentd/config/summarization.md``
-(or via a per-agent ``summarization:`` block) so summarization fires during
-the test.
+This script does NOT restart the server. It assumes you started the server
+with a low ``DEFAULT_PROMPT_TOKEN_THRESHOLD`` so summarization fires during
+the test. There is no file-based config — see
+``documents/docs/agent/summarization.md``.
 
 Usage:
-  # 1. In .openagentd/config/summarization.md frontmatter, set:
-  #        token_threshold: 2000
+  # 1. In ``app/agent/hooks/summarization.py``, set:
+  #        DEFAULT_PROMPT_TOKEN_THRESHOLD = 2000
   #    Then start the server (in another terminal):
   #        uv run python -m app.server
   #
@@ -130,8 +130,8 @@ def check_summarization(rows: list) -> bool:
     else:
         print(f"\n  WARN: no summarization triggered.")
         print(
-            "  Did you set token_threshold: 2000 in "
-            ".openagentd/config/summarization.md before starting the server?"
+            "  Did you set DEFAULT_PROMPT_TOKEN_THRESHOLD = 2000 in "
+            "app/agent/hooks/summarization.py before starting the server?"
         )
         return False
 
