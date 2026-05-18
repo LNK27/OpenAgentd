@@ -109,6 +109,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const loadTeamStatus = useTeamStore((s) => s.loadTeamStatus)
   const loadSession    = useTeamStore((s) => s.loadSession)
   const sendMessage    = useTeamStore((s) => s.sendMessage)
+  const continueTeam   = useTeamStore((s) => s.continueTeam)
   const newSession     = useTeamStore((s) => s.newSession)
   const cycleActiveAgent = useTeamStore((s) => s.cycleActiveAgent)
   const setActiveAgent   = useTeamStore((s) => s.setActiveAgent)
@@ -661,6 +662,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               leadName={leadName}
               agentStreams={agentStreams}
               isContinuing={isContinuing}
+              onContinue={continueTeam}
             />
           </div>
         ) : mode === 'coding' && workspace && teamAgentsLoading ? (
@@ -694,6 +696,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             isError={(activeStatus ?? agentStreams[activeAgent].status) === 'error'}
             lastError={agentStreams[activeAgent].lastError}
             isContinuing={isContinuing && activeAgent === leadName}
+            onContinue={activeAgent === leadName ? continueTeam : undefined}
             emptyState={
               mode === 'coding' && workspace ? (
                 <div className="flex flex-col items-center justify-center py-16">

@@ -34,6 +34,7 @@ interface AgentPaneProps {
   stream: AgentStream
   isLead: boolean
   isContinuing?: boolean
+  onContinue?: () => void
 }
 
 const USER_COLLAPSE_LINES = 10
@@ -216,7 +217,7 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
 }
 
 export function AgentPane({
-  name, stream, isLead, isContinuing = false,
+  name, stream, isLead, isContinuing = false, onContinue,
 }: AgentPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
@@ -366,9 +367,10 @@ export function AgentPane({
                        startIndex={item.startIndex}
                        finalizedCount={stream.blocks.length}
                        isWorking={isWorking}
-                       isTrailingTurn={isTrailingTurn}
-                       totalBlocks={allBlocks.length}
-                       renderBlock={({ block, isStreaming, isLast }) => (
+                        isTrailingTurn={isTrailingTurn}
+                        totalBlocks={allBlocks.length}
+                        onContinue={onContinue}
+                        renderBlock={({ block, isStreaming, isLast }) => (
                          <BlockRenderer
                            block={block}
                            isStreaming={isStreaming}

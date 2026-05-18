@@ -52,6 +52,8 @@ interface AgentViewProps {
   lastError?: string | null
   /** True while this turn was started by /continue. */
   isContinuing?: boolean
+  /** Continue from the trailing assistant turn. */
+  onContinue?: () => void
   /** Optional slot rendered in place of the default mascot empty state. */
   emptyState?: React.ReactNode
 }
@@ -232,7 +234,7 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
   }
 }
 
-export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, isContinuing = false, emptyState }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, isContinuing = false, onContinue, emptyState }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -346,9 +348,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                      finalizedCount={blocks.length}
                      isWorking={isWorking}
                      isTrailingTurn={isTrailingTurn}
-                     totalBlocks={allBlocks.length}
-                     size="roomy"
-                     renderBlock={({ block, isStreaming, isLast }) => (
+                      totalBlocks={allBlocks.length}
+                      size="roomy"
+                      onContinue={onContinue}
+                      renderBlock={({ block, isStreaming, isLast }) => (
                        <BlockRenderer
                          block={block}
                          isStreaming={isStreaming}
