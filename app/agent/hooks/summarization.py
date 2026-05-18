@@ -75,10 +75,10 @@ if TYPE_CHECKING:
 #   the full pre-threshold history collapses into the summary. Coding sessions
 #   benefit from a single authoritative "state of the world" record over
 #   partially-summarised history.
-DEFAULT_PROMPT_TOKEN_THRESHOLD = 50000
+DEFAULT_PROMPT_TOKEN_THRESHOLD = 100000
 DEFAULT_KEEP_LAST_ASSISTANTS = 3
 CODING_KEEP_LAST_ASSISTANTS = 0
-DEFAULT_MAX_TOKEN_LENGTH = 10000
+DEFAULT_MAX_TOKEN_LENGTH = 30000
 DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY = 4
 
 
