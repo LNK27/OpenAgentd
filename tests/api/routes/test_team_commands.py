@@ -159,6 +159,33 @@ class TestPostTeamCommands:
         assert body["command"] == "continue"
 
     @pytest.mark.asyncio
+    async def test_compact_returns_202_on_happy_path(self, app_with_lead_only_team):
+        sid = uuid.uuid7()
+        await _seed_session_and_messages(
+            sid,
+            [
+                ("user", "first", None),
+                ("assistant", "first answer", None),
+                ("user", "second", None),
+                ("assistant", "second answer", None),
+                ("user", "third", None),
+                ("assistant", "third answer", None),
+            ],
+        )
+
+        client = TestClient(app_with_lead_only_team)
+        resp = client.post(
+            "/api/team/commands",
+            json={"command": "compact", "session_id": str(sid)},
+        )
+
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["status"] == "accepted"
+        assert body["session_id"] == str(sid)
+        assert body["command"] == "compact"
+
+    @pytest.mark.asyncio
     async def test_unknown_command_rejected_by_validator(self, app_with_lead_only_team):
         """Pydantic Literal rejects unknown command strings as 422."""
         client = TestClient(app_with_lead_only_team)

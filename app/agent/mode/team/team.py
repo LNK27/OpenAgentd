@@ -618,6 +618,50 @@ class AgentTeam:
             raise ContinuePreconditionError(str(exc)) from exc
         return session_id
 
+    async def handle_compact(self, session_id: str) -> str:
+        """Start a normal lead turn that forces summarization before the model call."""
+        if self._has_active_turn:
+            raise ContinuePreconditionError("Lead is already working.")
+
+        try:
+            lead_uuid = UUID(session_id)
+        except ValueError as exc:
+            raise ContinuePreconditionError("Invalid session id.") from exc
+
+        db_factory = resolve_db_factory(self.lead.db_factory)
+        async with db_factory() as db:
+            row = await db.get(ChatSession, lead_uuid)
+            if row is None:
+                raise ContinuePreconditionError("Session not found.")
+            if row.agent_name and row.agent_name != self.lead.name:
+                raise ContinuePreconditionError(
+                    f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
+                )
+            messages = await get_messages_for_llm(db, lead_uuid)
+
+        if not messages:
+            raise ContinuePreconditionError("Session has no messages to compact.")
+
+        if self.lead.session_id != session_id:
+            self.lead.session_id = session_id
+
+        try:
+            await stream_store.init_turn(session_id)
+        except Exception as exc:
+            logger.warning("team_init_turn_failed error={}", exc)
+
+        try:
+            self.lead.activate_for_compaction()
+        except AlreadyWorkingError as exc:
+            raise ContinuePreconditionError(str(exc)) from exc
+
+        self._has_active_turn = True
+
+        logger.info(
+            "team_compact_dispatched session_id={} agent={}", session_id, self.lead.name
+        )
+        return session_id
+
     async def _restore_or_drop_members_for_lead(self, lead_session_id: str) -> None:
         """Realign live spawned instances to child sessions of *lead_session_id*.
 

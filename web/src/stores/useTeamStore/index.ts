@@ -187,6 +187,28 @@ export const useTeamStore = create<TeamStore>()(
       }
     },
 
+    compactTeam: async () => {
+      const sessionId = get().sessionId
+      if (!sessionId) {
+        set((draft) => { draft.error = 'No active session to compact' })
+        return
+      }
+
+      try {
+        set((draft) => {
+          draft.isTeamWorking = true
+          draft.error = null
+        })
+        await postTeamCommand('compact', sessionId)
+        get().connectStream()
+      } catch (err) {
+        set((draft) => {
+          draft.error = err instanceof Error ? err.message : 'Failed to compact'
+          draft.isTeamWorking = false
+        })
+      }
+    },
+
     removePendingMessage: (id: string) => {
       set((draft) => {
         draft._pendingMessages = draft._pendingMessages.filter((m) => m.id !== id)

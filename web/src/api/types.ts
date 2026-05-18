@@ -372,7 +372,7 @@ export interface CommandRenderResponse {
 export interface TeamCommandResponse {
   status: string
   session_id: string
-  command: 'continue'
+  command: 'continue' | 'compact'
 }
 
 // ── Registry (dropdown catalog) ─────────────────────────────────────────────

@@ -79,6 +79,24 @@ async def test_no_summarisation_below_threshold(mock_provider):
     mock_provider.stream.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_force_summarisation_ignores_threshold(mock_provider):
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1000,
+        keep_last_assistants=0,
+    )
+    ctx = _make_ctx()
+    state = _make_state(last_prompt_tokens=0)
+    state.metadata["force_summarization"] = True
+
+    await hook.before_model(ctx, state)
+
+    assert mock_provider.stream.called
+    assert any(m.is_summary for m in state.messages)
+
+
 # ---------------------------------------------------------------------------
 # before_model — threshold reached triggers summarisation
 # ---------------------------------------------------------------------------

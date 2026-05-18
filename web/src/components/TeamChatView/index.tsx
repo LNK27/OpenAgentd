@@ -340,6 +340,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const slashCommands: SlashCommand[] = [
     { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
     { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
+    { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
     ...(commandsQ.data?.commands ?? []).map((c) => ({
       id: c.name,
@@ -356,6 +357,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         break
       case 'continue':
         useTeamStore.getState().continueTeam()
+        break
+      case 'compact':
+        useTeamStore.getState().compactTeam()
         break
       case 'new':
         handleNewSession()

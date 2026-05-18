@@ -86,10 +86,14 @@ DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY = 4
 # CHAT mode: terse third-person narrative — works well for open-ended
 # assistant conversations where structure would feel out of place.
 CHAT_SUMMARY_PROMPT = (
-    "You are a conversation summariser. Produce a concise but complete summary "
-    "of the conversation so far. Capture key facts, decisions, and outcomes. "
-    "Write in third-person narrative form. Do not include pleasantries or "
-    "meta-commentary."
+    "You are a conversation summariser. Produce a concise but complete handoff "
+    "summary of the conversation so far. Preserve the user's goal, constraints, "
+    "preferences, important facts, decisions, outcomes, blockers, and any active "
+    "or unfinished task. If work is in progress, include the current state and "
+    "the immediate next step so the assistant can continue without another user "
+    "prompt. Preserve exact names, identifiers, commands, file paths, error "
+    "strings, and other details needed for continuity. Write in third-person "
+    "narrative form. Do not include pleasantries or meta-commentary."
 )
 
 # CODING mode: structured Markdown template the model fills in.  Empirically
@@ -335,13 +339,14 @@ class SummarizationHook(BaseAgentHook):
         updated message window so the current LLM call sees the summary immediately.
         Returns ``None`` (pass-through) when summarisation does not fire.
         """
-        if self._prompt_token_threshold <= 0:
+        force = state.metadata.get("force_summarization") is True
+        if self._prompt_token_threshold <= 0 and not force:
             return None
 
-        if state.usage.last_prompt_tokens < self._prompt_token_threshold:
+        if state.usage.last_prompt_tokens < self._prompt_token_threshold and not force:
             return None
 
-        if self._min_messages_since_last_summary > 0:
+        if self._min_messages_since_last_summary > 0 and not force:
             messages_since = len(state.messages) - self._messages_at_last_summary
             if (
                 self._messages_at_last_summary > 0

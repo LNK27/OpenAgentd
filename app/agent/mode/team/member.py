@@ -379,6 +379,16 @@ class TeamMemberBase(abc.ABC):
             name=f"continue:{self.name}",
         )
 
+    def activate_for_compaction(self) -> None:
+        """Spawn an activation task that forces summarization before the model call."""
+        if self.state == "working":
+            raise AlreadyWorkingError(self.name)
+        self.state = "working"
+        self._active_task = asyncio.create_task(
+            self._run_activation(force_compaction=True),
+            name=f"compact:{self.name}",
+        )
+
     # ── Live-config drift ──────────────────────────────────────────────
 
     def refresh_if_dirty(self) -> bool:
@@ -483,7 +493,9 @@ class TeamMemberBase(abc.ABC):
                 new_agent.model_id,
             )
 
-    async def _run_activation(self, *, is_continuation: bool = False) -> None:
+    async def _run_activation(
+        self, *, is_continuation: bool = False, force_compaction: bool = False
+    ) -> None:
         """One-shot activation: drain inbox, process, return to idle.
 
         When ``is_continuation`` is True the inbox drain/persist/SSE-emit
@@ -497,8 +509,8 @@ class TeamMemberBase(abc.ABC):
 
         self._cancel_event.clear()
 
-        if is_continuation:
-            # /continue path — no inbox messages; just run on DB history.
+        if is_continuation or force_compaction:
+            # Control-command path — no inbox messages; run on DB history.
             pending: list[Message] = []
         else:
             # Drain all queued messages
@@ -551,7 +563,10 @@ class TeamMemberBase(abc.ABC):
                     )
 
         try:
-            await self._handle_messages(is_continuation=is_continuation)
+            await self._handle_messages(
+                is_continuation=is_continuation,
+                force_compaction=force_compaction,
+            )
             await self._on_turn_success()
 
         except Exception as exc:
@@ -696,7 +711,9 @@ class TeamMemberBase(abc.ABC):
     # Message handling
     # ------------------------------------------------------------------
 
-    async def _handle_messages(self, *, is_continuation: bool = False) -> None:
+    async def _handle_messages(
+        self, *, is_continuation: bool = False, force_compaction: bool = False
+    ) -> None:
         """Load full history from DB and call agent.run().
 
         When ``is_continuation`` is True a one-shot
@@ -805,6 +822,8 @@ class TeamMemberBase(abc.ABC):
         run_metadata: dict[str, object] = {
             "team_mode": self._team.mode,
         }
+        if force_compaction:
+            run_metadata["force_summarization"] = True
         if self._team.workspace:
             run_metadata["team_workspace"] = self._team.workspace
         config = RunConfig(session_id=self.session_id, metadata=run_metadata)

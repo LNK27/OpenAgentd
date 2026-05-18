@@ -201,7 +201,7 @@ async def team_chat(
 class CommandRequest(BaseModel):
     """Request body for ``POST /team/commands``."""
 
-    command: Literal["continue"]
+    command: Literal["continue", "compact"]
     session_id: str
 
 
@@ -219,6 +219,8 @@ async def team_command(
       and keeps generating; the resulting first assistant row is flagged
       ``extra["is_continuation"] = True`` so the UI can render it tight
       against the prior bubble.
+    * ``compact`` — force the existing summariser before the next model call
+      without adding a visible user message.
 
     Returns 202 with the session_id.  Subscribe to
     ``GET /team/stream/{session_id}`` for the SSE feed.
@@ -236,6 +238,14 @@ async def team_command(
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_continue session_id={}", sid)
         return {"status": "accepted", "session_id": sid, "command": "continue"}
+
+    if body.command == "compact":
+        try:
+            sid = await team_obj.handle_compact(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("team_command_compact session_id={}", sid)
+        return {"status": "accepted", "session_id": sid, "command": "compact"}
 
     # Defensive — the Literal makes this unreachable, but pyright/ty wants it.
     raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")

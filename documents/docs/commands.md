@@ -55,8 +55,8 @@ different things in different projects without manual switching.
 
 ## Picker behaviour
 
-- **Built-in commands** (`/stop`, `/continue`, `/new`) execute immediately on pick.
-  `/continue` calls the team command endpoint to resume the last assistant response.
+- **Built-in commands** (`/stop`, `/continue`, `/compact`, `/new`) execute immediately on pick.
+  `/continue` resumes the last assistant response; `/compact` runs the session summarizer.
 - **Discovered commands** insert `/<name> ` into the textarea so you
   can type arguments before submitting.
 

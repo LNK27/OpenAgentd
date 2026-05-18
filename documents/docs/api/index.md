@@ -307,13 +307,13 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 
 ## POST /api/team/commands — slash-command dispatch
 
-Accepts `application/json`. Runs a control operation against an existing session — no new user message is persisted. The agent loop runs against the existing DB history and streams via the standard `GET /api/team/{session_id}/stream` endpoint.
+Accepts `application/json`. Runs a control operation against an existing session — no new user message is persisted.
 
 ### Body
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `command` | `"continue"` | The only command currently supported. |
+| `command` | `"continue" \| "compact"` | Control operation to run. |
 | `session_id` | string | Existing team-lead session id. |
 
 ### `command: "continue"`
@@ -335,7 +335,19 @@ Returns 409 (`{"detail": "..."}`) when continuation is not meaningful:
 - **Last assistant message has no content — nothing to continue.** — e.g. interrupted before any content tokens arrived; resubmit the original turn.
 - **Cannot continue while <lead> is working — wait for the turn to finish.** — concurrent `/continue` requests; the working-state guard is atomic inside `activate_for_continuation`.
 
-Returns 422 for unknown commands (rejected by the `Literal["continue"]` validator before any handler runs).
+### `command: "compact"`
+
+Run a normal lead turn that forces the existing summarizer before the next model call. This streams the same `summarization_*` events as automatic compaction, creates a summary row, excludes compacted rows from future LLM context, and does not add a visible user message.
+
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "compact"}`. Subscribe to `GET /api/team/{session_id}/stream` for the SSE feed.
+
+Returns 409 (`{"detail": "..."}`) when compaction cannot run:
+- **Lead is already working.** — avoid compacting while a turn is mutating history.
+- **Session not found.**
+- **Session belongs to '<name>', not '<lead>'.** — ownership guard.
+- **Session has no messages to compact.** — empty session.
+
+Returns 422 for unknown commands (rejected by the `Literal["continue", "compact"]` validator before any handler runs).
 
 ---
 
