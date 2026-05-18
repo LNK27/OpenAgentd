@@ -28,6 +28,7 @@ from uuid import UUID
 from loguru import logger
 from sqlmodel import col, select
 
+from app.agent.hooks.continuation import CONTINUATION_DIRECTIVE
 from app.agent.mode.team.mailbox import Message, TeamMailbox
 from app.agent.mode.team.member import (
     AlreadyWorkingError,
@@ -581,6 +582,21 @@ class AgentTeam:
             logger.warning("team_init_turn_failed error={}", exc)
 
         self._has_active_turn = True
+
+        db_factory = resolve_db_factory(self.lead.db_factory)
+        async with db_factory() as db:
+            await save_message(
+                db,
+                lead_uuid,
+                HumanMessage(content=CONTINUATION_DIRECTIVE),
+                exclude_from_context=False,
+                extra={
+                    "command": "continue",
+                    "hidden_from_user": True,
+                    "hidden_from_summary": True,
+                },
+            )
+            await db.commit()
 
         try:
             await self.refresh_restorable_index()

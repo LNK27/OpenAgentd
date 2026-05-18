@@ -249,10 +249,10 @@ async def save_message(
 
 
 def _visible_messages_stmt(session_id: UUID):
-    """Base query: all non-excluded messages for a session, oldest first.
+    """Base query: all LLM-visible messages for a session, oldest first.
 
-    Used by both :func:`get_messages` (UI view) and
-    :func:`get_messages_for_llm` (LLM context window).
+    ``exclude_from_context`` is the LLM-context flag. UI-only hiding uses
+    ``extra.hidden_from_user`` and is applied after deserialization.
     """
     return (
         select(SessionMessage)
@@ -260,6 +260,10 @@ def _visible_messages_stmt(session_id: UUID):
         .where(~col(SessionMessage.exclude_from_context))
         .order_by(col(SessionMessage.created_at).asc())
     )
+
+
+def _is_hidden_from_user(row: SessionMessage) -> bool:
+    return bool(row.extra and row.extra.get("hidden_from_user"))
 
 
 async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
@@ -279,7 +283,10 @@ async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
             "messages_fetched session_id={} count={}", session_id, len(db_messages)
         )
         # Me run in thread — _deserialize_messages does disk I/O for image hydration
-        return await asyncio.to_thread(_deserialize_messages, db_messages)
+        messages = await asyncio.to_thread(_deserialize_messages, db_messages)
+        return [
+            m for m in messages if not (m.extra and m.extra.get("hidden_from_user"))
+        ]
     except Exception as e:
         logger.error("load_messages_failed session_id={} error={}", session_id, e)
         raise
@@ -316,7 +323,8 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
 
         if latest_summary is None:
             # No summary yet — use all visible messages
-            return await get_messages(db, session_id)
+            db_messages = (await db.exec(_visible_messages_stmt(session_id))).all()
+            return await asyncio.to_thread(_deserialize_messages, db_messages)
 
         # Fetch all non-hidden, non-summary messages.  This naturally includes:
         #   - keep_last_n messages (not hidden, created before the summary)
@@ -580,15 +588,19 @@ async def get_team_history(
     # web UI keys off ``is_summary=True`` rows to render the inline
     # "Session compacted" marker + summary body; hiding them would make
     # the divider vanish on reload.
-    lead_msgs = (
-        await db.exec(
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == lead_session_id)
-            .order_by(col(SessionMessage.created_at).asc())
-            .offset(offset)
-            .limit(limit)
-        )
-    ).all()
+    lead_msgs = [
+        msg
+        for msg in (
+            await db.exec(
+                select(SessionMessage)
+                .where(col(SessionMessage.session_id) == lead_session_id)
+                .order_by(col(SessionMessage.created_at).asc())
+                .offset(offset)
+                .limit(limit)
+            )
+        ).all()
+        if not _is_hidden_from_user(msg)
+    ]
 
     sub_sessions = (
         await db.exec(
@@ -604,21 +616,25 @@ async def get_team_history(
     # to the API layer as a single global cursor).
     members: list[TeamHistoryMemberData] = []
     for sub in sub_sessions:
-        member_msgs = (
-            await db.exec(
-                select(SessionMessage)
-                .where(col(SessionMessage.session_id) == sub.id)
-                # Me: summaries kept — see comment on lead_msgs above.
-                .order_by(col(SessionMessage.created_at).asc())
-                .offset(offset)
-                .limit(limit)
-            )
-        ).all()
-        members.append(TeamHistoryMemberData(session=sub, messages=list(member_msgs)))
+        member_msgs = [
+            msg
+            for msg in (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sub.id)
+                    # Me: summaries kept — see comment on lead_msgs above.
+                    .order_by(col(SessionMessage.created_at).asc())
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
+            if not _is_hidden_from_user(msg)
+        ]
+        members.append(TeamHistoryMemberData(session=sub, messages=member_msgs))
 
     return TeamHistoryData(
         lead_session=lead_session,
-        lead_messages=list(lead_msgs),
+        lead_messages=lead_msgs,
         members=members,
     )
 

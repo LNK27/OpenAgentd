@@ -403,7 +403,9 @@ class SummarizationHook(BaseAgentHook):
         eligible = [
             m
             for m in state.messages
-            if not m.exclude_from_context and not isinstance(m, SystemMessage)
+            if not m.exclude_from_context
+            and not isinstance(m, SystemMessage)
+            and not (m.extra and m.extra.get("hidden_from_summary"))
         ]
 
         if not eligible:

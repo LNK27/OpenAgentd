@@ -320,9 +320,9 @@ Accepts `application/json`. Runs a control operation against an existing session
 
 Resume the prior assistant turn — useful after the user pressed Stop or the server restarted mid-stream.
 
-- The agent loop loads the session's existing history (ending in the prior assistant message), appends a short ephemeral `HumanMessage` directive (`"Your previous response was interrupted… Continue from exactly where it stopped…"`) for the **first model call only**, and streams the continuation.
+- The command persists a short hidden `HumanMessage` directive before activation. It tells the model to continue exactly where the prior response stopped, is hidden from UI history and summarization, and remains in LLM context so persisted history matches the provider payload for prompt-cache consistency.
 - The new assistant row is flagged with `extra["is_continuation"] = true` so the UI can render it tight against the prior bubble.
-- The ephemeral directive is never persisted to DB and never appears in the frontend's history view.
+- The directive never appears in the frontend's history view.
 
 Returns 202 with `{"status": "accepted", "session_id": "...", "command": "continue"}`. Subscribe to `GET /api/team/{session_id}/stream` for the SSE feed.
 

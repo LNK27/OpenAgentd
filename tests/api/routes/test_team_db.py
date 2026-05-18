@@ -333,6 +333,30 @@ class TestTeamHistoryWithData:
         assert msg["extra"] == {"is_continuation": True}
 
     @pytest.mark.asyncio
+    async def test_history_excludes_hidden_from_user_rows(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+                await _add_message(db, lead_id, role="user", content="visible")
+                await _add_message(
+                    db,
+                    lead_id,
+                    role="user",
+                    content="hidden directive",
+                    extra={"hidden_from_user": True},
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.get(f"/api/team/{lead_id}/history")
+        data = resp.json()
+
+        contents = [m["content"] for m in data["lead"]["messages"]]
+        assert contents == ["visible"]
+
+    @pytest.mark.asyncio
     async def test_history_no_sub_sessions_returns_empty_members(self, app_with_team):
         import app.core.db as _db
 

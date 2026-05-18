@@ -262,6 +262,28 @@ async def test_no_llm_call_when_no_visible_messages(mock_provider):
     mock_provider.stream.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_hidden_from_summary_messages_are_not_summarised(mock_provider):
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+    )
+    ctx = _make_ctx()
+    directive = HumanMessage(
+        content="continue directive",
+        extra={"hidden_from_summary": True},
+    )
+    state = AgentState(
+        messages=[directive],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    await hook.before_model(ctx, state)
+
+    mock_provider.stream.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # LLM failure — graceful error handling
 # ---------------------------------------------------------------------------

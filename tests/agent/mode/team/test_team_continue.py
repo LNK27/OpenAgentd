@@ -22,14 +22,16 @@ import asyncio
 import uuid
 
 import pytest
+from sqlmodel import col, select
 
 from app.agent.agent_loop import Agent
 from app.agent.hooks.continuation import CONTINUATION_DIRECTIVE, ContinuationHook
 from app.agent.mode.team.member import TeamLead
 from app.agent.mode.team.team import AgentTeam, ContinuePreconditionError
-from app.agent.schemas.chat import AssistantMessage, HumanMessage
-from app.agent.state import AgentState, ModelRequest, RunContext
+from app.agent.schemas.chat import AssistantMessage
+from app.agent.state import AgentState, RunContext
 from app.models.chat import ChatSession, SessionMessage
+from app.services.chat_service import get_messages, get_messages_for_llm
 from tests.agent.mode.team.conftest import MockTeamProvider
 
 
@@ -79,54 +81,6 @@ class TestContinuationHookStamp:
         assert first.extra == {"is_continuation": True}
         # Second message keeps its own extra, no is_continuation flag.
         assert second.extra == {"usage": {"input": 50}}
-
-
-class TestContinuationHookDirective:
-    """``before_model`` should append the ephemeral directive once per run."""
-
-    @pytest.mark.asyncio
-    async def test_appends_directive_humanmessage(self):
-        hook = ContinuationHook()
-        ctx = RunContext(session_id="s1", agent_name="lead", run_id="r1")
-        state = AgentState(messages=[])
-        base = ModelRequest(
-            messages=(
-                HumanMessage(content="write a poem"),
-                AssistantMessage(content="Roses are"),
-            ),
-            system_prompt="be helpful",
-        )
-
-        out = await hook.before_model(ctx, state, base)
-
-        assert out is not None
-        # Original messages preserved, directive appended at the end as user.
-        assert len(out.messages) == 3
-        assert out.messages[0] is base.messages[0]
-        assert out.messages[1] is base.messages[1]
-        appended = out.messages[2]
-        assert isinstance(appended, HumanMessage)
-        assert appended.content == CONTINUATION_DIRECTIVE
-        # System prompt is unchanged — the directive is conveyed via the
-        # message list, not by mutating the system prompt.
-        assert out.system_prompt == base.system_prompt
-
-    @pytest.mark.asyncio
-    async def test_directive_only_fires_once(self):
-        """Subsequent ``before_model`` calls in the same run return None."""
-        hook = ContinuationHook()
-        ctx = RunContext(session_id="s1", agent_name="lead", run_id="r1")
-        state = AgentState(messages=[])
-        req = ModelRequest(
-            messages=(AssistantMessage(content="partial"),),
-            system_prompt="",
-        )
-
-        first = await hook.before_model(ctx, state, req)
-        second = await hook.before_model(ctx, state, req)
-
-        assert first is not None
-        assert second is None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -273,6 +227,34 @@ class TestHandleContinuePreconditions:
         returned = await lead_only_team.handle_continue(str(sid))
 
         assert returned == str(sid)
+        import app.core.db as _db
+
+        async with _db.async_session_factory() as db:
+            rows = (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sid)
+                    .order_by(col(SessionMessage.created_at))
+                )
+            ).all()
+            visible_messages = await get_messages(db, sid)
+            llm_messages = await get_messages_for_llm(db, sid)
+
+        directive = rows[-1]
+        assert directive.role == "user"
+        assert directive.content == CONTINUATION_DIRECTIVE
+        assert directive.exclude_from_context is False
+        assert directive.extra == {
+            "command": "continue",
+            "hidden_from_user": True,
+            "hidden_from_summary": True,
+        }
+        assert [m.content for m in visible_messages] == [
+            "run shell",
+            None,
+            "interrupted/cancelled by user",
+        ]
+        assert llm_messages[-1].content == CONTINUATION_DIRECTIVE
 
     @pytest.mark.asyncio
     async def test_deletes_interrupted_thinking_only_tail_before_tool_continue(
@@ -316,8 +298,6 @@ class TestHandleContinuePreconditions:
         import app.core.db as _db
 
         async with _db.async_session_factory() as db:
-            from sqlmodel import col, select
-
             rows = (
                 await db.exec(
                     select(SessionMessage)
@@ -325,7 +305,9 @@ class TestHandleContinuePreconditions:
                     .order_by(col(SessionMessage.created_at))
                 )
             ).all()
-        assert [row.role for row in rows] == ["user", "assistant", "tool"]
+        assert [row.role for row in rows] == ["user", "assistant", "tool", "user"]
+        assert rows[-1].content == CONTINUATION_DIRECTIVE
+        assert rows[-1].extra and rows[-1].extra.get("hidden_from_user") is True
 
     @pytest.mark.asyncio
     async def test_rejects_unmatched_tool_tail(self, lead_only_team):
@@ -417,27 +399,36 @@ async def test_handle_continue_happy_path_stamps_assistant_row(monkeypatch):
 
         # Verify DB state.
         async with _db.async_session_factory() as db:
-            from sqlmodel import col, select
-
             stmt = (
                 select(SessionMessage)
                 .where(col(SessionMessage.session_id) == sid)
                 .order_by(col(SessionMessage.created_at))
             )
             rows = (await db.exec(stmt)).all()
+            visible = await get_messages(db, sid)
+            llm_messages = await get_messages_for_llm(db, sid)
 
         roles = [r.role for r in rows]
-        # Expected: original [user, assistant] + one new assistant from continue.
-        assert roles == ["user", "assistant", "assistant"], (
+        # Expected: original [user, assistant] + hidden directive + assistant.
+        assert roles == ["user", "assistant", "user", "assistant"], (
             f"unexpected roles in DB: {roles}"
         )
+        directive = rows[-2]
+        assert directive.content == CONTINUATION_DIRECTIVE
+        assert directive.exclude_from_context is False
+        assert directive.extra and directive.extra.get("hidden_from_user") is True
         # The new assistant row must carry the continuation flag.
         new_assistant = rows[-1]
         assert new_assistant.content == "5, 6, 7, 8, 9, 10"
         assert new_assistant.extra is not None
         assert new_assistant.extra.get("is_continuation") is True
 
-        # And no extra user row was created.
-        assert sum(1 for r in rows if r.role == "user") == 1
+        # And no extra user row is exposed to the UI/history view.
+        assert [m.role for m in visible] == ["user", "assistant", "assistant"]
+        assert sum(1 for m in visible if m.role == "user") == 1
+        assert [m.content for m in llm_messages][-2:] == [
+            CONTINUATION_DIRECTIVE,
+            "5, 6, 7, 8, 9, 10",
+        ]
     finally:
         await team.stop()
