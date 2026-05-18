@@ -28,6 +28,7 @@ import type {
   SkillDeleteResponse,
   CommandListResponse,
   CommandRenderResponse,
+  TeamCommandResponse,
   WorkspaceFilesResponse,
   CodingWorkspaceFilesResponse,
   ScheduledTaskResponse,
@@ -77,6 +78,22 @@ export async function postTeamChat(
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     throw new Error(body?.detail || `POST /team/chat failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function postTeamCommand(
+  command: 'continue',
+  sessionId: string,
+): Promise<TeamCommandResponse> {
+  const res = await fetch(`${API}/team/commands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command, session_id: sessionId }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.detail || `POST /team/commands failed: ${res.status}`)
   }
   return res.json()
 }

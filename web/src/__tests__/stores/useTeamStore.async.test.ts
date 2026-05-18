@@ -15,6 +15,9 @@ import { mock, describe, it, expect, beforeEach, spyOn } from "bun:test"
 const mockPostTeamChat = mock(() =>
   Promise.resolve({ status: "ok", session_id: "team-sid" })
 ) as any
+const mockPostTeamCommand = mock(() =>
+  Promise.resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
+) as any
 const mockTeamStream = mock(
   (_sid: any, _cbs: any, _signal?: any) => {}
 ) as any
@@ -44,6 +47,7 @@ const mockTeamHistory = mock(() =>
 /* eslint-disable @typescript-eslint/no-explicit-any */
 (mock as any).module("@/api/client", () => ({
   postTeamChat: mockPostTeamChat,
+  postTeamCommand: mockPostTeamCommand,
   teamStream: mockTeamStream,
   teamStatus: mockTeamStatus,
   teamHistory: mockTeamHistory,
@@ -124,6 +128,7 @@ function makeMessageResponse(overrides: object = {}) {
 beforeEach(() => {
   useTeamStore.setState(INITIAL_STATE)
   mockPostTeamChat.mockReset()
+  mockPostTeamCommand.mockReset()
   mockTeamStream.mockReset()
   mockTeamStatus.mockReset()
   mockTeamHistory.mockReset()
@@ -131,6 +136,9 @@ beforeEach(() => {
   // Restore sensible defaults
   mockPostTeamChat.mockImplementation(() =>
     Promise.resolve({ status: "ok", session_id: "team-sid" })
+  )
+  mockPostTeamCommand.mockImplementation(() =>
+    Promise.resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
   )
   mockTeamStream.mockImplementation(() => {})
   mockTeamStatus.mockImplementation(() =>
@@ -177,6 +185,44 @@ describe("toggleSidebar", () => {
     useTeamStore.getState().toggleSidebar()
     useTeamStore.getState().toggleSidebar()
     expect(useTeamStore.getState().sidebarOpen).toBe(true)
+  })
+})
+
+// ── continueTeam ──────────────────────────────────────────────────────────────
+
+describe("continueTeam", () => {
+  it("posts the continue command for the active session", async () => {
+    useTeamStore.setState({ sessionId: "team-sid" })
+
+    await useTeamStore.getState().continueTeam()
+
+    expect(mockPostTeamCommand).toHaveBeenCalledWith("continue", "team-sid")
+  })
+
+  it("connects the stream after the command is accepted", async () => {
+    useTeamStore.setState({ sessionId: "team-sid" })
+
+    await useTeamStore.getState().continueTeam()
+
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
+  })
+
+  it("sets an error when there is no active session", async () => {
+    await useTeamStore.getState().continueTeam()
+
+    expect(useTeamStore.getState().error).toBe("No active session to continue")
+    expect(mockPostTeamCommand).not.toHaveBeenCalled()
+  })
+
+  it("sets error and stops working when the command fails", async () => {
+    mockPostTeamCommand.mockImplementation(() => Promise.reject(new Error("last message is not assistant")))
+    useTeamStore.setState({ sessionId: "team-sid" })
+
+    await useTeamStore.getState().continueTeam()
+
+    expect(useTeamStore.getState().error).toBe("last message is not assistant")
+    expect(useTeamStore.getState().isTeamWorking).toBe(false)
+    expect(mockTeamStream).not.toHaveBeenCalled()
   })
 })
 

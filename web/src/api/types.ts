@@ -369,6 +369,12 @@ export interface CommandRenderResponse {
   content: string
 }
 
+export interface TeamCommandResponse {
+  status: string
+  session_id: string
+  command: 'continue'
+}
+
 // ── Registry (dropdown catalog) ─────────────────────────────────────────────
 
 export interface ToolCatalogEntry {

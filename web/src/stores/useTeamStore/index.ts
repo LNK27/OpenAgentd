@@ -17,7 +17,7 @@
  */
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import { postTeamChat, teamStream, teamStatus, teamHistory } from '@/api/client'
+import { postTeamChat, postTeamCommand, teamStream, teamStatus, teamHistory } from '@/api/client'
 import { parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { revokeBlobUrlsFromBlocks } from './helpers'
@@ -155,6 +155,28 @@ export const useTeamStore = create<TeamStore>()(
       } catch (err) {
         set((draft) => {
           draft.error = err instanceof Error ? err.message : 'Failed to send message'
+          draft.isTeamWorking = false
+        })
+      }
+    },
+
+    continueTeam: async () => {
+      const sessionId = get().sessionId
+      if (!sessionId) {
+        set((draft) => { draft.error = 'No active session to continue' })
+        return
+      }
+
+      try {
+        set((draft) => {
+          draft.isTeamWorking = true
+          draft.error = null
+        })
+        await postTeamCommand('continue', sessionId)
+        get().connectStream()
+      } catch (err) {
+        set((draft) => {
+          draft.error = err instanceof Error ? err.message : 'Failed to continue'
           draft.isTeamWorking = false
         })
       }

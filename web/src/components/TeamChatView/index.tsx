@@ -327,16 +327,17 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   }, [mode, workspace, sessionTitle, isTeamWorking])
 
   // Slash commands for the input bar (type / to trigger).
-  // Built-ins execute immediately on pick; backend commands are inserted
+  // Built-ins execute immediately on pick; user-defined commands are inserted
   // into the textarea (``keepInputOpen``) so the user can append
   // ``$ARGUMENTS`` before submitting.
   const commandsQ = useCommandsQuery()
-  const backendCommandNames = useMemo(
+  const userCommandNames = useMemo(
     () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
     [commandsQ.data],
   )
   const slashCommands: SlashCommand[] = [
     { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
+    { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
     ...(commandsQ.data?.commands ?? []).map((c) => ({
       id: c.name,
@@ -351,15 +352,18 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       case 'stop':
         useTeamStore.getState().stopTeam()
         break
+      case 'continue':
+        useTeamStore.getState().continueTeam()
+        break
       case 'new':
         handleNewSession()
         break
     }
   }, [handleNewSession])
 
-  /** If *content* starts with a known backend command, render server-side
+  /** If *content* starts with a known user-defined command, render server-side
    *  and return the expanded body; otherwise return *content* unchanged. */
-  const expandBackendCommand = useCallback(
+  const expandUserCommand = useCallback(
     async (content: string): Promise<string> => {
       if (!content.startsWith('/')) return content
       // The command name may include slashes (nested folders), so we
@@ -372,7 +376,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       const tokens = firstLine.split(' ')
       for (let n = tokens.length; n > 0; n--) {
         const candidate = tokens.slice(0, n).join(' ').trim()
-        if (backendCommandNames.has(candidate)) {
+        if (userCommandNames.has(candidate)) {
           const argsHead = tokens.slice(n).join(' ')
           const restOfMessage = rest.slice(firstLine.length)
           const args = (argsHead + restOfMessage).trim()
@@ -391,7 +395,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       }
       return content
     },
-    [backendCommandNames, pushToast],
+    [userCommandNames, pushToast],
   )
 
   const cycleViewMode = useCallback(() => {
@@ -706,7 +710,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           ref={inputRef}
           boundsRef={mainColumnRef}
           onSubmit={async (content, files) => {
-            const expanded = await expandBackendCommand(content)
+            const expanded = await expandUserCommand(content)
             sendMessage(expanded, files, { mode, workspace })
           }}
           onStop={() => useTeamStore.getState().stopTeam()}

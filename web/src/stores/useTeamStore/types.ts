@@ -90,6 +90,7 @@ export interface TeamStoreState {
 
 export interface TeamStoreActions {
   sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null }) => Promise<void>
+  continueTeam: () => Promise<void>
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
   loadTeamStatus: (workspace?: string | null) => Promise<void>
