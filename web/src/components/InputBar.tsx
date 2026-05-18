@@ -19,6 +19,15 @@ export interface SlashCommand {
   id: string
   label: string
   description: string
+  /**
+   * When true, picking this command from the menu inserts ``/<id> `` into
+   * the textarea and leaves the caret after the trailing space — for
+   * commands that take free-form arguments the user still needs to type
+   * (e.g. backend-discovered commands with ``$ARGUMENTS``). The default
+   * is the legacy behaviour: the input is cleared and the parent's
+   * ``onSlashCommand`` runs immediately.
+   */
+  keepInputOpen?: boolean
 }
 
 interface InputBarProps {
@@ -389,11 +398,39 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     ? slashMenuIndex % filteredSlashCommands.length
     : 0
 
+  // Refs for slash option buttons so the highlighted row stays visible when
+  // the list overflows ``max-h-64``. Same pattern as the mention picker —
+  // truncate to the current option count inside the effect, not during
+  // render, so unmounted-but-still-recorded nulls don't accumulate.
+  const slashOptionRefs = useRef<(HTMLButtonElement | null)[]>([])
+  useEffect(() => {
+    slashOptionRefs.current.length = filteredSlashCommands.length
+    if (!slashMenuOpen) return
+    const el = slashOptionRefs.current[clampedIndex]
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [clampedIndex, slashMenuOpen, filteredSlashCommands])
+
   const executeSlashCommand = useCallback((cmd: SlashCommand) => {
+    if (cmd.keepInputOpen) {
+      // Insert ``/<id> `` and keep the textarea focused so the user can
+      // append arguments. Submission is what triggers the action — the
+      // parent's onSubmit handler inspects the raw text.
+      const next = `/${cmd.id} `
+      setValue(next)
+      const el = textareaRef.current
+      if (el) {
+        requestAnimationFrame(() => {
+          el.focus()
+          el.setSelectionRange(next.length, next.length)
+          resize()
+        })
+      }
+      return
+    }
     setValue('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     onSlashCommand?.(cmd.id)
-  }, [onSlashCommand])
+  }, [onSlashCommand, resize])
 
   // ── @-mention filtering ────────────────────────────────────────────────────
 
@@ -723,10 +760,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         {!minimized && !filesBelow && filePreviews}
 
         {!minimized && slashMenuOpen && filteredSlashCommands.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 overflow-hidden rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
+          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
             {filteredSlashCommands.map((cmd, idx) => (
               <button
                 key={cmd.id}
+                ref={(node) => { slashOptionRefs.current[idx] = node }}
                 onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd) }}
                 className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
                   idx === clampedIndex
@@ -734,8 +772,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
                     : 'text-(--color-text-muted) hover:bg-(--bg-key)'
                 }`}
               >
-                <span className="font-mono text-xs text-(--color-accent)">/{cmd.id}</span>
-                <span className="text-(--color-text-2)">{cmd.description}</span>
+                {/* Name keeps its full width (``shrink-0``); description gets
+                    the remaining space and truncates with an ellipsis. The
+                    container already constrains width via the input's
+                    ``max-w-3xl`` wrapper, so we don't need a max-width here. */}
+                <span className="shrink-0 font-mono text-xs text-(--color-accent)">/{cmd.id}</span>
+                <span className="min-w-0 flex-1 truncate text-(--color-text-2)">
+                  {cmd.description}
+                </span>
               </button>
             ))}
           </div>

@@ -26,6 +26,8 @@ import type {
   SkillListResponse,
   SkillDetail,
   SkillDeleteResponse,
+  CommandListResponse,
+  CommandRenderResponse,
   WorkspaceFilesResponse,
   CodingWorkspaceFilesResponse,
   ScheduledTaskResponse,
@@ -527,6 +529,31 @@ export async function updateSkill(name: string, content: string): Promise<SkillD
 export async function deleteSkill(name: string): Promise<SkillDeleteResponse> {
   const res = await fetch(`${API}/skills/${encodeURIComponent(name)}`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, `DELETE /skills/${name}`)
+  return res.json()
+}
+
+// ── /commands ────────────────────────────────────────────────────────────────
+
+export async function listCommands(): Promise<CommandListResponse> {
+  const res = await fetch(`${API}/commands`)
+  if (!res.ok) throw new Error(`listCommands failed: ${res.status}`)
+  return res.json()
+}
+
+export async function renderCommand(
+  name: string,
+  arguments_: string,
+): Promise<CommandRenderResponse> {
+  // ``name`` may include slashes (nested folders); the segments are
+  // already valid URL path chars, so we encode the whole id minus the
+  // separator so e.g. ``git/commit`` survives intact.
+  const encoded = name.split('/').map(encodeURIComponent).join('/')
+  const res = await fetch(`${API}/commands/${encoded}/render`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arguments: arguments_ }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /commands/${name}/render`)
   return res.json()
 }
 

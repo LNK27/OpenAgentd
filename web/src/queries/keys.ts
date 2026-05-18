@@ -41,6 +41,9 @@ export const queryKeys = {
     list: () => ['skillFiles', 'list'] as const,
     detail: (name: string) => ['skillFiles', 'detail', name] as const,
   },
+  commands: {
+    list: () => ['commands', 'list'] as const,
+  },
   observability: {
     summary: (days: number) => ['observability', 'summary', days] as const,
     traces: (days: number, limit: number, offset: number) =>

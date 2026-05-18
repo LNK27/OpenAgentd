@@ -19,7 +19,7 @@
  * (one primitive per ``useTeamStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 import { AnimatePresence } from 'framer-motion'
 
@@ -37,6 +37,8 @@ import { WikiPanel } from '../WikiPanel'
 import { SchedulerPanel } from '../SchedulerPanel'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery, useTriggerDreamMutation } from '@/queries'
+import { useCommandsQuery } from '@/queries/useCommandsQuery'
+import { renderCommand } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -324,10 +326,24 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     void setTraySession(label)
   }, [mode, workspace, sessionTitle, isTeamWorking])
 
-  // Slash commands for the input bar (type / to trigger)
+  // Slash commands for the input bar (type / to trigger).
+  // Built-ins execute immediately on pick; backend commands are inserted
+  // into the textarea (``keepInputOpen``) so the user can append
+  // ``$ARGUMENTS`` before submitting.
+  const commandsQ = useCommandsQuery()
+  const backendCommandNames = useMemo(
+    () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
+    [commandsQ.data],
+  )
   const slashCommands: SlashCommand[] = [
     { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
+    ...(commandsQ.data?.commands ?? []).map((c) => ({
+      id: c.name,
+      label: c.name,
+      description: c.description || `Custom command (${c.source})`,
+      keepInputOpen: true,
+    })),
   ]
 
   const handleSlashCommand = useCallback((id: string) => {
@@ -340,6 +356,43 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         break
     }
   }, [handleNewSession])
+
+  /** If *content* starts with a known backend command, render server-side
+   *  and return the expanded body; otherwise return *content* unchanged. */
+  const expandBackendCommand = useCallback(
+    async (content: string): Promise<string> => {
+      if (!content.startsWith('/')) return content
+      // The command name may include slashes (nested folders), so we
+      // greedily match the longest known prefix instead of splitting on
+      // the first space. Tokens are separated by whitespace.
+      const rest = content.slice(1)
+      // Try progressively shorter prefixes — start with the full first
+      // line, peel back to the longest known command name.
+      const firstLine = rest.split('\n', 1)[0]
+      const tokens = firstLine.split(' ')
+      for (let n = tokens.length; n > 0; n--) {
+        const candidate = tokens.slice(0, n).join(' ').trim()
+        if (backendCommandNames.has(candidate)) {
+          const argsHead = tokens.slice(n).join(' ')
+          const restOfMessage = rest.slice(firstLine.length)
+          const args = (argsHead + restOfMessage).trim()
+          try {
+            const res = await renderCommand(candidate, args)
+            return res.content
+          } catch (err) {
+            pushToast({
+              tone: 'error',
+              title: `Failed to render /${candidate}`,
+              description: (err as Error).message,
+            })
+            return content
+          }
+        }
+      }
+      return content
+    },
+    [backendCommandNames, pushToast],
+  )
 
   const cycleViewMode = useCallback(() => {
     setViewMode((v) => {
@@ -652,7 +705,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         <FloatingInputBar
           ref={inputRef}
           boundsRef={mainColumnRef}
-          onSubmit={(content, files) => sendMessage(content, files, { mode, workspace })}
+          onSubmit={async (content, files) => {
+            const expanded = await expandBackendCommand(content)
+            sendMessage(expanded, files, { mode, workspace })
+          }}
           onStop={() => useTeamStore.getState().stopTeam()}
           onSlashCommand={handleSlashCommand}
           slashCommands={slashCommands}
