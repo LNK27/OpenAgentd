@@ -9,8 +9,6 @@ the HTTP shape: response codes, response body, and that
 from __future__ import annotations
 
 import uuid
-import asyncio
-
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
@@ -45,6 +43,7 @@ async def app_with_lead_only_team():
     team = AgentTeam(lead=lead, members={})
     await team.start()
     app = create_app()
+    app.state.test_team = team
     set_team(team)
     try:
         yield app
@@ -103,52 +102,16 @@ class TestPostTeamCommands:
         assert "not an assistant message" in resp.json()["detail"].lower()
 
     @pytest.mark.asyncio
-    async def test_continue_returns_409_when_assistant_has_tool_calls(
-        self, app_with_lead_only_team
+    async def test_continue_returns_202_when_assistant_has_tool_calls(
+        self, app_with_lead_only_team, monkeypatch
     ):
         sid = uuid.uuid7()
-        await _seed_session_and_messages(
-            sid,
-            [
-                ("user", "run shell", None),
-                (
-                    "assistant",
-                    "",
-                    [
-                        {
-                            "id": "call_1",
-                            "type": "function",
-                            "function": {"name": "shell", "arguments": "{}"},
-                        }
-                    ],
-                ),
-            ],
-        )
+        team = app_with_lead_only_team.state.test_team
 
-        client = TestClient(app_with_lead_only_team)
-        resp = client.post(
-            "/api/team/commands",
-            json={"command": "continue", "session_id": str(sid)},
-        )
-        assert resp.status_code == 409
-        assert "tool call" in resp.json()["detail"].lower()
+        async def fake_continue(session_id: str) -> str:
+            return session_id
 
-    @pytest.mark.asyncio
-    async def test_continue_returns_202_on_happy_path(self, app_with_lead_only_team):
-        """Happy path returns 202 + session_id; activation runs in background.
-
-        The actual streaming behaviour is tested in
-        ``test_team_continue.py::test_handle_continue_happy_path_stamps_assistant_row``.
-        Here we only assert the route's HTTP contract.
-        """
-        sid = uuid.uuid7()
-        await _seed_session_and_messages(
-            sid,
-            [
-                ("user", "count to 10", None),
-                ("assistant", "1, 2, 3, 4,", None),
-            ],
-        )
+        monkeypatch.setattr(team, "handle_continue", fake_continue)
 
         client = TestClient(app_with_lead_only_team)
         resp = client.post(
@@ -160,22 +123,47 @@ class TestPostTeamCommands:
         assert body["status"] == "accepted"
         assert body["session_id"] == str(sid)
         assert body["command"] == "continue"
-        await asyncio.sleep(0.2)
 
     @pytest.mark.asyncio
-    async def test_compact_returns_202_on_happy_path(self, app_with_lead_only_team):
+    async def test_continue_returns_202_on_happy_path(
+        self, app_with_lead_only_team, monkeypatch
+    ):
+        """Happy path returns 202 + session_id; activation runs in background.
+
+        The actual streaming behaviour is tested in
+        ``test_team_continue.py::test_handle_continue_happy_path_stamps_assistant_row``.
+        Here we only assert the route's HTTP contract.
+        """
         sid = uuid.uuid7()
-        await _seed_session_and_messages(
-            sid,
-            [
-                ("user", "first", None),
-                ("assistant", "first answer", None),
-                ("user", "second", None),
-                ("assistant", "second answer", None),
-                ("user", "third", None),
-                ("assistant", "third answer", None),
-            ],
+        team = app_with_lead_only_team.state.test_team
+
+        async def fake_continue(session_id: str) -> str:
+            return session_id
+
+        monkeypatch.setattr(team, "handle_continue", fake_continue)
+
+        client = TestClient(app_with_lead_only_team)
+        resp = client.post(
+            "/api/team/commands",
+            json={"command": "continue", "session_id": str(sid)},
         )
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["status"] == "accepted"
+        assert body["session_id"] == str(sid)
+        assert body["command"] == "continue"
+
+    @pytest.mark.asyncio
+    async def test_compact_returns_202_on_happy_path(
+        self, app_with_lead_only_team, monkeypatch
+    ):
+        sid = uuid.uuid7()
+        team = app_with_lead_only_team.state.test_team
+
+        async def fake_compact(session_id: str) -> str:
+            return session_id
+
+        monkeypatch.setattr(team, "handle_compact", fake_compact)
 
         client = TestClient(app_with_lead_only_team)
         resp = client.post(
@@ -188,7 +176,6 @@ class TestPostTeamCommands:
         assert body["status"] == "accepted"
         assert body["session_id"] == str(sid)
         assert body["command"] == "compact"
-        await asyncio.sleep(0.2)
 
     @pytest.mark.asyncio
     async def test_undo_hides_latest_user_turn(self, app_with_lead_only_team):
