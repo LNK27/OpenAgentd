@@ -257,6 +257,23 @@ def build_provider(
                 model_kwargs=kwargs,
             )
         case _:
+            from app.agent.providers.plugin_registry import (
+                ProviderCredentialStore,
+                find_provider_plugin,
+            )
+
+            plugin = find_provider_plugin(name)
+            if plugin is not None:
+                from app.agent.providers.plugin_api import ProviderBuildContext
+
+                return plugin.factory(
+                    ProviderBuildContext(
+                        provider_id=name,
+                        model=model,
+                        model_kwargs=kwargs,
+                        credentials=ProviderCredentialStore(name),
+                    )
+                )
             raise ValueError(
                 f"Unsupported provider '{name}'. "
                 f"Supported providers: {', '.join(SUPPORTED_PROVIDERS)}"

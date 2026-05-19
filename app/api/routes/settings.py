@@ -121,6 +121,19 @@ def _provider_is_configured(entry: "ProviderEntry") -> bool:
     ping on top of this.
     """
     kind = entry.get("kind")
+    from app.agent.providers.plugin_registry import (
+        ProviderCredentialStore,
+        find_provider_plugin,
+    )
+
+    plugin = find_provider_plugin(entry["id"])
+    if plugin is not None:
+        store = ProviderCredentialStore(plugin.id)
+        if plugin.is_configured is not None:
+            return plugin.is_configured(store)
+        return all(
+            store.get(field.name) for field in plugin.credentials if field.required
+        )
     if kind == "local":
         return True
     if kind == "oauth":
@@ -239,6 +252,7 @@ async def list_providers() -> ProvidersListBody:
                 label=entry["label"],
                 description=entry.get("description", ""),
                 kind=entry["kind"],
+                credentials=list(entry.get("credentials", [])),
                 env_var=entry.get("env_var", ""),
                 env_vars=list(entry.get("env_vars", [])),
                 fallback_models=list(entry.get("fallback_models", [])),
@@ -255,8 +269,13 @@ def _build_overrides(
     entry: "ProviderEntry", body_api_key: str, body_extra: dict[str, str]
 ) -> dict[str, str]:
     overrides: dict[str, str] = {}
+    credentials = entry.get("credentials") or []
     if body_api_key and entry.get("env_var"):
         overrides[entry["env_var"]] = body_api_key
+    elif body_api_key and credentials:
+        name = str(credentials[0].get("name", ""))
+        if name:
+            overrides[name] = body_api_key
     overrides.update(body_extra)
     return overrides
 
@@ -372,7 +391,17 @@ async def save_provider(
         raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_id}'")
 
     creds: dict[str, str] = {}
-    if entry.get("kind") == "api_key" and entry.get("env_var"):
+    credentials = entry.get("credentials") or []
+    if credentials:
+        if body.api_key and len(credentials) == 1:
+            creds[str(credentials[0].get("name", ""))] = body.api_key
+        elif body.api_key and credentials:
+            creds[str(credentials[0].get("name", ""))] = body.api_key
+        for field in credentials:
+            name = str(field.get("name", ""))
+            if name in body.extra:
+                creds[name] = body.extra[name]
+    elif entry.get("kind") == "api_key" and entry.get("env_var"):
         creds[entry["env_var"]] = body.api_key
     elif entry.get("kind") == "cloud_creds":
         for name in entry.get("env_vars") or []:

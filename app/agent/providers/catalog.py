@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Literal, TypedDict
 
+from app.agent.providers.plugin_api import credential_map
+
 ProviderKind = Literal["api_key", "oauth", "local", "cloud_creds"]
 
 
@@ -45,6 +47,7 @@ class ProviderEntry(TypedDict, total=False):
     kind: ProviderKind
     env_var: str  # primary env var for api_key providers
     env_vars: list[str]  # multi-field providers (vertexai)
+    credentials: list[dict[str, object]]
     fallback_models: list[str]  # only set for providers without live discovery
     oauth_command: str  # CLI fallback hint for oauth providers
     docs_url: str  # link to provider's API key dashboard
@@ -174,12 +177,32 @@ _CATALOG: list[ProviderEntry] = [
 
 def all_providers() -> list[ProviderEntry]:
     """Return the full catalog in display order."""
-    return list(_CATALOG)
+    entries = list(_CATALOG)
+    builtins = {entry["id"] for entry in entries}
+    from app.agent.providers.plugin_registry import provider_plugins
+
+    for plugin in provider_plugins().values():
+        if plugin.id in builtins:
+            continue
+        entry: ProviderEntry = {
+            "id": plugin.id,
+            "label": plugin.label,
+            "description": plugin.description,
+            "kind": plugin.kind,
+            "env_var": plugin.credentials[0].name if plugin.credentials else "",
+            "env_vars": [field.name for field in plugin.credentials],
+            "fallback_models": list(plugin.fallback_models),
+            "oauth_command": plugin.oauth_command,
+            "docs_url": plugin.docs_url,
+        }
+        entry["credentials"] = credential_map(plugin.credentials)
+        entries.append(entry)
+    return entries
 
 
 def find(provider_id: str) -> ProviderEntry | None:
     """Return one entry by ``id`` or None if not in the catalog."""
-    for entry in _CATALOG:
+    for entry in all_providers():
         if entry["id"] == provider_id:
             return entry
     return None
