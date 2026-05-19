@@ -17,12 +17,23 @@ export function Root() {
     <QueryClientProvider client={queryClient}>
       <SkipLink />
       <MacTitleBar />
-      <Suspense fallback={<div className="min-h-dvh bg-(--bg-page)" />}>
+      <Suspense fallback={<RouteLoadingFallback />}>
         <Outlet />
       </Suspense>
       <ToastStack />
       {/* <ReactQueryDevtools initialIsOpen={false} /> */}
     </QueryClientProvider>
+  )
+}
+
+function RouteLoadingFallback() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-(--bg-page) text-(--color-text-muted)">
+      <div className="flex items-center gap-3 rounded-full border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm shadow-sm">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-(--color-accent)" />
+        Loading OpenAgentd...
+      </div>
+    </div>
   )
 }
 
