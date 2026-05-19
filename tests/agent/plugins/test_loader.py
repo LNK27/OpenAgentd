@@ -115,6 +115,31 @@ async def test_underscore_files_skipped(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_provider_plugins_are_skipped_by_hook_loader(tmp_path: Path) -> None:
+    """Provider plugins share the directory but are loaded separately."""
+    _write(
+        tmp_path,
+        "provider_plugin.py",
+        """
+        from app.agent.providers.plugin_api import ProviderPlugin
+
+        def build(context):
+            raise NotImplementedError
+
+        provider = ProviderPlugin(
+            id="custom",
+            label="Custom",
+            description="Custom provider",
+            factory=build,
+        )
+        """,
+    )
+
+    hooks = await load_plugin_hooks([tmp_path], agent_name="a", role="lead")
+    assert hooks == []
+
+
+@pytest.mark.asyncio
 async def test_broken_plugin_does_not_block_others(tmp_path: Path) -> None:
     """A plugin that raises at import time is logged and skipped, not raised."""
     _write(tmp_path, "broken.py", "raise RuntimeError('boom at import')")

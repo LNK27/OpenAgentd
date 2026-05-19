@@ -671,6 +671,27 @@ def test_load_team_discovers_all_agents(tmp_path):
     assert team.members == {}
 
 
+def test_load_team_skips_unconfigured_members(tmp_path):
+    """Seed placeholders and blank models should not become spawnable members."""
+    from app.agent.loader import load_team_from_dir
+    from app.cli.seed import PROVIDER_MODEL_TOKEN
+
+    d = _make_agents_dir(
+        tmp_path,
+        [
+            {"name": "lead", "role": "lead", "model": "zai:glm-5-turbo"},
+            {"name": "placeholder", "role": "member", "model": PROVIDER_MODEL_TOKEN},
+            {"name": "blank", "role": "member", "model": ""},
+            {"name": "missing", "role": "member"},
+            {"name": "worker", "role": "member", "model": "zai:glm-5-turbo"},
+        ],
+    )
+    factory, _ = _make_provider_factory()
+    team = load_team_from_dir(d, provider_factory=factory)
+    assert team is not None
+    assert set(team.blueprints.keys()) == {"worker"}
+
+
 def test_load_team_parse_error_raises(tmp_path):
     from app.agent.loader import load_team_from_dir
 

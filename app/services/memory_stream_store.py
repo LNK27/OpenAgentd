@@ -17,6 +17,7 @@ from typing import Any, AsyncGenerator, Literal, cast
 from loguru import logger
 
 from app.agent.schemas.events import (
+    AgentNotConfiguredEvent,
     AgentStatusEvent,
     MessageEvent,
     SummarizationContentEvent,
@@ -48,6 +49,7 @@ class _TurnState:
         "summarization",
         "usage",
         "error",
+        "agent_not_configured",
         "subscribers",
         "_cleanup_handle",
     )
@@ -75,6 +77,7 @@ class _TurnState:
         self.summarization: dict[str, dict[str, Any]] = {}
         self.usage: dict | None = None
         self.error: str | None = None
+        self.agent_not_configured: dict[str, Any] | None = None
         # Me keep list of queues — one per SSE client
         self.subscribers: list[asyncio.Queue] = []
         self._cleanup_handle: asyncio.TimerHandle | None = None
@@ -183,6 +186,9 @@ async def push_event(session_id: str, envelope: StreamEnvelope) -> None:
 
         elif event_type == "error":
             state.error = data.get("message", "error")
+
+        elif event_type == "agent_not_configured":
+            state.agent_not_configured = data
 
         # Me inbox events are DB-persisted by _persist_inbox BEFORE being
         # emitted here, so the DB is always authoritative.  No replay state
@@ -395,6 +401,11 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
                             status,
                         ),
                     )
+                ).to_wire()
+
+            if state.agent_not_configured is not None:
+                yield StreamEnvelope.from_event(
+                    AgentNotConfiguredEvent.model_validate(state.agent_not_configured)
                 ).to_wire()
 
             # Me replay summarisation state so a mid-compaction reconnect

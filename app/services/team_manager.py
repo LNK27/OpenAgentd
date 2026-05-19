@@ -459,7 +459,7 @@ def refresh_blueprints(team: "AgentTeam") -> None:
     * **Parse error in a new file** → logged and skipped; the rest of the
       directory is still processed.
     """
-    from app.agent.loader import parse_agent_md
+    from app.agent.loader import member_model_is_configured, parse_agent_md
     from app.agent.mode.team.team import MemberBlueprint
 
     agents_dir = (
@@ -480,7 +480,7 @@ def refresh_blueprints(team: "AgentTeam") -> None:
             continue
         # Skip the lead — its file lives in the same directory but is owned
         # by :func:`reload`, not by this hot-path discovery.
-        if cfg.role != "member":
+        if cfg.role != "member" or not member_model_is_configured(cfg.model):
             continue
         if "#" in cfg.name or cfg.name == team.lead.name:
             # Same invariants ``load_team_from_dir`` enforces; silently

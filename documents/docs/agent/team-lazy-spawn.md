@@ -2,16 +2,19 @@
 title: Lazy team members & dynamic instances
 description: Lead-driven spawn/dismiss of member agents, blueprint#N handles, history restore, and design caveats.
 status: stable
-updated: 2026-05-11
+updated: 2026-05-19
 ---
 
 # Lazy team members & dynamic instances
 
-Members no longer exist at startup. Each `*.md` file in
-`OPENAGENTD_CONFIG_DIR/agents/` whose `role: member` becomes a **blueprint**
-on the team. The lead spawns instances on demand via `team_manage`, addresses
-them by handle (`blueprint#1`, `blueprint#2`, …), and explicitly retires them
-with `team_manage(action="dismiss", ...)`.
+Members no longer exist at startup. Each configured `*.md` file in
+`OPENAGENTD_CONFIG_DIR/agents/` whose `role: member` and `model:` is a real
+`provider:model` value becomes a **blueprint** on the team. Seed placeholders
+(`__PROVIDER_MODEL__`), blank models, and missing models are skipped so a
+fresh install does not expose members that cannot run. The lead spawns
+instances on demand via `team_manage`, addresses them by handle
+(`blueprint#1`, `blueprint#2`, …), and explicitly retires them with
+`team_manage(action="dismiss", ...)`.
 
 ## Why
 

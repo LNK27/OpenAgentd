@@ -51,6 +51,10 @@ Drop-in provider plugins live in `{OPENAGENTD_CONFIG_DIR}/plugins/` and export a
 - store provider-owned OAuth tokens under `{OPENAGENTD_CACHE_DIR}/provider-plugins/<provider-id>/`;
 - provide model discovery and a factory returning `LLMProviderBase`.
 
+The same directory can also contain agent hook plugins. Files that export
+`provider = ProviderPlugin(...)` are handled by the provider registry and are
+skipped by the agent hook loader.
+
 OAuth plugins can emit a `code_required` event; the UI then shows a paste field and posts the code to `/api/auth/{provider}/callback`.
 
 ## Capability detection

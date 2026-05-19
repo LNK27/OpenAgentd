@@ -356,7 +356,8 @@ async def test_get_or_start_coding_team_uses_agents_dir_coding_agents(
 
 def _write_member_md(path, name: str) -> None:
     path.write_text(
-        f"---\nname: {name}\nrole: member\ndescription: {name} agent\n---\nbody\n",
+        f"---\nname: {name}\nrole: member\nmodel: zai:glm-5-turbo\n"
+        f"description: {name} agent\n---\nbody\n",
         encoding="utf-8",
     )
 
@@ -447,6 +448,31 @@ def test_refresh_blueprints_skips_lead_file(tmp_path, monkeypatch):
     team_manager.refresh_blueprints(team)
 
     assert team.blueprints == {}
+
+
+def test_refresh_blueprints_skips_unconfigured_members(tmp_path, monkeypatch):
+    from app.cli.seed import PROVIDER_MODEL_TOKEN
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+    team = _make_real_team()
+    _write_member_md(tmp_path / "configured.md", "configured")
+    (tmp_path / "placeholder.md").write_text(
+        f"---\nname: placeholder\nrole: member\nmodel: {PROVIDER_MODEL_TOKEN}\n---\nbody\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "blank.md").write_text(
+        '---\nname: blank\nrole: member\nmodel: ""\n---\nbody\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "missing.md").write_text(
+        "---\nname: missing\nrole: member\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    team_manager.refresh_blueprints(team)
+
+    assert set(team.blueprints) == {"configured"}
 
 
 def test_refresh_blueprints_swallows_parse_errors(tmp_path, monkeypatch):
