@@ -138,3 +138,23 @@ def test_install_seed_writes_runtime_settings_model(tmp_path: Path) -> None:
     assert "title_generation:" in settings
     assert "dream:" in settings
     assert "model: codex:gpt-5.5" in settings
+
+
+def test_install_seed_leaves_runtime_settings_model_empty_for_placeholder(
+    tmp_path: Path,
+) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "agents").mkdir()
+    (seed / "skills").mkdir()
+
+    result = _install_from_local(
+        seed,
+        tmp_path / "config",
+        provider_model="__PROVIDER_MODEL__",
+    )
+
+    assert "settings.yaml" in result.configs_written
+    settings = (tmp_path / "config" / "settings.yaml").read_text(encoding="utf-8")
+    assert "__PROVIDER_MODEL__" not in settings
+    assert "model:" not in settings

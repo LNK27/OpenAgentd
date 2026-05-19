@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.config import settings
 
+PROVIDER_MODEL_PLACEHOLDER = "__PROVIDER_MODEL__"
+
 
 class TitleGenerationSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -64,13 +66,21 @@ def save_runtime_settings(cfg: RuntimeSettings, path: Path | None = None) -> Pat
     return resolved
 
 
+def _seed_model_value(provider_model: str) -> str | None:
+    provider_model = provider_model.strip()
+    if not provider_model or provider_model == PROVIDER_MODEL_PLACEHOLDER:
+        return None
+    return provider_model
+
+
 def ensure_runtime_settings(path: Path, *, provider_model: str) -> bool:
     if path.exists():
         return False
+    model = _seed_model_value(provider_model)
     save_runtime_settings(
         RuntimeSettings(
-            title_generation=TitleGenerationSettings(model=provider_model),
-            dream=DreamSettings(model=provider_model),
+            title_generation=TitleGenerationSettings(model=model),
+            dream=DreamSettings(model=model),
         ),
         path,
     )
