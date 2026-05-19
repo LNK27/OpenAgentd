@@ -5,7 +5,9 @@ What ships
 ----------
 - ``agents/`` — one ``.md`` per normal agent plus ``agents/coding/`` for
   coding mode. ``model: __PROVIDER_MODEL__`` is rewritten to the
-  provider:model the user picked in ``init``.
+  provider:model the user picked in ``init``. Existing files are preserved,
+  except this placeholder token may be replaced in-place after first-run
+  desktop seeding.
 - ``skills/`` — one subdirectory per skill, each with at minimum a
   ``SKILL.md``.
 - Top-level config files: ``mcp.json``, ``multimodal.yaml``, ``speech.yaml``,
@@ -238,6 +240,8 @@ def _install_from_local(
             continue
         target = config_dir / rel
         if target.exists():
+            if _replace_placeholder_if_needed(target, provider_model):
+                _record(rel, agents_written, skills_written, configs_written)
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         _copy_with_substitution(src, target, provider_model)
@@ -282,6 +286,8 @@ def _install_from_github(
             if not member.isfile():
                 continue
             if target.exists():
+                if _replace_placeholder_if_needed(target, provider_model):
+                    _record(target_rel, agents_written, skills_written, configs_written)
                 continue
 
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -358,6 +364,18 @@ def _copy_with_substitution(src: Path, target: Path, provider_model: str) -> Non
         )
     else:
         shutil.copy2(src, target)
+
+
+def _replace_placeholder_if_needed(target: Path, provider_model: str) -> bool:
+    if provider_model == PROVIDER_MODEL_TOKEN or target.suffix != ".md":
+        return False
+    text = target.read_text(encoding="utf-8")
+    if PROVIDER_MODEL_TOKEN not in text:
+        return False
+    target.write_text(
+        text.replace(PROVIDER_MODEL_TOKEN, provider_model), encoding="utf-8"
+    )
+    return True
 
 
 def _record(

@@ -107,6 +107,10 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("server_starting version={}", VERSION)
 
+    from app.core.workspace_init import ensure_workspace_initialized
+
+    ensure_workspace_initialized()
+
     # ── Auto-migrate DB in production ───────────────────────────────
     if settings.APP_ENV == "production":
         # Alembic's ``env.py`` calls ``asyncio.run(run_migrations_online())``
