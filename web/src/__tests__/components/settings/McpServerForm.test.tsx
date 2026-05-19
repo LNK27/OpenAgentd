@@ -108,8 +108,8 @@ describe('McpServerForm — Transport tabs', () => {
     const draft = emptyDraft()
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    expect(screen.getByRole('tab', { name: /stdio/i })).toBeTruthy()
-    expect(screen.getByRole('tab', { name: /http/i })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: /stdio/i })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: /http/i })).toBeTruthy()
   })
 
   it('shows stdio section when transport is stdio', () => {
@@ -131,7 +131,7 @@ describe('McpServerForm — Transport tabs', () => {
     const draft = { ...emptyDraft(), transport: 'stdio' as const }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    const httpTab = screen.getByRole('tab', { name: /http/i })
+    const httpTab = screen.getByRole('radio', { name: /http/i })
     await user.click(httpTab)
     expect(onChange).toHaveBeenCalled()
   })
@@ -141,7 +141,7 @@ describe('McpServerForm — Transport tabs', () => {
     const draft = { ...emptyDraft(), transport: 'http' as const }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    const stdioTab = screen.getByRole('tab', { name: /stdio/i })
+    const stdioTab = screen.getByRole('radio', { name: /stdio/i })
     await user.click(stdioTab)
     expect(onChange).toHaveBeenCalled()
   })
@@ -158,7 +158,7 @@ describe('McpServerForm — Transport tabs', () => {
       draft = next
     }) as (...args: unknown[]) => unknown)
     renderForm(draft, onChange)
-    const httpTab = screen.getByRole('tab', { name: /http/i })
+    const httpTab = screen.getByRole('radio', { name: /http/i })
     await user.click(httpTab)
     expect(onChange).toHaveBeenCalled()
   })

@@ -89,6 +89,8 @@ describe('draftFromServerBody', () => {
 describe('draftToServerBody', () => {
   it('serializes a stdio draft to ServerBody', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'filesystem',
       transport: 'stdio',
       enabled: true,
@@ -122,6 +124,8 @@ describe('draftToServerBody', () => {
 
   it('serializes an http draft to ServerBody', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'remote',
       transport: 'http',
       enabled: false,
@@ -151,6 +155,8 @@ describe('draftToServerBody', () => {
 
   it('rejects stdio draft with empty command', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -169,6 +175,8 @@ describe('draftToServerBody', () => {
 
   it('rejects http draft with empty url', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'http',
       enabled: true,
@@ -187,6 +195,8 @@ describe('draftToServerBody', () => {
 
   it('trims command and url whitespace', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -205,6 +215,8 @@ describe('draftToServerBody', () => {
 
   it('filters empty args from argsText', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -223,6 +235,8 @@ describe('draftToServerBody', () => {
 
   it('filters empty key pairs from env and headers', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -248,6 +262,8 @@ describe('draftToServerBody', () => {
 
   it('does not leak stdio fields into http body', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'http',
       enabled: true,
@@ -269,6 +285,8 @@ describe('draftToServerBody', () => {
 
   it('does not leak http fields into stdio body', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -293,6 +311,8 @@ describe('draftToServerBody', () => {
 describe('validateDraft', () => {
   it('returns null for a valid new stdio draft', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'filesystem',
       transport: 'stdio',
       enabled: true,
@@ -308,6 +328,8 @@ describe('validateDraft', () => {
 
   it('returns null for a valid new http draft', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'remote',
       transport: 'http',
       enabled: true,
@@ -323,6 +345,8 @@ describe('validateDraft', () => {
 
   it('requires name for new drafts', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: '',
       transport: 'stdio',
       enabled: true,
@@ -341,6 +365,7 @@ describe('validateDraft', () => {
     const invalidNames = ['123start', '-start', '_start', 'has space', 'has@symbol']
     for (const name of invalidNames) {
       const draft: McpServerDraft = {
+        ...emptyDraft(),
         name,
         transport: 'stdio',
         enabled: true,
@@ -359,6 +384,7 @@ describe('validateDraft', () => {
     const validNames = ['filesystem', 'my_server', 'my-server', 'MyServer123']
     for (const name of validNames) {
       const draft: McpServerDraft = {
+        ...emptyDraft(),
         name,
         transport: 'stdio',
         enabled: true,
@@ -375,6 +401,8 @@ describe('validateDraft', () => {
 
   it('does not require name for existing drafts (isNew=false)', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: '',
       transport: 'stdio',
       enabled: true,
@@ -390,6 +418,8 @@ describe('validateDraft', () => {
 
   it('requires command for stdio transport', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -405,6 +435,8 @@ describe('validateDraft', () => {
 
   it('requires url for http transport', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'http',
       enabled: true,
@@ -420,6 +452,8 @@ describe('validateDraft', () => {
 
   it('detects duplicate env keys', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -438,6 +472,8 @@ describe('validateDraft', () => {
 
   it('detects duplicate header keys', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'http',
       enabled: true,
@@ -456,6 +492,8 @@ describe('validateDraft', () => {
 
   it('ignores empty keys when checking for duplicates', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -478,6 +516,7 @@ describe('validateDraft', () => {
 describe('draftEquals', () => {
   it('returns true for identical drafts', () => {
     const draft: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -492,6 +531,7 @@ describe('draftEquals', () => {
 
   it('returns true for structurally equal drafts', () => {
     const draft1: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -502,6 +542,7 @@ describe('draftEquals', () => {
       headerPairs: [],
     }
     const draft2: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -516,6 +557,7 @@ describe('draftEquals', () => {
 
   it('returns false when name differs', () => {
     const draft1: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test1',
       transport: 'stdio',
       enabled: true,
@@ -526,6 +568,7 @@ describe('draftEquals', () => {
       headerPairs: [],
     }
     const draft2: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test2',
       transport: 'stdio',
       enabled: true,
@@ -540,6 +583,7 @@ describe('draftEquals', () => {
 
   it('returns false when transport differs', () => {
     const draft1: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -550,6 +594,7 @@ describe('draftEquals', () => {
       headerPairs: [],
     }
     const draft2: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'http',
       enabled: true,
@@ -564,6 +609,7 @@ describe('draftEquals', () => {
 
   it('returns false when enabled differs', () => {
     const draft1: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -574,6 +620,7 @@ describe('draftEquals', () => {
       headerPairs: [],
     }
     const draft2: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: false,
@@ -588,6 +635,7 @@ describe('draftEquals', () => {
 
   it('returns false when stdio command differs', () => {
     const draft1: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -598,6 +646,7 @@ describe('draftEquals', () => {
       headerPairs: [],
     }
     const draft2: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -612,6 +661,7 @@ describe('draftEquals', () => {
 
   it('returns false when stdio argsText differs', () => {
     const draft1: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -622,6 +672,7 @@ describe('draftEquals', () => {
       headerPairs: [],
     }
     const draft2: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -636,6 +687,7 @@ describe('draftEquals', () => {
 
   it('returns false when stdio envPairs differ', () => {
     const draft1: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -646,6 +698,7 @@ describe('draftEquals', () => {
       headerPairs: [],
     }
     const draft2: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'stdio',
       enabled: true,
@@ -660,6 +713,7 @@ describe('draftEquals', () => {
 
   it('returns false when http url differs', () => {
     const draft1: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'http',
       enabled: true,
@@ -670,6 +724,7 @@ describe('draftEquals', () => {
       headerPairs: [],
     }
     const draft2: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'http',
       enabled: true,
@@ -684,6 +739,7 @@ describe('draftEquals', () => {
 
   it('returns false when http headerPairs differ', () => {
     const draft1: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'http',
       enabled: true,
@@ -694,6 +750,7 @@ describe('draftEquals', () => {
       headerPairs: [{ key: 'Auth', value: 'token1' }],
     }
     const draft2: McpServerDraft = {
+      ...emptyDraft(),
       name: 'test',
       transport: 'http',
       enabled: true,
