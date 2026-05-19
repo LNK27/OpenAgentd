@@ -359,8 +359,8 @@ async def list_provider_models(
     never touch ``os.environ`` because a concurrent request would observe
     the leaked value.
 
-    Most providers respond with a live list. For providers with no
-    listing endpoint upstream (currently just vertexai) we fall back to
+    Most providers respond with a live list. For providers with incomplete
+    or missing listing endpoint coverage upstream, we fall back to
     the curated ``fallback_models`` set in the catalog.
     """
     from app.agent.providers.catalog import find

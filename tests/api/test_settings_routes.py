@@ -683,7 +683,7 @@ def test_list_provider_models_falls_back_for_vertexai(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When discovery returns no models, providers with a curated
-    ``fallback_models`` list in the catalog (only vertexai today)
+    ``fallback_models`` list in the catalog
     respond with ``source=fallback`` and the curated list. Other
     providers respond with an empty list — see the companion test."""
 
@@ -712,8 +712,8 @@ def test_list_provider_models_falls_back_for_vertexai(
 def test_list_provider_models_returns_empty_for_providers_without_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Providers without a curated ``fallback_models`` (everyone except
-    vertexai) return an empty model list when live discovery fails —
+    """Providers without a curated ``fallback_models`` return an empty model list
+    when live discovery fails —
     we no longer surface stale catalog defaults."""
 
     async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
@@ -726,7 +726,7 @@ def test_list_provider_models_returns_empty_for_providers_without_fallback(
     app = _make_app()
     client = TestClient(app)
     response = client.post(
-        "/api/settings/providers/googlegenai/models",
+        "/api/settings/providers/openai/models",
         json={"api_key": "fake"},
     )
 
@@ -941,13 +941,11 @@ def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> 
     client = TestClient(app)
     response = client.get("/api/agents/registry")
 
-    # Registry endpoint stays healthy even when every provider's
-    # discovery raises. With ``fallback_models`` removed from all
-    # providers except vertexai, the only entries that survive are
-    # vertexai's curated list — every other provider yields no models
-    # without a working live discovery call.
+    # Registry endpoint stays healthy even when every provider's discovery raises.
+    # Only catalog entries with curated fallbacks survive; every other provider
+    # yields no models without a working live discovery call.
     assert response.status_code == 200
     body = response.json()
     providers_seen = {m["provider"] for m in body["models"]}
     assert "openai" not in providers_seen
-    assert providers_seen <= {"vertexai"}
+    assert providers_seen <= {"googlegenai", "vertexai"}
