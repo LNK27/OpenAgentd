@@ -59,7 +59,9 @@ async def main():
     )
     args = p.parse_args()
 
-    api_key = settings.OLLAMA_API_KEY.get_secret_value()
+    api_key = (
+        settings.OLLAMA_API_KEY.get_secret_value() if settings.OLLAMA_API_KEY else None
+    )
     base_url = settings.OLLAMA_BASE_URL
 
     provider = OllamaProvider(api_key=api_key, model=args.model, base_url=base_url)

@@ -215,14 +215,13 @@ def build_provider(
                 model_kwargs=kwargs,
             )
         case "ollama":
-            # Local Ollama daemon. OLLAMA_API_KEY defaults to "ollama" so
-            # the OpenAI SDK's required Authorization header is satisfied;
-            # the daemon ignores it. Override OLLAMA_BASE_URL when the
-            # daemon runs on another host/port. Cloud models are reachable
-            # through the same daemon with the "-cloud" suffix once the
-            # user has run "ollama signin".
+            # Local Ollama daemon. The daemon ignores auth; OllamaProvider
+            # supplies the OpenAI SDK's required placeholder header.
+            # Override OLLAMA_BASE_URL when the daemon runs on another
+            # host/port. Cloud models are reachable through the same daemon
+            # with the "-cloud" suffix once the user has run "ollama signin".
             return OllamaProvider(
-                api_key=require_api_key(s.OLLAMA_API_KEY, "OLLAMA_API_KEY", "Ollama"),
+                api_key=s.OLLAMA_API_KEY,
                 model=model,
                 base_url=os.getenv("OLLAMA_BASE_URL")
                 or s.OLLAMA_BASE_URL

@@ -38,7 +38,7 @@ Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are
 | `codex` | `openagentd auth codex` | OpenAI Codex via ChatGPT subscription. The UI tries device-code auth first, then falls back to browser PKCE when a workspace disables device-code auth. CLI uses browser PKCE by default; `--device` is available for headless setup. |
 | `router9` | `ROUTER9_API_KEY` (+ optional `ROUTER9_BASE_URL`) | Local [9Router](https://github.com/decolua/9router) proxy. |
 | `cliproxy` | `CLIPROXY_API_KEY` (+ optional `CLIPROXY_BASE_URL`) | Local [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) proxy. |
-| `ollama` | `OLLAMA_API_KEY` (placeholder; daemon ignores auth) | Local [Ollama](https://docs.ollama.com/api/openai) at `http://localhost:11434/v1`. |
+| `ollama` | `OLLAMA_API_KEY` (optional; daemon ignores auth) | Local [Ollama](https://docs.ollama.com/api/openai) at `http://localhost:11434/v1`. |
 
 The model id after the prefix is passed **verbatim** to the upstream — OpenAgentd does not maintain a model catalog. Use the upstream's `/v1/models` endpoint or dashboard for the live list.
 
@@ -118,7 +118,7 @@ The model id after the prefix is passed verbatim to the proxy — see the upstre
 
 ### `ollama`
 
-Talks to the local Ollama daemon over its OpenAI-compatible API. The daemon ignores auth, so `OLLAMA_API_KEY` defaults to the `"ollama"` placeholder (only there to satisfy the OpenAI SDK).
+Talks to the local Ollama daemon over its OpenAI-compatible API. The daemon ignores auth, so `OLLAMA_API_KEY` defaults to unset. The provider supplies an internal placeholder only when calling the OpenAI SDK.
 
 ```bash
 ollama serve                # daemon (usually already running)

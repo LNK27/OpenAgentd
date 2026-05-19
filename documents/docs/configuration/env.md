@@ -63,7 +63,7 @@ Each entry is required only for the providers you actually use. See [`providers.
 | `ROUTER9_BASE_URL` | OpenAI-compatible base URL (default `http://localhost:20128/v1`). |
 | `CLIPROXY_API_KEY` | `cliproxy` ([CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) local proxy). |
 | `CLIPROXY_BASE_URL` | OpenAI-compatible base URL (default `http://localhost:8317/v1`). |
-| `OLLAMA_API_KEY` | `ollama` daemon (default placeholder `ollama` — the daemon ignores auth). |
+| `OLLAMA_API_KEY` | Optional for the local `ollama` daemon, which ignores auth. |
 | `OLLAMA_BASE_URL` | OpenAI-compatible base URL (default `http://localhost:11434/v1`). |
 | `NINJA_API_KEY` | Quote of the Day via [API Ninjas](https://api-ninjas.com) (free tier: 3 000 calls/month). |
 
