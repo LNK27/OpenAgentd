@@ -204,6 +204,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
 
     useTeamStore.setState({ sessionId })
 
+    // Clear the composer when switching sessions. The InputBar holds its
+    // draft text and pending files in local state, so without an explicit
+    // reset session A's typed-but-unsent message bleeds into session B.
+    inputRef.current?.setValue('')
+    inputRef.current?.setFiles([])
+
     // Order matters: load prior-turn history FIRST, then open the SSE.
     //
     // Before this ordering, `connectStream()` started SSE replay (which
@@ -355,6 +361,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
     { id: 'redo', label: 'Redo', description: 'Restore the next undone message' },
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
+    { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
     ...(commandsQ.data?.commands ?? []).map((c) => ({
       id: c.name,
       label: c.name,
@@ -396,8 +403,26 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       case 'new':
         handleNewSession()
         break
+      case 'init':
+        // Prompt body lives on the backend so it can be tweaked without a
+        // web rebuild and stays the single source of truth.
+        void renderCommand('init', '')
+          .then((res) =>
+            useTeamStore.getState().sendMessage(res.content, undefined, {
+              mode,
+              workspace: agentWorkspace,
+            }),
+          )
+          .catch((err: Error) =>
+            pushToast({
+              tone: 'error',
+              title: 'Failed to start /init',
+              description: err.message,
+            }),
+          )
+        break
     }
-  }, [handleNewSession])
+  }, [handleNewSession, mode, agentWorkspace, pushToast])
 
   /** If *content* starts with a known user-defined command, render server-side
    *  and return the expanded body; otherwise return *content* unchanged. */
