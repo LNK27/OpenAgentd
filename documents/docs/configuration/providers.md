@@ -35,7 +35,7 @@ Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are
 | `deepseek` | `DEEPSEEK_API_KEY` | DeepSeek (OpenAI-compatible). |
 | `bedrock` | AWS creds (env / profile / instance) | Converse API across all Bedrock model families. |
 | `copilot` | `openagentd auth copilot` | GitHub Copilot OAuth (device flow). |
-| `codex` | `openagentd auth codex` | OpenAI Codex via ChatGPT subscription (PKCE or `--device`). |
+| `codex` | `openagentd auth codex` | OpenAI Codex via ChatGPT subscription. The UI tries device-code auth first, then falls back to browser PKCE when a workspace disables device-code auth. CLI uses browser PKCE by default; `--device` is available for headless setup. |
 | `router9` | `ROUTER9_API_KEY` (+ optional `ROUTER9_BASE_URL`) | Local [9Router](https://github.com/decolua/9router) proxy. |
 | `cliproxy` | `CLIPROXY_API_KEY` (+ optional `CLIPROXY_BASE_URL`) | Local [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) proxy. |
 | `ollama` | `OLLAMA_API_KEY` (placeholder; daemon ignores auth) | Local [Ollama](https://docs.ollama.com/api/openai) at `http://localhost:11434/v1`. |

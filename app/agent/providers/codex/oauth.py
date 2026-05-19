@@ -214,7 +214,9 @@ def _extract_account_id(tokens: dict[str, Any]) -> str | None:
 # -- PKCE browser flow --------------------------------------------------------
 
 
-def _pkce_login(oauth_path: Path | None = None) -> None:
+def _pkce_login(
+    oauth_path: Path | None = None, *, event_sink: EventSink | None = None
+) -> None:
     """Full PKCE browser-based login flow."""
     oauth_path = oauth_path or _default_oauth_file()
     redirect_uri = f"http://localhost:{OAUTH_PORT}/auth/callback"
@@ -271,23 +273,32 @@ def _pkce_login(oauth_path: Path | None = None) -> None:
     server = HTTPServer(("localhost", OAUTH_PORT), _Handler)
     Thread(target=server.serve_forever, daemon=True).start()
 
-    print("\n  Opening browser for authorization...")
-    print(f"  If it does not open, visit:\n    {auth_url}\n")
-    webbrowser.open(auth_url)
+    _say(
+        event_sink,
+        "browser_auth",
+        f"Opening browser for authorization: {auth_url}",
+        verification_uri=auth_url,
+    )
+    if event_sink is None:
+        webbrowser.open(auth_url)
 
     if not done.wait(timeout=300):
         server.shutdown()
-        print("Timed out waiting for browser authorization.")
+        _say(event_sink, "failed", "Timed out waiting for browser authorization.")
+        if event_sink is not None:
+            raise RuntimeError("Timed out waiting for browser authorization.")
         sys.exit(1)
 
     server.shutdown()
 
     if result.get("error"):
-        print(f"Authorization failed: {result['error']}")
+        _say(event_sink, "failed", f"Authorization failed: {result['error']}")
+        if event_sink is not None:
+            raise RuntimeError(f"Authorization failed: {result['error']}")
         sys.exit(1)
 
     tokens = _exchange_code(result["code"], redirect_uri, verifier)
-    _save_tokens(tokens, oauth_path)
+    _save_tokens(tokens, oauth_path, event_sink=event_sink)
 
 
 # -- Device-code headless flow ------------------------------------------------
@@ -308,7 +319,13 @@ def _device_login(
         json={"client_id": CLIENT_ID},
         timeout=30.0,
     )
-    r.raise_for_status()
+    try:
+        r.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if event_sink is not None and exc.response.status_code == 403:
+            _pkce_login(oauth_path, event_sink=event_sink)
+            return
+        raise
     device_data = r.json()
 
     device_auth_id: str = device_data["device_auth_id"]
