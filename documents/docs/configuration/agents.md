@@ -65,7 +65,7 @@ All from `AgentConfig` in `app/agent/loader.py`. Field types match the Pydantic 
 | `skills` | No | `list[str]` | Skill names to advertise in the system prompt (see [`skills.md`](./skills.md)). |
 | `temperature` | No | `float` | Sampling temperature. |
 | `thinking_level` | No | `"low"\|"medium"\|"high"` | Extended-reasoning effort. See [`providers.md`](./providers.md#thinking-thinking_level). |
-| `fallback_model` | No | `str` | `provider:model` used after primary exhausts retries. |
+| `fallback_model` | No | `str` | `provider:model` used after primary retry exhaustion, or immediately for quota-style 429s. |
 | `responses_api` | No | `bool` | Force OpenAI Responses API on/off (overrides the auto-route from `thinking_level`). |
 
 Summarisation has no per-agent overrides — see [`agent/summarization.md`](../agent/summarization.md). All tuning lives as constants in `app/agent/hooks/summarization.py`; the only per-session variation is the team mode (chat vs. coding), which selects the bundled prompt and keep window.

@@ -570,7 +570,14 @@ class TeamMemberBase(abc.ABC):
             await self._on_turn_success()
 
         except Exception as exc:
-            logger.exception("team_member_error name={} error={}", self.name, exc)
+            from app.agent.errors import ProviderRateLimitError
+
+            if isinstance(exc, ProviderRateLimitError):
+                logger.warning(
+                    "team_member_provider_rate_limit name={} error={}", self.name, exc
+                )
+            else:
+                logger.exception("team_member_error name={} error={}", self.name, exc)
             await self._on_turn_error(exc)
             self.state = "error"
             await self._team._emit(

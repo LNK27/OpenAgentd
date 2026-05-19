@@ -183,8 +183,8 @@ On `429`, fires `on_rate_limit(ctx, state, retry_after, attempt, max_attempts)` 
 If `fallback_provider` is set on the Agent, the retry loop iterates over two providers:
 
 ```
-Primary provider (5 retries)
-  → all retries exhausted?
+Primary provider (5 retries for transient failures)
+  → quota-style 429 or all retries exhausted?
     → llm_provider_exhausted logged
     → llm_provider_fallback logged
     → Fallback provider (5 retries)
@@ -192,6 +192,7 @@ Primary provider (5 retries)
       → all retries exhausted? raise last exception
 ```
 
+- Quota-style 429s skip retries and move to fallback immediately.
 - Non-retryable errors (400, 401, 403) are raised immediately — no fallback.
 - The fallback provider gets the same retry budget (5 attempts with backoff).
 - Configured via `fallback_model` in the agent's `.md` frontmatter (see [configuration.md](../configuration.md#fallback-model)).
@@ -201,6 +202,7 @@ Primary provider (5 retries)
 | Log event | Level | Meaning |
 |-----------|-------|---------|
 | `llm_provider_retry` | WARNING | Retrying after a transient error (includes model, status, attempt, delay) |
+| `llm_provider_non_retryable_rate_limit` | WARNING | Quota-style 429 detected; retry skipped for that provider |
 | `llm_provider_exhausted` | WARNING | All retry attempts exhausted for a provider |
 | `llm_provider_fallback` | WARNING | Switching from primary to fallback provider |
 | `llm_provider_error` | ERROR | Non-retryable error — raised immediately |
