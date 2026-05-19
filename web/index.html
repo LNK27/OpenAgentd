@@ -69,10 +69,16 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0.35; }
       }
+
+      @media (prefers-reduced-motion: reduce) {
+        .app-boot-loader__dot {
+          animation: none;
+        }
+      }
     </style>
   </head>
   <body>
-    <div id="root"><div class="app-boot-loader"><div class="app-boot-loader__pill"><span class="app-boot-loader__dot"></span>Loading OpenAgentd...</div></div></div>
+    <div id="root"><div class="app-boot-loader" role="status" aria-live="polite"><div class="app-boot-loader__pill"><span class="app-boot-loader__dot"></span>Loading OpenAgentd...</div></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

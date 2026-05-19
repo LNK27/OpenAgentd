@@ -47,8 +47,7 @@ export function TracesTable({
           {traces.map((t) => (
             <tr
               key={t.trace_id}
-              onClick={() => onSelect(t.trace_id)}
-              className="cursor-pointer border-b border-(--color-border) transition-colors last:border-b-0 hover:bg-(--bg-key)/40"
+              className="border-b border-(--color-border) transition-colors last:border-b-0 hover:bg-(--bg-key)/40"
             >
               <Td>
                 <span title={new Date(t.start_ms).toLocaleString()}>
@@ -76,7 +75,14 @@ export function TracesTable({
                 )}
               </Td>
               <Td align="right">
-                <ChevronRight size={14} className="text-(--color-text-muted)" />
+                <button
+                  type="button"
+                  onClick={() => onSelect(t.trace_id)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+                  aria-label={`Open trace ${formatShortId(t.trace_id)}`}
+                >
+                  <ChevronRight size={14} aria-hidden="true" />
+                </button>
               </Td>
             </tr>
           ))}

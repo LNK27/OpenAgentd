@@ -2,7 +2,7 @@
 title: App Chrome (Header, Sidebar, Tauri Drag)
 description: Shared header, platform detection, and window-drag plumbing across browser and Tauri desktop.
 status: stable
-updated: 2026-05-16
+updated: 2026-05-19
 ---
 
 # App chrome
@@ -27,6 +27,12 @@ Two CSS tokens (`web/src/index.css`):
 ## Platform detection
 
 `usePlatform()` returns `{ isTauri, os, isMacOverlay }`. Detection is recomputed on every call so tests can patch `navigator` / `window` without busting the module cache. `isMacOverlay` is the only combination that needs special chrome — Windows and Linux Tauri keep their native title bars.
+
+## Route transitions
+
+Top-level page and layout route components are imported eagerly in `web/src/router.ts`. Do not wrap primary pages in route-level `React.lazy()` unless the route provides an in-place skeleton that preserves the surrounding shell. OpenAgentd prioritizes instant in-app navigation, especially in the Tauri desktop shell where blank Suspense transitions feel unlike native page switches.
+
+Keep lazy loading for secondary heavy widgets instead, such as markdown rendering, optional panels, charts, or developer tools.
 
 ## Window dragging on macOS overlay
 
