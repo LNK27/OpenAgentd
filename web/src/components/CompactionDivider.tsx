@@ -16,7 +16,7 @@
  * divider re-renders on every delta, so the user sees the summary
  * being written in real time.
  */
-import { MarkdownBlock } from '@/utils/markdown'
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 
 interface CompactionDividerProps {
   state: 'compacting' | 'compacted'
@@ -61,7 +61,7 @@ export function CompactionDivider({ state, error, summary, sessionId }: Compacti
         // as a regular assistant text block, just dimmed via --color-text-2
         // to signal it is a derived/system artefact rather than a fresh reply.
         <div className="text-sm text-(--color-text-2)">
-          <MarkdownBlock content={trimmed} sessionId={sessionId} />
+          <LazyMarkdownBlock content={trimmed} sessionId={sessionId} />
         </div>
       )}
     </div>

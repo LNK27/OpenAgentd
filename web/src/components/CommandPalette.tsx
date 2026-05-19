@@ -10,6 +10,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, CornerDownLeft } from 'lucide-react'
 import { useProximityTracker, useProximityIntensity } from '@/hooks/useProximity'
+import { useModalFocus } from '@/hooks/useModalFocus'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 export interface Command {
   id: string
@@ -32,6 +34,8 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const mouseY = useProximityTracker(listRef)
+  const prefersReducedMotion = useReducedMotion()
+  useModalFocus(true, onClose)
 
   // Focus input on open
   useEffect(() => {
@@ -129,15 +133,16 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
       >
         <motion.div
           key="panel"
-          initial={{ opacity: 0, scale: 0.97, y: -8 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.97, y: -8 }}
-          transition={{ type: 'spring', damping: 30, stiffness: 380 }}
+          initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -8 }}
+          animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -8 }}
+          transition={prefersReducedMotion ? { duration: 0.01 } : { type: 'spring', damping: 30, stiffness: 380 }}
           onClick={(e) => e.stopPropagation()}
           className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--bg-card) shadow-2xl"
           role="dialog"
           aria-modal="true"
           aria-label="Command palette"
+          data-modal-focus="true"
           onKeyDown={handleKeyDown}
         >
           {/* Search input */}

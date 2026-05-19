@@ -211,6 +211,33 @@ describe("InputBar", () => {
     expect(sendButton.getAttribute("title")).toMatch(/Shift\+Enter/)
   })
 
+  it("wires slash command popup to the textarea for screen readers", async () => {
+    const user = userEvent.setup()
+    render(
+      <InputBar
+        onSubmit={() => {}}
+        slashCommands={[
+          { id: "stop", label: "Stop", description: "Stop streaming" },
+          { id: "compact", label: "Compact", description: "Compact context" },
+        ]}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input")
+    await user.type(textarea, "/")
+
+    const listbox = screen.getByRole("listbox", { name: "Slash commands" })
+    const options = screen.getAllByRole("option")
+
+    expect(textarea.getAttribute("aria-expanded")).toBe("true")
+    expect(textarea.getAttribute("aria-controls")).toBe(listbox.id)
+    expect(textarea.getAttribute("aria-activedescendant")).toBe(options[0].id)
+    expect(options[0].getAttribute("aria-selected")).toBe("true")
+
+    await user.keyboard("{ArrowDown}")
+    expect(textarea.getAttribute("aria-activedescendant")).toBe(options[1].id)
+  })
+
   it("clears input after submit", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}

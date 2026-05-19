@@ -94,9 +94,9 @@ export function SplitGrid({
   }
 
   return (
-    <div className="flex h-full gap-3">
+    <div className="flex h-full flex-col gap-3 lg:flex-row">
       {columns.map((column, idx) => (
-        <div key={idx} className="flex min-w-0 flex-1 flex-col gap-3">
+        <div key={idx} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <AnimatePresence initial={false}>
             {column.map(renderPanel)}
           </AnimatePresence>

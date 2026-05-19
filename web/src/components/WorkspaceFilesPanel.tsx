@@ -16,7 +16,7 @@
  *                                       images use the URL directly as src)
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -37,6 +37,8 @@ import { cn } from '@/lib/utils'
 import { workspaceMediaUrl } from '@/api/client'
 import { useWorkspaceFilesQuery } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useModalFocus } from '@/hooks/useModalFocus'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { formatBytes } from '@/utils/format'
 import { ImageLightbox } from './ImageLightbox'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -430,33 +432,25 @@ interface WorkspaceFilesPanelProps {
 export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFilesPanelProps) {
   const isMobile = useIsMobile()
   const { data, isLoading, isError, refetch, isFetching } = useWorkspaceFilesQuery(sessionId)
+  const prefersReducedMotion = useReducedMotion()
 
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   // Mobile: which pane is active — 'tree' (file list) or 'preview'
   const [mobilePane, setMobilePane] = useState<'tree' | 'preview'>('tree')
+  const handleModalClose = useCallback(() => {
+    if (isMobile && mobilePane === 'preview') {
+      setMobilePane('tree')
+      return
+    }
+    onClose()
+  }, [isMobile, mobilePane, onClose])
+  useModalFocus(open, handleModalClose)
 
   // Refresh on open so the list is fresh even if query was stale.
   useEffect(() => {
     if (open && sessionId) refetch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sessionId])
-
-  // Close on Escape.
-  useEffect(() => {
-    if (!open) return
-    const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        // On mobile in preview pane, Escape goes back to tree instead of closing.
-        if (isMobile && mobilePane === 'preview') {
-          setMobilePane('tree')
-        } else {
-          onClose()
-        }
-      }
-    }
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [open, onClose, isMobile, mobilePane])
 
   // Wrap ``data?.files ?? []`` in a memo so the ``files`` reference is stable
   // when the query returns the same cache entry — otherwise downstream
@@ -505,14 +499,15 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
 
           <motion.aside
             key="drawer"
-            initial={{ x: '100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '100%', opacity: 0 }}
-            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+            initial={prefersReducedMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
+            animate={prefersReducedMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
             className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-label="Workspace files"
+            data-modal-focus="true"
           >
             {/* Header */}
             <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">

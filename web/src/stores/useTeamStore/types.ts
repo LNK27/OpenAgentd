@@ -59,8 +59,8 @@ export interface AgentStream {
   _completionBase: number
   model: string | null
   lastError: string | null
-  revertedCount: number
-  revertedMessages: Array<{ role: string; content: string }>
+  revertedCount?: number
+  revertedMessages?: Array<{ role: string; content: string }>
 }
 
 export interface TeamStoreState {

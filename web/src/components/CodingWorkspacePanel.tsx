@@ -6,6 +6,7 @@ import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles } from '@/api/clien
 import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 interface TreeNode {
@@ -276,6 +277,7 @@ export function CodingWorkspacePanel({
   onClose: () => void
   mobile?: boolean
 }) {
+  const prefersReducedMotion = useReducedMotion()
   const [tab, setTab] = useState<'files' | 'diff'>(initialTab)
   const files = useQuery({
     queryKey: ['coding-workspace-files', workspace],
@@ -295,13 +297,16 @@ export function CodingWorkspacePanel({
 
   return (
     <motion.aside
-      initial={mobile ? { opacity: 0 } : { width: 0 }}
-      animate={mobile ? { opacity: 1 } : { width: 440 }}
-      exit={mobile ? { opacity: 0 } : { width: 0 }}
-      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-      className="fixed inset-y-0 right-0 z-40 min-h-0 w-full max-w-[440px] overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl sm:relative sm:z-auto sm:w-auto sm:shrink-0 sm:shadow-none"
+      initial={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
+      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: 440 }}
+      exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
+      transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+      className={cn(
+        'fixed inset-y-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl sm:relative sm:z-auto sm:w-auto sm:shrink-0 sm:shadow-none',
+        mobile ? 'max-w-none' : 'max-w-[440px]',
+      )}
     >
-      <div className="flex min-h-0 w-full max-w-[440px] flex-col sm:w-[440px]">
+      <div className={cn('flex min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'max-w-[440px] sm:w-[440px]')}>
       <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-3">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">Workspace</p>

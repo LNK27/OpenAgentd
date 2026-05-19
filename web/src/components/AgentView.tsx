@@ -15,10 +15,10 @@
  * `AgentPane` for split/unified modes.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
-import { MarkdownBlock } from '@/utils/markdown'
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
@@ -225,14 +225,14 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
       if (sleepPrefix !== null) {
         return (
           <div>
-            {sleepPrefix && <MarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
+            {sleepPrefix && <LazyMarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
             <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
           </div>
         )
       }
       return (
         <div>
-          <MarkdownBlock content={block.content} sessionId={sessionId} />
+          <LazyMarkdownBlock content={block.content} sessionId={sessionId} />
           {showCursor && isStreaming && isLast && (
             <StreamingCursor className="ml-0.5 text-(--color-accent)" />
           )}
@@ -254,9 +254,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     void useTeamStore.getState().undoTeam()
   }, [])
 
-  const allBlocks = [...blocks, ...currentBlocks]
+  const allBlocks = useMemo(() => [...blocks, ...currentBlocks], [blocks, currentBlocks])
   const totalLen = allBlocks.length
   const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
+  const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
 
   const isAtBottom = useCallback(() => {
     const el = scrollRef.current
@@ -339,9 +340,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
          )}
 
          <div className="space-y-3">
-             {(() => {
-               const items = partitionTurns(allBlocks)
-               return items.map((item, k) => {
+              {turnItems.map((item, k) => {
                  if (item.kind === 'user') {
                    return (
                      <BlockRenderer
@@ -355,7 +354,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                    )
                  }
                  // Me only the trailing turn (no user block after) can be "live"
-                 const isTrailingTurn = k === items.length - 1
+                  const isTrailingTurn = k === turnItems.length - 1
                  return (
                    <AssistantTurn
                      key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
@@ -378,8 +377,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                      )}
                    />
                  )
-               })
-              })()}
+                })}
 
             {/* Me show dots when:
              *   1. pending — user just sent, agent hasn't woken yet (no agent_status event yet), OR
@@ -396,10 +394,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                 (isContinuing && currentBlocks.length === 0) ||
                 (currentBlocks.length > 0 && currentBlocks.every((b) => b.type === 'user'))
               ))) && (
-             <div className="flex items-center gap-1.5 py-1">
-               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
-               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
-               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
+              <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
+                <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
+                <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
+                <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
              </div>
            )}
 

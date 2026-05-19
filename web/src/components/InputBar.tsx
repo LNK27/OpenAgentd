@@ -6,6 +6,7 @@ import { VoiceMicButton } from './VoiceMicButton'
 import { findActiveMention, rankFileRefs, type FileRef } from './InputBar.mentions'
 import { MentionOverlay } from './InputBar.overlay'
 import type { AgentCapabilities } from '@/api/types'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
 // alongside the component. (The helper ``findActiveMention`` is imported from
@@ -142,6 +143,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
+  const prefersReducedMotion = useReducedMotion()
 
   // Refresh the active mention window from the current caret position. Called
   // whenever the caret might have moved without the value changing (arrow keys,
@@ -396,6 +398,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [slashFilter, slashCommands])
 
   const slashMenuOpen = slashFilter !== null && filteredSlashCommands.length > 0
+  const slashMenuId = 'inputbar-slash-menu'
+  const mentionMenuId = 'inputbar-mention-menu'
 
   // Clamp index to valid range (handles filter changes reducing the list)
   const clampedIndex = filteredSlashCommands.length > 0
@@ -656,6 +660,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </button>
   ) : null
 
+  const activePopupId = mentionMenuOpen ? mentionMenuId : slashMenuOpen ? slashMenuId : undefined
+  const activeOptionId = mentionMenuOpen
+    ? `${mentionMenuId}-option-${clampedMentionIndex}`
+    : slashMenuOpen
+      ? `${slashMenuId}-option-${clampedIndex}`
+      : undefined
+
   const sendOrStopEl = canStop && !hasText ? (
     <button
       type="button"
@@ -753,6 +764,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // and the CSS limit stay in lockstep.
         style={{ maxHeight: '120px' }}
         aria-label="Message input"
+        aria-expanded={mentionMenuOpen || slashMenuOpen}
+        aria-controls={activePopupId}
+        aria-activedescendant={activeOptionId}
       />
       </div>
     </div>
@@ -764,10 +778,18 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         {!minimized && !filesBelow && filePreviews}
 
         {!minimized && slashMenuOpen && filteredSlashCommands.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
+          <div
+            id={slashMenuId}
+            role="listbox"
+            aria-label="Slash commands"
+            className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md"
+          >
             {filteredSlashCommands.map((cmd, idx) => (
               <button
                 key={cmd.id}
+                id={`${slashMenuId}-option-${idx}`}
+                role="option"
+                aria-selected={idx === clampedIndex}
                 ref={(node) => { slashOptionRefs.current[idx] = node }}
                 onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd) }}
                 className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
@@ -795,6 +817,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
             the user narrows the list by typing. */}
         {!minimized && mentionMenuOpen && (
           <div
+            id={mentionMenuId}
             role="listbox"
             aria-label="Reference workspace file"
             className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md"
@@ -811,6 +834,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
               return (
                 <button
                   key={`${ref.type}:${ref.path}`}
+                  id={`${mentionMenuId}-option-${idx}`}
                   ref={(node) => { mentionOptionRefs.current[idx] = node }}
                   role="option"
                   aria-selected={idx === clampedMentionIndex}
@@ -849,7 +873,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
             layout
             initial={false}
             animate={{ padding: minimized ? 6 : 8 }}
-            transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
+            transition={{ duration: prefersReducedMotion ? 0.01 : 0.24, ease: [0.32, 0.72, 0, 1] }}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}

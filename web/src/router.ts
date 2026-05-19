@@ -1,24 +1,27 @@
+import { lazy } from 'react'
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { Root, NotFound } from './routes/__root'
-import { HomePage } from './routes/index'
-import { CodingLayout, TeamLayout } from './routes/cockpit'
-import { SettingsLayout } from './routes/settings'
-import { SettingsHubPage } from './routes/settings.index'
-import { AgentsListPage } from './routes/settings.agents'
-import { AgentEditorPage } from './routes/settings.agents.$name'
-import { NewAgentPage } from './routes/settings.agents.new'
-import { SkillsListPage } from './routes/settings.skills'
-import { SkillEditorPage } from './routes/settings.skills.$name'
-import { NewSkillPage } from './routes/settings.skills.new'
-import { McpListPage } from './routes/settings.mcp'
-import { NewMcpServerPage } from './routes/settings.mcp.new'
-import { McpServerDetailPage } from './routes/settings.mcp.$name'
-import { SandboxSettingsPage } from './routes/settings.sandbox'
-import { ProvidersSettingsPage } from './routes/settings.providers'
-import { DreamSettingsPage } from './routes/settings.dream'
-import { VoiceSettingsPage } from './routes/settings.voice'
-import { TelemetryPage } from './routes/telemetry'
-import { SchedulerPage } from './routes/scheduler'
+
+const HomePage = lazy(() => import('./routes/index').then((m) => ({ default: m.HomePage })))
+const TeamLayout = lazy(() => import('./routes/cockpit').then((m) => ({ default: m.TeamLayout })))
+const CodingLayout = lazy(() => import('./routes/cockpit').then((m) => ({ default: m.CodingLayout })))
+const SettingsLayout = lazy(() => import('./routes/settings').then((m) => ({ default: m.SettingsLayout })))
+const SettingsHubPage = lazy(() => import('./routes/settings.index').then((m) => ({ default: m.SettingsHubPage })))
+const AgentsListPage = lazy(() => import('./routes/settings.agents').then((m) => ({ default: m.AgentsListPage })))
+const AgentEditorPage = lazy(() => import('./routes/settings.agents.$name').then((m) => ({ default: m.AgentEditorPage })))
+const NewAgentPage = lazy(() => import('./routes/settings.agents.new').then((m) => ({ default: m.NewAgentPage })))
+const SkillsListPage = lazy(() => import('./routes/settings.skills').then((m) => ({ default: m.SkillsListPage })))
+const SkillEditorPage = lazy(() => import('./routes/settings.skills.$name').then((m) => ({ default: m.SkillEditorPage })))
+const NewSkillPage = lazy(() => import('./routes/settings.skills.new').then((m) => ({ default: m.NewSkillPage })))
+const McpListPage = lazy(() => import('./routes/settings.mcp').then((m) => ({ default: m.McpListPage })))
+const NewMcpServerPage = lazy(() => import('./routes/settings.mcp.new').then((m) => ({ default: m.NewMcpServerPage })))
+const McpServerDetailPage = lazy(() => import('./routes/settings.mcp.$name').then((m) => ({ default: m.McpServerDetailPage })))
+const SandboxSettingsPage = lazy(() => import('./routes/settings.sandbox').then((m) => ({ default: m.SandboxSettingsPage })))
+const ProvidersSettingsPage = lazy(() => import('./routes/settings.providers').then((m) => ({ default: m.ProvidersSettingsPage })))
+const DreamSettingsPage = lazy(() => import('./routes/settings.dream').then((m) => ({ default: m.DreamSettingsPage })))
+const VoiceSettingsPage = lazy(() => import('./routes/settings.voice').then((m) => ({ default: m.VoiceSettingsPage })))
+const TelemetryPage = lazy(() => import('./routes/telemetry').then((m) => ({ default: m.TelemetryPage })))
+const SchedulerPage = lazy(() => import('./routes/scheduler').then((m) => ({ default: m.SchedulerPage })))
 
 const rootRoute = createRootRoute({
   component: Root,

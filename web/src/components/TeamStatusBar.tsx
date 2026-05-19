@@ -20,6 +20,7 @@ function StatusDot({ status }: { status: string }) {
         : 'bg-(--color-success)'
   return (
     <span
+      aria-label={`Agent status: ${status}`}
       className={`inline-block h-1.5 w-1.5 rounded-full ${colorClass} ${
         status === 'working' ? 'animate-pulse' : ''
       }`}
@@ -48,7 +49,7 @@ export function TeamStatusBar({
         )}
         {isWorking && (
           <span className="flex items-center gap-1 text-(--color-text-2)">
-            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" />
+            <span aria-hidden="true" className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" />
             working
           </span>
         )}

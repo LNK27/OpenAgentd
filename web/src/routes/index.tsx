@@ -7,6 +7,7 @@ import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -21,6 +22,7 @@ export function HomePage() {
   // gated to ``isMacOverlay``.
   const { isMacOverlay } = usePlatform()
   const dragHandlers = useTauriDrag()
+  const prefersReducedMotion = useReducedMotion()
 
   const backendOk = health.isSuccess
   const hasTeam = team.isSuccess && team.data !== null
@@ -32,7 +34,7 @@ export function HomePage() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-(--bg-page) px-4">
+    <main id="main" className="flex h-screen flex-col items-center justify-center bg-(--bg-page) px-4">
       {isMacOverlay && (
         <div
           {...dragHandlers}
@@ -41,9 +43,9 @@ export function HomePage() {
         />
       )}
       <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: 'easeOut' }}
+        initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
+        animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+        transition={{ duration: prefersReducedMotion ? 0.01 : 0.45, ease: 'easeOut' }}
         className="flex w-full max-w-sm flex-col items-center gap-8"
       >
         {/* Logo */}
@@ -123,7 +125,7 @@ export function HomePage() {
           )}
         </div>
       </motion.div>
-    </div>
+    </main>
   )
 }
 

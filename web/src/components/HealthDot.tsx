@@ -23,6 +23,7 @@ export function HealthDot() {
   return (
     <div
       className={`h-1.5 w-1.5 rounded-full ${bgColor} ${pulseClass}`}
+      role="status"
       title={
         health.isSuccess
           ? 'Connected'

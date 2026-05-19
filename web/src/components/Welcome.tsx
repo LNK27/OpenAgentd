@@ -5,6 +5,7 @@ import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 import { Wifi, Users, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 interface WelcomeProps {
   onReady: (isTeam: boolean) => void
@@ -29,6 +30,7 @@ const STEP_PROGRESS: Record<Step, string> = {
 export function Welcome({ onReady }: WelcomeProps) {
   const health = useHealthQuery()
   const teamStatus = useTeamStatusQuery()
+  const prefersReducedMotion = useReducedMotion()
 
   useEffect(() => {
     if (health.isSuccess && teamStatus.isSuccess) {
@@ -49,11 +51,11 @@ export function Welcome({ onReady }: WelcomeProps) {
         : 'ready'
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-(--bg-page)">
+    <main id="main" className="flex h-dvh flex-col items-center justify-center bg-(--bg-page) px-4">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
+        initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 20 }}
+        animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+        transition={{ duration: prefersReducedMotion ? 0.01 : 0.5, ease: 'easeOut' }}
         className="flex flex-col items-center gap-8 text-center"
       >
         {/* Logo with glow */}
@@ -61,11 +63,11 @@ export function Welcome({ onReady }: WelcomeProps) {
           <div className="absolute inset-0 rounded-3xl bg-(--bg-key) blur-2xl" />
           <motion.div
             animate={
-              step === 'ready'
+              !prefersReducedMotion && step === 'ready'
                 ? { scale: [1, 1.06, 1] }
                 : { scale: 1 }
             }
-            transition={{ duration: 0.5, ease: 'easeInOut' }}
+            transition={{ duration: prefersReducedMotion ? 0.01 : 0.5, ease: 'easeInOut' }}
             className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-(--bg-key) ring-1 ring-(--color-border-strong)"
           >
             <img src={OpenAgentdAppIcon} width={72} height={72} alt="OpenAgentd logo" className="rounded-2xl" />
@@ -94,7 +96,7 @@ export function Welcome({ onReady }: WelcomeProps) {
               }`}
               initial={{ width: '0%' }}
               animate={{ width: STEP_PROGRESS[step] }}
-              transition={{ duration: 0.4, ease: 'easeOut' }}
+              transition={{ duration: prefersReducedMotion ? 0.01 : 0.4, ease: 'easeOut' }}
             />
           </div>
 
@@ -148,7 +150,7 @@ export function Welcome({ onReady }: WelcomeProps) {
           </AnimatePresence>
         </div>
       </motion.div>
-    </div>
+    </main>
   )
 }
 

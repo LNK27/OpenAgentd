@@ -649,7 +649,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           />
         )}
 
-        <div ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
+        <main id="main" ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
         {setupRequired && (
           <div className="mx-3 mt-3 flex flex-col gap-3 rounded-xl border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 gap-3">
@@ -780,7 +780,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
           onRedo={() => { void useTeamStore.getState().redoTeam() }}
         />
-        </div>
+        </main>
         <AnimatePresence initial={false}>
           {mode === 'coding' && workspace && codingPanel !== null && (
             <CodingWorkspacePanel

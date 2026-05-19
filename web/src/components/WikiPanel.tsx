@@ -29,6 +29,8 @@ import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Save, Trash2, FileText, Folder, Loader2, ArrowLeft } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useModalFocus } from '@/hooks/useModalFocus'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
   useWikiTreeQuery,
   useWikiFileQuery,
@@ -61,9 +63,11 @@ type Section = {
 
 export function WikiPanel({ open, onClose }: WikiPanelProps) {
   const isMobile = useIsMobile()
+  const prefersReducedMotion = useReducedMotion()
   const { data: tree, isLoading, isError } = useWikiTreeQuery(true)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [mobilePane, setMobilePane] = useState<'tree' | 'editor'>('tree')
+  useModalFocus(open, onClose)
 
   const handleSelect = (path: string) => {
     setSelectedPath(path)
@@ -137,11 +141,15 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
           />
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
-            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
+            animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
+            transition={{ duration: prefersReducedMotion ? 0.01 : 0.18, ease: [0.4, 0, 0.2, 1] }}
             className="fixed inset-0 z-50 flex flex-col overflow-hidden border-(--color-border) bg-(--bg-card) shadow-2xl sm:left-1/2 sm:top-1/2 sm:inset-auto sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Wiki"
+            data-modal-focus="true"
           >
             <header className="flex items-center justify-between border-b border-(--color-border) px-4 py-3">
               <div className="flex items-center gap-2">

@@ -25,7 +25,9 @@ import {
 import type { ScheduledTaskResponse, ScheduledTaskCreate, ScheduledTaskMode } from '@/api/types'
 import { formatRelativeDate, formatInTimezone, wallClockToISO, isoToWallClock } from '@/utils/format'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useModalFocus } from '@/hooks/useModalFocus'
 import { loadCodingWorkspaceEntries, workspaceLabel } from '@/utils/workspace'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 interface SchedulerPanelProps {
   open: boolean
@@ -290,6 +292,8 @@ export function SchedulerPanel({
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'create'>('list')
 
   const tasksQuery = useScheduledTasksQuery()
+  const prefersReducedMotion = useReducedMotion()
+  useModalFocus(open, onClose)
 
   // Refresh on open — the drawer is mounted persistently so AnimatePresence
   // can play exit animations; without this the list goes stale on reopen.
@@ -299,16 +303,6 @@ export function SchedulerPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
-
-  // Close on Escape (only while open) — matches AgentCapabilities drawer.
-  useEffect(() => {
-    if (!open) return
-    const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [open, onClose])
 
   const tasks = tasksQuery.data?.tasks ?? []
 
@@ -387,14 +381,15 @@ export function SchedulerPanel({
 
           <motion.aside
             key="dialog"
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
-            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
+            animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
+            transition={{ duration: prefersReducedMotion ? 0.01 : 0.18, ease: [0.4, 0, 0.2, 1] }}
             className="fixed inset-0 z-50 flex flex-col overflow-hidden border-(--color-border) bg-(--bg-card) shadow-2xl sm:left-1/2 sm:top-1/2 sm:inset-auto sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border"
             role="dialog"
             aria-modal="true"
             aria-label="Scheduled tasks"
+            data-modal-focus="true"
           >
             {/* Header */}
             <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-5 py-4">

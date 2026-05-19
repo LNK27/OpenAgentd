@@ -11,9 +11,9 @@
  * component (see `AssistantTurnFooter.tsx`); only the trailing turn hides its
  * footer while the agent is actively streaming.
  */
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 
-import { MarkdownBlock } from '@/utils/markdown'
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
@@ -207,14 +207,14 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
       if (sleepPrefix !== null) {
         return (
           <div>
-            {sleepPrefix && <MarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
+            {sleepPrefix && <LazyMarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
             <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
           </div>
         )
       }
       return (
         <div>
-          <MarkdownBlock content={block.content} sessionId={sessionId} />
+          <LazyMarkdownBlock content={block.content} sessionId={sessionId} />
           {showCursor && isStreaming && isLast && (
             <StreamingCursor className="ml-0.5 text-(--color-accent)" />
           )}
@@ -281,8 +281,9 @@ export function AgentPane({
     }
   }, [isAtBottom])
 
-  const allBlocks = [...stream.blocks, ...stream.currentBlocks]
+  const allBlocks = useMemo(() => [...stream.blocks, ...stream.currentBlocks], [stream.blocks, stream.currentBlocks])
   const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
+  const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
 
   // Me single scroll effect — block count or last block text changed
   const lastBlockContent = allBlocks[allBlocks.length - 1]?.content ?? ''
@@ -341,7 +342,7 @@ export function AgentPane({
            {stream.model && (
              <span className="text-(--color-text-muted)">{stream.model}</span>
            )}
-           <span className={`h-1.5 w-1.5 rounded-full ${
+            <span aria-label={`Agent status: ${stream.status}`} className={`h-1.5 w-1.5 rounded-full ${
              isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
            }`} />
          </div>
@@ -358,9 +359,7 @@ export function AgentPane({
 
          {allBlocks.length > 0 && (
             <div className="space-y-3 px-3 py-3">
-               {(() => {
-                 const items = partitionTurns(allBlocks)
-                 return items.map((item, k) => {
+               {turnItems.map((item, k) => {
                    if (item.kind === 'user') {
                      return (
                        <BlockRenderer
@@ -374,7 +373,7 @@ export function AgentPane({
                      )
                    }
                    // Me only the trailing turn (no user block after) can be "live"
-                   const isTrailingTurn = k === items.length - 1
+                    const isTrailingTurn = k === turnItems.length - 1
                    return (
                      <AssistantTurn
                        key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
@@ -396,8 +395,7 @@ export function AgentPane({
                        )}
                      />
                    )
-                 })
-                })()}
+                  })}
               </div>
             )}
 
@@ -410,10 +408,10 @@ export function AgentPane({
               (isContinuing && stream.currentBlocks.length === 0) ||
               (stream.currentBlocks.length > 0 && stream.currentBlocks.every((b) => b.type === 'user'))
             ))) && (
-            <div className="flex items-center gap-1.5 px-3 pt-3">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
+            <div className="flex items-center gap-1.5 px-3 pt-3" role="status" aria-label={`${name} is preparing a response`}>
+              <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
+              <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
+              <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
             </div>
           )}
 

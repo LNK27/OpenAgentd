@@ -4,8 +4,6 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 @import "@fontsource/caveat/400.css";
-@import "@fontsource/caveat/500.css";
-@import "@fontsource/caveat/600.css";
 @import "@fontsource/caveat/700.css";
 @import "highlight.js/styles/atom-one-dark.css";
 
@@ -638,7 +636,10 @@
   margin: 1em 0;
 }
 .oa-prose table {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   font-size: 0.875em;
 }
