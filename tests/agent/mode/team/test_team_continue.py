@@ -375,6 +375,18 @@ class TestHandleContinuePreconditions:
         finally:
             lead_only_team.lead.state = "idle"
 
+        import app.core.db as _db
+
+        async with _db.async_session_factory() as db:
+            rows = (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sid)
+                    .order_by(col(SessionMessage.created_at))
+                )
+            ).all()
+        assert [row.content for row in rows] == ["hi", "working on it"]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # AgentTeam.handle_continue — happy path: full activation roundtrip

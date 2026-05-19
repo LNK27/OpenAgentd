@@ -408,6 +408,7 @@ class TestTeamAgentsRouteExtra:
         body = resp.json()
         assert body["untracked"] == ["test.py"]
         assert "diff --git a/test.py b/test.py" in body["diff"]
+        assert "--- /dev/null\n+++ b/test.py\n@@" in body["diff"]
         assert '+print("hello")' in body["diff"]
 
     def test_workspace_status_non_repo(self, app_without_team, tmp_path):

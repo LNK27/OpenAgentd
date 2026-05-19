@@ -588,9 +588,16 @@ class AgentTeam:
 
         self._has_active_turn = True
 
+        if self.lead.state == "working":
+            self._has_active_turn = False
+            raise ContinuePreconditionError(
+                f"Agent '{self.lead.name}' is already working."
+            )
+
+        directive_id: UUID | None = None
         db_factory = resolve_db_factory(self.lead.db_factory)
         async with db_factory() as db:
-            await save_message(
+            directive = await save_message(
                 db,
                 lead_uuid,
                 HumanMessage(content=CONTINUATION_DIRECTIVE),
@@ -601,6 +608,7 @@ class AgentTeam:
                     "hidden_from_summary": True,
                 },
             )
+            directive_id = directive.id
             await db.commit()
 
         try:
@@ -620,6 +628,13 @@ class AgentTeam:
         try:
             self.lead.activate_for_continuation()
         except AlreadyWorkingError as exc:
+            self._has_active_turn = False
+            if directive_id is not None:
+                async with db_factory() as db:
+                    directive = await db.get(SessionMessage, directive_id)
+                    if directive is not None:
+                        await db.delete(directive)
+                        await db.commit()
             raise ContinuePreconditionError(str(exc)) from exc
         return session_id
 

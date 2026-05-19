@@ -369,7 +369,6 @@ def _untracked_diff(root: Path, paths: list[str]) -> str:
                 lines,
                 fromfile="/dev/null",
                 tofile=f"b/{path}",
-                lineterm="",
             )
         )
         chunks.append(f"\ndiff --git a/{path} b/{path}\nnew file mode 100644\n{body}")

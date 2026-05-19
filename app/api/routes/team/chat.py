@@ -129,10 +129,15 @@ async def team_chat(
     mode = body.mode
     workspace = body.workspace
     existing: ChatSession | None = None
+    session_uuid: UUID | None = None
 
     if session_id:
+        try:
+            session_uuid = UUID(session_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid session id.") from exc
         async with db.begin():
-            existing = await db.get(ChatSession, UUID(session_id))
+            existing = await db.get(ChatSession, session_uuid)
 
     if existing and existing.mode == "coding" and existing.workspace:
         persisted_workspace = _validate_workspace_or_422(existing.workspace)
@@ -170,9 +175,9 @@ async def team_chat(
     # At this point message is guaranteed non-None by ChatForm validator
     assert message is not None
 
-    if session_id:
+    if session_uuid is not None:
         async with db.begin():
-            await cleanup_reverted_tail(db, UUID(session_id))
+            await cleanup_reverted_tail(db, session_uuid)
 
     # Materialise the multipart uploads into transport-neutral attachments
     # so agent_service can validate + persist them without knowing about

@@ -20,7 +20,7 @@ export interface ThinkingSection {
 
 // Matches a bold header line: ``**Title**`` optionally surrounded by
 // whitespace. Title is one line of non-asterisk, non-newline characters.
-const HEADER_RE = /\*\*([^*\n]+)\*\*/g
+const HEADER_RE = /^\s*\*\*([^*\n]+)\*\*\s*$/gm
 
 /**
  * Split reasoning text into ordered ``ThinkingSection``s.

@@ -122,6 +122,14 @@ class TestTeamChatRoute:
         data = response.json()
         assert data["session_id"] == session_id
 
+    def test_team_chat_invalid_session_id_returns_422(self, app_with_team):
+        client = TestClient(app_with_team)
+        response = client.post(
+            "/api/team/chat", data={"message": "Hello", "session_id": "not-a-uuid"}
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"] == "Invalid session id."
+
     def test_team_chat_generates_session_id_when_omitted(
         self, app_with_team, test_team
     ):

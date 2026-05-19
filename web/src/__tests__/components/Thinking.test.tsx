@@ -43,19 +43,13 @@ describe('splitSections', () => {
     ])
   })
 
-  it('still splits when headers are glued onto prior prose (legacy DB rows)', () => {
-    // Pre-2026-05 rows had no blank line between sections; the frontend
-    // must defensively split so the second header still renders correctly.
-    const text = '...essential redesign.**Summarizing**\n\nThe transition.'
+  it('does not split inline bold text inside a section body', () => {
+    const text = '**Planning**\n\nConsider **only** these cases.'
     const result = splitSections(text)
-    expect(result).toHaveLength(2)
+    expect(result).toHaveLength(1)
     expect(result[0]).toEqual({
-      header: null,
-      body: '...essential redesign.',
-    })
-    expect(result[1]).toEqual({
-      header: 'Summarizing',
-      body: 'The transition.',
+      header: 'Planning',
+      body: 'Consider **only** these cases.',
     })
   })
 

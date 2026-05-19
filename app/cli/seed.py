@@ -13,8 +13,7 @@ What ships
   any file already present in the user's config dir is left untouched.
   ``summarization.md`` is **not** seeded — the summariser prompt lives in
   code (see ``CHAT_SUMMARY_PROMPT`` / ``CODING_SUMMARY_PROMPT`` in
-  ``app.agent.hooks.summarization``). The file is still honoured as an
-  optional source of NUMERIC overrides if an operator creates one.
+  ``app.agent.hooks.summarization``), along with numeric thresholds.
 
 Sources, in order of preference
 -------------------------------
