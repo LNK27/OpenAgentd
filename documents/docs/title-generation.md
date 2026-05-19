@@ -11,7 +11,7 @@ updated: 2026-04-24
 
 **Status:** Implemented
 **Files:** `app/services/title_service.py`, `app/agent/hooks/title_generation.py`,
-`.openagentd/config/title_generation.md`
+`.openagentd/config/settings.yaml`
 
 ---
 
@@ -22,9 +22,8 @@ updated: 2026-04-24
 3. `TitleGenerationHook.before_agent()` detects first turn (no `AssistantMessage`
    in `state.messages`). It skips scheduled-task messages, greeting-only inputs,
    and messages shorter than three words; otherwise it spawns title generation.
-4. `title_service` calls `provider.chat()` with the prompt from
-   `.openagentd/config/title_generation.md` plus the user's message (capped at
-   500 chars), asking for a 3–6 word title.
+4. `title_service` calls `provider.chat()` with the built-in title prompt plus
+   the user's message (capped at 500 chars), asking for a short title.
 5. Title is cleaned (`_clean_title`) and written to `ChatSession.title` in DB.
 6. A `title_update` SSE event is pushed to the open stream.
 7. `TitleGenerationHook.after_agent()` does a best-effort wait (default 3 s,
@@ -37,47 +36,41 @@ remains. The agent run is never blocked by the LLM call itself.
 
 ---
 
-## Configuration — `.openagentd/config/title_generation.md`
+## Configuration — `.openagentd/config/settings.yaml`
 
-All tunables live in a single file. YAML frontmatter for settings, Markdown
-body for the system prompt.
+Runtime settings live in `settings.yaml`; the title prompt is built in.
 
-```markdown
----
-enabled: true
-model: googlegenai:gemini-3.1-flash-lite-preview
-wait_timeout_seconds: 3.0
----
-
-You are a title generator. You output ONLY a conversation title. Nothing else.
-
-## Task
-...rest of the prompt...
+```yaml
+title_generation:
+  enabled: true
+  model: <provider>:<model>
+  wait_timeout_seconds: 3.0
 ```
+
+Choose a small, fast model for title generation. The task only needs a short
+one-line output, so low latency and low cost matter more than deep reasoning.
 
 ### Fields
 
 | Field | Default | Purpose |
 |-------|---------|---------|
 | `enabled` | `true` | Feature switch. `false` disables title generation with a warning at startup. |
-| `model` | agent's own model | `provider:model` string for a dedicated (cheap) title LLM. |
+| `model` | selected init model in seeded config; agent's own model if omitted | `provider:model` string for a dedicated title LLM. Prefer a small, fast model. |
 | `wait_timeout_seconds` | `3.0` | Best-effort cap (seconds) on how long `after_agent` waits for the background title task before the agent loop completes. Set to `0` for fully non-blocking mode — the title still lands via SSE whenever it's ready. |
 
 ### Graceful degradation
 
-Title generation is **soft-required**: if any of the following is true,
+Title generation is **soft-required**: if either of the following is true,
 `build_title_generation_hook` returns `None` with a `logger.warning` and new
 sessions simply keep their raw-truncation fallback title — no exception:
 
-- The config file does not exist.
-- `enabled: false` in the frontmatter.
-- The file body (prompt) is empty.
+- `enabled: false` in settings.
+- `settings.yaml` is invalid.
 
-This means deleting the file disables the feature cleanly; there is no
-bundled default prompt.
+The prompt is bundled in code.
 
 Path and module defaults live in `app/agent/hooks/title_generation.py`
-(`title_generation_config_path()`, `DEFAULT_WAIT_TIMEOUT_SECONDS`).
+(`TITLE_GENERATION_PROMPT`, `DEFAULT_WAIT_TIMEOUT_SECONDS`).
 
 ---
 

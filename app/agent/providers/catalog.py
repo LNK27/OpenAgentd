@@ -175,8 +175,6 @@ _CATALOG: list[ProviderEntry] = [
             "gemini-3.1-flash-lite-preview",
             "gemini-2.5-pro",
             "imagen-4",
-            "veo-3.1",
-            "veo-3",
         ],
         "docs_url": "https://cloud.google.com/vertex-ai/docs/start/cloud-environment",
     },

@@ -76,11 +76,11 @@ projects: []
 
 - Sessions with no messages are auto-skipped and marked processed without consuming a batch slot.
 - Empty-session draining is capped at `max(100, batch_size * 100)` per run.
-- The dream agent name comes from `dream.md`, so renaming the dream agent updates the self-filter.
+- The dream agent uses a built-in system prompt and fixed agent name, with `enabled`, `model`, and `schedule` read from `settings.yaml`.
 - The dream agent sandbox workspace is `wiki_root()`, so `read("USER.md")` and `write("topics/slug.md")` use bare wiki-relative paths.
 - Sessions and notes are interleaved as session, note, session, note up to the run cap.
 - Scheduled runs process up to `batch_size`; manual runs use `drain=True` and process all pending non-empty items.
-- If `dream.md` is missing, invalid, or model-less, non-empty sessions and notes remain pending and the run returns `skipped`; they are not marked processed without synthesis.
+- If Dream is disabled or model-less, non-empty sessions and notes remain pending and the run returns `skipped`; they are not marked processed without synthesis.
 - Each item is wrapped in `asyncio.wait_for(..., timeout=timeout_seconds)`.
 - On timeout or LLM error, the item is not marked processed and retries on the next run.
 - If the dream agent fails to load, the item is counted as failed and remains pending for retry.
@@ -92,9 +92,9 @@ projects: []
 
 `app/services/dream_scheduler.py` runs the scheduler.
 
-- `start()` is idempotent and only starts when `dream.md` has `enabled: true`.
+- `start()` is idempotent and only starts when Dream has `enabled: true` in `settings.yaml`.
 - `enabled: false` disables scheduled runs only; manual runs still work when a model is configured.
-- The scheduler reparses `dream.md` on each iteration, so direct file edits to schedule or `enabled` are picked up without restart.
+- The scheduler reparses `settings.yaml` on each iteration, so direct file edits to schedule or `enabled` are picked up without restart.
 - `reload()` from `PUT /api/dream/config` takes effect without restart.
 - `stop()` cancels the loop and awaits any in-flight fire for clean shutdown.
 
@@ -142,18 +142,19 @@ Body content should use Obsidian-style wikilinks such as `[[asyncio-cancellation
 
 ## Dream agent config
 
-`.openagentd/config/dream.md` uses the same markdown-plus-frontmatter format as normal agents. The dream agent working directory is `wiki_root()`, so prompts should use bare paths such as `USER.md`, `sources/session-a1b2c3d4.md`, and `topics/auth.md`.
+Dream uses a built-in prompt and runtime settings from `.openagentd/config/settings.yaml`. The dream agent working directory is `wiki_root()`, so built-in wiki writes use bare paths such as `USER.md`, `sources/session-a1b2c3d4.md`, and `topics/auth.md`.
 
 `read`, `write`, `edit`, `rm`, `ls`, and `wiki_search` are always injected through `_REQUIRED_TOOLS` in `app/services/dream.py`, regardless of the `tools:` field in frontmatter.
 
 | Field | Default | Purpose |
 |-------|---------|---------|
 | `enabled` | `false` | Scheduler switch. Manual runs still work when a model is configured. |
+| `model` | `""` | `provider:model` used by the Dream agent. |
 | `schedule` | `0 2 * * *` | Cron expression in UTC. |
 | `batch_size` | `1` | Items per scheduled run. Sessions and notes are interleaved. |
 | `timeout_seconds` | `300` | Per-item LLM timeout. Items that exceed it retry next run. |
 
-Configure via `/settings/dream` or edit the file directly. `PUT /api/dream/config` reloads the scheduler live.
+Configure via `/settings/dream` or edit `settings.yaml` directly. `PUT /api/dream/config` reloads the scheduler live.
 
 ---
 
@@ -230,5 +231,5 @@ All client-supplied paths go through `validate_wiki_path` in `app/services/wiki.
 | Wiki search (BM25) | `app/agent/tools/builtin/wiki_search.py` |
 | DB tables | `app/models/chat.py` (`DreamLog`, `DreamNotesLog`) |
 | Migrations | `app/migrations/versions/00000004_create_dream_log.py` |
-| Seed defaults | `app/core/wiki_seed.py`, `seed/dream.md` |
+| Seed defaults | `app/core/wiki_seed.py`, generated `settings.yaml` |
 | Manual scripts | `manual/wiki.py`, `manual/note.py`, `manual/dream.py` |

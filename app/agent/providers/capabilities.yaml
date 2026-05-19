@@ -82,10 +82,6 @@
   input: { vision: true }
 
 # ── Vertex AI ───────────────────────────────────────────────────────────────
-"vertexai:veo-3.1":
-  output: { text: false, video: true }
-"vertexai:veo-3":
-  output: { text: false, video: true }
 "vertexai:imagen-4":
   output: { text: false, image: true }
 "vertexai:gemini-3.1-pro-preview":

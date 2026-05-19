@@ -154,8 +154,8 @@ Paths are relative to `OPENAGENTD_WIKI_DIR`. See [`agent/memory.md`](../agent/me
 
 | Method | Path | Returns |
 |--------|------|---------|
-| `GET` | `/api/dream/config` | `{content, exists}` — raw `dream.md` content |
-| `PUT` | `/api/dream/config` | `{content, exists}` — overwrite `dream.md` and reload the scheduler |
+| `GET` | `/api/dream/config` | `{enabled, model, schedule}` — current Dream runtime settings |
+| `PUT` | `/api/dream/config` | `{enabled, model, schedule}` — persist Dream settings to `settings.yaml` and reload the scheduler |
 | `POST` | `/api/dream/run` | `{sessions_processed, notes_processed, remaining, failed, skipped?}` — trigger dream synthesis immediately; `skipped` is present when dream is not configured and pending items were preserved |
 
 ## Scheduler endpoints
@@ -206,6 +206,13 @@ field. V1 supports local transcription via `voice.model: local:base`, powered by
 ## Settings
 
 User-editable runtime settings persisted under `{OPENAGENTD_CONFIG_DIR}`. Sandbox patterns match resolved absolute paths for filesystem-tool calls; see [`configuration.md`](../configuration.md#sandbox-model-and-permissions).
+
+| Method | Path | Returns |
+|--------|------|---------|
+| `GET` | `/api/settings/title-generation` | `{enabled, model, wait_timeout_seconds}` from `settings.yaml` |
+| `PUT` | `/api/settings/title-generation` | Persist title generation runtime settings |
+| `GET` | `/api/settings/multimodal` | `{image, video}` from `multimodal.yaml` |
+| `PUT` | `/api/settings/multimodal` | Persist image/video generation defaults |
 
 | Method | Path | Returns |
 |--------|------|---------|

@@ -78,9 +78,9 @@ Tokens are cached at `{OPENAGENTD_CACHE_DIR}/copilot_oauth.json` and `{OPENAGENT
 
 ## Service-level defaults (not env vars)
 
-Summarization thresholds, title-generation timeout, tool-result offload sizes, and sandbox limits are module-level constants in their respective service modules — **not** environment variables. Override them through the file-based / per-agent config surfaces described in:
+Summarization thresholds, tool-result offload sizes, and sandbox limits are module-level constants in their respective service modules — **not** environment variables. Runtime feature toggles such as title generation and Dream live in `{OPENAGENTD_CONFIG_DIR}/settings.yaml`; per-agent behavior stays in agent frontmatter.
 
-- `{OPENAGENTD_CONFIG_DIR}/title_generation.md` — see [`title-generation.md`](../title-generation.md).
+- `{OPENAGENTD_CONFIG_DIR}/settings.yaml` — see [`title-generation.md`](../title-generation.md) for title generation.
 - Per-agent `.md` frontmatter — see [`agents.md`](./agents.md).
 
 ## Optional extras
