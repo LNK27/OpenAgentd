@@ -39,6 +39,7 @@ from app.agent.plugins.events import (
     ToolBeforeInput,
     ToolBeforeOutput,
 )
+from app.agent.providers.plugin_api import ProviderPlugin
 from app.agent.schemas.chat import FunctionCall, ToolCall
 from app.agent.state import AgentState, RunContext, ToolCallHandler
 
@@ -219,6 +220,12 @@ async def _adapt_module(module: Any) -> BaseAgentHook | None:
     the explicit factory over the class.
     """
     plugin_id = getattr(module, "__name__", "<unknown>")
+
+    # Provider plugins share this directory but are loaded by the provider
+    # registry, not by the agent hook loader.
+    provider = getattr(module, "provider", None)
+    if isinstance(provider, ProviderPlugin):
+        return None
 
     # ── Functional contract ────────────────────────────────────────────
     factory = getattr(module, "plugin", None)

@@ -6,7 +6,7 @@ Covers:
 - OllamaProvider: cloud-suffixed model names pass through verbatim
 - Factory: ollama branch reads settings, respects OLLAMA_BASE_URL override
 - Capabilities: ollama: prefix fallback → vision=False
-- Settings: OLLAMA_API_KEY (placeholder default), OLLAMA_BASE_URL
+- Settings: OLLAMA_API_KEY (optional), OLLAMA_BASE_URL
 """
 
 from __future__ import annotations
@@ -121,14 +121,13 @@ class TestOllamaProviderFactory:
             "app.agent.providers.factory.OllamaProvider", return_value=MagicMock()
         ) as MockOllama:
             with patch("app.core.config.settings") as mock_settings:
-                mock_settings.OLLAMA_API_KEY = MagicMock()
-                mock_settings.OLLAMA_API_KEY.get_secret_value.return_value = "ollama"
+                mock_settings.OLLAMA_API_KEY = None
                 mock_settings.OLLAMA_BASE_URL = "http://localhost:11434/v1"
                 build_provider("ollama:llama3.2")
 
             MockOllama.assert_called_once()
             call_kwargs = MockOllama.call_args.kwargs
-            assert call_kwargs.get("api_key") == "ollama"
+            assert call_kwargs.get("api_key") is None
             assert call_kwargs.get("model") == "llama3.2"
             assert call_kwargs.get("base_url") == "http://localhost:11434/v1"
 
@@ -141,8 +140,7 @@ class TestOllamaProviderFactory:
             "app.agent.providers.factory.OllamaProvider", return_value=MagicMock()
         ) as MockOllama:
             with patch("app.core.config.settings") as mock_settings:
-                mock_settings.OLLAMA_API_KEY = MagicMock()
-                mock_settings.OLLAMA_API_KEY.get_secret_value.return_value = "ollama"
+                mock_settings.OLLAMA_API_KEY = None
                 mock_settings.OLLAMA_BASE_URL = "http://localhost:11434/v1"
                 build_provider("ollama:qwen2.5-coder:7b")
 
@@ -157,8 +155,7 @@ class TestOllamaProviderFactory:
             "app.agent.providers.factory.OllamaProvider", return_value=MagicMock()
         ) as MockOllama:
             with patch("app.core.config.settings") as mock_settings:
-                mock_settings.OLLAMA_API_KEY = MagicMock()
-                mock_settings.OLLAMA_API_KEY.get_secret_value.return_value = "ollama"
+                mock_settings.OLLAMA_API_KEY = None
                 mock_settings.OLLAMA_BASE_URL = "http://localhost:11434/v1"
                 build_provider("ollama:kimi-k2.6-cloud")
 
@@ -172,8 +169,7 @@ class TestOllamaProviderFactory:
             "app.agent.providers.factory.OllamaProvider", return_value=MagicMock()
         ) as MockOllama:
             with patch("app.core.config.settings") as mock_settings:
-                mock_settings.OLLAMA_API_KEY = MagicMock()
-                mock_settings.OLLAMA_API_KEY.get_secret_value.return_value = "ollama"
+                mock_settings.OLLAMA_API_KEY = None
                 mock_settings.OLLAMA_BASE_URL = "http://localhost:11434/v1"
                 build_provider("ollama:llama3.2")
 
@@ -227,12 +223,12 @@ class TestOllamaCapabilities:
 class TestOllamaSettings:
     """Ollama-related fields exist in Settings with documented defaults."""
 
-    def test_ollama_api_key_defaults_to_placeholder(self, monkeypatch):
+    def test_ollama_api_key_defaults_to_none(self, monkeypatch):
         from app.core.config import Settings
 
         monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
         s = Settings()
-        assert s.OLLAMA_API_KEY.get_secret_value() == "ollama"
+        assert s.OLLAMA_API_KEY is None
 
     def test_ollama_base_url_default_is_localhost(self, monkeypatch):
         from app.core.config import Settings

@@ -2,14 +2,14 @@
 title: User Plugins
 description: User-authored Python plugins that hook into the agent loop without modifying the codebase.
 status: stable
-updated: 2026-04-27
+updated: 2026-05-19
 ---
 
 # User Plugins
 
 **Source:** `app/agent/plugins/` · **Example:** [`.openagentd/config/plugins/example.py`](../../../.openagentd/config/plugins/example.py)
 
-Drop a `.py` file into `{OPENAGENTD_CONFIG_DIR}/plugins/` (default `.openagentd/config/plugins/`) to hook into the agent loop without touching the codebase. The loader discovers plugins at agent-build time and adapts them into [`BaseAgentHook`](hooks.md) instances.
+Drop a `.py` file into `{OPENAGENTD_CONFIG_DIR}/plugins/` (default `.openagentd/config/plugins/`) to hook into the agent loop without touching the codebase. The hook loader discovers hook plugins at agent-build time and adapts them into [`BaseAgentHook`](hooks.md) instances. Provider plugins in the same directory expose `provider = ProviderPlugin(...)` and are ignored by the hook loader because they are loaded by the provider registry instead.
 
 Set `OPENAGENTD_PLUGINS_DIRS` (colon-separated) to point elsewhere. Files prefixed with `_` are skipped — useful for helper modules.
 

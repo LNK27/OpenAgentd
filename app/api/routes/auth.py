@@ -89,6 +89,9 @@ async def oauth_login(provider_id: str, request: Request):
             ),
         )
     module_path = entry[0] if entry is not None else ""
+    use_browser = (
+        provider_id == "codex" and request.query_params.get("mode") == "browser"
+    )
 
     queue: asyncio.Queue[tuple[str, dict[str, Any]] | object] = asyncio.Queue()
     loop = asyncio.get_running_loop()
@@ -111,7 +114,10 @@ async def oauth_login(provider_id: str, request: Request):
                 plugin_login(_sink)
             else:
                 mod = importlib.import_module(module_path)
-                mod.login(event_sink=_sink)
+                if use_browser:
+                    mod.login(event_sink=_sink, browser=True)
+                else:
+                    mod.login(event_sink=_sink)
         except Exception as exc:  # noqa: BLE001 — surface everything to UI
             logger.warning("oauth_login_failed provider={} error={}", provider_id, exc)
             if not failed_emitted:

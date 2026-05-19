@@ -91,6 +91,13 @@ __all__ = [
 _FRONTMATTER_RE = re.compile(r"^\s*---\r?\n(.*?)\r?\n---\r?\n?(.*)", re.DOTALL)
 
 
+def member_model_is_configured(model: str | None) -> bool:
+    """Return whether a member model is configured enough to join a team."""
+    from app.cli.seed import PROVIDER_MODEL_TOKEN
+
+    return bool(model and model.strip() and model.strip() != PROVIDER_MODEL_TOKEN)
+
+
 class AgentConfig(BaseModel):
     """Schema for a single agent defined in a .md frontmatter block."""
 
@@ -518,7 +525,11 @@ def load_team_from_dir(
         )
 
     lead_cfg, lead_path = leads[0]
-    member_entries = [(c, p) for (c, p) in agent_configs if c.role == "member"]
+    member_entries = [
+        (c, p)
+        for (c, p) in agent_configs
+        if c.role == "member" and member_model_is_configured(c.model)
+    ]
 
     # Validate: blueprint names must be unique and must not collide with the
     # lead.  Also reject ``#`` in blueprint names since we use ``blueprint#N``

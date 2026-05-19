@@ -83,6 +83,7 @@ async def stream_and_assemble(
         ctx=ctx,
         state=state,
         hooks=hooks,
+        interrupt_event=interrupt_event,
         messages=provider_messages,
         tools=tool_defs or None,
     ):

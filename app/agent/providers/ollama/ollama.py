@@ -12,8 +12,8 @@ its native (non-OpenAI) API at ``/api/chat``; the OpenAI compatibility
 layer lives only on the local daemon.
 
 Endpoint:  http://localhost:11434/v1 (override via ``OLLAMA_BASE_URL``)
-Auth:      None — ``OLLAMA_API_KEY`` defaults to a placeholder so the
-           OpenAI SDK's mandatory ``Authorization`` header is satisfied.
+Auth:      None — the provider supplies a placeholder key only because the
+           OpenAI SDK requires a non-empty ``Authorization`` header.
 Docs:      https://docs.ollama.com/api/openai
 Cloud:     https://docs.ollama.com/cloud (run ``ollama signin`` first)
 
@@ -59,7 +59,7 @@ class OllamaProvider(OpenAIProvider):
 
     def __init__(
         self,
-        api_key: str | SecretStr = "ollama",
+        api_key: str | SecretStr | None = None,
         model: str = "",
         base_url: str = OLLAMA_LOCAL_API_BASE,
         temperature: float | None = None,

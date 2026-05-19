@@ -171,6 +171,35 @@ def test_sse_stream_does_not_duplicate_provider_failed_event(
     assert "device_code_expired" not in text
 
 
+def test_codex_login_browser_mode_passes_browser_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_module = type("M", (), {})()
+    seen: list[dict[str, Any]] = []
+
+    def fake_login(event_sink: Any = None, **kwargs: Any) -> None:
+        seen.append(kwargs)
+        assert event_sink is not None
+        event_sink("browser_auth", {"message": "open browser"})
+
+    fake_module.login = fake_login
+
+    import app.api.routes.auth as auth_route
+
+    monkeypatch.setattr(auth_route, "_PROVIDERS", {"codex": ("fake", "fake")})
+    monkeypatch.setattr(
+        auth_route.importlib, "import_module", lambda _name: fake_module
+    )
+
+    client = TestClient(_make_app())
+    with client.stream("GET", "/api/auth/codex/login?mode=browser") as response:
+        text = b"".join(response.iter_bytes()).decode("utf-8")
+
+    assert response.status_code == 200
+    assert seen == [{"browser": True}]
+    assert "event: browser_auth" in text
+
+
 def test_plugin_oauth_login_streams_plugin_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

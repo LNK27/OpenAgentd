@@ -424,6 +424,7 @@ def login(
     oauth_path: Path | None = None,
     *,
     device: bool = False,
+    browser: bool = False,
     event_sink: EventSink | None = None,
 ) -> None:
     """Run the OpenAI Codex OAuth login.
@@ -459,8 +460,12 @@ def login(
                 detail=str(e),
             )
 
-    # SSE flow forces device path — PKCE needs a local HTTP listener that
-    # the UI can't reach.
+    if browser:
+        _pkce_login(oauth_path, event_sink=event_sink)
+        return
+
+    # SSE flow defaults to device path, with browser PKCE available as an
+    # explicit fallback for workspaces that block device-code auth in-page.
     use_device = device or event_sink is not None
     if use_device:
         # Pass ``event_sink`` only when set so the CLI call signature

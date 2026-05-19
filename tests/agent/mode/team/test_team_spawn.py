@@ -68,7 +68,7 @@ def _write_md(
     skills: list[str] | None = None,
     body: str | None = None,
 ) -> Path:
-    meta: dict = {"name": name, "role": role}
+    meta: dict = {"name": name, "role": role, "model": "mock:model"}
     if description is not None:
         meta["description"] = description
     if skills is not None:

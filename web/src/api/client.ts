@@ -858,8 +858,10 @@ export function oauthLoginStream(
   providerId: string,
   callbacks: SSECallbacks & { onOAuthEvent?: (event: OAuthLoginEvent) => void },
   signal?: AbortSignal,
+  mode?: 'browser',
 ): void {
-  fetch(`${API}/auth/${encodeURIComponent(providerId)}/login`, { signal })
+  const query = mode ? `?mode=${encodeURIComponent(mode)}` : ''
+  fetch(`${API}/auth/${encodeURIComponent(providerId)}/login${query}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error(`GET /auth/${providerId}/login failed: ${res.status}`)
       readSSE(res, {

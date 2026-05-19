@@ -38,6 +38,7 @@ class TestInitTurn:
         assert state.content == {}
         assert state.thinking == {}
         assert state.tool_calls == []
+        assert state.agent_not_configured is None
 
     @pytest.mark.asyncio
     async def test_init_turn_replaces_old_state(self):
@@ -126,6 +127,32 @@ class TestPushEvent:
             "lead": "hi from lead",
             "worker": "hi from worker",
         }
+
+    @pytest.mark.asyncio
+    async def test_push_agent_not_configured_is_replayed(self):
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "agent_not_configured",
+                {
+                    "type": "agent_not_configured",
+                    "agent": "openagentd",
+                    "message": "Agent needs a model.",
+                    "action": {"type": "open_settings", "tab": "providers"},
+                },
+            ),
+        )
+
+        events = []
+        async for event in store.attach("sid-1"):
+            events.append(event)
+            break
+
+        assert events[0]["event"] == "agent_not_configured"
+        data = json.loads(events[0]["data"])
+        assert data["agent"] == "openagentd"
+        assert data["action"]["tab"] == "providers"
 
     @pytest.mark.asyncio
     async def test_push_thinking_appends_thinking(self):

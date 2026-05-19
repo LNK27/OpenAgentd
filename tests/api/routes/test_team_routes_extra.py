@@ -208,7 +208,8 @@ class TestTeamAgentsRouteExtra:
 
         monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
         (tmp_path / "newcomer.md").write_text(
-            "---\nname: newcomer\nrole: member\ndescription: just arrived\n---\nbody\n",
+            "---\nname: newcomer\nrole: member\nmodel: mock:model\n"
+            "description: just arrived\n---\nbody\n",
             encoding="utf-8",
         )
 

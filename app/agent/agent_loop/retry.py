@@ -81,6 +81,7 @@ async def stream_with_retry(
     ctx: RunContext | None,
     state: AgentState | None,
     hooks: list[BaseAgentHook] | None,
+    interrupt_event: asyncio.Event | None = None,
     **kwargs,
 ) -> AsyncIterator:
     """Stream from ``primary_provider`` with retry; fall back if exhausted.
@@ -100,6 +101,8 @@ async def stream_with_retry(
     last_exc: Exception | None = None
     for provider, provider_label in providers:
         for attempt in range(MAX_RETRIES):
+            if interrupt_event is not None and interrupt_event.is_set():
+                return
             try:
                 async for chunk in provider.stream(**kwargs):
                     yield chunk
@@ -157,7 +160,8 @@ async def stream_with_retry(
                     delay,
                     retry_after,
                 )
-                await asyncio.sleep(delay)
+                if await _sleep_or_interrupted(delay, interrupt_event):
+                    return
             except (httpx.ConnectError, httpx.ReadTimeout, TimeoutError) as exc:
                 last_exc = exc
                 # Skip sleep on the last attempt
@@ -178,7 +182,8 @@ async def stream_with_retry(
                     MAX_RETRIES,
                     delay,
                 )
-                await asyncio.sleep(delay)
+                if await _sleep_or_interrupted(delay, interrupt_event):
+                    return
 
         # Primary model exhausted all retries — try fallback
         if fallback_provider is not None and provider is primary_provider:
@@ -191,3 +196,19 @@ async def stream_with_retry(
 
     assert last_exc is not None
     raise last_exc
+
+
+async def _sleep_or_interrupted(
+    delay: float, interrupt_event: asyncio.Event | None
+) -> bool:
+    """Sleep for retry delay, returning True when user interrupt fires first."""
+    if interrupt_event is None:
+        await asyncio.sleep(delay)
+        return False
+    if interrupt_event.is_set():
+        return True
+    try:
+        await asyncio.wait_for(interrupt_event.wait(), timeout=delay)
+    except TimeoutError:
+        return False
+    return True

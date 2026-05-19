@@ -1441,6 +1441,55 @@ async def test_stream_with_retry_calls_on_rate_limit_on_hooks():
     assert rate_limit_calls[0]["attempt"] == 1
 
 
+async def test_stream_with_retry_interrupt_stops_rate_limit_wait():
+    """User stop should break out immediately while waiting for a 429 retry."""
+    import asyncio
+    import httpx
+
+    call_count = 0
+
+    async def mock_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal call_count
+        call_count += 1
+        response = httpx.Response(
+            429,
+            headers={"retry-after": "60"},
+            request=httpx.Request("POST", "http://x"),
+        )
+        raise httpx.HTTPStatusError(
+            "rate limited", request=response.request, response=response
+        )
+        yield  # pragma: no cover
+
+    provider = MockProvider([[]])
+    provider.stream = mock_stream  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider)
+    interrupt_event = asyncio.Event()
+
+    async def stop_soon():
+        await asyncio.sleep(0)
+        interrupt_event.set()
+
+    stopper = asyncio.create_task(stop_soon())
+    chunks = [
+        c
+        async for c in stream_with_retry(
+            **retry_args(agent),
+            messages=[],
+            tools=None,
+            interrupt_event=interrupt_event,
+        )
+    ]
+    await stopper
+
+    assert chunks == []
+    assert call_count == 1
+
+
 # ---------------------------------------------------------------------------
 # Non-retryable error where aread() itself raises → body = "<unreadable>"
 # Covers agent.py:556-557
