@@ -138,6 +138,105 @@ class TestResponsesStreaming:
         assert chunks[0].choices[0].delta.reasoning_content == "Let me think"
         assert chunks[1].choices[0].delta.content == "The answer"
 
+    async def test_parse_stream_inserts_blank_line_between_reasoning_parts(
+        self, handler
+    ):
+        """OpenAI's /responses API streams reasoning as multiple ``summary_part``
+        items, each beginning with its own bold header (``**Title**``). Without
+        an explicit separator between parts, the agent loop's
+        ``reasoning += delta`` concatenation glues part N's header onto the
+        tail of part N-1's prose. The parser must inject a blank-line delta
+        on every ``reasoning_summary_part.added`` after the first.
+        """
+        lines = [
+            "event: response.created",
+            'data: {"type": "response.created", "response": {"id": "resp_1"}}',
+            # Part 1
+            "event: response.reasoning_summary_part.added",
+            'data: {"type": "response.reasoning_summary_part.added"}',
+            "event: response.reasoning_summary_text.delta",
+            'data: {"type": "response.reasoning_summary_text.delta", "delta": "**One**\\n\\nFirst body."}',
+            "event: response.reasoning_summary_text.done",
+            'data: {"type": "response.reasoning_summary_text.done"}',
+            # Part 2 — should be prefixed with a blank-line delta
+            "event: response.reasoning_summary_part.added",
+            'data: {"type": "response.reasoning_summary_part.added"}',
+            "event: response.reasoning_summary_text.delta",
+            'data: {"type": "response.reasoning_summary_text.delta", "delta": "**Two**\\n\\nSecond body."}',
+            "event: response.reasoning_summary_text.done",
+            'data: {"type": "response.reasoning_summary_text.done"}',
+            "event: response.output_text.delta",
+            'data: {"type": "response.output_text.delta", "delta": "final"}',
+            "event: response.output_text.done",
+            'data: {"type": "response.output_text.done"}',
+            "event: response.completed",
+            'data: {"type": "response.completed", "response": {"id": "resp_1", "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}}',
+        ]
+
+        async def async_iter_lines():
+            for line in lines:
+                yield line
+
+        response = MagicMock()
+        response.aiter_lines = lambda: async_iter_lines()
+
+        chunks = []
+        async for chunk in handler._parse_stream(response):
+            chunks.append(chunk)
+
+        reasoning_deltas = [
+            c.choices[0].delta.reasoning_content
+            for c in chunks
+            if c.choices and c.choices[0].delta.reasoning_content
+        ]
+
+        # Three reasoning deltas: part-1 text, "\n\n" separator, part-2 text.
+        assert reasoning_deltas == [
+            "**One**\n\nFirst body.",
+            "\n\n",
+            "**Two**\n\nSecond body.",
+        ]
+        # Accumulated reasoning must not glue headers together.
+        joined = "".join(reasoning_deltas)
+        assert "First body.\n\n**Two**" in joined
+        assert "First body.**Two**" not in joined
+
+    async def test_parse_stream_no_separator_before_first_reasoning_part(self, handler):
+        """The very first ``reasoning_summary_part.added`` must NOT emit a
+        leading ``\\n\\n`` delta — that would prepend blank whitespace to
+        the assistant's reasoning_content.
+        """
+        lines = [
+            "event: response.created",
+            'data: {"type": "response.created", "response": {"id": "resp_1"}}',
+            "event: response.reasoning_summary_part.added",
+            'data: {"type": "response.reasoning_summary_part.added"}',
+            "event: response.reasoning_summary_text.delta",
+            'data: {"type": "response.reasoning_summary_text.delta", "delta": "**Only**\\n\\nBody."}',
+            "event: response.reasoning_summary_text.done",
+            'data: {"type": "response.reasoning_summary_text.done"}',
+            "event: response.completed",
+            'data: {"type": "response.completed", "response": {"id": "resp_1", "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}}',
+        ]
+
+        async def async_iter_lines():
+            for line in lines:
+                yield line
+
+        response = MagicMock()
+        response.aiter_lines = lambda: async_iter_lines()
+
+        chunks = []
+        async for chunk in handler._parse_stream(response):
+            chunks.append(chunk)
+
+        reasoning_deltas = [
+            c.choices[0].delta.reasoning_content
+            for c in chunks
+            if c.choices and c.choices[0].delta.reasoning_content
+        ]
+        assert reasoning_deltas == ["**Only**\n\nBody."]
+
     async def test_parse_stream_skips_invalid_json(self, handler):
         """Skip lines with invalid JSON."""
         lines = [

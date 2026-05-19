@@ -392,11 +392,16 @@ function preInstallXhrHeaderSpy(): {
   return { headers }
 }
 
+function stubXhrSend(): void {
+  XMLHttpRequest.prototype.send = function () {}
+}
+
 describe("installDesktopAuth — XHR interceptor", () => {
   it("injects Authorization on /api/* XHR requests", async () => {
     window.__OAD_TOKEN__ = "tok-abc"
     spyFetch()
     const { headers } = preInstallXhrHeaderSpy()
+    stubXhrSend()
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
@@ -413,6 +418,7 @@ describe("installDesktopAuth — XHR interceptor", () => {
     window.__OAD_TOKEN__ = "tok-abc"
     spyFetch()
     const { headers } = preInstallXhrHeaderSpy()
+    stubXhrSend()
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
@@ -430,6 +436,7 @@ describe("installDesktopAuth — XHR interceptor", () => {
     window.__OAD_TOKEN__ = "tok-abc"
     spyFetch()
     const { headers } = preInstallXhrHeaderSpy()
+    stubXhrSend()
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
@@ -445,6 +452,7 @@ describe("installDesktopAuth — XHR interceptor", () => {
     window.__OAD_TOKEN__ = "tok-abc"
     spyFetch()
     const { headers } = preInstallXhrHeaderSpy()
+    stubXhrSend()
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
@@ -460,6 +468,7 @@ describe("installDesktopAuth — XHR interceptor", () => {
     window.__OAD_TOKEN__ = "tok-abc"
     spyFetch()
     const { headers } = preInstallXhrHeaderSpy()
+    stubXhrSend()
     const auth = await freshAuth()
     auth.installDesktopAuth()
 

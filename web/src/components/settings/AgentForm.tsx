@@ -7,7 +7,7 @@
  *     save. Recommended for most users.
  *   - **raw**: plain textarea with the full .md contents (frontmatter +
  *     body). Power users can hand-edit nested fields the form doesn't
- *     model (e.g. summarization blocks, custom hooks).
+ *     model (e.g. custom hook configuration).
  *
  * Switching form → raw preserves any extra YAML fields the form doesn't
  * know about by re-using the previous raw content whenever possible.
@@ -200,7 +200,7 @@ export function AgentForm({
             <CardTitle>Raw .md</CardTitle>
             <CardDescription>
               Edit the raw frontmatter and body. Useful for fields the form
-              doesn&rsquo;t expose (e.g. nested summarization blocks).
+              doesn&rsquo;t expose (e.g. custom hook configuration).
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -24,6 +24,8 @@ _INTERNAL_ATTACHMENT_FIELDS = frozenset({"converted_text", "path"})
 
 def _message_response(m) -> MessageResponse:
     resp = MessageResponse.model_validate(m)
+    if m.extra and m.extra.get("is_continuation"):
+        resp.reasoning_content = None
     if m.extra and isinstance(m.extra.get("attachments"), list):
         resp.attachments = [
             {k: v for k, v in att.items() if k not in _INTERNAL_ATTACHMENT_FIELDS}

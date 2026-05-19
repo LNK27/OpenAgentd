@@ -18,6 +18,7 @@ agent workspace — powers the "Artifacts" panel in the web UI.
 from __future__ import annotations
 
 import asyncio
+import difflib
 import mimetypes
 import os
 import subprocess
@@ -150,6 +151,7 @@ async def get_workspace_media(session_id: str, file_path: str) -> FileResponse:
 
 _MAX_FILES_LISTED = 500
 _MAX_GIT_DIFF_CHARS = 512 * 1024
+_MAX_UNTRACKED_DIFF_BYTES = 256 * 1024
 _SKIPPED_DIR_NAMES = frozenset(
     {"node_modules", "dist", "build", ".venv", "venv", "__pycache__"}
 )
@@ -320,14 +322,57 @@ async def get_coding_workspace_git_diff(workspace: str) -> dict:
         raise HTTPException(
             status_code=500, detail=result.stderr.strip() or "git diff failed"
         )
-    truncated = len(result.stdout) > _MAX_GIT_DIFF_CHARS
-    diff = result.stdout[:_MAX_GIT_DIFF_CHARS]
+    untracked_out = await _run_git(
+        resolved, "ls-files", "--others", "--exclude-standard"
+    )
+    untracked = untracked_out.splitlines() if untracked_out is not None else []
+    tracked_diff = str(result.stdout)
+    full_diff = tracked_diff + _untracked_diff(root, untracked)
+    truncated = len(full_diff) > _MAX_GIT_DIFF_CHARS
+    diff = full_diff[:_MAX_GIT_DIFF_CHARS]
     return {
         "workspace": resolved,
         "is_git_repo": True,
         "diff": diff,
+        "untracked": untracked,
         "truncated": truncated,
     }
+
+
+def _untracked_diff(root: Path, paths: list[str]) -> str:
+    chunks: list[str] = []
+    for path in paths:
+        file_path = root / path
+        try:
+            if (
+                not file_path.is_file()
+                or file_path.stat().st_size > _MAX_UNTRACKED_DIFF_BYTES
+            ):
+                chunks.append(
+                    f"\ndiff --git a/{path} b/{path}\n"
+                    "new file mode 100644\n"
+                    f"Binary or large file not shown: {path}\n"
+                )
+                continue
+            lines = file_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        except (OSError, UnicodeDecodeError):
+            chunks.append(
+                f"\ndiff --git a/{path} b/{path}\n"
+                "new file mode 100644\n"
+                f"Binary or unreadable file not shown: {path}\n"
+            )
+            continue
+
+        body = "".join(
+            difflib.unified_diff(
+                [],
+                lines,
+                fromfile="/dev/null",
+                tofile=f"b/{path}",
+            )
+        )
+        chunks.append(f"\ndiff --git a/{path} b/{path}\nnew file mode 100644\n{body}")
+    return "".join(chunks)
 
 
 async def _run_git(cwd: str, *args: str, timeout: float = 5.0) -> str | None:

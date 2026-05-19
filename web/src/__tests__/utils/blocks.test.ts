@@ -1,5 +1,14 @@
 import { describe, it, expect } from "bun:test";
-import { appendThinking, appendText, initTool, addTool, completeTool } from "@/utils/blocks";
+import {
+  appendThinking,
+  appendText,
+  initTool,
+  addTool,
+  completeTool,
+  startCompaction,
+  appendCompactionContent,
+  endCompaction,
+} from "@/utils/blocks";
 import type { ContentBlock } from "@/api/types";
 
 // ---------------------------------------------------------------------------
@@ -207,5 +216,96 @@ describe("completeTool", () => {
     const result = completeTool(blocks, "web_search", "tc1", "replay");
     expect(result[0].toolResult).toBe("original"); // Me keep original, not overwrite
     expect(result).toHaveLength(1); // no duplicate added
+  });
+});
+
+// ---------------------------------------------------------------------------
+// compaction lifecycle
+// ---------------------------------------------------------------------------
+
+describe("startCompaction", () => {
+  it("appends a fresh compacting block", () => {
+    const result = startCompaction([]);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("compaction");
+    expect(result[0].extra?.state).toBe("compacting");
+  });
+
+  it("is idempotent when the trailing block is already compacting (replay)", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "half", extra: { state: "compacting" } },
+    ];
+    const result = startCompaction(blocks);
+    expect(result).toBe(blocks); // same reference, no mutation
+  });
+
+  it("still appends if the trailing compaction block already finished", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "done", extra: { state: "compacted" } },
+    ];
+    const result = startCompaction(blocks);
+    expect(result).toHaveLength(2);
+    expect(result[1].extra?.state).toBe("compacting");
+  });
+});
+
+describe("appendCompactionContent", () => {
+  it("appends streaming text to the trailing compacting block", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "Hello ", extra: { state: "compacting" } },
+    ];
+    const result = appendCompactionContent(blocks, "world");
+    expect(result[0].content).toBe("Hello world");
+  });
+
+  it("drops the chunk when no compacting block exists", () => {
+    const blocks: ContentBlock[] = [{ id: "t1", type: "text", content: "x" }];
+    const result = appendCompactionContent(blocks, "ignored");
+    expect(result).toBe(blocks);
+  });
+
+  it("does not touch a compacted (done) block", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "done", extra: { state: "compacted" } },
+    ];
+    const result = appendCompactionContent(blocks, " more");
+    expect(result[0].content).toBe("done");
+  });
+});
+
+describe("endCompaction", () => {
+  it("flips the trailing compacting block to compacted and overwrites content", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "partial", extra: { state: "compacting" } },
+    ];
+    const result = endCompaction(blocks, "final summary", false);
+    expect(result[0].extra?.state).toBe("compacted");
+    expect(result[0].content).toBe("final summary");
+    expect(result[0].extra?.error).toBeUndefined();
+  });
+
+  it("sets error flag on failure", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "", extra: { state: "compacting" } },
+    ];
+    const result = endCompaction(blocks, "", true);
+    expect(result[0].extra?.state).toBe("compacted");
+    expect(result[0].extra?.error).toBe(true);
+  });
+
+  it("synthesizes a completed block when no in-flight one exists", () => {
+    const result = endCompaction([], "summary", false);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("compaction");
+    expect(result[0].extra?.state).toBe("compacted");
+    expect(result[0].content).toBe("summary");
+  });
+
+  it("keeps existing content when summary is empty", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "streamed", extra: { state: "compacting" } },
+    ];
+    const result = endCompaction(blocks, "", false);
+    expect(result[0].content).toBe("streamed");
   });
 });

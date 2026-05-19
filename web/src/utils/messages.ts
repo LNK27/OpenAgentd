@@ -2,6 +2,17 @@ import type { AgentUsage, ChatMessage, ContentBlock, MessageResponse } from '@/a
 import { generateBlockId } from './blocks'
 
 // Me sort messages by timestamp asc, assistant before tool on ties
+
+/** Legacy-row guard: pre-2026-05 summary rows had a hardcoded
+ *  ``[Summary of earlier conversation]\n`` prefix on the body. The hook
+ *  no longer emits it (see ``app/agent/hooks/summarization.py``) but
+ *  old sessions still carry it — strip on read so the UI divider stays
+ *  clean across legacy + new rows. */
+function stripCompactionPrefix(content: string): string {
+  const prefix = '[Summary of earlier conversation]\n'
+  return content.startsWith(prefix) ? content.slice(prefix.length) : content
+}
+
 function sortMessages(msgs: MessageResponse[]): MessageResponse[] {
   return [...msgs].sort((a, b) => {
     const ta = a.created_at ? new Date(a.created_at).getTime() : 0
@@ -20,7 +31,7 @@ function assistantBlocks(
 ): ContentBlock[] {
   const blocks: ContentBlock[] = []
 
-  if (msg.reasoning_content) {
+  if (msg.reasoning_content && !msg.extra?.is_continuation) {
     blocks.push({ id: generateBlockId(), type: 'thinking', content: msg.reasoning_content, timestamp })
   }
 
@@ -66,8 +77,27 @@ export function parseApiMessages(msgs: MessageResponse[]): ChatMessage[] {
   const pendingToolBlocks: Map<string, ContentBlock> = new Map()
 
   for (const msg of sortMessages(msgs)) {
-    // Me skip summaries — internal LLM context management, not for display
-    if (msg.is_summary) continue
+    // Summaries surface as an inline "Session compacted" divider rather
+    // than being hidden from the chat — gives users a visible marker of
+    // where context compaction happened.
+    if (msg.is_summary) {
+      const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
+      result.push({
+        id: msg.id,
+        role: 'assistant',
+        content: '',
+        blocks: [{
+          id: generateBlockId(),
+          type: 'compaction',
+          content: stripCompactionPrefix(msg.content || ''),
+          extra: { state: 'compacted' },
+          timestamp,
+        }],
+        agent: msg.name || undefined,
+        timestamp,
+      })
+      continue
+    }
 
     if (msg.role === 'user') {
       result.push({
@@ -148,8 +178,19 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
   const pendingToolBlocks: Map<string, ContentBlock> = new Map()
 
   for (const msg of sortMessages(msgs)) {
-    // Me skip summaries — internal LLM context management, not for display
-    if (msg.is_summary) continue
+    // Summaries surface as inline "Session compacted" dividers rather than
+    // being hidden — preserves the visual marker across page reloads.
+    if (msg.is_summary) {
+      const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
+      result.push({
+        id: msg.id,
+        type: 'compaction',
+        content: stripCompactionPrefix(msg.content || ''),
+        extra: { state: 'compacted' },
+        timestamp,
+      })
+      continue
+    }
 
     if (msg.role === 'user') {
       // Me normalise DB extra: support both old (from_agents: string[]) and new (from_agent: string) formats

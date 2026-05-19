@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from loguru import logger
+from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamMemberBase
+from app.agent.mode.team.team import ContinuePreconditionError
 from app.agent.tools.builtin.skill import discover_skills
 from app.api.deps import ChatFormDep, DbSession, TeamDep
 from app.api.routes.team._helpers import (
@@ -33,6 +35,7 @@ from app.services import (
 )
 from app.services.agent_service import AttachmentError, RawAttachment
 from app.services.chat_service import (
+    cleanup_reverted_tail,
     delete_session,
     get_team_history,
     list_sessions_page,
@@ -126,10 +129,15 @@ async def team_chat(
     mode = body.mode
     workspace = body.workspace
     existing: ChatSession | None = None
+    session_uuid: UUID | None = None
 
     if session_id:
+        try:
+            session_uuid = UUID(session_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid session id.") from exc
         async with db.begin():
-            existing = await db.get(ChatSession, UUID(session_id))
+            existing = await db.get(ChatSession, session_uuid)
 
     if existing and existing.mode == "coding" and existing.workspace:
         persisted_workspace = _validate_workspace_or_422(existing.workspace)
@@ -167,6 +175,10 @@ async def team_chat(
     # At this point message is guaranteed non-None by ChatForm validator
     assert message is not None
 
+    if session_uuid is not None:
+        async with db.begin():
+            await cleanup_reverted_tail(db, session_uuid)
+
     # Materialise the multipart uploads into transport-neutral attachments
     # so agent_service can validate + persist them without knowing about
     # FastAPI ``UploadFile``.
@@ -194,6 +206,82 @@ async def team_chat(
         n_attachments,
     )
     return {"status": "accepted", "session_id": sid}
+
+
+class CommandRequest(BaseModel):
+    """Request body for ``POST /team/commands``."""
+
+    command: Literal["continue", "compact", "undo", "redo"]
+    session_id: str
+
+
+@router.post("/commands", status_code=202)
+async def team_command(
+    team: TeamDep,
+    body: CommandRequest,
+) -> dict:
+    """Run a slash-command on a session — no new user message persisted.
+
+    Currently supported:
+
+    * ``continue`` — resume from the last assistant turn.  The provider
+      sees the existing history (ending in the prior assistant message)
+      and keeps generating; the resulting first assistant row is flagged
+      ``extra["is_continuation"] = True`` so the UI can render it tight
+      against the prior bubble.
+    * ``compact`` — force the existing summariser before the next model call
+      without adding a visible user message.
+    * ``undo`` / ``redo`` — move the visible conversation boundary backward or
+      forward without adding a user message.
+
+    Returns 202 with the session_id.  Subscribe to
+    ``GET /team/stream/{session_id}`` for the SSE feed.
+
+    Returns 409 with a human-readable ``detail`` when the session can't
+    be continued (no assistant message, last message has unfinished tool
+    calls, lead is already working, etc.).
+    """
+    team_obj = _require_team(team)
+
+    if body.command == "continue":
+        try:
+            sid = await team_obj.handle_continue(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("team_command_continue session_id={}", sid)
+        return {"status": "accepted", "session_id": sid, "command": "continue"}
+
+    if body.command == "compact":
+        try:
+            sid = await team_obj.handle_compact(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("team_command_compact session_id={}", sid)
+        return {"status": "accepted", "session_id": sid, "command": "compact"}
+
+    if body.command == "undo":
+        try:
+            sid, message = await team_obj.handle_undo(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("team_command_undo session_id={}", sid)
+        return {
+            "status": "accepted",
+            "session_id": sid,
+            "command": "undo",
+            "message": _message_response(message).model_dump(mode="json"),
+        }
+
+    if body.command == "redo":
+        try:
+            sid = await team_obj.handle_redo(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("team_command_redo session_id={}", sid)
+        return {"status": "accepted", "session_id": sid, "command": "redo"}
+
+    # Defensive — the Literal makes this unreachable, but pyright/ty wants it.
+    raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
 
 
 @router.get("/{session_id}/stream")

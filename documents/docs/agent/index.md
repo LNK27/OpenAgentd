@@ -26,7 +26,7 @@ app/agent/
 ├── sandbox.py          # SandboxConfig, get_sandbox, set_sandbox (context var)
 ├── sandbox_config.py   # sandbox.yaml load/save — user-defined deny-glob patterns
 ├── tool_id_resolver.py # FIFO tool_call_id resolution for streaming
-├── loader.py           # Loads agents/*.md — agent factory + AgentConfig schema + SummarizationConfig
+├── loader.py           # Loads agents/*.md — agent factory + AgentConfig schema
 ├── drift.py            # ConfigStamp + stamp_agent_files / detect_drift
 ├── permission.py       # Rule/Ruleset matching + AutoAllow / blocking permission services
 ├── hooks/              # Built-in lifecycle hooks (see hooks.md)
@@ -36,7 +36,7 @@ app/agent/
 │   └── capabilities.py     # Dataclasses, defaults, prefix-only fallbacks
 ├── schemas/            # Pydantic wire types
 │   ├── chat.py             # SystemMessage / HumanMessage / AssistantMessage / ToolMessage / ChatMessage
-│   ├── agent.py            # RunConfig, AgentContext, SummarizationConfig
+│   ├── agent.py            # RunConfig, AgentContext
 │   └── events.py           # SSE event payloads
 ├── tools/              # Tool registry (@tool decorator) + built-ins
 │   └── builtin/            # filesystem/, shell, web, date, skill, wiki_search, note, todo, schedule
@@ -58,7 +58,7 @@ app/agent/
 | [teams.md](./teams.md) | Multi-agent coordination — team, mailbox, task board, protocol, drift detection |
 | [team-lazy-spawn.md](./team-lazy-spawn.md) | Lazy member spawning + per-session instance IDs |
 | [context.md](./context.md) | AgentState, RunContext, system prompt injection, metadata |
-| [summarization.md](./summarization.md) | Rolling-window context compression — three-tier config chain |
+| [summarization.md](./summarization.md) | Rolling-window context compression — module-level config, mode-aware prompt + keep window |
 | [memory.md](./memory.md) | Wiki memory — notes, dream synthesis, USER.md injection |
 
 ## Entry points

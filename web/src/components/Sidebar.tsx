@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useProximityTracker, useProximityIntensity } from '@/hooks/useProximity'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 import {
   Plus,
@@ -74,6 +75,7 @@ export function Sidebar({
   onMobileClose,
 }: SidebarProps) {
   const isMobile = useIsMobile()
+  const prefersReducedMotion = useReducedMotion()
   const navigate = useNavigate()
   const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
@@ -184,7 +186,7 @@ export function Sidebar({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: prefersReducedMotion ? 0.01 : 0.2 }}
             className="fixed inset-0 z-30 bg-black/60 md:hidden"
             aria-hidden="true"
             onClick={onMobileClose}
@@ -198,10 +200,10 @@ export function Sidebar({
           ? { x: mobileOpen ? 0 : -280 }
           : { width: desktopWidth }
       }
-      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={
         isMobile
-          ? 'fixed inset-y-0 left-0 z-40 flex w-[272px] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
+          ? 'fixed inset-y-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
           : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)'
       }
       style={isMobile ? undefined : { minWidth: desktopWidth }}
@@ -262,7 +264,7 @@ export function Sidebar({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
+                  transition={{ duration: prefersReducedMotion ? 0.01 : 0.15 }}
                   className="flex min-h-0 flex-1 flex-col overflow-hidden"
                 >
                   <div className="flex items-center justify-between px-3 pb-1 pt-2">

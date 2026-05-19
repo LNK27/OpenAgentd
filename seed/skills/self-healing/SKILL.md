@@ -24,7 +24,6 @@ under `{OPENAGENTD_CONFIG_DIR}/`. No code changes, no restarts. Agent
 | Agent tools | same file, `tools:` list | "give yourself shell access", "let yourself browse the web" |
 | Agent skills | same file, `skills:` list | "enable the web-research skill for yourself" |
 | Agent MCP tools | same file, `mcp:` list (bulk) or `tools:` list (selective) | "let yourself use the filesystem MCP", "remove the github MCP from yourself" — see "MCP tools on agents" below |
-| Summarization (per-agent) | same file, `summarization:` block | "summarise earlier — drop to 60k tokens", "use gemini-flash-lite for your summaries" |
 | Image / video generation | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | "generate images with Gemini instead", "switch to Veo for video", "make images higher quality", "use 1080p video" |
 | New skills | `{OPENAGENTD_CONFIG_DIR}/skills/{name}/SKILL.md` | "install a skill for reviewing pull requests" — **delegate to `skill-installer`** |
 
@@ -54,7 +53,9 @@ Use the manual workflow below for everything `team_manage` cannot do:
 - Edits to the **lead's own** `.md` (lead is not a manageable target).
 - Multi-field changes (e.g. model + temperature + tools in one diff).
 - Anything outside `tools` / `skills` / `mcp` — `model`, `temperature`,
-  `thinking_level`, `fallback_model`, `summarization`, system prompt body.
+  `thinking_level`, `fallback_model`, system prompt body. (Summarisation
+  tuning is not editable per-agent — it lives in code; refuse and refer
+  the user to `app/agent/hooks/summarization.py`.)
 - Editing `multimodal.yaml`.
 - Creating a new agent file.
 
@@ -199,7 +200,6 @@ Only these keys are valid. Reject any request to invent new ones.
 | `tools` | subset of built-ins: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `wiki_search`, `generate_image`, `generate_video`, plus `mcp_<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`note`, `schedule_task`, `todo_manage`) are also injected automatically. |
 | `skills` | names of subdirectories under `{OPENAGENTD_CONFIG_DIR}/skills/` |
 | `responses_api` | `true` to force OpenAI Responses API |
-| `summarization` | block with `enabled`, `token_threshold`, `keep_last_assistants`, `max_token_length`, `model` |
 
 Validation invariants to preserve:
 

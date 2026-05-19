@@ -149,6 +149,25 @@ async def test_get_messages_excludes_hidden(session):
 
 
 @pytest.mark.asyncio
+async def test_get_messages_excludes_hidden_from_user_extra(session):
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="visible"))
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="hidden from user"),
+        extra={"hidden_from_user": True},
+    )
+
+    fetched = await get_messages(session, chat_session.id)
+    assert [m.content for m in fetched] == ["visible"]
+
+    llm_messages = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm_messages] == ["visible", "hidden from user"]
+
+
+@pytest.mark.asyncio
 async def test_get_messages_includes_summary_message(session):
     """Summary messages (HumanMessage) are visible so get_messages returns them."""
     chat_session = await create_chat_session(session)

@@ -2,16 +2,15 @@
  * InboxBubble — renders inter-agent inbox messages.
  *
  * - Left-aligned, muted border (distinct from user bubbles)
- * - Markdown rendered via ReactMarkdown + remark-gfm
+ * - Markdown rendered through the shared lazy markdown renderer
  * - Auto-collapses when content exceeds COLLAPSE_LINES
  *   Collapsed: first N lines + overlaid expand button
  *   Expanded:  full content + overlaid collapse button
  */
 
 import { useState, useMemo } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 
 /** Me change N here to tune collapse threshold */
 const COLLAPSE_LINES = 3
@@ -102,16 +101,7 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
 
         {/* Me markdown content */}
         <div className="oa-prose">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-                <a {...props} target="_blank" rel="noopener noreferrer" />
-              ),
-            }}
-          >
-            {visibleContent}
-          </ReactMarkdown>
+          <LazyMarkdownBlock content={visibleContent} />
         </div>
 
         {needsCollapse && !expanded && (

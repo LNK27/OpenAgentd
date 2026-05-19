@@ -122,72 +122,8 @@ def test_find_assistant_cutoff_keep_last_negative():
 
 
 # ---------------------------------------------------------------------------
-# build_summarization_hook — disabled path (line 105)
+# build_summarization_hook coverage moved to test_build_summarization_hook.py
 # ---------------------------------------------------------------------------
-
-
-def test_build_summarization_hook_disabled_returns_none():
-    """build_summarization_hook returns None when cfg.enabled=False."""
-    from unittest.mock import MagicMock
-
-    from app.agent.hooks.summarization import build_summarization_hook
-    from app.agent.schemas.agent import SummarizationConfig
-
-    provider = MagicMock()
-    cfg = SummarizationConfig(enabled=False)
-    result = build_summarization_hook(provider, cfg)
-    assert result is None
-
-
-# ---------------------------------------------------------------------------
-# build_summarization_hook — threshold=0 disables (line 112)
-# ---------------------------------------------------------------------------
-
-
-def test_build_summarization_hook_zero_threshold_returns_none():
-    """build_summarization_hook returns None when resolved threshold <= 0."""
-    from unittest.mock import MagicMock
-
-    from app.agent.hooks.summarization import build_summarization_hook
-    from app.agent.schemas.agent import SummarizationConfig
-
-    provider = MagicMock()
-    cfg = SummarizationConfig(token_threshold=0)
-    result = build_summarization_hook(provider, cfg)
-    assert result is None
-
-
-# ---------------------------------------------------------------------------
-# build_summarization_hook — cfg=None falls back to global settings (line 107-109)
-# ---------------------------------------------------------------------------
-
-
-def test_build_summarization_hook_no_cfg_uses_module_defaults():
-    """build_summarization_hook with cfg=None falls back to module defaults
-    when file config does not override individual fields. The file config
-    still supplies the (required) prompt."""
-    from unittest.mock import MagicMock, patch
-
-    from app.agent.hooks.summarization import (
-        DEFAULT_KEEP_LAST_ASSISTANTS,
-        DEFAULT_MAX_TOKEN_LENGTH,
-        DEFAULT_PROMPT_TOKEN_THRESHOLD,
-        SummarizationHook,
-        build_summarization_hook,
-    )
-    from app.agent.schemas.agent import SummarizationFileConfig
-
-    provider = MagicMock()
-    file_cfg = SummarizationFileConfig(prompt="test summariser prompt")
-    with patch("app.agent.loader.load_summarization_file_config") as mock_load:
-        mock_load.return_value = file_cfg
-        result = build_summarization_hook(provider, cfg=None)
-
-    assert isinstance(result, SummarizationHook)
-    assert result._prompt_token_threshold == DEFAULT_PROMPT_TOKEN_THRESHOLD
-    assert result._keep_last_assistants == DEFAULT_KEEP_LAST_ASSISTANTS
-    assert result._max_token_length == DEFAULT_MAX_TOKEN_LENGTH
-    assert result._summary_prompt == "test summariser prompt"
 
 
 # ---------------------------------------------------------------------------

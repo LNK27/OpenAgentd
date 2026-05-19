@@ -38,21 +38,21 @@ async def _remove_path(
         resolved.unlink()
         logger.info("file_removed path={}", resolved)
         notify_fs_change(resolved)
-        return f"Removed file: {rel}"
+        return f"Removed file: {rel}\nResolved path: {resolved}"
 
     # Me path is directory
     if recursive:
         await asyncio.to_thread(shutil.rmtree, resolved)
         logger.info("dir_removed path={} recursive=true", resolved)
         notify_fs_change(resolved)
-        return f"Removed directory: {rel}"
+        return f"Removed directory: {rel}\nResolved path: {resolved}"
 
     # Me try remove empty dir
     try:
         resolved.rmdir()
         logger.info("dir_removed path={} recursive=false", resolved)
         notify_fs_change(resolved)
-        return f"Removed directory: {rel}"
+        return f"Removed directory: {rel}\nResolved path: {resolved}"
     except OSError as exc:
         raise OSError(
             f"Directory not empty: {rel}. Use recursive=true to remove it."

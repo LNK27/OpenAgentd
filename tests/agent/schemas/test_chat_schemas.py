@@ -208,6 +208,25 @@ class TestModelDumpFull:
         d = msg.model_dump_full()
         assert d["extra"] == {"usage": {"input": 10, "output": 5}}
 
+    def test_extra_dict_excluded_from_model_dump(self):
+        """``model_dump()`` (the LLM-serialisation path) must drop ``extra``.
+
+        Providers feed messages to the LLM via ``model_dump(exclude_none=True)``;
+        anything that lands there is visible to the model.  ``extra`` carries
+        metadata (usage stats, the ``interrupted`` marker, etc.) that must
+        never leak into the prompt — neither the key nor its values.  This
+        test pins that contract: serialising an interrupted assistant
+        message yields a payload that contains neither ``extra`` nor the
+        string ``interrupted``.
+        """
+        msg = AssistantMessage(
+            content="partial answer",
+            extra={"interrupted": True, "usage": {"input": 42}},
+        )
+        d = msg.model_dump(exclude_none=True)
+        assert "extra" not in d
+        assert "interrupted" not in repr(d)
+
     def test_is_summary_included_in_full_dump(self):
         msg = HumanMessage(content="[summary of conversation]")
         msg.is_summary = True

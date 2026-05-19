@@ -37,53 +37,140 @@ Usage::
 from __future__ import annotations
 
 import time
-from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from loguru import logger
 from opentelemetry.trace import SpanKind, StatusCode
 
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase
-from app.agent.providers.factory import build_provider
-from app.agent.schemas.agent import SummarizationConfig
 from app.agent.schemas.chat import (
+    AssistantMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
-from app.core.config import settings
+from app.agent.schemas.events import (
+    SummarizationContentEvent,
+    SummarizationEndEvent,
+    SummarizationStartEvent,
+)
 from app.core.otel import get_tracer
+from app.services.stream_envelope import StreamEnvelope
 
 if TYPE_CHECKING:
     from app.agent.state import AgentState, ModelRequest, RunContext
 
-# ── Module-level defaults (no env-var overrides) ──────────────────────────
-# These were previously SUMMARIZATION_* settings in app.core.config. Per-agent
-# ``summarization:`` blocks (in agent .md frontmatter) and the global
-# ``.openagentd/config/summarization.md`` file remain the supported override
-# surfaces — see ``build_summarization_hook`` for the resolution chain.
+# ── Module-level defaults ─────────────────────────────────────────────────
+# These are the single source of truth for summarisation tuning. There is no
+# per-agent override and no file-based override — change the values here to
+# reconfigure summarisation.
+#
+# Both the prompt and the ``keep_last_assistants`` window are mode-aware:
+#
+# * CHAT mode (default): prose summary, keep last ``DEFAULT_KEEP_LAST_ASSISTANTS``
+#   assistant turns verbatim so the next reply has recent conversational
+#   context.
+# * CODING mode: structured Markdown summary, ``keep_last_assistants=0`` so
+#   the full pre-threshold history collapses into the summary. Coding sessions
+#   benefit from a single authoritative "state of the world" record over
+#   partially-summarised history.
 DEFAULT_PROMPT_TOKEN_THRESHOLD = 100000
 DEFAULT_KEEP_LAST_ASSISTANTS = 3
-DEFAULT_MAX_TOKEN_LENGTH = 10000
+CODING_KEEP_LAST_ASSISTANTS = 0
+DEFAULT_MAX_TOKEN_LENGTH = 30000
 DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY = 4
 
 
-def summarization_config_path() -> Path:
-    """Return the path to the global summarization config file.
+# ── Bundled summariser prompts ────────────────────────────────────────────
+# CHAT mode: terse third-person narrative — works well for open-ended
+# assistant conversations where structure would feel out of place.
+CHAT_SUMMARY_PROMPT = (
+    "You are a conversation summariser. Produce a concise but complete handoff "
+    "summary of the conversation so far. Preserve the user's goal, constraints, "
+    "preferences, important facts, decisions, outcomes, blockers, and any active "
+    "or unfinished task. If work is in progress, include the current state and "
+    "the immediate next step so the assistant can continue without another user "
+    "prompt. Preserve exact names, identifiers, commands, file paths, error "
+    "strings, and other details needed for continuity. Write in third-person "
+    "narrative form. Do not include pleasantries or meta-commentary."
+)
 
-    Defaults to ``{OPENAGENTD_CONFIG_DIR}/summarization.md``.
+# CODING mode: structured Markdown template the model fills in.  Empirically
+# preserves much more actionable state for follow-up turns than free-form
+# prose (file paths, errors, blockers, next steps). Borrowed from the
+# opencode project (anomalyco/opencode session/compaction.ts).
+CODING_SUMMARY_PROMPT = """\
+Output exactly the Markdown structure shown inside <template> and keep the section order unchanged. Do not include the <template> tags in your response.
+<template>
+## Goal
+- [single-sentence task summary]
+
+## Constraints & Preferences
+- [user constraints, preferences, specs, or "(none)"]
+
+## Progress
+### Done
+- [completed work or "(none)"]
+
+### In Progress
+- [current work or "(none)"]
+
+### Blocked
+- [blockers or "(none)"]
+
+## Key Decisions
+- [decision and why, or "(none)"]
+
+## Next Steps
+- [ordered next actions or "(none)"]
+
+## Critical Context
+- [important technical facts, errors, open questions, or "(none)"]
+
+## Relevant Files
+- [file or directory path: why it matters, or "(none)"]
+</template>
+
+Rules:
+- Keep every section, even when empty.
+- Use terse bullets, not prose paragraphs.
+- Preserve exact file paths, commands, error strings, and identifiers when known.
+- Do not mention the summary process or that context was compacted."""
+
+
+def prompt_for_mode(mode: str | None) -> str:
+    """Return the bundled summariser prompt for a given session mode.
+
+    ``mode == "coding"`` → :data:`CODING_SUMMARY_PROMPT`. Anything else
+    (including ``None``) → :data:`CHAT_SUMMARY_PROMPT`.
     """
-    return Path(settings.OPENAGENTD_CONFIG_DIR) / "summarization.md"
+    return CODING_SUMMARY_PROMPT if mode == "coding" else CHAT_SUMMARY_PROMPT
+
+
+def keep_last_for_mode(mode: str | None) -> int:
+    """Return the ``keep_last_assistants`` window for a given session mode.
+
+    ``mode == "coding"`` → :data:`CODING_KEEP_LAST_ASSISTANTS` (0 — summarise
+    everything). Anything else → :data:`DEFAULT_KEEP_LAST_ASSISTANTS`.
+    """
+    return (
+        CODING_KEEP_LAST_ASSISTANTS
+        if mode == "coding"
+        else DEFAULT_KEEP_LAST_ASSISTANTS
+    )
 
 
 _SUMMARISE_REQUEST = (
     "Please summarise the conversation below according to your instructions."
 )
 
+# Merge wording borrowed from opencode's compaction.ts — explicitly tells
+# the model what to do with the prior summary rather than leaving it to
+# interpret "merge".
 _MERGE_REQUEST = (
-    "The conversation below starts with an earlier summary followed by new messages. "
-    "Merge them into a single, updated summary according to your instructions."
+    "Update the anchored summary below using the conversation history above. "
+    "Preserve still-true details, remove stale details, and merge in the new facts."
 )
 
 
@@ -105,108 +192,76 @@ def _find_assistant_cutoff(msgs: list, keep_last: int) -> int:
     return 0  # not enough assistant turns — protect everything
 
 
+# Tool names whose call/result pairs survive summarisation: they stay in
+# context indefinitely and are never sent to the summariser LLM. Skill
+# loads carry instructions the agent needs every turn; replacing them
+# with a stubbed summary line throws away the actual skill body.
+_PRESERVED_TOOL_NAMES: frozenset[str] = frozenset({"skill"})
+
+
+def _collect_preserved_ids(messages: list) -> set[int]:
+    """Return ``id()`` of every message that must survive summarisation.
+
+    Currently preserves:
+
+    * ``ToolMessage`` whose ``name`` is in :data:`_PRESERVED_TOOL_NAMES`
+      (the tool result body — e.g. skill instructions).
+    * The matching ``AssistantMessage`` (the one whose ``tool_calls`` list
+      contains a call with the preserved name) — keeping the result without
+      its preceding call would orphan the ``tool_call_id`` and break the
+      assistant→tool pairing invariant required by OpenAI/ZAI/etc.
+    """
+    preserved_call_ids: set[str] = set()
+    preserved: set[int] = set()
+
+    for m in messages:
+        if isinstance(m, ToolMessage) and m.name in _PRESERVED_TOOL_NAMES:
+            preserved.add(id(m))
+            if m.tool_call_id:
+                preserved_call_ids.add(m.tool_call_id)
+
+    if not preserved_call_ids:
+        return preserved
+
+    for m in messages:
+        if isinstance(m, AssistantMessage) and m.tool_calls:
+            for tc in m.tool_calls:
+                if tc.id in preserved_call_ids:
+                    preserved.add(id(m))
+                    break
+
+    return preserved
+
+
 def build_summarization_hook(
     default_provider: LLMProviderBase,
-    cfg: SummarizationConfig | None,
+    *,
+    mode: str | None = None,
 ) -> "SummarizationHook | None":
     """Return a configured SummarizationHook, or ``None`` if disabled.
 
-    ``None`` is returned (with a warning logged) for any of the following —
-    the caller should simply not add the hook:
+    Uses the module-level ``DEFAULT_*`` constants for all numeric settings —
+    no per-agent or file overrides. Returns ``None`` when
+    ``DEFAULT_PROMPT_TOKEN_THRESHOLD <= 0`` (operator-level kill switch).
 
-    * The per-agent config sets ``enabled: false``.
-    * The resolved ``token_threshold`` is ``<= 0``.
-    * ``.openagentd/config/summarization.md`` does not exist.
-    * The config file exists but its body (the prompt) is empty.
+    The summariser provider is the caller's ``default_provider`` (typically
+    the agent's own LLM provider). Both the summariser PROMPT and the
+    ``keep_last_assistants`` window are mode-aware:
 
-    Missing-config paths log a warning so operators can spot the
-    misconfiguration in ``app.log`` without the agent failing to respond.
-    The warning includes a hint to copy ``seed/summarization.md`` or set
-    per-agent ``enabled: false`` to silence it.
-
-    Fallback chain for each setting (first non-None wins):
-      1. Per-agent ``summarization:`` block in the agent's ``.md`` frontmatter
-      2. Global ``.openagentd/config/summarization.md`` file
-      3. Module-level ``DEFAULT_*`` constants in this module
-
-    The model fallback chain:
-      1. Per-agent ``summarization.model``
-      2. Global file ``model``
-      3. Agent's own provider (``default_provider``)
+    * ``mode == "coding"`` → :data:`CODING_SUMMARY_PROMPT` +
+      :data:`CODING_KEEP_LAST_ASSISTANTS` (0 — summarise everything).
+    * Anything else → :data:`CHAT_SUMMARY_PROMPT` +
+      :data:`DEFAULT_KEEP_LAST_ASSISTANTS`.
     """
-    if cfg is not None and not cfg.enabled:
-        return None
-
-    from app.agent.loader import load_summarization_file_config
-
-    file_cfg = load_summarization_file_config()
-
-    threshold = (
-        cfg.token_threshold
-        if cfg and cfg.token_threshold is not None
-        else (
-            file_cfg.token_threshold
-            if file_cfg and file_cfg.token_threshold is not None
-            else DEFAULT_PROMPT_TOKEN_THRESHOLD
-        )
-    )
-    if threshold <= 0:
-        return None
-
-    # Resolve provider: agent override → file override → agent's own provider
-    provider = default_provider
-    model_str = (
-        cfg.model
-        if cfg and cfg.model
-        else (file_cfg.model if file_cfg and file_cfg.model else None)
-    )
-    if model_str:
-        provider = build_provider(model_str)
-
-    # Prompt is required — sourced from the file body. No bundled fallback:
-    # we'd rather degrade to "no summarization, context window will fill up
-    # eventually" than silently produce summaries from a stale or wrong
-    # prompt the operator never saw. Both branches log a warning and return
-    # None so the caller skips installing the hook (mirroring
-    # ``build_title_generation_hook``'s contract).
-    if file_cfg is None:
-        logger.warning(
-            "summarization_disabled reason=config_missing path={} hint='copy "
-            "seed/summarization.md to this path or set per-agent "
-            "summarization.enabled=false to silence this warning'",
-            summarization_config_path(),
-        )
-        return None
-    if not file_cfg.prompt:
-        logger.warning(
-            "summarization_disabled reason=empty_prompt path={} hint='the "
-            "file body must contain the summariser system prompt'",
-            summarization_config_path(),
-        )
+    if DEFAULT_PROMPT_TOKEN_THRESHOLD <= 0:
         return None
 
     return SummarizationHook(
-        provider,
-        summary_prompt=file_cfg.prompt,
-        prompt_token_threshold=threshold,
-        keep_last_assistants=(
-            cfg.keep_last_assistants
-            if cfg and cfg.keep_last_assistants is not None
-            else (
-                file_cfg.keep_last_assistants
-                if file_cfg.keep_last_assistants is not None
-                else DEFAULT_KEEP_LAST_ASSISTANTS
-            )
-        ),
-        max_token_length=(
-            cfg.max_token_length
-            if cfg and cfg.max_token_length is not None
-            else (
-                file_cfg.max_token_length
-                if file_cfg.max_token_length is not None
-                else DEFAULT_MAX_TOKEN_LENGTH
-            )
-        ),
+        default_provider,
+        summary_prompt=prompt_for_mode(mode),
+        prompt_token_threshold=DEFAULT_PROMPT_TOKEN_THRESHOLD,
+        keep_last_assistants=keep_last_for_mode(mode),
+        max_token_length=DEFAULT_MAX_TOKEN_LENGTH,
     )
 
 
@@ -222,7 +277,9 @@ class SummarizationHook(BaseAgentHook):
         LLM provider used to generate the summary.
     summary_prompt:
         System prompt given to the summariser LLM. Required — must be
-        non-empty. Sourced from ``.openagentd/config/summarization.md`` body.
+        non-empty. ``build_summarization_hook`` selects this from
+        :data:`CHAT_SUMMARY_PROMPT` / :data:`CODING_SUMMARY_PROMPT` based
+        on the session mode.
     prompt_token_threshold:
         Trigger when ``state.usage.last_prompt_tokens`` meets or exceeds this
         value.  Set to ``0`` to disable.
@@ -251,8 +308,9 @@ class SummarizationHook(BaseAgentHook):
     ) -> None:
         if not summary_prompt or not summary_prompt.strip():
             raise ValueError(
-                "SummarizationHook requires a non-empty summary_prompt "
-                "(configure .openagentd/config/summarization.md)."
+                "SummarizationHook requires a non-empty summary_prompt — "
+                "pass one of the bundled constants (CHAT_SUMMARY_PROMPT / "
+                "CODING_SUMMARY_PROMPT) or use build_summarization_hook()."
             )
         self._llm_provider = llm_provider
         self._prompt_token_threshold = prompt_token_threshold
@@ -260,7 +318,8 @@ class SummarizationHook(BaseAgentHook):
         self._summary_prompt = summary_prompt
         self._max_token_length = max_token_length
         self._min_messages_since_last_summary = min_messages_since_last_summary
-        # Me track message count at last summarisation to enforce the minimum delta guard
+        # Snapshot of len(state.messages) at the last summarisation — used
+        # by the minimum-delta guard in before_model to prevent thrashing.
         self._messages_at_last_summary: int = 0
 
     @property
@@ -280,15 +339,14 @@ class SummarizationHook(BaseAgentHook):
         updated message window so the current LLM call sees the summary immediately.
         Returns ``None`` (pass-through) when summarisation does not fire.
         """
-        if self._prompt_token_threshold <= 0:
+        force = state.metadata.get("force_summarization") is True
+        if self._prompt_token_threshold <= 0 and not force:
             return None
 
-        if state.usage.last_prompt_tokens < self._prompt_token_threshold:
+        if state.usage.last_prompt_tokens < self._prompt_token_threshold and not force:
             return None
 
-        # Me enforce minimum message delta — skip if not enough new messages
-        # since the last summarisation to avoid thrashing.
-        if self._min_messages_since_last_summary > 0:
+        if self._min_messages_since_last_summary > 0 and not force:
             messages_since = len(state.messages) - self._messages_at_last_summary
             if (
                 self._messages_at_last_summary > 0
@@ -309,7 +367,8 @@ class SummarizationHook(BaseAgentHook):
         )
         await self._summarise(ctx, state)
 
-        # Me return updated request with fresh messages — loop no need to rebuild
+        # Return a fresh request so the current LLM call sees the summary
+        # immediately, without the loop needing to rebuild the message list.
         if request is not None:
             return request.override(messages=tuple(state.messages_for_llm))
         return None
@@ -344,11 +403,14 @@ class SummarizationHook(BaseAgentHook):
         self, ctx: "RunContext", state: "AgentState", span
     ) -> None:
         """Core summarisation logic, called inside the OTel span."""
-        # Me read from state.messages, not DB — skip SystemMessage (handled separately by agent)
+        # The agent loop injects SystemMessage separately per call, so it
+        # must never enter the summariser's view.
         eligible = [
             m
             for m in state.messages
-            if not m.exclude_from_context and not isinstance(m, SystemMessage)
+            if not m.exclude_from_context
+            and not isinstance(m, SystemMessage)
+            and not (m.extra and m.extra.get("hidden_from_summary"))
         ]
 
         if not eligible:
@@ -359,14 +421,18 @@ class SummarizationHook(BaseAgentHook):
             span.set_status(StatusCode.OK)
             return
 
-        # Me find cutoff: protect last N assistant turns.
-        # Walk backward, count assistant messages; cutoff is the index of the
-        # Nth-from-last assistant message.  All messages from cutoff onward are kept.
+        # Preserved messages (skill tool calls + their assistant pair) are
+        # neither summarised nor excluded — they stay in the live context
+        # so the agent keeps seeing the skill instructions.
+        preserved_ids = _collect_preserved_ids(state.messages)
+
         cutoff_idx = _find_assistant_cutoff(eligible, self._keep_last_assistants)
         if cutoff_idx > 0:
-            to_summarise = eligible[:cutoff_idx]
+            to_summarise = [
+                m for m in eligible[:cutoff_idx] if id(m) not in preserved_ids
+            ]
         else:
-            to_summarise = eligible
+            to_summarise = [m for m in eligible if id(m) not in preserved_ids]
 
         if not to_summarise:
             logger.debug(
@@ -377,14 +443,11 @@ class SummarizationHook(BaseAgentHook):
             span.set_status(StatusCode.OK)
             return
 
-        # Me build summariser call: System + HumanMessage(request + conversation).
-        # Embedding to_summarise as text inside one HumanMessage avoids role-alternation
-        # violations (ZAI/OpenAI reject system → assistant at position 0).
-        #
-        # Tool message content is replaced with a stub — the raw output (shell
-        # output, file contents, JSON blobs) is noise for summarisation purposes;
-        # the tool name is enough for the summariser to understand what happened.
-        # Prior summaries in the window signal a merge rather than a fresh summary.
+        # Embed to_summarise as text inside a single HumanMessage to avoid
+        # role-alternation violations (ZAI/OpenAI reject system → assistant
+        # at position 0). Tool message content is replaced with a stub —
+        # raw shell output / file contents / JSON blobs are noise for
+        # summarisation; the tool name alone is enough signal.
         has_prior_summary = any(m.is_summary for m in to_summarise)
 
         def _render(m) -> str:
@@ -405,9 +468,20 @@ class SummarizationHook(BaseAgentHook):
             "summarization.keep_last_assistants", self._keep_last_assistants
         )
         span.set_attribute("summarization.has_prior_summary", has_prior_summary)
+        span.set_attribute("summarization.preserved_messages", len(preserved_ids))
+
+        # SSE start/content/end drive the frontend "Session compacting"
+        # divider. session_id is None for headless/test runs — skip then.
+        agent_name = ctx.agent_name or ""
+        emit_session_id = ctx.session_id
+
+        on_delta: Callable[[str], Awaitable[None]] | None = None
+        if emit_session_id:
+            await self._emit_start(emit_session_id, agent_name)
+            on_delta = self._make_delta_emitter(emit_session_id, agent_name)
 
         try:
-            summary_text = await self._call_llm(summariser_messages)
+            summary_text = await self._call_llm(summariser_messages, on_delta=on_delta)
         except Exception as exc:
             logger.error(
                 "summarization_llm_failed session_id={} error={}",
@@ -416,6 +490,10 @@ class SummarizationHook(BaseAgentHook):
             )
             span.set_attribute("error.type", type(exc).__name__)
             span.set_status(StatusCode.ERROR, str(exc))
+            if emit_session_id:
+                await self._emit_end(
+                    emit_session_id, agent_name, summary="", error=True
+                )
             return
 
         if not summary_text:
@@ -426,44 +504,52 @@ class SummarizationHook(BaseAgentHook):
             )
             span.set_attribute("summarization.skipped", "empty_llm_response")
             span.set_status(StatusCode.OK)
+            if emit_session_id:
+                await self._emit_end(
+                    emit_session_id, agent_name, summary="", error=True
+                )
             return
 
-        # Me mark old messages as excluded — no DB write, just state mutation
         to_summarise_set = {id(m) for m in to_summarise}
         for m in state.messages:
             if id(m) in to_summarise_set:
                 m.exclude_from_context = True
 
-        # Me also exclude any prior summary messages in the kept window —
-        # the new summary supersedes them, and keeping old summaries can cause
+        # Exclude any prior summary still in the kept window — the new
+        # summary supersedes it, and two summaries in a row can produce
         # consecutive-assistant-message violations (ZAI code 1214).
         for m in state.messages:
             if m.is_summary and id(m) not in to_summarise_set:
                 m.exclude_from_context = True
 
-        # Me insert summary before first non-excluded message
         first_kept_idx = next(
             (i for i, m in enumerate(state.messages) if not m.exclude_from_context),
             len(state.messages),
         )
 
-        # Me always use HumanMessage as the summary anchor.
-        # ZAI (and most OpenAI-compat APIs) require system → user → ...
-        # A HumanMessage summary is safe regardless of what the kept window starts with.
+        # HumanMessage as the summary anchor: ZAI and most OpenAI-compat
+        # APIs require system → user → … so this shape is safe regardless
+        # of what the kept window starts with. The summary text itself is
+        # stored verbatim — no prefix — so it renders cleanly in the UI
+        # divider; the ``is_summary=True`` flag is the marker the LLM and
+        # the frontend both key off of.
         summary_msg = HumanMessage(
-            content="[Summary of earlier conversation]\n" + summary_text,
+            content=summary_text,
             is_summary=True,
         )
         state.messages.insert(first_kept_idx, summary_msg)
-        # Loop will call checkpointer.sync() after before_model phase
+        # checkpointer.sync() (called by the loop after before_model)
+        # persists the mutated state.messages.
 
-        # Me record current message count so the minimum-delta guard works next turn
         self._messages_at_last_summary = len(state.messages)
 
         kept = len(eligible) - len(to_summarise)
         span.set_attribute("summarization.summary_length", len(summary_text))
         span.set_attribute("summarization.kept", kept)
         span.set_status(StatusCode.OK)
+
+        if emit_session_id:
+            await self._emit_end(emit_session_id, agent_name, summary=summary_text)
 
         logger.info(
             "summarization_complete session_id={} agent={} "
@@ -476,12 +562,79 @@ class SummarizationHook(BaseAgentHook):
             len(summary_text),
         )
 
-    async def _call_llm(self, messages) -> str:
+    # ── SSE emission helpers ──────────────────────────────────────────────
+    # Imported lazily inside each helper to mirror title_service / member /
+    # checkpointer call sites and avoid pulling stream_store into modules
+    # that import this hook at startup (e.g. agent.loader).
+
+    async def _emit_start(self, session_id: str, agent: str) -> None:
+        from app.services import memory_stream_store as stream_store
+
+        try:
+            await stream_store.push_event(
+                session_id,
+                StreamEnvelope.from_event(SummarizationStartEvent(agent=agent)),
+            )
+        except Exception as exc:
+            logger.debug("summarization_emit_start_failed error={}", exc)
+
+    async def _emit_end(
+        self, session_id: str, agent: str, *, summary: str, error: bool = False
+    ) -> None:
+        from app.services import memory_stream_store as stream_store
+
+        try:
+            await stream_store.push_event(
+                session_id,
+                StreamEnvelope.from_event(
+                    SummarizationEndEvent(
+                        agent=agent,
+                        summary=summary,
+                        metadata={"error": True} if error else {},
+                    )
+                ),
+            )
+        except Exception as exc:
+            logger.debug("summarization_emit_end_failed error={}", exc)
+
+    def _make_delta_emitter(
+        self, session_id: str, agent: str
+    ) -> Callable[[str], Awaitable[None]]:
+        from app.services import memory_stream_store as stream_store
+
+        async def _emit(text: str) -> None:
+            try:
+                await stream_store.push_event(
+                    session_id,
+                    StreamEnvelope.from_event(
+                        SummarizationContentEvent(agent=agent, text=text)
+                    ),
+                )
+            except Exception as exc:
+                logger.debug("summarization_emit_content_failed error={}", exc)
+
+        return _emit
+
+    async def _call_llm(
+        self,
+        messages,
+        *,
+        on_delta: Callable[[str], Awaitable[None]] | None = None,
+    ) -> str:
         """Stream the summariser LLM and return the full text response.
 
-        Passes max_token_length to the LLM provider if set.
+        Passes max_token_length to the LLM provider if set. When ``on_delta``
+        is supplied each non-empty content chunk is forwarded to it — used
+        to publish ``summarization_content`` SSE events while the LLM is
+        still generating.
         """
-        kwargs = {}
+        # Summarisation never benefits from reasoning — the prompt asks for a
+        # direct, fact-preserving compression of the conversation. Reasoning
+        # tokens here add latency and cost without improving output quality.
+        # Force ``thinking_level="none"`` on the summariser call regardless of
+        # the agent's own ``thinking_level`` (the per-call kwarg wins over
+        # constructor ``model_kwargs`` via ``LLMProviderBase._merged_kwargs``).
+        kwargs: dict = {"thinking_level": "none"}
         if self._max_token_length > 0:
             kwargs["max_tokens"] = self._max_token_length
 
@@ -500,6 +653,8 @@ class SummarizationHook(BaseAgentHook):
                     delta = chunk.choices[0].delta
                     if delta.content:
                         full_text += delta.content
+                        if on_delta is not None:
+                            await on_delta(delta.content)
             except Exception as exc:
                 span.set_attribute("error.type", type(exc).__name__)
                 span.set_status(StatusCode.ERROR, str(exc))

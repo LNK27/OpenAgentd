@@ -195,3 +195,40 @@ class PermissionRepliedEvent(BaseModel):
     session_id: str
     reply: str  # "once" | "always" | "reject"
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SummarizationStartEvent(BaseModel):
+    """Context-window compaction (summarisation) has begun.
+
+    Emitted by :class:`~app.agent.hooks.summarization.SummarizationHook`
+    immediately before the summariser LLM call. The frontend renders a
+    "Session compacting" divider in the active agent pane while this
+    state holds.
+    """
+
+    type: Literal["summarization_start"] = "summarization_start"
+    agent: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SummarizationContentEvent(BaseModel):
+    """A streamed chunk of the summary text from the summariser LLM."""
+
+    type: Literal["summarization_content"] = "summarization_content"
+    agent: str
+    text: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SummarizationEndEvent(BaseModel):
+    """Compaction finished. ``summary`` carries the final summary text.
+
+    ``metadata.error`` is set to ``True`` when the summariser failed —
+    the frontend still transitions to "compacted" so the divider can
+    clear, but may surface the error state distinctly.
+    """
+
+    type: Literal["summarization_end"] = "summarization_end"
+    agent: str
+    summary: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)

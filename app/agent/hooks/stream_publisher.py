@@ -49,11 +49,16 @@ class StreamPublisherHook(BaseAgentHook):
     Args:
         session_id: The stream key suffix (team lead's session_id).
         agent_name: Name of the agent this hook is attached to.
+        publish_reasoning: When false, suppress live ``thinking`` events while
+            still allowing reasoning content to be assembled and persisted.
     """
 
-    def __init__(self, session_id: str, agent_name: str) -> None:
+    def __init__(
+        self, session_id: str, agent_name: str, *, publish_reasoning: bool = True
+    ) -> None:
         self._session_id = session_id
         self._agent_name = agent_name
+        self._publish_reasoning = publish_reasoning
         self._resolver = ToolIdResolver()
         # Me track per-turn usage for turn-total summary
         self._total_prompt = 0
@@ -112,7 +117,7 @@ class StreamPublisherHook(BaseAgentHook):
 
         delta = chunk.choices[0].delta
 
-        if delta.reasoning_content:
+        if self._publish_reasoning and delta.reasoning_content:
             await self._push(
                 ThinkingEvent(agent=self._agent_name, text=delta.reasoning_content)
             )

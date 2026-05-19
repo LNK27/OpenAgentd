@@ -144,7 +144,7 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
       <button
         type="button"
         onClick={() => hasDetails && setManualExpanded(!expanded)}
-        className={`group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-sm transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
+        className={`group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
           hasDetails
             ? 'cursor-pointer text-(--color-text) hover:text-(--color-accent)'
             : 'cursor-default'

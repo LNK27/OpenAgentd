@@ -12,7 +12,13 @@ import pytest
 
 from app.agent.state import AgentState, RunContext, UsageInfo
 from app.agent.hooks.summarization import SummarizationHook
-from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    FunctionCall,
+    HumanMessage,
+    ToolCall,
+    ToolMessage,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +77,24 @@ async def test_no_summarisation_below_threshold(mock_provider):
     await hook.before_model(ctx, state)
 
     mock_provider.stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_force_summarisation_ignores_threshold(mock_provider):
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1000,
+        keep_last_assistants=0,
+    )
+    ctx = _make_ctx()
+    state = _make_state(last_prompt_tokens=0)
+    state.metadata["force_summarization"] = True
+
+    await hook.before_model(ctx, state)
+
+    assert mock_provider.stream.called
+    assert any(m.is_summary for m in state.messages)
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +272,28 @@ async def test_no_llm_call_when_no_visible_messages(mock_provider):
     msg.exclude_from_context = True
     state = AgentState(
         messages=[msg],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    await hook.before_model(ctx, state)
+
+    mock_provider.stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_hidden_from_summary_messages_are_not_summarised(mock_provider):
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+    )
+    ctx = _make_ctx()
+    directive = HumanMessage(
+        content="continue directive",
+        extra={"hidden_from_summary": True},
+    )
+    state = AgentState(
+        messages=[directive],
         usage=UsageInfo(last_prompt_tokens=9999),
     )
 
@@ -520,9 +566,20 @@ async def test_max_token_length_zero_disables_limit():
     assert "max_tokens" not in call_kwargs
 
 
+# ---------------------------------------------------------------------------
+# thinking_level — always forced to "none" on the summariser call
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_max_token_length_default_value():
-    """SummarizationHook should default max_token_length to 10000."""
+async def test_summariser_call_always_passes_thinking_level_none():
+    """Summarisation never benefits from reasoning — the hook must override
+    the agent's primary ``thinking_level`` with ``"none"`` on every call so
+    reasoning tokens are not spent (cost + latency + streaming behaviour).
+
+    The per-call kwarg wins over constructor ``model_kwargs`` thanks to
+    ``LLMProviderBase._merged_kwargs`` — see ``app/agent/providers/base.py``.
+    """
     provider = MagicMock()
 
     async def _stream(*_, **__):
@@ -539,9 +596,7 @@ async def test_max_token_length_default_value():
         summary_prompt="test summary prompt",
         prompt_token_threshold=1000,
         keep_last_assistants=1,
-        # max_token_length not specified — should use default
     )
-
     ctx = _make_ctx()
     state = AgentState(
         messages=[
@@ -555,10 +610,9 @@ async def test_max_token_length_default_value():
 
     await hook.before_model(ctx, state)
 
-    # Me check provider.stream was called with default max_tokens=10000
     provider.stream.assert_called_once()
     call_kwargs = provider.stream.call_args[1]
-    assert call_kwargs.get("max_tokens") == 10000
+    assert call_kwargs.get("thinking_level") == "none"
 
 
 # ---------------------------------------------------------------------------
@@ -1146,3 +1200,103 @@ async def test_assistant_with_none_content_renders_as_empty_string(mock_provider
 
     assert "None" not in convo_blob, "'None' must not appear in summariser input"
     assert "[assistant]:" in convo_blob
+
+
+# ---------------------------------------------------------------------------
+# Skill tool preservation — skill call/result pairs survive summarisation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_skill_tool_messages_preserved_through_summarisation(mock_provider):
+    """``ToolMessage(name='skill')`` and its paired ``AssistantMessage`` must:
+
+    1. Be filtered out of the summariser LLM input (no skill body sent to the LLM).
+    2. Remain in ``state.messages`` with ``exclude_from_context=False`` so the
+       agent keeps seeing the skill instructions on subsequent turns.
+
+    A non-skill tool pair sitting next to it should be summarised normally.
+    """
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        keep_last_assistants=0,
+    )
+    ctx = _make_ctx()
+
+    skill_asst = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_skill_1",
+                function=FunctionCall(name="skill", arguments='{"name":"guidelines"}'),
+            )
+        ],
+    )
+    skill_result = ToolMessage(
+        tool_call_id="call_skill_1",
+        name="skill",
+        content="# Guidelines\nLong skill instructions body...",
+    )
+    other_asst = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_shell_1",
+                function=FunctionCall(name="shell", arguments='{"cmd":"ls"}'),
+            )
+        ],
+    )
+    other_result = ToolMessage(
+        tool_call_id="call_shell_1",
+        name="shell",
+        content="file1.txt\nfile2.txt",
+    )
+
+    state = AgentState(
+        messages=[
+            HumanMessage(content="load skill"),
+            skill_asst,
+            skill_result,
+            HumanMessage(content="now list files"),
+            other_asst,
+            other_result,
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    captured: list = []
+
+    async def _capturing_stream(messages, **__):
+        captured.extend(messages)
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Summary."
+        chunk.usage = None
+        yield chunk
+
+    mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
+
+    await hook.before_model(ctx, state)
+
+    # 1) Skill body must not appear in summariser input.
+    human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
+    convo_blob = " ".join(m.content or "" for m in human_msgs)
+    assert "Long skill instructions body" not in convo_blob
+    assert "skill" not in convo_blob.lower() or "[tool/skill]" not in convo_blob
+    # Non-skill tool call should still be summarised (its assistant turn appears).
+    assert "[assistant]:" in convo_blob
+
+    # 2) Skill messages stay visible in state — not excluded.
+    assert skill_asst.exclude_from_context is False
+    assert skill_result.exclude_from_context is False
+
+    # 3) Other (non-skill) messages got excluded as part of summarisation.
+    assert other_asst.exclude_from_context is True
+    assert other_result.exclude_from_context is True
+
+    # 4) Summary was inserted.
+    summaries = [m for m in state.messages if m.is_summary]
+    assert len(summaries) == 1
+    assert summaries[0].content == "Summary."

@@ -80,7 +80,6 @@ Tokens are cached at `{OPENAGENTD_CACHE_DIR}/copilot_oauth.json` and `{OPENAGENT
 
 Summarization thresholds, title-generation timeout, tool-result offload sizes, and sandbox limits are module-level constants in their respective service modules — **not** environment variables. Override them through the file-based / per-agent config surfaces described in:
 
-- `{OPENAGENTD_CONFIG_DIR}/summarization.md` — see [`agent/summarization.md`](../agent/summarization.md).
 - `{OPENAGENTD_CONFIG_DIR}/title_generation.md` — see [`title-generation.md`](../title-generation.md).
 - Per-agent `.md` frontmatter — see [`agents.md`](./agents.md).
 

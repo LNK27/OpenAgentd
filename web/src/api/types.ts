@@ -68,6 +68,7 @@ export interface WorkspaceGitDiffResponse {
   workspace: string
   is_git_repo: boolean
   diff: string
+  untracked?: string[]
   truncated?: boolean
 }
 
@@ -127,6 +128,7 @@ export interface SessionResponse {
   id: string
   title: string | null
   agent_name: string | null
+  revert?: { message_id?: string } | null
   created_at: string | null
   updated_at: string | null
   scheduled_task_name?: string | null
@@ -184,6 +186,9 @@ export type SSEEventType =
   | 'agent_status'
   | 'inbox'
   | 'title_update'
+  | 'summarization_start'
+  | 'summarization_content'
+  | 'summarization_end'
 
 export interface SSEEvent {
   type: SSEEventType
@@ -193,7 +198,7 @@ export interface SSEEvent {
 // Content Block Types
 export interface ContentBlock {
   id: string
-  type: 'thinking' | 'tool' | 'text' | 'user'
+  type: 'thinking' | 'tool' | 'text' | 'user' | 'compaction'
   content: string
   toolName?: string
   toolArgs?: string
@@ -201,7 +206,10 @@ export interface ContentBlock {
   toolCallId?: string   // for matching tool results
   toolOutput?: string   // live output streamed before tool_end
   toolResult?: string   // the role:"tool" response content
-  /** Extra metadata from DB — inbox messages carry from_agent, to_agent, etc. */
+  /** Variant-specific metadata. ``user`` inbox blocks carry ``from_agent``;
+   *  ``compaction`` blocks carry ``state: 'compacting' | 'compacted'`` and
+   *  optional ``error: true``. Keeping this generic avoids one typed field
+   *  per block variant. */
   extra?: Record<string, unknown> | null
   /** Timestamp when block was created (for team mode display) */
   timestamp?: Date
@@ -361,6 +369,13 @@ export interface CommandListResponse {
 export interface CommandRenderResponse {
   name: string
   content: string
+}
+
+export interface TeamCommandResponse {
+  status: string
+  session_id: string
+  command: 'continue' | 'compact' | 'undo' | 'redo'
+  message?: MessageResponse
 }
 
 // ── Registry (dropdown catalog) ─────────────────────────────────────────────

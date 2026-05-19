@@ -48,7 +48,6 @@ agent = Agent(
 | `model_id` | `None` | `"provider:model"` string used for capability lookup (`get_capabilities`) and logs |
 | `fallback_provider` | `None` | Secondary `LLMProviderBase` used when primary exhausts retries on retryable errors |
 | `fallback_model_id` | `None` | `"provider:model"` string for logging (e.g. `"copilot:gpt-5-mini"`) |
-| `summarization_config` | `None` | `SummarizationConfig` from YAML; read by `build_summarization_hook` to wire `SummarizationHook` per turn |
 
 ---
 

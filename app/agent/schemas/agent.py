@@ -4,43 +4,6 @@ from uuid import UUID, uuid7
 from pydantic import BaseModel, Field, model_validator
 
 
-class SummarizationConfig(BaseModel):
-    """Per-agent summarization overrides.
-
-    Any field left as ``None`` falls back to the global file config
-    (``.openagentd/config/summarization.md``) and then to the module-level
-    ``DEFAULT_*`` constants in ``app.agent.hooks.summarization``.
-    Set ``enabled: false`` to disable summarization for this agent entirely.
-    """
-
-    enabled: bool = True
-    # Overrides file config / DEFAULT_PROMPT_TOKEN_THRESHOLD.
-    token_threshold: int | None = None
-    # Overrides file config / DEFAULT_KEEP_LAST_ASSISTANTS.
-    keep_last_assistants: int | None = None
-    # Overrides file config / DEFAULT_MAX_TOKEN_LENGTH.
-    max_token_length: int | None = None
-    model: str | None = None  # optional separate summarizer model (provider:model)
-
-
-class SummarizationFileConfig(BaseModel):
-    """Global summarization defaults loaded from ``.openagentd/config/summarization.md``.
-
-    All fields are optional; missing fields fall back to the module-level
-    ``DEFAULT_*`` constants in ``app.agent.hooks.summarization``.  The file
-    uses YAML frontmatter; the Markdown body (after the closing ``---``)
-    becomes the summariser system prompt when non-empty.
-    """
-
-    model: str | None = None  # global default summarizer model (provider:model)
-    token_threshold: int | None = None
-    keep_last_assistants: int | None = None
-    max_token_length: int | None = None
-    # Populated from the file body by the loader — not a YAML frontmatter field.
-    # ``None`` means "body was empty, use the bundled default prompt".
-    prompt: str | None = None
-
-
 class TitleGenerationFileConfig(BaseModel):
     """Global title-generation defaults loaded from ``.openagentd/config/title_generation.md``.
 

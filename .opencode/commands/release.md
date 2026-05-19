@@ -88,18 +88,26 @@ git log ${PREV_TAG}..HEAD --oneline --no-merges
 
 - Skip commits unrelated to this branch's user-facing work (e.g. earlier docs-only commits that landed on `main` separately).
 - Tight, user-facing notes.
-- Aim under ~150 words total.
+- Prefer detailed bullets for `## What's changed`; one bullet per user-visible capability, fix, or behavior change.
+- Inspect commit details, not just commit subjects, before drafting bullets:
+
+  ```bash
+  git show --stat --oneline <commit>...
+  git show --name-only --format=fuller <commit>
+  ```
+
+- Group related commits into a single bullet when they ship one visible outcome, but split distinct outcomes even if they landed in the same area.
 - Skip version-bump commits.
 - Treat commit subjects as raw material.
 - Paraphrase; do not transcribe.
 - Lead with user-visible behavior change.
 - Avoid internals unless required to explain a fix.
-- Bullet list is fine when the release ships several distinct fixes; otherwise prefer one short paragraph.
+- Keep each bullet concise; include enough detail that users can tell what changed without reading the changelog.
 
 Sections:
 
 - `## Breaking Changes`: only if migration required.
-- `## What's changed`: main narrative, user-noticeable changes.
+- `## What's changed`: bullet list of user-noticeable changes, grouped by outcome.
 - `## Upgrade`: only if users need action; be specific.
 - `## Install`: structure by install **surface**, not by chronology. One labelled block per channel — desktop, CLI, Docker — so a reader picks their channel and stops. Confirm against the previous release before publishing:
 

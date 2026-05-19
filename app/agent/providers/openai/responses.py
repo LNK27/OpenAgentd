@@ -225,7 +225,12 @@ class ResponsesHandler:
 
         return AssistantMessage(
             content="\n".join(content_parts) if content_parts else None,
-            reasoning_content="\n".join(reasoning_parts) if reasoning_parts else None,
+            # Me: reasoning parts each carry their own bold header
+            # (``**Title**``) and must be separated by a blank line, not a
+            # single newline, or successive headers collide with prior prose.
+            reasoning_content=(
+                "\n\n".join(reasoning_parts) if reasoning_parts else None
+            ),
             tool_calls=tool_calls if tool_calls else None,
         )
 
@@ -290,6 +295,15 @@ class ResponsesHandler:
         current_tool_call_index = -1
         tool_call_map: dict[str, int] = {}  # item_id -> index
         tool_names: dict[str, str] = {}  # item_id -> function_name
+        # Me: OpenAI's /responses API emits reasoning as multiple
+        # ``summary_part`` items per response. Each part starts with its
+        # own bold header (``**Title**``) and its deltas carry NO separator
+        # from the previous part. Without help, the agent loop's
+        # ``reasoning += delta`` concatenation glues part N's header onto
+        # part N-1's trailing prose ("…essential redesign.**Title**\n\n…").
+        # Track part boundaries via ``reasoning_summary_part.added`` and
+        # inject a blank line before every part except the first.
+        reasoning_parts_seen = 0
 
         async for line in response.aiter_lines():
             line = line.strip()
@@ -320,6 +334,25 @@ class ResponsesHandler:
                     fn_name = item.get("name", "")
                     if fn_name:
                         tool_names[item_id] = fn_name
+
+            elif etype == "response.reasoning_summary_part.added":
+                # Boundary marker: a new reasoning section is starting.
+                # Emit a blank-line separator delta before its text deltas
+                # (except for the first part, which needs no prefix).
+                reasoning_parts_seen += 1
+                if reasoning_parts_seen > 1:
+                    yield ChatCompletionChunk(
+                        id=response_id,
+                        created=int(time.time()),
+                        model=self.model,
+                        choices=[
+                            ChatCompletionChunkChoice(
+                                index=0,
+                                delta=ChatCompletionDelta(reasoning_content="\n\n"),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
 
             elif etype == "response.reasoning_summary_text.delta":
                 delta_text = event.get("delta", "")

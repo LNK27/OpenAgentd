@@ -8,7 +8,7 @@
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
 import { useState, type ReactNode } from 'react'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, Play } from 'lucide-react'
 import { formatTime, lastTurnText } from '@/utils/format'
 import type { ContentBlock } from '@/api/types'
 
@@ -17,16 +17,19 @@ export interface AssistantTurnFooterProps {
   turnBlocks: ContentBlock[]
   /** Visual density: 'compact' for narrow panes, 'roomy' for the wide view. */
   size?: 'compact' | 'roomy'
+  /** Continue from this assistant turn. Only passed for the trailing lead turn. */
+  onContinue?: () => void
 }
 
-export function AssistantTurnFooter({ turnBlocks, size = 'compact' }: AssistantTurnFooterProps) {
+export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   // Me lastTurnText walks back to the previous user block; pass the turn directly
   const textContent = lastTurnText(turnBlocks)
   const lastBlock = turnBlocks[turnBlocks.length - 1]
   const timestamp = lastBlock?.timestamp
+  const canContinue = Boolean(onContinue && (textContent || turnBlocks.some((b) => b.type === 'tool')))
 
-  if (!textContent && !timestamp) return null
+  if (!textContent && !timestamp && !canContinue) return null
 
   const handleCopy = async () => {
     try {
@@ -51,6 +54,16 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact' }: AssistantT
           {copied
             ? <Check size={iconSize} className="text-(--color-success)" />
             : <Copy size={iconSize} />}
+        </button>
+      )}
+      {canContinue && onContinue && (
+        <button
+          onClick={onContinue}
+          className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+          aria-label="Continue response"
+          title="Continue"
+        >
+          <Play size={iconSize} />
         </button>
       )}
       {timestamp && <span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>}
@@ -78,6 +91,8 @@ export interface AssistantTurnProps {
   renderBlock: (args: { block: ContentBlock; isStreaming: boolean; isLast: boolean }) => ReactNode
   /** Footer density. */
   size?: 'compact' | 'roomy'
+  /** Continue from this turn when it is the trailing finalized lead turn. */
+  onContinue?: () => void
 }
 
 export function AssistantTurn({
@@ -89,8 +104,10 @@ export function AssistantTurn({
   totalBlocks,
   renderBlock,
   size = 'compact',
+  onContinue,
 }: AssistantTurnProps) {
   const turnIsStreaming = isWorking && isTrailingTurn
+  const canContinue = isTrailingTurn && !isWorking ? onContinue : undefined
 
   return (
     <div className="space-y-2">
@@ -107,7 +124,7 @@ export function AssistantTurn({
           </div>
         )
       })}
-      {!turnIsStreaming && <AssistantTurnFooter turnBlocks={blocks} size={size} />}
+      {!turnIsStreaming && <AssistantTurnFooter turnBlocks={blocks} size={size} onContinue={canContinue} />}
     </div>
   )
 }

@@ -56,6 +56,43 @@ describe("CommandPalette", () => {
     expect(dialog?.getAttribute("aria-modal")).toBe("true")
   })
 
+  it("traps focus inside the dialog and restores it on close", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <>
+        <button type="button">Before palette</button>
+        <button type="button">After palette</button>
+      </>,
+    )
+
+    const beforeButton = screen.getByRole("button", { name: "Before palette" })
+    beforeButton.focus()
+    expect(document.activeElement).toBe(beforeButton)
+
+    rerender(
+      <>
+        <button type="button">Before palette</button>
+        <CommandPalette
+          commands={makeCommands()}
+          onClose={() => {
+            rerender(<button type="button">Before palette</button>)
+          }}
+        />
+        <button type="button">After palette</button>
+      </>,
+    )
+
+    const input = screen.getByPlaceholderText("Search commands…")
+    expect(document.activeElement).toBe(input)
+
+    await user.keyboard("{Shift>}{Tab}{/Shift}")
+    expect((document.activeElement as HTMLElement).closest("[role='dialog']")).toBeTruthy()
+    expect(document.activeElement?.textContent).not.toBe("After palette")
+
+    await user.keyboard("{Escape}")
+    expect(document.activeElement?.textContent).toBe("Before palette")
+  })
+
   // ── search filtering ────────────────────────────────────────────────────────
 
   it("filters commands by label query", async () => {

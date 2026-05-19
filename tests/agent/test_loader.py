@@ -682,40 +682,9 @@ def test_load_team_parse_error_raises(tmp_path):
         load_team_from_dir(d, provider_factory=factory)
 
 
-def test_load_team_summarization_config(tmp_path):
-    from app.agent.loader import load_team_from_dir
-
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {"name": "lead", "role": "lead", "model": "zai:glm-5-turbo"},
-            {
-                "name": "worker",
-                "role": "member",
-                "model": "zai:glm-5-turbo",
-                "summarization": {
-                    "enabled": True,
-                    "token_threshold": 50000,
-                    "keep_last_assistants": 1,
-                    "model": "zai:glm-4",
-                },
-            },
-        ],
-    )
-    factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    # Members are lazy: rebuild from the blueprint source to inspect the
-    # summarization config that would apply when the member is spawned.
-    from app.agent.loader import rebuild_agent_from_disk
-
-    worker_agent = rebuild_agent_from_disk(
-        team.blueprints["worker"].source_path, provider_factory=factory
-    )
-    worker_sc = worker_agent.summarization_config
-    assert worker_sc is not None
-    assert worker_sc.token_threshold == 50000
-    assert worker_sc.model == "zai:glm-4"
+# Per-agent summarization config has been removed — see
+# app/agent/hooks/summarization.py for the module-level defaults that now
+# apply uniformly to all agents.
 
 
 # ---------------------------------------------------------------------------

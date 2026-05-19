@@ -35,17 +35,17 @@
 
 ## What you get
 
-**A cockpit, not a chat box.** Command palette (Ctrl+P), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back.
+**A cockpit, not a chat box.** Command palette (Ctrl+P), slash commands (`/continue`, `/compact`, `/undo`, `/redo`), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back.
 
 ![Tool call inspector — arguments, execution status, and results](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/tool-call-inspector.png)
 
 **Agents that can actually do things.** Read and write files, run shell commands, search the web, generate images and video, manage todos, schedule tasks. Add more via a skill `.md` or any MCP server.
 
-**A workspace the agent shares with you.** Every file the agent touches shows up in a side panel — browse, preview, download. In `/coding`, open a server-local project folder and review the live file tree plus current git diff from the same drawer.
+**A workspace the agent shares with you.** Every file the agent touches shows up in a side panel — browse, preview, download. In `/coding`, open a server-local project folder and review the live file tree plus current git diff, including untracked files, from the same drawer.
 
 **Persistent memory you can edit.** Karpathy-style wiki: `USER.md` is injected into every prompt, session notes feed the dream agent, and durable knowledge is organized into sources, topics, entities, and comparisons. Browse and edit it from the Wiki panel.
 
-**Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view — or switch to a single unified view.
+**Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view, resume interrupted work with `/continue`, or switch to a single unified view.
 
 **Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/executor`, `coding/explorer`, `coding/consultant`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works.
 
@@ -163,7 +163,7 @@ Set a `fallback_model` in your agent config for automatic failover on rate limit
 
 | Category | Tools |
 |---|---|
-| Filesystem | `read`, `write`, `edit`, `ls`, `glob`, `grep`, `rm` |
+| Filesystem | `read`, `write`, `edit`, `patch`, `ls`, `glob`, `grep`, `rm` |
 | Shell | `shell`, `bg` (background processes) |
 | Web | `web_search`, `web_fetch` |
 | Memory | `wiki_search`, `note` |
@@ -213,9 +213,6 @@ skills:
   - web-research
 mcp:
   - context7
-summarization:
-  token_threshold: 80000
-  keep_last_assistants: 2
 ---
 
 System prompt goes here.
@@ -289,7 +286,7 @@ Included skills:
 
 | Skill | Purpose |
 |---|---|
-| `self-healing` | Agent edits its own config (model, tools, skills, summarization thresholds) |
+| `self-healing` | Agent edits its own config (model, tools, skills) |
 | `mcp-installer` | Install new MCP servers from the UI or by description |
 | `skill-installer` | Install new skills from a URL or from scratch |
 | `plugin-installer` | Install agent plugins |

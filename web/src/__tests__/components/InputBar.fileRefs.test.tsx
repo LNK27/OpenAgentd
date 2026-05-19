@@ -512,6 +512,25 @@ describe("InputBar — @-mention picker", () => {
     expect(textarea.value).toBe("@sr")
   })
 
+  it("wires the active file mention option to the textarea", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "@sr")
+
+    const listbox = screen.getByRole("listbox", { name: "Reference workspace file" })
+    const options = screen.getAllByRole("option")
+
+    expect(textarea.getAttribute("aria-expanded")).toBe("true")
+    expect(textarea.getAttribute("aria-controls")).toBe(listbox.id)
+    expect(textarea.getAttribute("aria-activedescendant")).toBe(options[0].id)
+    expect(options[0].getAttribute("aria-selected")).toBe("true")
+
+    await user.keyboard("{ArrowDown}")
+    expect(textarea.getAttribute("aria-activedescendant")).toBe(options[1].id)
+  })
+
   it("does nothing when fileRefs is empty", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} fileRefs={[]} />)

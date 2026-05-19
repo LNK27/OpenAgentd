@@ -920,6 +920,154 @@ class TestAttach:
 
 
 # ---------------------------------------------------------------------------
+# summarization (start/content/end) push + replay
+# ---------------------------------------------------------------------------
+
+
+class TestSummarizationPushAndReplay:
+    @pytest.mark.asyncio
+    async def test_start_initialises_per_agent_entry(self):
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts("summarization_start", {"agent": "lead"}),
+        )
+        assert _turns["sid-1"].summarization == {
+            "lead": {"text": "", "done": False, "error": False}
+        }
+
+    @pytest.mark.asyncio
+    async def test_content_appends_text(self):
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts("summarization_start", {"agent": "lead"}),
+        )
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "summarization_content", {"agent": "lead", "text": "Hello "}
+            ),
+        )
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "summarization_content", {"agent": "lead", "text": "world."}
+            ),
+        )
+        assert _turns["sid-1"].summarization["lead"]["text"] == "Hello world."
+
+    @pytest.mark.asyncio
+    async def test_end_marks_done_and_overrides_text(self):
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts("summarization_start", {"agent": "lead"}),
+        )
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "summarization_content", {"agent": "lead", "text": "partial"}
+            ),
+        )
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "summarization_end",
+                {"agent": "lead", "summary": "final summary"},
+            ),
+        )
+        entry = _turns["sid-1"].summarization["lead"]
+        assert entry["done"] is True
+        assert entry["error"] is False
+        assert entry["text"] == "final summary"
+
+    @pytest.mark.asyncio
+    async def test_end_error_flag_is_recorded(self):
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "summarization_end",
+                {
+                    "agent": "lead",
+                    "summary": "",
+                    "metadata": {"error": True},
+                },
+            ),
+        )
+        entry = _turns["sid-1"].summarization["lead"]
+        assert entry["done"] is True
+        assert entry["error"] is True
+
+    @pytest.mark.asyncio
+    async def test_attach_replays_in_flight_compaction(self):
+        """Reconnect mid-compaction: start + content (no end yet)."""
+        await store.init_turn("sid-1")
+        _turns["sid-1"].summarization = {
+            "lead": {"text": "half summary", "done": False, "error": False}
+        }
+
+        async def _mark_done():
+            await asyncio.sleep(0.05)
+            await store.mark_done("sid-1")
+
+        task = asyncio.create_task(_mark_done())
+        events = [e async for e in store.attach("sid-1")]
+        await task
+
+        types = [e["event"] for e in events]
+        assert "summarization_start" in types
+        assert "summarization_content" in types
+        assert "summarization_end" not in types
+        content = next(e for e in events if e["event"] == "summarization_content")
+        assert json.loads(content["data"])["text"] == "half summary"
+
+    @pytest.mark.asyncio
+    async def test_attach_replays_completed_compaction(self):
+        """Reconnect after compaction finished: start + end (no live content)."""
+        await store.init_turn("sid-1")
+        _turns["sid-1"].summarization = {
+            "lead": {"text": "the final summary", "done": True, "error": False}
+        }
+
+        async def _mark_done():
+            await asyncio.sleep(0.05)
+            await store.mark_done("sid-1")
+
+        task = asyncio.create_task(_mark_done())
+        events = [e async for e in store.attach("sid-1")]
+        await task
+
+        types = [e["event"] for e in events]
+        assert "summarization_start" in types
+        # No live content replay when already done — end carries the full text.
+        assert "summarization_content" not in types
+        end = next(e for e in events if e["event"] == "summarization_end")
+        end_data = json.loads(end["data"])
+        assert end_data["summary"] == "the final summary"
+        assert end_data.get("metadata", {}).get("error") is not True
+
+    @pytest.mark.asyncio
+    async def test_attach_replays_failed_compaction_with_error_flag(self):
+        await store.init_turn("sid-1")
+        _turns["sid-1"].summarization = {
+            "lead": {"text": "", "done": True, "error": True}
+        }
+
+        async def _mark_done():
+            await asyncio.sleep(0.05)
+            await store.mark_done("sid-1")
+
+        task = asyncio.create_task(_mark_done())
+        events = [e async for e in store.attach("sid-1")]
+        await task
+
+        end = next(e for e in events if e["event"] == "summarization_end")
+        assert json.loads(end["data"])["metadata"]["error"] is True
+
+
+# ---------------------------------------------------------------------------
 # close
 # ---------------------------------------------------------------------------
 

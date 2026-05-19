@@ -11,7 +11,7 @@ import pytest
 
 from app.agent.mode.team.mailbox import TeamMailbox
 from app.agent.mode.team.member import (
-    _append_interrupted_to_last_assistant,
+    _mark_last_assistant_interrupted,
     TeamMember,
 )
 from tests.agent.mode.team.conftest import MockTeamProvider
@@ -34,28 +34,42 @@ def _make_db_factory(msg=None):
 
 
 # ---------------------------------------------------------------------------
-# _append_interrupted_to_last_assistant (lines 31-53)
+# _mark_last_assistant_interrupted
 # ---------------------------------------------------------------------------
 
 
-class TestAppendInterrupted:
+class TestMarkLastAssistantInterrupted:
     @pytest.mark.asyncio
-    async def test_appends_interrupted_suffix_when_message_exists(self):
+    async def test_sets_interrupted_flag_in_extra(self):
         msg = MagicMock()
         msg.content = "I was working on it"
+        msg.extra = None
         factory, mock_db = _make_db_factory(msg=msg)
 
-        await _append_interrupted_to_last_assistant(factory, uuid.uuid7())
+        await _mark_last_assistant_interrupted(factory, uuid.uuid7())
 
-        assert msg.content == "I was working on it [interrupted]"
+        # Content is untouched — flag rides on extra so the LLM never sees it.
+        assert msg.content == "I was working on it"
+        assert msg.extra == {"interrupted": True}
         mock_db.add.assert_called_once_with(msg)
         mock_db.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_merges_into_existing_extra(self):
+        msg = MagicMock()
+        msg.content = "partial"
+        msg.extra = {"usage": {"input": 100}}
+        factory, _ = _make_db_factory(msg=msg)
+
+        await _mark_last_assistant_interrupted(factory, uuid.uuid7())
+
+        assert msg.extra == {"usage": {"input": 100}, "interrupted": True}
 
     @pytest.mark.asyncio
     async def test_noop_when_no_assistant_message(self):
         factory, mock_db = _make_db_factory(msg=None)
 
-        await _append_interrupted_to_last_assistant(factory, uuid.uuid7())
+        await _mark_last_assistant_interrupted(factory, uuid.uuid7())
 
         mock_db.add.assert_not_called()
         mock_db.commit.assert_not_awaited()
@@ -67,17 +81,7 @@ class TestAppendInterrupted:
             raise RuntimeError("DB error")
             yield  # noqa: RET504
 
-        await _append_interrupted_to_last_assistant(bad_factory, uuid.uuid7())
-
-    @pytest.mark.asyncio
-    async def test_handles_none_content(self):
-        msg = MagicMock()
-        msg.content = None
-        factory, mock_db = _make_db_factory(msg=msg)
-
-        await _append_interrupted_to_last_assistant(factory, uuid.uuid7())
-
-        assert msg.content == " [interrupted]"
+        await _mark_last_assistant_interrupted(bad_factory, uuid.uuid7())
 
 
 # ---------------------------------------------------------------------------

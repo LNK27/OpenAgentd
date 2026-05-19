@@ -273,7 +273,11 @@ class TestTeamHistoryWithData:
         assert member["name"] == "worker"
 
     @pytest.mark.asyncio
-    async def test_history_excludes_summary_messages(self, app_with_team):
+    async def test_history_includes_summary_messages(self, app_with_team):
+        """Summary rows (``is_summary=True``) must be returned by the history
+        endpoint so the frontend can render the inline "Session compacted"
+        divider — both at stream time and on subsequent page reloads.
+        """
         import app.core.db as _db
 
         lead_id = uuid.uuid7()
@@ -284,8 +288,8 @@ class TestTeamHistoryWithData:
                 await _add_message(
                     db,
                     lead_id,
-                    role="assistant",
-                    content="hidden summary",
+                    role="user",
+                    content="compacted summary body",
                     is_summary=True,
                 )
 
@@ -293,9 +297,64 @@ class TestTeamHistoryWithData:
         resp = client.get(f"/api/team/{lead_id}/history")
         data = resp.json()
 
-        contents = [m["content"] for m in data["lead"]["messages"]]
+        msgs = data["lead"]["messages"]
+        contents = [m["content"] for m in msgs]
         assert "visible" in contents
-        assert "hidden summary" not in contents
+        assert "compacted summary body" in contents
+        summary_msg = next(m for m in msgs if m["content"] == "compacted summary body")
+        assert summary_msg["is_summary"] is True
+
+    @pytest.mark.asyncio
+    async def test_history_excludes_reasoning_for_continuation_rows(
+        self, app_with_team
+    ):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+                await _add_message(
+                    db,
+                    lead_id,
+                    role="assistant",
+                    content="continued answer",
+                    reasoning_content="hidden thinking",
+                    extra={"is_continuation": True},
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.get(f"/api/team/{lead_id}/history")
+        data = resp.json()
+
+        msg = data["lead"]["messages"][0]
+        assert msg["content"] == "continued answer"
+        assert "reasoning_content" not in msg
+        assert msg["extra"] == {"is_continuation": True}
+
+    @pytest.mark.asyncio
+    async def test_history_excludes_hidden_from_user_rows(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+                await _add_message(db, lead_id, role="user", content="visible")
+                await _add_message(
+                    db,
+                    lead_id,
+                    role="user",
+                    content="hidden directive",
+                    extra={"hidden_from_user": True},
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.get(f"/api/team/{lead_id}/history")
+        data = resp.json()
+
+        contents = [m["content"] for m in data["lead"]["messages"]]
+        assert contents == ["visible"]
 
     @pytest.mark.asyncio
     async def test_history_no_sub_sessions_returns_empty_members(self, app_with_team):

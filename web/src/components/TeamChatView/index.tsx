@@ -62,7 +62,7 @@ import type { AgentStream } from '@/stores/useTeamStore'
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { type InputBarHandle, type SlashCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
-import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
+import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
@@ -73,6 +73,18 @@ interface TeamChatViewProps {
   sessionId?: string
   mode?: 'normal' | 'coding'
   workspace?: string | null
+}
+
+async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
+  if (!att.url) return null
+  const res = await fetch(att.url)
+  if (!res.ok) return null
+  const blob = await res.blob()
+  return new File(
+    [blob],
+    att.original_name ?? att.filename ?? 'attachment',
+    { type: att.media_type ?? blob.type },
+  )
 }
 
 export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: TeamChatViewProps) {
@@ -109,6 +121,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const loadTeamStatus = useTeamStore((s) => s.loadTeamStatus)
   const loadSession    = useTeamStore((s) => s.loadSession)
   const sendMessage    = useTeamStore((s) => s.sendMessage)
+  const continueTeam   = useTeamStore((s) => s.continueTeam)
   const newSession     = useTeamStore((s) => s.newSession)
   const cycleActiveAgent = useTeamStore((s) => s.cycleActiveAgent)
   const setActiveAgent   = useTeamStore((s) => s.setActiveAgent)
@@ -122,6 +135,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const agentStreams   = useTeamStore((s) => s.agentStreams)
   const agentNames     = useTeamStore((s) => s.agentNames)
   const isTeamWorking  = useTeamStore((s) => s.isTeamWorking)
+  const isContinuing   = useTeamStore((s) => s.isContinuing)
   const sessionIdState = useTeamStore((s) => s.sessionId)
   const sessionTitle   = useTeamStore((s) => s.sessionTitle)
   const leadName       = useTeamStore((s) => s.leadName)
@@ -327,16 +341,20 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   }, [mode, workspace, sessionTitle, isTeamWorking])
 
   // Slash commands for the input bar (type / to trigger).
-  // Built-ins execute immediately on pick; backend commands are inserted
+  // Built-ins execute immediately on pick; user-defined commands are inserted
   // into the textarea (``keepInputOpen``) so the user can append
   // ``$ARGUMENTS`` before submitting.
   const commandsQ = useCommandsQuery()
-  const backendCommandNames = useMemo(
+  const userCommandNames = useMemo(
     () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
     [commandsQ.data],
   )
   const slashCommands: SlashCommand[] = [
     { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
+    { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
+    { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
+    { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
+    { id: 'redo', label: 'Redo', description: 'Restore the next undone message' },
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
     ...(commandsQ.data?.commands ?? []).map((c) => ({
       id: c.name,
@@ -351,15 +369,40 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       case 'stop':
         useTeamStore.getState().stopTeam()
         break
+      case 'continue':
+        useTeamStore.getState().continueTeam()
+        break
+      case 'compact':
+        useTeamStore.getState().compactTeam()
+        break
+      case 'undo':
+        void useTeamStore.getState().undoTeam().then(async (response) => {
+          const message = response?.message
+          if (!message || message.role !== 'user' || message.is_summary) return
+          inputRef.current?.setValue(message.content ?? '')
+          const attachments = message.attachments ?? []
+          const files = (
+            await Promise.all(attachments.map((att) => attachmentToFile(att)))
+          ).filter((file): file is File => file !== null)
+          inputRef.current?.setFiles(files)
+          inputRef.current?.focus()
+        })
+        break
+      case 'redo':
+        void useTeamStore.getState().redoTeam().then(() => {
+          inputRef.current?.setValue('')
+          inputRef.current?.setFiles([])
+        })
+        break
       case 'new':
         handleNewSession()
         break
     }
   }, [handleNewSession])
 
-  /** If *content* starts with a known backend command, render server-side
+  /** If *content* starts with a known user-defined command, render server-side
    *  and return the expanded body; otherwise return *content* unchanged. */
-  const expandBackendCommand = useCallback(
+  const expandUserCommand = useCallback(
     async (content: string): Promise<string> => {
       if (!content.startsWith('/')) return content
       // The command name may include slashes (nested folders), so we
@@ -372,7 +415,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       const tokens = firstLine.split(' ')
       for (let n = tokens.length; n > 0; n--) {
         const candidate = tokens.slice(0, n).join(' ').trim()
-        if (backendCommandNames.has(candidate)) {
+        if (userCommandNames.has(candidate)) {
           const argsHead = tokens.slice(n).join(' ')
           const restOfMessage = rest.slice(firstLine.length)
           const args = (argsHead + restOfMessage).trim()
@@ -391,7 +434,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       }
       return content
     },
-    [backendCommandNames, pushToast],
+    [userCommandNames, pushToast],
   )
 
   const cycleViewMode = useCallback(() => {
@@ -606,7 +649,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           />
         )}
 
-        <div ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
+        <main id="main" ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
         {setupRequired && (
           <div className="mx-3 mt-3 flex flex-col gap-3 rounded-xl border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 gap-3">
@@ -655,6 +698,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               agentNames={splitAgentNames}
               leadName={leadName}
               agentStreams={agentStreams}
+              isContinuing={isContinuing}
+              onContinue={continueTeam}
             />
           </div>
         ) : mode === 'coding' && workspace && teamAgentsLoading ? (
@@ -687,6 +732,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             isWorking={(activeStatus ?? agentStreams[activeAgent].status) === 'working'}
             isError={(activeStatus ?? agentStreams[activeAgent].status) === 'error'}
             lastError={agentStreams[activeAgent].lastError}
+            isContinuing={isContinuing && activeAgent === leadName}
+            onContinue={activeAgent === leadName ? continueTeam : undefined}
             emptyState={
               mode === 'coding' && workspace ? (
                 <div className="flex flex-col items-center justify-center py-16">
@@ -706,7 +753,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           ref={inputRef}
           boundsRef={mainColumnRef}
           onSubmit={async (content, files) => {
-            const expanded = await expandBackendCommand(content)
+            const expanded = await expandUserCommand(content)
             sendMessage(expanded, files, { mode, workspace })
           }}
           onStop={() => useTeamStore.getState().stopTeam()}
@@ -729,8 +776,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           }
           capabilities={leadCapabilities}
           voiceEnabled={voiceEnabled}
+          revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
+          revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
+          onRedo={() => { void useTeamStore.getState().redoTeam() }}
         />
-        </div>
+        </main>
         <AnimatePresence initial={false}>
           {mode === 'coding' && workspace && codingPanel !== null && (
             <CodingWorkspacePanel
@@ -738,6 +788,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               workspace={workspace}
               open
               initialTab={codingPanel}
+              mobile={isMobile}
               onClose={() => setCodingPanel(null)}
             />
           )}

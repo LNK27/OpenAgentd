@@ -3,6 +3,7 @@ import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
 import { InputBar, type FileRef, type InputBarHandle, type SlashCommand } from './InputBar'
 import { PendingMessageQueue } from './PendingMessageQueue'
+import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { AgentCapabilities } from '@/api/types'
@@ -91,6 +92,9 @@ interface FloatingInputBarProps {
   autoFocus?: boolean
   capabilities?: AgentCapabilities
   voiceEnabled?: boolean
+  revertedCount?: number
+  revertedMessages?: Array<{ role: string; content: string }>
+  onRedo?: () => void
 }
 
 /**
@@ -156,6 +160,10 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         expand()
         innerRef.current?.setValue(text)
       },
+      setFiles: (files: File[]) => {
+        expand()
+        innerRef.current?.setFiles(files)
+      },
     }), [expand])
 
     const handleFocus = useCallback(() => {
@@ -215,6 +223,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     const forceExpanded =
       inputProps.disabled === true ||
       queuedCount > 0 ||
+      (inputProps.revertedCount ?? 0) > 0 ||
       hasContent
 
     const handleHasContentChange = useCallback((next: boolean) => {
@@ -296,6 +305,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       return (
         // border-t separates from chat content; pb-safe clears the home indicator
         <div className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl">
+          <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
           <PendingMessageQueue inputRef={innerRef} />
           <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} />
         </div>
@@ -317,6 +327,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         className="pointer-events-auto absolute bottom-4 left-1/2 z-20 w-full max-w-md -translate-x-1/2 px-3"
         style={{ touchAction: 'none' }}
       >
+        <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
         <PendingMessageQueue inputRef={innerRef} />
         <InputBar
           ref={setInputRefs}

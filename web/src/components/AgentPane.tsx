@@ -11,13 +11,14 @@
  * component (see `AssistantTurnFooter.tsx`); only the trailing turn hides its
  * footer while the agent is actively streaming.
  */
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 
-import { MarkdownBlock } from '@/utils/markdown'
-import { ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { InboxBubble } from './InboxBubble'
+import { CompactionDivider } from './CompactionDivider'
 import { StreamingCursor } from './motion'
 import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
@@ -32,6 +33,8 @@ interface AgentPaneProps {
   name: string
   stream: AgentStream
   isLead: boolean
+  isContinuing?: boolean
+  onContinue?: () => void
 }
 
 const USER_COLLAPSE_LINES = 10
@@ -41,7 +44,7 @@ function isDirectUserBlock(block: ContentBlock): boolean {
   return block.type === 'user' && !block.extra?.from_agent
 }
 
-function UserBubble({ content, timestamp, attachments }: { content: string; timestamp?: Date; attachments?: MessageAttachment[] }) {
+function UserBubble({ content, timestamp, attachments, onRevert }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -128,9 +131,19 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
          {/* Copy button + timestamp row (compact) */}
          {timestamp && (
            <div className={`flex items-center gap-1 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
-             <button
-               onClick={handleCopy}
-               className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+              {onRevert && (
+                <button
+                  onClick={onRevert}
+                  className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+                  aria-label="Revert latest message"
+                  title="Revert latest message"
+                >
+                  <Undo2 size={10} />
+                </button>
+              )}
+              <button
+                onClick={handleCopy}
+                className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
                aria-label="Copy message"
                title="Copy"
              >
@@ -155,17 +168,29 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
 }
 
 
-function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string }) {
+function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = true, onRevert }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string; showCursor?: boolean; onRevert?: () => void }) {
   switch (block.type) {
     case 'user': {
       const fromAgent = block.extra?.from_agent as string | undefined
       if (fromAgent && fromAgent !== 'user') {
         return <InboxBubble content={block.content} fromAgent={fromAgent} compact />
       }
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
+    case 'compaction': {
+      const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
+      const error = Boolean(block.extra?.error)
+      return (
+        <CompactionDivider
+          state={state}
+          error={error}
+          summary={block.content}
+          sessionId={sessionId}
+        />
+      )
+    }
     case 'tool':
       return (
         <ToolCall
@@ -182,15 +207,15 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
       if (sleepPrefix !== null) {
         return (
           <div>
-            {sleepPrefix && <MarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
+            {sleepPrefix && <LazyMarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
             <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
           </div>
         )
       }
       return (
         <div>
-          <MarkdownBlock content={block.content} sessionId={sessionId} />
-          {isStreaming && isLast && (
+          <LazyMarkdownBlock content={block.content} sessionId={sessionId} />
+          {showCursor && isStreaming && isLast && (
             <StreamingCursor className="ml-0.5 text-(--color-accent)" />
           )}
         </div>
@@ -202,10 +227,13 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
 }
 
 export function AgentPane({
-  name, stream, isLead,
+  name, stream, isLead, isContinuing = false, onContinue,
 }: AgentPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
+  const handleRevert = useCallback(() => {
+    void useTeamStore.getState().undoTeam()
+  }, [])
   const isWorking = stream.status === 'working'
   const isError   = stream.status === 'error'
   const isOffline = stream.status === 'offline'
@@ -253,7 +281,9 @@ export function AgentPane({
     }
   }, [isAtBottom])
 
-  const allBlocks = [...stream.blocks, ...stream.currentBlocks]
+  const allBlocks = useMemo(() => [...stream.blocks, ...stream.currentBlocks], [stream.blocks, stream.currentBlocks])
+  const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
+  const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
 
   // Me single scroll effect — block count or last block text changed
   const lastBlockContent = allBlocks[allBlocks.length - 1]?.content ?? ''
@@ -312,7 +342,7 @@ export function AgentPane({
            {stream.model && (
              <span className="text-(--color-text-muted)">{stream.model}</span>
            )}
-           <span className={`h-1.5 w-1.5 rounded-full ${
+            <span aria-label={`Agent status: ${stream.status}`} className={`h-1.5 w-1.5 rounded-full ${
              isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
            }`} />
          </div>
@@ -329,22 +359,21 @@ export function AgentPane({
 
          {allBlocks.length > 0 && (
             <div className="space-y-3 px-3 py-3">
-               {(() => {
-                 const items = partitionTurns(allBlocks)
-                 return items.map((item, k) => {
+               {turnItems.map((item, k) => {
                    if (item.kind === 'user') {
                      return (
                        <BlockRenderer
                          key={item.block.id}
                          block={item.block}
                          isStreaming={false}
-                         isLast={item.index === allBlocks.length - 1}
-                         sessionId={sessionId}
-                       />
+                          isLast={item.index === allBlocks.length - 1}
+                          sessionId={sessionId}
+                          onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                        />
                      )
                    }
                    // Me only the trailing turn (no user block after) can be "live"
-                   const isTrailingTurn = k === items.length - 1
+                    const isTrailingTurn = k === turnItems.length - 1
                    return (
                      <AssistantTurn
                        key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
@@ -352,34 +381,37 @@ export function AgentPane({
                        startIndex={item.startIndex}
                        finalizedCount={stream.blocks.length}
                        isWorking={isWorking}
-                       isTrailingTurn={isTrailingTurn}
-                       totalBlocks={allBlocks.length}
-                       renderBlock={({ block, isStreaming, isLast }) => (
+                        isTrailingTurn={isTrailingTurn}
+                        totalBlocks={allBlocks.length}
+                        onContinue={onContinue}
+                        renderBlock={({ block, isStreaming, isLast }) => (
                          <BlockRenderer
                            block={block}
                            isStreaming={isStreaming}
-                           isLast={isLast}
-                           sessionId={sessionId}
-                         />
+                            isLast={isLast}
+                            sessionId={sessionId}
+                            showCursor={!isContinuing}
+                          />
                        )}
                      />
                    )
-                 })
-               })()}
-             </div>
-           )}
+                  })}
+              </div>
+            )}
 
           {/* Me show dots when pending (user sent, agent not woken) or working with no agent content yet.
             * `[].every()` returns true, so the working branch also requires a non-empty
             * currentBlocks list — otherwise dots persist after `done` flushes the buffer
             * if a stale `working` status briefly survives. */}
           {(isPending ||
-            (isWorking && stream.currentBlocks.length > 0 &&
-              stream.currentBlocks.every((b) => b.type === 'user'))) && (
-            <div className="flex items-center gap-1.5 px-3 pt-3">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
+            (isWorking && (
+              (isContinuing && stream.currentBlocks.length === 0) ||
+              (stream.currentBlocks.length > 0 && stream.currentBlocks.every((b) => b.type === 'user'))
+            ))) && (
+            <div className="flex items-center gap-1.5 px-3 pt-3" role="status" aria-label={`${name} is preparing a response`}>
+              <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
+              <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
+              <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
             </div>
           )}
 

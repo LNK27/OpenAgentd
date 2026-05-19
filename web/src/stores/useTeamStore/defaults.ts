@@ -22,4 +22,6 @@ export const createDefaultAgentStream = (): AgentStream => ({
   _completionBase: 0,
   model: null,
   lastError: null,
+  revertedCount: 0,
+  revertedMessages: [],
 })

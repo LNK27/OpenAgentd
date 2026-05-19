@@ -296,11 +296,70 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 - `message` must be absent.
 - Returns `{"status": "interrupted", "session_id": "..."}` with HTTP 200.
 - The agent loop breaks mid-stream; the checkpointer has already saved partial output. Completed tools keep their real results; still-running tools return `"Cancelled by user."`.
+- The interrupted assistant row is stamped with `extra["interrupted"] = true` (invisible to the LLM, available to UI/audit) — content itself is left intact.
 - The SSE stream emits a final `done` event with `cancelled: true` in metadata:
   ```json
   { "type": "done", "metadata": { "cancelled": true } }
   ```
   Clients should reload the session from `GET /api/team/sessions/{id}` on receiving this event.
+
+---
+
+## POST /api/team/commands — slash-command dispatch
+
+Accepts `application/json`. Runs a control operation against an existing session — no new user message is persisted.
+
+### Body
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `command` | `"continue" \| "compact" \| "undo" \| "redo"` | Control operation to run. |
+| `session_id` | string | Existing team-lead session id. |
+
+### `command: "continue"`
+
+Resume the prior assistant turn — useful after the user pressed Stop or the server restarted mid-stream.
+
+- The command persists a short hidden `HumanMessage` directive before activation. It tells the model to continue exactly where the prior response stopped, is hidden from UI history and summarization, and remains in LLM context so persisted history matches the provider payload for prompt-cache consistency.
+- If the previous assistant turn stopped during tool execution, unresolved tool calls are completed with synthetic interrupted tool results before continuation.
+- The new assistant row is flagged with `extra["is_continuation"] = true` so the UI can render it tight against the prior bubble.
+- The directive never appears in the frontend's history view.
+
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "continue"}`. Subscribe to `GET /api/team/{session_id}/stream` for the SSE feed.
+
+Returns 409 (`{"detail": "..."}`) when continuation is not meaningful:
+- **Session not found.**
+- **Session belongs to '<name>', not '<lead>'.** — ownership guard.
+- **Session has no messages to continue from.** — empty session.
+- **Last message is not an assistant message — nothing to continue. Send a new message instead.** — last visible row is a user/tool message.
+- **Last assistant message has no content — nothing to continue.** — e.g. interrupted before any content tokens arrived; resubmit the original turn.
+- **Cannot continue while <lead> is working — wait for the turn to finish.** — concurrent `/continue` requests; the working-state guard is atomic inside `activate_for_continuation`.
+
+### `command: "compact"`
+
+Run a normal lead turn that forces the existing summarizer before the next model call. This streams the same `summarization_*` events as automatic compaction, creates a summary row, excludes compacted rows from future LLM context, and does not add a visible user message.
+
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "compact"}`. Subscribe to `GET /api/team/{session_id}/stream` for the SSE feed.
+
+Returns 409 (`{"detail": "..."}`) when compaction cannot run:
+- **Lead is already working.** — avoid compacting while a turn is mutating history.
+- **Session not found.**
+- **Session belongs to '<name>', not '<lead>'.** — ownership guard.
+- **Session has no messages to compact.** — empty session.
+
+### `command: "undo"`
+
+Move the session revert boundary to the latest visible user message. Messages at or after that boundary remain in history for redo, but future LLM context and the web UI render only messages before the boundary. The response includes the reverted user message so the client can place it back into the composer for editing.
+
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "undo", "message": {...}}`.
+
+### `command: "redo"`
+
+Move the session revert boundary forward to the next undone user message, or clear it when no later undone user message exists. Repeated redo calls advance through undone turns until all messages are visible again.
+
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "redo"}`.
+
+Returns 422 for unknown commands (rejected by the `Literal["continue", "compact", "undo", "redo"]` validator before any handler runs).
 
 ---
 

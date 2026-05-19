@@ -31,6 +31,9 @@ from app.agent.schemas.events import (
     PermissionRepliedEvent,
     RateLimitEvent,
     SessionEvent,
+    SummarizationContentEvent,
+    SummarizationEndEvent,
+    SummarizationStartEvent,
     ThinkingEvent,
     TitleUpdateEvent,
     ToolCallEvent,
@@ -61,6 +64,9 @@ AnyStreamEvent = Union[
     TitleUpdateEvent,
     PermissionAskedEvent,
     PermissionRepliedEvent,
+    SummarizationStartEvent,
+    SummarizationContentEvent,
+    SummarizationEndEvent,
 ]
 
 

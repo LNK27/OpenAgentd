@@ -22,9 +22,16 @@ from app.agent.schemas.chat import (
 
 
 def _make_hook(
-    session_id: str = "sess-1", agent_name: str = "worker"
+    session_id: str = "sess-1",
+    agent_name: str = "worker",
+    *,
+    publish_reasoning: bool = True,
 ) -> StreamPublisherHook:
-    return StreamPublisherHook(session_id=session_id, agent_name=agent_name)
+    return StreamPublisherHook(
+        session_id=session_id,
+        agent_name=agent_name,
+        publish_reasoning=publish_reasoning,
+    )
 
 
 def _make_chunk(
@@ -83,6 +90,21 @@ class TestOnModelDeltaMessage:
             )
 
         assert any(e.event == "thinking" for e in pushed)
+
+    @pytest.mark.asyncio
+    async def test_suppresses_thinking_event_when_reasoning_not_published(self):
+        hook = _make_hook(publish_reasoning=False)
+        pushed = []
+
+        async def fake_push(sid, event):
+            pushed.append(event)
+
+        with patch("app.services.memory_stream_store.push_event", new=fake_push):
+            await hook.on_model_delta(
+                MagicMock(), MagicMock(), _make_chunk(reasoning="my thought")
+            )
+
+        assert not any(e.event == "thinking" for e in pushed)
 
     @pytest.mark.asyncio
     async def test_no_push_for_empty_content(self):

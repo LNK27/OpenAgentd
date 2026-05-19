@@ -256,7 +256,7 @@ async def _edit_file(
     resolved.write_bytes(encoded)
     logger.info("file_edited path={} bytes={}", resolved, len(encoded))
     notify_fs_change(resolved)
-    return f"Edit applied successfully to {rel}"
+    return f"Edit applied successfully to {rel}\nResolved path: {resolved}"
 
 
 edit_file = Tool(

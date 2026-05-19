@@ -90,6 +90,33 @@ Inside `handle_user_message`:
 6. Set `_has_active_turn = True`.
 7. Put `Message(from_agent="user", content="[user]: {content}")` in lead's mailbox.
 
+### Continuing the prior assistant turn
+
+```python
+session_id = await team.handle_continue(existing_session_id)
+# client subscribes to GET /api/team/stream/{session_id}
+```
+
+`/continue` resumes from the last assistant message **without** appending a new user turn. It's the entry point for the `POST /api/team/commands` route with `command: "continue"` — used after the user pressed Stop or the server restarted mid-stream.
+
+Inside `handle_continue`:
+1. Validate the session id parses, exists in DB, and (when `ChatSession.agent_name` is set) belongs to this lead.
+2. Heal unresolved tool calls by inserting synthetic tool results that say execution was interrupted before a result was recorded.
+3. Load history via `get_messages_for_llm` — the same view the agent loop will pass to the LLM — and validate the tail. A trailing `AssistantMessage` must have non-empty content and no unresolved `tool_calls`. A trailing `ToolMessage` is allowed only when it links to a prior assistant tool call, including synthetic interrupted results. If Stop left a trailing interrupted, thinking-only assistant row, that row is deleted and the previous tail is re-evaluated. All precondition failures raise `ContinuePreconditionError` (HTTP 409); the team object is untouched on failure.
+4. Realign the lead onto this session (skip the user-message persistence and inbox delivery steps from `handle_user_message`).
+5. `stream_store.init_turn(session_id)`, set `_has_active_turn = True`, and persist a hidden user directive row. The directive tells the model to continue exactly where the prior response stopped, is hidden from the UI via `extra["hidden_from_user"]`, skipped by summarization via `extra["hidden_from_summary"]`, and kept in LLM context (`exclude_from_context=False`) so the persisted history matches the provider payload.
+6. Call `lead.activate_for_continuation()` — atomic state guard inside; raises `AlreadyWorkingError` if the lead is already mid-turn, which `handle_continue` catches and rethrows as `ContinuePreconditionError`.
+
+The activation differs from `_maybe_activate` only in that it sets `is_continuation=True` on `_run_activation`, which skips the inbox drain/persist/SSE-emit steps and installs `ContinuationHook` for the agent run. The hook does one one-shot job:
+
+- **`after_model`**: stamps `extra["is_continuation"] = True` on the resulting first assistant row so the frontend can render it tight against the prior bubble. The provider request shape is unchanged for prompt-cache compatibility; continuation reasoning may still be persisted for audit, but live `thinking` SSE events are suppressed and `GET /api/team/{id}/history` omits `reasoning_content` for continuation rows.
+
+Subsequent assistant messages in the same `/continue` run (e.g. after a tool call) are not stamped; only the very first one is a continuation of the prior turn.
+
+#### Interrupted-turn marker
+
+`POST /api/team/chat` with `interrupt=true` cancels the running turn and writes `extra["interrupted"] = true` onto the most recent assistant row via `_mark_last_assistant_interrupted`. The marker rides on `extra` rather than `content` so the LLM never sees the string `"interrupted"` on the next turn (it would cause the model to restart instead of continue — earlier code that appended `" [interrupted]"` to `content` directly caused this regression).
+
 ### Activation
 
 On each message arrival, `_maybe_activate()` spawns a one-shot `_run_activation()` task:

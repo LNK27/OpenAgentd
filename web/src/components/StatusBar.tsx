@@ -27,7 +27,7 @@ export function StatusBar({
          )}
          {isStreaming && (
            <span className="flex items-center gap-1 text-(--color-text-2)">
-             <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" />
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" />
              streaming
            </span>
          )}

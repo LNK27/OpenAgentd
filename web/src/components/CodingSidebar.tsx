@@ -25,6 +25,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
   Folder,
   HelpCircle,
@@ -86,6 +87,7 @@ export function CodingSidebar({
   onMobileClose,
 }: CodingSidebarProps) {
   const isMobile = useIsMobile()
+  const prefersReducedMotion = useReducedMotion()
   // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
   // We don't render an inline collapse toggle anymore — the topbar
   // hamburger and Ctrl+B own that surface.
@@ -258,7 +260,7 @@ export function CodingSidebar({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: prefersReducedMotion ? 0.01 : 0.2 }}
             className="fixed inset-0 z-30 bg-black/60 md:hidden"
             aria-hidden="true"
             onClick={onMobileClose}
@@ -273,10 +275,10 @@ export function CodingSidebar({
           ? { x: mobileOpen ? 0 : -280 }
           : { width: desktopCollapsed ? 0 : 256 }
       }
-      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={
         isMobile
-          ? 'fixed inset-y-0 left-0 z-40 flex w-[272px] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
+          ? 'fixed inset-y-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
           : 'flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)'
       }
     >

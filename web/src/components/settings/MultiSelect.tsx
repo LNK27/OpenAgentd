@@ -110,10 +110,9 @@ export function MultiSelect({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        // The trigger is a plain button rendered via render-prop so the
-        // chips inside it can have their own remove buttons without nested
-        // <button> issues. We use a div via render to sidestep that, and
-        // listen for chip-remove via stopPropagation below.
+        nativeButton={false}
+        // Render as a combobox div so selected chips can contain their own
+        // remove buttons without nested <button> semantics.
         render={
           <div
             role="combobox"

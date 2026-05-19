@@ -134,24 +134,24 @@ hook = StreamPublisherHook(session_id=session_id_str, agent_name=agent.name)
 
 Rolling-window context compression. **Pure state transform** — reads `state.usage.last_prompt_tokens` to decide whether to compress, then mutates `state.messages` directly. No DB access. See [`summarization.md`](summarization.md) for full details.
 
-`build_summarization_hook` is the preferred factory for call sites. It reads a `SummarizationConfig` (from `agent.summarization_config`), resolves all settings fallbacks, and returns a configured hook or `None` if summarization is disabled:
+`build_summarization_hook` is the preferred factory for call sites. It has no per-agent or file-based configuration — numeric tuning lives as ``DEFAULT_*`` constants in ``summarization.py``. The only runtime input is ``mode``, which selects both the bundled prompt and the ``keep_last_assistants`` window:
 
 ```python
 from app.agent.hooks.summarization import build_summarization_hook
 
-hook = build_summarization_hook(default_provider=provider, cfg=agent.summarization_config)
+hook = build_summarization_hook(default_provider=provider, mode=team.mode)
 if hook:
     hooks.append(hook)
 ```
 
-For custom integrations that bypass `SummarizationConfig`, construct `SummarizationHook` directly:
+Returns ``None`` only when ``DEFAULT_PROMPT_TOKEN_THRESHOLD <= 0`` (operator-level kill switch). For custom integrations, construct ``SummarizationHook`` directly:
 
 ```python
 hook = SummarizationHook(
     llm_provider=provider,
     prompt_token_threshold=100000,
-    keep_last_assistants=3,   # keep last 3 assistant turns verbatim
-    summary_prompt="...",     # optional
+    keep_last_assistants=3,   # 0 = summarise everything below threshold
+    summary_prompt="...",     # required
 )
 ```
 

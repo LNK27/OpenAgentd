@@ -122,9 +122,44 @@ describe("parseTeamBlocks", () => {
     expect(blocks[0].content).toBe("let me think");
   });
 
-  it("skips summary messages", () => {
-    const msgs = [makeMsg({ is_summary: true, role: "assistant", content: "summary text" })];
-    expect(parseTeamBlocks(msgs)).toHaveLength(0);
+  it("skips reasoning_content for continuation assistant messages", () => {
+    const msgs = [makeMsg({
+      role: "assistant",
+      reasoning_content: "do not render",
+      content: "continued answer",
+      extra: { is_continuation: true },
+    })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("text");
+    expect(blocks[0].content).toBe("continued answer");
+  });
+
+  it("renders summary messages as compaction divider blocks (legacy prefix stripped)", () => {
+    const msgs = [makeMsg({
+      is_summary: true,
+      role: "assistant",
+      content: "[Summary of earlier conversation]\nthe gist",
+    })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("compaction");
+    expect(blocks[0].extra?.state).toBe("compacted");
+    // Legacy DB rows (pre-2026-05) carried this prefix — still stripped on read.
+    expect(blocks[0].content).toBe("the gist");
+  });
+
+  it("renders new-style summary rows verbatim (no prefix in DB)", () => {
+    const msgs = [makeMsg({
+      is_summary: true,
+      role: "user",
+      content: "## Goal\nDo the thing.\n\n## Progress\nDone.",
+    })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("compaction");
+    expect(blocks[0].extra?.state).toBe("compacted");
+    expect(blocks[0].content).toBe("## Goal\nDo the thing.\n\n## Progress\nDone.");
   });
 
   it("shows hidden messages (user sees full history)", () => {
@@ -232,9 +267,18 @@ describe("parseApiMessages", () => {
     expect(toolBlock?.toolResult).toBe("result!");
   });
 
-  it("skips summary messages", () => {
-    const msgs = [makeMsg({ is_summary: true, role: "assistant", content: "summary" })];
-    expect(parseApiMessages(msgs)).toHaveLength(0);
+  it("renders summary messages as a compaction divider assistant message", () => {
+    const msgs = [makeMsg({
+      is_summary: true,
+      role: "assistant",
+      content: "[Summary of earlier conversation]\nshort summary",
+    })];
+    const result = parseApiMessages(msgs);
+    expect(result).toHaveLength(1);
+    expect(result[0].blocks).toHaveLength(1);
+    expect(result[0].blocks[0].type).toBe("compaction");
+    expect(result[0].blocks[0].extra?.state).toBe("compacted");
+    expect(result[0].blocks[0].content).toBe("short summary");
   });
 
   it("extracts usage from extra field", () => {

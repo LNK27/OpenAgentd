@@ -15,14 +15,15 @@
  * `AgentPane` for split/unified modes.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
-import { MarkdownBlock } from '@/utils/markdown'
-import { ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { InboxBubble } from './InboxBubble'
+import { CompactionDivider } from './CompactionDivider'
 import { StreamingCursor } from './motion'
 import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
@@ -49,6 +50,10 @@ interface AgentViewProps {
   isError?: boolean
   /** Error message to display when isError is true. */
   lastError?: string | null
+  /** True while this turn was started by /continue. */
+  isContinuing?: boolean
+  /** Continue from the trailing assistant turn. */
+  onContinue?: () => void
   /** Optional slot rendered in place of the default mascot empty state. */
   emptyState?: React.ReactNode
 }
@@ -56,7 +61,7 @@ interface AgentViewProps {
 const USER_COLLAPSE_LINES = 10
 const USER_COLLAPSE_CHARS = 700
 
-function UserBubble({ content, timestamp, attachments }: { content: string; timestamp?: Date; attachments?: MessageAttachment[] }) {
+function UserBubble({ content, timestamp, attachments, onRevert }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -143,9 +148,19 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
          {/* Copy button + timestamp row */}
          {timestamp && (
            <div className={`flex items-center gap-1.5 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
-             <button
-               onClick={handleCopy}
-               className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+              {onRevert && (
+                <button
+                  onClick={onRevert}
+                  className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+                  aria-label="Revert latest message"
+                  title="Revert latest message"
+                >
+                  <Undo2 size={11} />
+                </button>
+              )}
+              <button
+                onClick={handleCopy}
+                className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
                aria-label="Copy message"
                title="Copy"
              >
@@ -170,7 +185,7 @@ function UserBubble({ content, timestamp, attachments }: { content: string; time
 }
 
 
-function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string }) {
+function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = true, onRevert }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string; showCursor?: boolean; onRevert?: () => void }) {
   switch (block.type) {
     case 'user': {
       // Me check if this is an inbox message (from another agent, not real user)
@@ -178,10 +193,22 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
       if (fromAgent && fromAgent !== 'user') {
         return <InboxBubble content={block.content} fromAgent={fromAgent} />
       }
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
+    case 'compaction': {
+      const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
+      const error = Boolean(block.extra?.error)
+      return (
+        <CompactionDivider
+          state={state}
+          error={error}
+          summary={block.content}
+          sessionId={sessionId}
+        />
+      )
+    }
     case 'tool':
       return (
         <ToolCall
@@ -198,15 +225,15 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
       if (sleepPrefix !== null) {
         return (
           <div>
-            {sleepPrefix && <MarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
+            {sleepPrefix && <LazyMarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
             <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
           </div>
         )
       }
       return (
         <div>
-          <MarkdownBlock content={block.content} sessionId={sessionId} />
-          {isStreaming && isLast && (
+          <LazyMarkdownBlock content={block.content} sessionId={sessionId} />
+          {showCursor && isStreaming && isLast && (
             <StreamingCursor className="ml-0.5 text-(--color-accent)" />
           )}
         </div>
@@ -217,14 +244,20 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId }: { block: Conte
   }
 }
 
-export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, emptyState }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, isContinuing = false, onContinue, emptyState }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
 
-  const allBlocks = [...blocks, ...currentBlocks]
+  const handleRevert = useCallback(() => {
+    void useTeamStore.getState().undoTeam()
+  }, [])
+
+  const allBlocks = useMemo(() => [...blocks, ...currentBlocks], [blocks, currentBlocks])
   const totalLen = allBlocks.length
+  const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
+  const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
 
   const isAtBottom = useCallback(() => {
     const el = scrollRef.current
@@ -307,22 +340,21 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
          )}
 
          <div className="space-y-3">
-             {(() => {
-               const items = partitionTurns(allBlocks)
-               return items.map((item, k) => {
+              {turnItems.map((item, k) => {
                  if (item.kind === 'user') {
                    return (
                      <BlockRenderer
                        key={item.block.id}
                        block={item.block}
                        isStreaming={false}
-                       isLast={item.index === allBlocks.length - 1}
-                       sessionId={sessionId}
-                     />
+                        isLast={item.index === allBlocks.length - 1}
+                        sessionId={sessionId}
+                        onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                      />
                    )
                  }
                  // Me only the trailing turn (no user block after) can be "live"
-                 const isTrailingTurn = k === items.length - 1
+                  const isTrailingTurn = k === turnItems.length - 1
                  return (
                    <AssistantTurn
                      key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
@@ -331,22 +363,23 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                      finalizedCount={blocks.length}
                      isWorking={isWorking}
                      isTrailingTurn={isTrailingTurn}
-                     totalBlocks={allBlocks.length}
-                     size="roomy"
-                     renderBlock={({ block, isStreaming, isLast }) => (
+                      totalBlocks={allBlocks.length}
+                      size="roomy"
+                      onContinue={onContinue}
+                      renderBlock={({ block, isStreaming, isLast }) => (
                        <BlockRenderer
                          block={block}
                          isStreaming={isStreaming}
-                         isLast={isLast}
-                         sessionId={sessionId}
-                       />
+                          isLast={isLast}
+                          sessionId={sessionId}
+                          showCursor={!isContinuing}
+                        />
                      )}
                    />
                  )
-               })
-             })()}
+                })}
 
-           {/* Me show dots when:
+            {/* Me show dots when:
              *   1. pending — user just sent, agent hasn't woken yet (no agent_status event yet), OR
              *   2. working with no agent content yet (user bubbles don't count).
              * Covers the POST → first SSE event gap so the user always gets immediate feedback.
@@ -357,11 +390,14 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
              * `working` status briefly survives.
              */}
             {((!isWorking && !isError && currentBlocks.some(isDirectUserBlock)) ||
-              (isWorking && currentBlocks.length > 0 && currentBlocks.every((b) => b.type === 'user'))) && (
-             <div className="flex items-center gap-1.5 py-1">
-               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
-               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
-               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
+              (isWorking && (
+                (isContinuing && currentBlocks.length === 0) ||
+                (currentBlocks.length > 0 && currentBlocks.every((b) => b.type === 'user'))
+              ))) && (
+              <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
+                <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
+                <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
+                <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
              </div>
            )}
 

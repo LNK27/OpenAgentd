@@ -324,6 +324,7 @@ class TestEditFileTool:
         f.write_text("hello world\n")
         result = await _edit_file("sample.txt", "world", "python")
         assert "Edit applied successfully" in result
+        assert f"Resolved path: {f}" in result
         assert f.read_text() == "hello python\n"
 
     async def test_file_not_found(self, sandbox):

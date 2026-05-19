@@ -27,6 +27,10 @@
  *   - ``done``           — flush ``currentBlocks`` into ``blocks``, stamp any
  *                          unstamped block with the completion time, commit
  *                          ``_completionBase`` for cross-turn token math.
+ *   - ``summarization_start`` / ``_content`` / ``_end`` — context-window
+ *                          compaction lifecycle; rendered as an inline
+ *                          "Session compacting → compacted" divider block
+ *                          in the active agent's pane.
  *   - ``error``          — propagate the error message and clear working flag.
  *
  * Cache invalidation: rather than calling ``queryClient.invalidateQueries``
@@ -45,6 +49,9 @@ import {
   appendToolOutput,
   completeTool,
   generateBlockId,
+  startCompaction,
+  appendCompactionContent,
+  endCompaction,
 } from '@/utils/blocks'
 import { createDefaultAgentStream } from './defaults'
 import {
@@ -282,6 +289,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'done': {
         set((draft) => {
           draft.isTeamWorking = false
+          draft.isContinuing = false
           const completedAt = new Date()
           Object.keys(draft.agentStreams).forEach((name) => {
             const stream = draft.agentStreams[name]
@@ -322,6 +330,50 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           draft.error = d.message as string
           draft.isTeamWorking = false
+          draft.isContinuing = false
+        })
+        break
+      }
+
+      case 'summarization_start': {
+        const agent = d.agent as string
+        if (!agent) break
+        set((draft) => {
+          ensureAgent(draft, agent)
+          draft.agentStreams[agent].currentBlocks = startCompaction(
+            draft.agentStreams[agent].currentBlocks,
+          )
+        })
+        break
+      }
+
+      case 'summarization_content': {
+        const agent = d.agent as string
+        const text = d.text as string
+        if (!agent || !text) break
+        set((draft) => {
+          ensureAgent(draft, agent)
+          draft.agentStreams[agent].currentBlocks = appendCompactionContent(
+            draft.agentStreams[agent].currentBlocks,
+            text,
+          )
+        })
+        break
+      }
+
+      case 'summarization_end': {
+        const agent = d.agent as string
+        if (!agent) break
+        const summary = (d.summary as string | undefined) ?? ''
+        const meta = d.metadata as Record<string, unknown> | undefined
+        const error = Boolean(meta?.error)
+        set((draft) => {
+          ensureAgent(draft, agent)
+          draft.agentStreams[agent].currentBlocks = endCompaction(
+            draft.agentStreams[agent].currentBlocks,
+            summary,
+            error,
+          )
         })
         break
       }

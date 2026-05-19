@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
+import { Suspense } from 'react'
 // Temporarily disabled for clean recordings — re-enable when done.
 // import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Link, Outlet } from '@tanstack/react-router'
@@ -16,7 +17,9 @@ export function Root() {
     <QueryClientProvider client={queryClient}>
       <SkipLink />
       <MacTitleBar />
-      <Outlet />
+      <Suspense fallback={<div className="min-h-dvh bg-(--bg-page)" />}>
+        <Outlet />
+      </Suspense>
       <ToastStack />
       {/* <ReactQueryDevtools initialIsOpen={false} /> */}
     </QueryClientProvider>

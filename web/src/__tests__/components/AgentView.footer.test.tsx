@@ -33,6 +33,7 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
       blocks={props.blocks ?? []}
       currentBlocks={props.currentBlocks ?? []}
       isWorking={props.isWorking ?? false}
+      onContinue={props.onContinue}
     />
   )
 }
@@ -124,6 +125,58 @@ describe("AgentView — AssistantFooter", () => {
       })
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
       expect(copyBtn.getAttribute("title")).toBe("Copy")
+    })
+  })
+
+  describe("continue button", () => {
+    it("renders continue button for the trailing assistant turn", () => {
+      renderStream({
+        blocks: [makeTextBlock("b1", "Hello world")],
+        currentBlocks: [],
+        isWorking: false,
+        onContinue: () => {},
+      })
+
+      expect(screen.queryByRole("button", { name: /continue response/i })).toBeTruthy()
+    })
+
+    it("calls onContinue when clicked", async () => {
+      const user = userEvent.setup()
+      const onContinue = mock(() => {})
+
+      renderStream({
+        blocks: [makeTextBlock("b1", "Hello world")],
+        currentBlocks: [],
+        isWorking: false,
+        onContinue,
+      })
+
+      await user.click(screen.getByRole("button", { name: /continue response/i }))
+
+      expect(onContinue).toHaveBeenCalledOnce()
+    })
+
+    it("does not render continue button while the turn is streaming", () => {
+      renderStream({
+        blocks: [makeTextBlock("b1", "Hello world")],
+        currentBlocks: [],
+        isWorking: true,
+        onContinue: () => {},
+      })
+
+      expect(screen.queryByRole("button", { name: /continue response/i })).toBeNull()
+    })
+
+    it("renders continue button without copy for a tool-only turn", () => {
+      renderStream({
+        blocks: [makeToolBlock("tool1", "shell")],
+        currentBlocks: [],
+        isWorking: false,
+        onContinue: () => {},
+      })
+
+      expect(screen.queryByRole("button", { name: /copy response/i })).toBeNull()
+      expect(screen.queryByRole("button", { name: /continue response/i })).toBeTruthy()
     })
   })
 

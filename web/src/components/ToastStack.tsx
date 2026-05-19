@@ -8,6 +8,7 @@
 import { AnimatePresence, motion, useMotionValue, useTransform } from 'framer-motion'
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react'
 import { useToastStore, type Toast } from '@/stores/useToastStore'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 const TONE_STYLES: Record<
   Toast['tone'],
@@ -37,6 +38,7 @@ interface ToastItemProps {
 
 function ToastItem({ t, dismiss }: ToastItemProps) {
   const { icon: Icon, iconClass } = TONE_STYLES[t.tone]
+  const prefersReducedMotion = useReducedMotion()
 
   const x = useMotionValue(0)
   const y = useMotionValue(0)
@@ -61,9 +63,9 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       layout
       style={{ x, y, opacity }}
       variants={{
-        enter: { opacity: 0, y: -12, scale: 0.96, transition: { type: 'spring', damping: 26, stiffness: 320 } },
-        visible: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 26, stiffness: 320 } },
-        exit: { opacity: 0, x: 40, scale: 0.96, transition: { type: 'tween', duration: 0.15, ease: 'easeIn' } },
+        enter: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -12, scale: 0.96, transition: { type: 'spring', damping: 26, stiffness: 320 } },
+        visible: prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 26, stiffness: 320 } },
+        exit: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: 40, scale: 0.96, transition: { type: 'tween', duration: 0.15, ease: 'easeIn' } },
       }}
       initial="enter"
       animate="visible"
@@ -101,7 +103,7 @@ export function ToastStack() {
   const dismiss = useToastStore((s) => s.dismiss)
 
   return (
-    <div className="pointer-events-none fixed top-4 right-4 z-[60] flex w-full max-w-sm flex-col gap-2">
+    <div className="pointer-events-none fixed top-4 right-4 left-4 z-[60] flex w-auto flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm">
       <AnimatePresence initial={false}>
         {toasts.map((t) => (
           <ToastItem key={t.id} t={t} dismiss={dismiss} />

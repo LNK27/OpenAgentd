@@ -7,7 +7,7 @@ from typing import NamedTuple
 from uuid import UUID
 
 from loguru import logger
-from sqlmodel import and_, col, not_, or_, select
+from sqlmodel import and_, col, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from pydantic import TypeAdapter
@@ -248,18 +248,59 @@ async def save_message(
         raise
 
 
-def _visible_messages_stmt(session_id: UUID):
-    """Base query: all non-excluded messages for a session, oldest first.
+def _revert_message_id(session: ChatSession | None) -> UUID | None:
+    value = session.revert if session else None
+    if not isinstance(value, dict):
+        return None
+    raw = value.get("message_id")
+    if not isinstance(raw, str):
+        return None
+    try:
+        return UUID(raw)
+    except ValueError:
+        return None
 
-    Used by both :func:`get_messages` (UI view) and
-    :func:`get_messages_for_llm` (LLM context window).
+
+async def _revert_boundary(db: AsyncSession, session_id: UUID) -> SessionMessage | None:
+    session = await db.get(ChatSession, session_id)
+    message_id = _revert_message_id(session)
+    if message_id is None:
+        return None
+    row = await db.get(SessionMessage, message_id)
+    if row is None or row.session_id != session_id:
+        return None
+    return row
+
+
+async def _boundary_created_at(db: AsyncSession, session_id: UUID) -> datetime | None:
+    boundary = await _revert_boundary(db, session_id)
+    return boundary.created_at if boundary else None
+
+
+def _before_boundary(stmt, boundary: datetime | None):
+    if boundary is None:
+        return stmt
+    return stmt.where(col(SessionMessage.created_at) < boundary)
+
+
+def _visible_messages_stmt(session_id: UUID, boundary: datetime | None = None):
+    """Base query: all LLM-visible messages for a session, oldest first.
+
+    ``exclude_from_context`` is the LLM-context flag. UI-only hiding uses
+    ``extra.hidden_from_user`` and is applied after deserialization.
     """
-    return (
+    stmt = (
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == session_id)
         .where(~col(SessionMessage.exclude_from_context))
-        .order_by(col(SessionMessage.created_at).asc())
     )
+    return _before_boundary(stmt, boundary).order_by(
+        col(SessionMessage.created_at).asc()
+    )
+
+
+def _is_hidden_from_user(row: SessionMessage) -> bool:
+    return bool(row.extra and row.extra.get("hidden_from_user"))
 
 
 async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
@@ -274,12 +315,18 @@ async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
     """
     logger.debug("loading_messages session_id={}", session_id)
     try:
-        db_messages = (await db.exec(_visible_messages_stmt(session_id))).all()
+        boundary = await _boundary_created_at(db, session_id)
+        db_messages = (
+            await db.exec(_visible_messages_stmt(session_id, boundary))
+        ).all()
         logger.debug(
             "messages_fetched session_id={} count={}", session_id, len(db_messages)
         )
         # Me run in thread — _deserialize_messages does disk I/O for image hydration
-        return await asyncio.to_thread(_deserialize_messages, db_messages)
+        messages = await asyncio.to_thread(_deserialize_messages, db_messages)
+        return [
+            m for m in messages if not (m.extra and m.extra.get("hidden_from_user"))
+        ]
     except Exception as e:
         logger.error("load_messages_failed session_id={} error={}", session_id, e)
         raise
@@ -304,11 +351,15 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
     """
     logger.debug("loading_llm_messages session_id={}", session_id)
     try:
+        boundary = await _boundary_created_at(db, session_id)
         # Find the latest summary message
         summary_stmt = (
             select(SessionMessage)
             .where(col(SessionMessage.session_id) == session_id)
             .where(col(SessionMessage.is_summary))
+        )
+        summary_stmt = (
+            _before_boundary(summary_stmt, boundary)
             .order_by(col(SessionMessage.created_at).desc())
             .limit(1)
         )
@@ -316,7 +367,10 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
 
         if latest_summary is None:
             # No summary yet — use all visible messages
-            return await get_messages(db, session_id)
+            db_messages = (
+                await db.exec(_visible_messages_stmt(session_id, boundary))
+            ).all()
+            return await asyncio.to_thread(_deserialize_messages, db_messages)
 
         # Fetch all non-hidden, non-summary messages.  This naturally includes:
         #   - keep_last_n messages (not hidden, created before the summary)
@@ -325,7 +379,7 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
         #   - hidden messages (superseded by the summary)
         #   - other summary rows (older summaries are also excluded)
         #   - the latest summary itself (prepended explicitly below)
-        rest_stmt = _visible_messages_stmt(session_id).where(
+        rest_stmt = _visible_messages_stmt(session_id, boundary).where(
             ~col(SessionMessage.is_summary)
         )
         rest_messages = list((await db.exec(rest_stmt)).all())
@@ -343,6 +397,79 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
     except Exception as e:
         logger.error("load_llm_messages_failed session_id={} error={}", session_id, e)
         raise
+
+
+async def undo_session_messages(
+    db: AsyncSession, session_id: UUID
+) -> SessionMessage | None:
+    """Move the session revert boundary to the previous user message."""
+    session = await db.get(ChatSession, session_id)
+    if session is None:
+        return None
+    boundary = await _revert_boundary(db, session_id)
+    stmt = (
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == session_id)
+        .where(col(SessionMessage.role) == "user")
+        .order_by(col(SessionMessage.created_at).desc())
+    )
+    if boundary is not None:
+        stmt = stmt.where(col(SessionMessage.created_at) < boundary.created_at)
+    rows = (await db.exec(stmt)).all()
+    target = next((row for row in rows if not _is_hidden_from_user(row)), None)
+    if target is None:
+        return None
+    session.revert = {"message_id": str(target.id)}
+    db.add(session)
+    await db.flush()
+    return target
+
+
+async def redo_session_messages(db: AsyncSession, session_id: UUID) -> bool:
+    """Move the revert boundary forward, or clear it at the end."""
+    session = await db.get(ChatSession, session_id)
+    boundary = await _revert_boundary(db, session_id)
+    if session is None or boundary is None:
+        return False
+    next_user = (
+        await db.exec(
+            select(SessionMessage)
+            .where(col(SessionMessage.session_id) == session_id)
+            .where(col(SessionMessage.role) == "user")
+            .where(col(SessionMessage.created_at) > boundary.created_at)
+            .order_by(col(SessionMessage.created_at).asc())
+            .limit(1)
+        )
+    ).first()
+    session.revert = {"message_id": str(next_user.id)} if next_user else None
+    db.add(session)
+    await db.flush()
+    return True
+
+
+async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
+    """Permanently hide the reverted tail before accepting an edited resend."""
+    session = await db.get(ChatSession, session_id)
+    boundary = await _revert_boundary(db, session_id)
+    if session is None or boundary is None:
+        return 0
+    rows = (
+        await db.exec(
+            select(SessionMessage)
+            .where(col(SessionMessage.session_id) == session_id)
+            .where(col(SessionMessage.created_at) >= boundary.created_at)
+        )
+    ).all()
+    for row in rows:
+        extra = dict(row.extra or {})
+        extra["hidden_from_user"] = True
+        row.extra = extra
+        row.exclude_from_context = True
+        db.add(row)
+    session.revert = None
+    db.add(session)
+    await db.flush()
+    return len(rows)
 
 
 async def exclude_messages_before_summary(
@@ -567,24 +694,32 @@ async def get_team_history(
         limit: Pagination limit applied to each message query.
 
     Returns:
-        A :class:`TeamHistoryData` with the lead session, its non-summary
-        paginated messages, and one :class:`TeamHistoryMemberData` per child
-        session. Returns ``None`` if the lead session does not exist.
+        A :class:`TeamHistoryData` with the lead session, its paginated
+        messages (summaries included — the frontend renders them as
+        "Session compacted" dividers), and one :class:`TeamHistoryMemberData`
+        per child session. Returns ``None`` if the lead session does not exist.
     """
     lead_session = await db.get(ChatSession, lead_session_id)
     if lead_session is None:
         return None
 
-    lead_msgs = (
-        await db.exec(
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == lead_session_id)
-            .where(not_(SessionMessage.is_summary))
-            .order_by(col(SessionMessage.created_at).asc())
-            .offset(offset)
-            .limit(limit)
-        )
-    ).all()
+    # Me: summaries are NOT filtered here. The compaction divider in the
+    # web UI keys off ``is_summary=True`` rows to render the inline
+    # "Session compacted" marker + summary body; hiding them would make
+    # the divider vanish on reload. Undo uses ``extra.hidden_from_user``.
+    lead_msgs = [
+        msg
+        for msg in (
+            await db.exec(
+                select(SessionMessage)
+                .where(col(SessionMessage.session_id) == lead_session_id)
+                .order_by(col(SessionMessage.created_at).asc())
+                .offset(offset)
+                .limit(limit)
+            )
+        ).all()
+        if not _is_hidden_from_user(msg)
+    ]
 
     sub_sessions = (
         await db.exec(
@@ -600,21 +735,25 @@ async def get_team_history(
     # to the API layer as a single global cursor).
     members: list[TeamHistoryMemberData] = []
     for sub in sub_sessions:
-        member_msgs = (
-            await db.exec(
-                select(SessionMessage)
-                .where(col(SessionMessage.session_id) == sub.id)
-                .where(not_(SessionMessage.is_summary))
-                .order_by(col(SessionMessage.created_at).asc())
-                .offset(offset)
-                .limit(limit)
-            )
-        ).all()
-        members.append(TeamHistoryMemberData(session=sub, messages=list(member_msgs)))
+        member_msgs = [
+            msg
+            for msg in (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sub.id)
+                    # Me: summaries kept — see comment on lead_msgs above.
+                    .order_by(col(SessionMessage.created_at).asc())
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
+            if not _is_hidden_from_user(msg)
+        ]
+        members.append(TeamHistoryMemberData(session=sub, messages=member_msgs))
 
     return TeamHistoryData(
         lead_session=lead_session,
-        lead_messages=list(lead_msgs),
+        lead_messages=lead_msgs,
         members=members,
     )
 

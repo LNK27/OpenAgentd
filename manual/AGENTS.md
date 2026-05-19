@@ -20,6 +20,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `team_sse.py` | Capture + pretty-print every SSE event from a team turn, including lifecycle states (`idle`, `working`, `offline`, `error`) | `--session ID`, `--wait N`, `--out FILE`, `--no-summary` |
 | `team_spawn.py` | Drive a turn that exercises `team_manage` spawn/dismiss; snapshots `/team/agents`, streams per-agent content, prints spawn/dismiss and lifecycle timelines | `--message TEXT`, `--session ID`, `--wait N`, `--out FILE`, `--no-color`, `--no-history` |
 | `team_roster_lifecycle.py` | Verify fresh sessions do not carry member rosters and stop moves running members to `offline` | `--base URL`, `--wait N` |
+| `continue_smoketest.py` | End-to-end test of `/continue`: send long prompt, wait, interrupt, inspect truncated assistant row, dispatch `/continue`, stream resumption inline, print final history | `--wait-before-stop N`, `--wait N`, `--base URL` |
 
 ```bash
 # New team turn
@@ -48,6 +49,10 @@ uv run python -m manual.team_spawn --out .openagentd/spawn.jsonl       # also sa
 
 # Smoke-test per-session roster isolation and stop/offline lifecycle
 uv run python -m manual.team_roster_lifecycle
+
+# End-to-end /continue smoke test: send → stop → /continue → stream → history
+uv run python -m manual.continue_smoketest
+uv run python -m manual.continue_smoketest --wait-before-stop 5     # later stop
 ```
 
 ---
@@ -130,9 +135,11 @@ uv run python -m manual.note --cat 2026-04-30-manual-test.md
 | `health.py` | `GET /health/ready` + team agent roster with tools/skills/vision | `--base URL` |
 | `provider_models.py` | List discovered provider models, falling back to catalog defaults | provider IDs, `--limit N` |
 | `inspect_prompt.py` | Reconstruct full LLM payload (system prompt + tools JSON) — **no server required** | `--dir`, `--agent`, `--no-date`, `--date`, `--out`, `--stats-only` |
+| `patch_tool.py` | Tell an agent to use filesystem `patch` and verify the tool call | `--base URL`, `--wait N` |
 | `otel_inspect.py` | Read OTel spans/metrics from `.openagentd/otel/` JSONL files | `--session ID`, `--trace ID`, `--metrics` |
-| `summarization_test.py` | Drive summarization hook by sending many turns | requires low `token_threshold` in `.openagentd/config/summarization.md` |
-| `summarization_max_tokens_test.py` | Test max_token_length cap on summary output | requires `max_token_length` set in `.openagentd/config/summarization.md` |
+| `summarization_test.py` | Drive summarization hook by sending many turns | requires low `DEFAULT_PROMPT_TOKEN_THRESHOLD` in `app/agent/hooks/summarization.py` |
+| `summarization_max_tokens_test.py` | Test max_token_length cap on summary output | requires `DEFAULT_MAX_TOKEN_LENGTH` set in `app/agent/hooks/summarization.py` |
+| `summarization_sse.py` | Capture `summarization_start` / `_content` / `_end` SSE events from a team turn and verify deltas reconstruct the final summary | `--session ID`, `--warmup N`, `--wait N`, `--out FILE` |
 | `tool_result_offload_test.py` | Verify large tool results are offloaded to workspace | — |
 | `shell_output_delta.py` | Verify live `tool_output_delta` events from shell output | `--base URL`, `--message TEXT`, `--wait N` |
 
@@ -148,6 +155,9 @@ uv run python -m manual.inspect_prompt --stats-only
 
 # Full JSON payload (system_prompt + tools) to stdout
 uv run python -m manual.inspect_prompt
+
+# Smoke-test the patch tool directly
+uv run python -m manual.patch_tool
 
 # Save payload to file (paste into tokenizer)
 uv run python -m manual.inspect_prompt --out .openagentd/chat/payload.json
@@ -169,6 +179,11 @@ uv run python -m manual.otel_inspect --metrics
 
 # Verify live shell output deltas
 uv run python -m manual.shell_output_delta
+
+# Verify summarisation SSE events fire on a team turn (needs low token_threshold)
+uv run python -m manual.summarization_sse
+uv run python -m manual.summarization_sse --session <ID>                 # follow-up on existing session
+uv run python -m manual.summarization_sse --out .openagentd/state/summ_sse.jsonl
 ```
 
 ### Provider tests (`try_providers/`)
