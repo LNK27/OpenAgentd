@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.agent.mcp.config import MCPConfig, StdioServerConfig
+from app.agent.mcp.config import HttpServerConfig, MCPConfig, StdioServerConfig
 from app.agent.mcp.manager import MCPServerStatus
 from app.api.routes.mcp import router
 
@@ -319,6 +319,46 @@ class TestUpdateServer:
             )
             assert response.status_code == 404
 
+    def test_update_server_preserves_masked_http_header(self) -> None:
+        app = _make_app()
+        with (
+            patch("app.api.routes.mcp.mcp_manager") as mock_manager,
+            patch("app.api.routes.mcp.load_config") as mock_load,
+            patch("app.api.routes.mcp.save_config") as mock_save,
+        ):
+            existing_cfg = MCPConfig(
+                servers={
+                    "slack": HttpServerConfig(
+                        url="https://mcp.slack.com/mcp",
+                        headers={"Authorization": "Bearer ${SLACK_MCP_TOKEN}"},
+                    )
+                }
+            )
+            mock_load.return_value = existing_cfg
+            mock_manager.restart_server = AsyncMock(
+                return_value=MCPServerStatus(
+                    name="slack", transport="http", enabled=True, state="ready"
+                )
+            )
+
+            client = TestClient(app)
+            response = client.put(
+                "/api/mcp/servers/slack",
+                json={
+                    "server": {
+                        "transport": "http",
+                        "url": "https://mcp.slack.com/mcp",
+                        "headers": {"Authorization": "********"},
+                    }
+                },
+            )
+
+            assert response.status_code == 200
+            saved = mock_save.call_args.args[0]
+            assert saved.servers["slack"].headers == {
+                "Authorization": "Bearer ${SLACK_MCP_TOKEN}"
+            }
+
 
 class TestDeleteServer:
     """Test DELETE /api/mcp/servers/{name}."""
@@ -391,6 +431,87 @@ class TestRestartServer:
             client = TestClient(app)
             response = client.post("/api/mcp/servers/missing/restart")
             assert response.status_code == 404
+
+
+class TestConnectOAuth:
+    def test_connect_oauth_restarts_with_interactive_oauth(self) -> None:
+        app = _make_app()
+        with (
+            patch("app.api.routes.mcp.mcp_manager") as mock_manager,
+            patch("app.api.routes.mcp.load_config") as mock_load,
+            patch("app.api.routes.mcp.allow_interactive_oauth") as mock_allow,
+            patch("app.api.routes.mcp.disallow_interactive_oauth") as mock_disallow,
+        ):
+            cfg = MCPConfig(
+                servers={
+                    "notion": HttpServerConfig(
+                        url="https://mcp.notion.com/mcp",
+                        oauth={},
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+            mock_manager.restart_server = AsyncMock(
+                return_value=MCPServerStatus(
+                    name="notion", transport="http", enabled=True, state="ready"
+                )
+            )
+
+            client = TestClient(app)
+            response = client.post("/api/mcp/servers/notion/oauth/connect")
+
+            assert response.status_code == 200
+            mock_allow.assert_called_once_with("notion")
+            mock_disallow.assert_called_once_with("notion")
+            mock_manager.restart_server.assert_awaited_once_with("notion")
+
+    def test_connect_oauth_rejects_non_oauth_server(self) -> None:
+        app = _make_app()
+        with (
+            patch("app.api.routes.mcp.mcp_manager"),
+            patch("app.api.routes.mcp.load_config") as mock_load,
+        ):
+            mock_load.return_value = MCPConfig(
+                servers={"filesystem": StdioServerConfig(command="echo")}
+            )
+
+            client = TestClient(app)
+            response = client.post("/api/mcp/servers/filesystem/oauth/connect")
+
+            assert response.status_code == 400
+
+    def test_connect_oauth_returns_conflict_when_auth_still_required(self) -> None:
+        app = _make_app()
+        with (
+            patch("app.api.routes.mcp.mcp_manager") as mock_manager,
+            patch("app.api.routes.mcp.load_config") as mock_load,
+            patch("app.api.routes.mcp.allow_interactive_oauth"),
+            patch("app.api.routes.mcp.disallow_interactive_oauth"),
+        ):
+            cfg = MCPConfig(
+                servers={
+                    "slack": HttpServerConfig(
+                        url="https://mcp.slack.com/mcp",
+                        oauth={},
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+            mock_manager.restart_server = AsyncMock(
+                return_value=MCPServerStatus(
+                    name="slack",
+                    transport="http",
+                    enabled=True,
+                    state="auth_required",
+                    error="MCP server 'slack' requires OAuth app credentials.",
+                )
+            )
+
+            client = TestClient(app)
+            response = client.post("/api/mcp/servers/slack/oauth/connect")
+
+            assert response.status_code == 409
+            assert "requires OAuth app credentials" in response.json()["detail"]
 
 
 class TestApply:

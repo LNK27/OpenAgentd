@@ -29,7 +29,10 @@ function isPristine(draft: McpServerDraft): boolean {
     draft.argsText === TEMPLATE.argsText &&
     draft.envPairs.length === 0 &&
     draft.url === '' &&
-    draft.headerPairs.length === 0
+    draft.headerPairs.length === 0 &&
+    draft.oauthEnabled === TEMPLATE.oauthEnabled &&
+    draft.oauthClientIdEnv === TEMPLATE.oauthClientIdEnv &&
+    draft.oauthClientSecretEnv === TEMPLATE.oauthClientSecretEnv
   )
 }
 

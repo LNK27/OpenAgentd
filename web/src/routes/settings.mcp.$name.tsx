@@ -2,7 +2,12 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { AlertCircle, RotateCw } from 'lucide-react'
 
-import { useMcpServerQuery, useRestartMcpServerMutation, useUpdateMcpServerMutation } from '@/queries'
+import {
+  useConnectMcpOAuthMutation,
+  useMcpServerQuery,
+  useRestartMcpServerMutation,
+  useUpdateMcpServerMutation,
+} from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
@@ -36,15 +41,17 @@ export function McpServerDetailPage() {
   const serverQ = useMcpServerQuery(name)
   const updateMut = useUpdateMcpServerMutation()
   const restartMut = useRestartMcpServerMutation()
+  const connectOAuthMut = useConnectMcpOAuthMutation()
 
   // Seed the editable draft from the saved config payload. We re-seed
   // exactly once per server load (tracking the `name` + version of the
   // config object) so user edits aren't blown away by background refetches.
   const seedDraft = useMemo<McpServerDraft | null>(() => {
+    if (serverQ.data?.name !== name) return null
     const cfg = serverQ.data?.config
     if (!cfg) return null
     return draftFromServerBody(name, cfg)
-  }, [name, serverQ.data?.config])
+  }, [name, serverQ.data?.config, serverQ.data?.name])
 
   const [draft, setDraft] = useState<McpServerDraft | null>(seedDraft)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -98,6 +105,16 @@ export function McpServerDetailPage() {
     }
   }
 
+  const handleConnectOAuth = async () => {
+    try {
+      await connectOAuthMut.mutateAsync(name)
+      push({ tone: 'success', title: `Connected OAuth for "${name}"` })
+    } catch (err) {
+      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      push({ tone: 'error', title: `OAuth connect failed for "${name}"`, description: msg })
+    }
+  }
+
   const server = serverQ.data
 
   return (
@@ -139,6 +156,30 @@ export function McpServerDetailPage() {
                   </CardHeader>
                   <CardContent>
                     <p className="font-mono text-xs text-(--color-error)">{server.error}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {server.state === 'auth_required' && (
+                <Card size="sm" className="border-(--accent-orange)/40 bg-(--accent-orange)/10">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-(--accent-orange)">
+                      <AlertCircle size={14} className="text-(--accent-orange)" />
+                      OAuth needed to connect
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="mb-3 text-xs text-(--color-text-muted)">
+                      Connect OAuth to authorize this MCP server.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleConnectOAuth}
+                      disabled={connectOAuthMut.isPending || !server.enabled}
+                    >
+                      {connectOAuthMut.isPending ? 'Connecting…' : 'Connect OAuth'}
+                    </Button>
                   </CardContent>
                 </Card>
               )}
@@ -215,6 +256,8 @@ function StatusCard({
                 ? 'text-(--accent-green)'
                 : server.state === 'starting'
                   ? 'text-(--accent-orange)'
+                  : server.state === 'auth_required'
+                    ? 'text-(--accent-orange)'
                   : server.state === 'error'
                     ? 'text-(--color-error)'
                     : 'text-(--color-text-muted)'
@@ -282,16 +325,18 @@ function RestartCard({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRestart}
-          disabled={pending || !enabled}
-          aria-label={pending ? 'Restarting' : 'Restart server'}
-        >
-          <RotateCw size={12} aria-hidden="true" />
-          {pending ? 'Restarting…' : 'Restart'}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRestart}
+            disabled={pending || !enabled}
+            aria-label={pending ? 'Restarting' : 'Restart server'}
+          >
+            <RotateCw size={12} aria-hidden="true" />
+            {pending ? 'Restarting…' : 'Restart'}
+          </Button>
+        </div>
         {!enabled && (
           <p className="mt-2 text-[11px] text-(--color-text-muted)">
             Server is disabled — enable and save first to restart.

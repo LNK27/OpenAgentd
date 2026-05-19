@@ -347,12 +347,21 @@ External tools loaded over the [Model Context Protocol](https://modelcontextprot
     "remote": {
       "transport": "http",
       "url": "https://mcp.example.com/v1",
-      "headers": {"Authorization": "Bearer ..."},
+      "headers": {"Authorization": "Bearer ${REMOTE_MCP_TOKEN}"},
+      "enabled": true
+    },
+    "notion": {
+      "transport": "http",
+      "url": "https://mcp.notion.com/mcp",
+      "headers": {},
+      "oauth": {},
       "enabled": true
     }
   }
 }
 ```
+
+HTTP `headers` may reference secrets from the process env or `{CONFIG_DIR}/.env` via `$VAR` / `${VAR}`. API responses mask header values. OAuth servers store tokens under `{OPENAGENTD_CACHE_DIR}/mcp-oauth/`; missing tokens show `state="auth_required"` until the user clicks **Connect OAuth** in Settings.
 
 **Lifecycle:** `MCPManager.start()` runs in `lifespan()` before `team_manager.start()`. Because `start()` only *spawns* runner tasks, `lifespan` then awaits `mcp_manager.wait_until_ready()` (10s default) so the team loader sees populated tool lists. Servers still pending after the timeout fall through to graceful empty — the agent loads with no tools from that server, matching the not-ready contract. Each server runs in a long-lived `asyncio.Task` holding the `ClientSession` open via `AsyncExitStack`; a failed server is logged with `state="error"` and never blocks others.
 

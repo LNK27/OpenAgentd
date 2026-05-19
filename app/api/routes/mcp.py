@@ -12,9 +12,11 @@ from app.agent.mcp.config import (
     save_config,
     validate_server_name,
 )
+from app.agent.mcp.oauth import allow_interactive_oauth, disallow_interactive_oauth
 from app.api.schemas.mcp import (
     CreateServerRequest,
     HttpServerBody,
+    OAuthBody,
     ServerDeleteResponse,
     ServerListResponse,
     ServerStatusResponse,
@@ -23,6 +25,7 @@ from app.api.schemas.mcp import (
 )
 
 router = APIRouter()
+_MASKED_SECRET = "********"
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -42,8 +45,28 @@ def _config_to_body(
         )
     return HttpServerBody(
         url=cfg.url,
-        headers=dict(cfg.headers),
+        headers={key: _MASKED_SECRET for key in cfg.headers},
+        oauth=OAuthBody.model_validate(cfg.oauth.model_dump()) if cfg.oauth else None,
         enabled=cfg.enabled,
+    )
+
+
+def _merge_masked_http_headers(
+    new: HttpServerConfig,
+    existing: StdioServerConfig | HttpServerConfig | None,
+) -> HttpServerConfig:
+    if not isinstance(existing, HttpServerConfig):
+        return new
+    return HttpServerConfig(
+        url=new.url,
+        headers={
+            key: existing.headers[key]
+            if value == _MASKED_SECRET and key in existing.headers
+            else value
+            for key, value in new.headers.items()
+        },
+        oauth=new.oauth,
+        enabled=new.enabled,
     )
 
 
@@ -113,6 +136,8 @@ async def update_server(name: str, body: UpdateServerRequest) -> ServerStatusRes
         raise HTTPException(status_code=404, detail=f"MCP server '{name}' not found.")
 
     server_cfg = body.server.to_config()
+    if isinstance(server_cfg, HttpServerConfig):
+        server_cfg = _merge_masked_http_headers(server_cfg, cfg.servers[name])
     cfg.servers[name] = server_cfg
     save_config(cfg)
 
@@ -143,6 +168,30 @@ async def restart_server(name: str) -> ServerStatusResponse:
         ) from exc
     cfg = load_config()
     return _to_response(status, cfg.servers.get(name))
+
+
+@router.post("/servers/{name}/oauth/connect")
+async def connect_oauth(name: str) -> ServerStatusResponse:
+    cfg = load_config()
+    server_cfg = cfg.servers.get(name)
+    if server_cfg is None:
+        raise HTTPException(status_code=404, detail=f"MCP server '{name}' not found.")
+    if not isinstance(server_cfg, HttpServerConfig) or server_cfg.oauth is None:
+        raise HTTPException(
+            status_code=400, detail=f"MCP server '{name}' is not configured for OAuth."
+        )
+
+    allow_interactive_oauth(name)
+    try:
+        status = await mcp_manager.restart_server(name)
+    finally:
+        disallow_interactive_oauth(name)
+    if status.state != "ready":
+        raise HTTPException(
+            status_code=409,
+            detail=status.error or f"MCP server '{name}' did not connect.",
+        )
+    return _to_response(status, server_cfg)
 
 
 @router.post("/apply")

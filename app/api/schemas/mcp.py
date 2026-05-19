@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agent.mcp.config import HttpServerConfig, StdioServerConfig
+from app.agent.mcp.config import HttpServerConfig, OAuthConfig, StdioServerConfig
 
 
 class StdioServerBody(BaseModel):
@@ -27,18 +27,33 @@ class StdioServerBody(BaseModel):
         )
 
 
+class OAuthBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_id_env: str | None = None
+    client_secret_env: str | None = None
+
+    def to_config(self) -> OAuthConfig:
+        return OAuthConfig(
+            client_id_env=self.client_id_env,
+            client_secret_env=self.client_secret_env,
+        )
+
+
 class HttpServerBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     transport: Literal["http"] = "http"
     url: Annotated[str, Field(min_length=1)]
     headers: dict[str, str] = Field(default_factory=dict)
+    oauth: OAuthBody | None = None
     enabled: bool = True
 
     def to_config(self) -> HttpServerConfig:
         return HttpServerConfig(
             url=self.url,
             headers=self.headers,
+            oauth=self.oauth.to_config() if self.oauth else None,
             enabled=self.enabled,
         )
 

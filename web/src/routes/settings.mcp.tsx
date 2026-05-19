@@ -13,6 +13,7 @@ import { useMcpServersQuery } from '@/queries'
 const STATE_COLOR: Record<ServerStatus['state'], string> = {
   ready: 'bg-(--accent-green)',
   starting: 'bg-(--accent-orange)',
+  auth_required: 'bg-(--accent-orange)',
   error: 'bg-(--color-error)',
   stopped: 'bg-(--color-text-muted)/40',
 }

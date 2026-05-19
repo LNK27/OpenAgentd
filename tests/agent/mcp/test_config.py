@@ -12,6 +12,7 @@ from app.agent.mcp.config import (
     MCPConfig,
     StdioServerConfig,
     load_config,
+    resolve_headers,
     save_config,
     validate_server_name,
 )
@@ -237,3 +238,23 @@ class TestSaveConfig:
         loaded = load_config(config_file)
 
         assert loaded.servers["disabled"].enabled is False
+
+
+class TestResolveHeaders:
+    def test_resolve_headers_expands_env_refs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SLACK_MCP_TOKEN", "xoxp-secret")
+
+        assert resolve_headers({"Authorization": "Bearer ${SLACK_MCP_TOKEN}"}) == {
+            "Authorization": "Bearer xoxp-secret"
+        }
+
+    def test_resolve_headers_keeps_missing_refs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("MISSING_MCP_TOKEN", raising=False)
+
+        assert resolve_headers({"Authorization": "Bearer $MISSING_MCP_TOKEN"}) == {
+            "Authorization": "Bearer $MISSING_MCP_TOKEN"
+        }

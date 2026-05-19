@@ -8,8 +8,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mcp.client.auth import OAuthRegistrationError
 
-from app.agent.mcp.config import MCPConfig, StdioServerConfig
+from app.agent.mcp.config import (
+    HttpServerConfig,
+    MCPConfig,
+    OAuthConfig,
+    StdioServerConfig,
+)
 from app.agent.mcp.manager import MCPManager, MCPServerStatus
 from app.agent.mcp.tools import MCPTool
 
@@ -282,6 +288,117 @@ class TestMCPManagerWithMockedServer:
 
                 # Cleanup
                 await manager.stop()
+
+
+class TestMCPManagerOAuth:
+    @pytest.mark.asyncio
+    async def test_oauth_server_without_tokens_is_auth_required(self) -> None:
+        manager = MCPManager()
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(
+                servers={
+                    "notion": HttpServerConfig(
+                        url="https://mcp.notion.com/mcp",
+                        oauth=OAuthConfig(),
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+
+            with patch(
+                "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=False
+            ):
+                await manager.start()
+                runner = manager._runners["notion"]
+                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("notion")
+            assert status is not None
+            assert status.state == "auth_required"
+            assert "needs OAuth" in (status.error or "")
+
+    @pytest.mark.asyncio
+    async def test_oauth_registration_failure_is_auth_required(self) -> None:
+        manager = MCPManager()
+
+        class FailingStreamableHttpClient:
+            async def __aenter__(self):
+                raise ExceptionGroup(
+                    "oauth failed", [OAuthRegistrationError("Registration failed: 404")]
+                )
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(
+                servers={
+                    "slack": HttpServerConfig(
+                        url="https://mcp.slack.com/mcp",
+                        oauth=OAuthConfig(),
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+
+            with (
+                patch(
+                    "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=True
+                ),
+                patch(
+                    "app.agent.mcp.manager.supports_dynamic_client_registration",
+                    return_value=True,
+                ),
+                patch(
+                    "mcp.client.streamable_http.streamablehttp_client",
+                    return_value=FailingStreamableHttpClient(),
+                ),
+            ):
+                await manager.start()
+                runner = manager._runners["slack"]
+                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("slack")
+            assert status is not None
+            assert status.state == "auth_required"
+            assert "client ID/secret" in (status.error or "")
+
+    @pytest.mark.asyncio
+    async def test_oauth_without_dynamic_registration_requires_credentials(
+        self,
+    ) -> None:
+        manager = MCPManager()
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(
+                servers={
+                    "slack": HttpServerConfig(
+                        url="https://mcp.slack.com/mcp",
+                        oauth=OAuthConfig(),
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+
+            with (
+                patch(
+                    "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=False
+                ),
+                patch(
+                    "app.agent.mcp.manager.interactive_oauth_allowed", return_value=True
+                ),
+                patch(
+                    "app.agent.mcp.manager.supports_dynamic_client_registration",
+                    return_value=False,
+                ),
+            ):
+                await manager.start()
+                runner = manager._runners["slack"]
+                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("slack")
+            assert status is not None
+            assert status.state == "auth_required"
+            assert "client ID/secret" in (status.error or "")
 
     @pytest.mark.asyncio
     async def test_restart_server_with_mocked_server(self) -> None:
