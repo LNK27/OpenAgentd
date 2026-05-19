@@ -443,7 +443,7 @@ export function CodingSidebar({
           if (!open) setTrustWorkspace(null)
         }}
       >
-        <DialogContent showCloseButton={false}>
+        <DialogContent showCloseButton={false} className="min-w-0">
           {trustWorkspace ? (
             <>
               <DialogHeader>
@@ -466,9 +466,9 @@ export function CodingSidebar({
                 <DialogTitle>Open workspace</DialogTitle>
                 <DialogDescription>Choose a server-local project folder.</DialogDescription>
               </DialogHeader>
-              <div className="space-y-2">
-                <div className="rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
-                  <p className="truncate font-mono text-xs text-(--color-text-muted)" title={browserPath ?? undefined}>
+              <div className="min-w-0 space-y-2">
+                <div className="min-w-0 rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                  <p className="min-w-0 font-mono text-xs text-(--color-text-muted) [overflow-wrap:anywhere]" title={browserPath ?? undefined}>
                     {browserPath ?? 'Loading folders…'}
                   </p>
                 </div>
@@ -492,11 +492,11 @@ export function CodingSidebar({
                     <button
                       type="button"
                       key={dir.path}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
+                      className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
                       onClick={() => void loadBrowser(dir.path)}
                     >
-                      <Folder size={14} />
-                      <span className="truncate">{dir.name}</span>
+                      <Folder size={14} className="shrink-0" />
+                      <span className="min-w-0 truncate">{dir.name}</span>
                     </button>
                   ))}
                 </div>
