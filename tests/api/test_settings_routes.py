@@ -765,6 +765,22 @@ def test_list_provider_models_does_not_mutate_os_environ(
     assert captured["overrides"] == {"OPENAI_API_KEY": "candidate-key"}
 
 
+def test_provider_configuration_reads_saved_config_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from app.agent.providers.catalog import find
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=saved-key\n", encoding="utf-8")
+
+    entry = find("openai")
+    assert entry is not None
+    assert settings_routes._provider_is_configured(entry) is True
+
+
 # ── /agents/registry — concurrent + cached discovery ────────────────────────
 
 
@@ -829,6 +845,44 @@ def test_registry_caches_discovery_within_ttl(monkeypatch: pytest.MonkeyPatch) -
     client.get("/api/agents/registry")
 
     assert call_count == 1
+
+
+def test_registry_discovery_uses_saved_config_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from fastapi import FastAPI
+
+    from app.api.routes import agents as agents_module
+    from app.api.routes.agents import router as agents_router
+
+    agents_module._registry_model_cache.clear()
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=saved-key\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "app.api.routes.settings._provider_is_configured",
+        lambda entry: entry["id"] == "openai",
+    )
+
+    captured: dict[str, object] = {}
+
+    async def _spy(_entry, **kwargs):  # type: ignore[no-untyped-def]
+        captured["overrides"] = kwargs.get("overrides")
+        return ["saved-model"]
+
+    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
+
+    app = FastAPI()
+    app.include_router(agents_router, prefix="/api/agents")
+    client = TestClient(app)
+
+    response = client.get("/api/agents/registry")
+
+    assert response.status_code == 200
+    assert captured["overrides"] == {"OPENAI_API_KEY": "saved-key"}
+    assert "openai:saved-model" in {m["id"] for m in response.json()["models"]}
 
 
 def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> None:

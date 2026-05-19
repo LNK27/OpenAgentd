@@ -275,7 +275,10 @@ async def _discover_configured_registry_models() -> list[tuple[str, str]]:
     """
     # Avoid a circular-import-on-startup hazard: this helper is imported
     # from settings.py for the configuration check.
-    from app.api.routes.settings import _provider_is_configured
+    from app.api.routes.settings import (
+        _provider_is_configured,
+        _provider_saved_overrides,
+    )
 
     configured: list[ProviderEntry] = [
         entry for entry in all_providers() if _provider_is_configured(entry)
@@ -290,7 +293,9 @@ async def _discover_configured_registry_models() -> list[tuple[str, str]]:
         cached = _registry_model_cache.get(provider_id)
         if cached and now - cached[0] < _REGISTRY_MODEL_CACHE_TTL_S:
             return provider_id, cached[1]
-        models = await discover_provider_models(entry)
+        models = await discover_provider_models(
+            entry, overrides=_provider_saved_overrides(entry)
+        )
         _registry_model_cache[provider_id] = (now, models)
         return provider_id, models
 

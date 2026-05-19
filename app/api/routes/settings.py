@@ -155,9 +155,27 @@ def _provider_is_configured(entry: "ProviderEntry") -> bool:
     if not env_var:
         return False
     # Check both os.environ (mutated by recent saves) and settings
-    # (loaded once at startup) so freshly-saved keys show as configured
-    # immediately.
-    return bool(os.environ.get(env_var))
+    # (loaded once at startup) and the user's config .env (loaded by the
+    # credential store) so saved keys survive daemon restarts.
+    store = ProviderCredentialStore(entry["id"])
+    return bool(store.get(env_var))
+
+
+def _provider_saved_overrides(entry: "ProviderEntry") -> dict[str, str]:
+    """Return saved credential values for provider model discovery."""
+    from app.agent.providers.plugin_registry import ProviderCredentialStore
+
+    store = ProviderCredentialStore(entry["id"])
+    names: set[str] = set()
+    if entry.get("env_var"):
+        names.add(str(entry["env_var"]))
+    names.update(str(name) for name in entry.get("env_vars") or [])
+    for field in entry.get("credentials") or []:
+        name = str(field.get("name", ""))
+        if name:
+            names.add(name)
+    names.update({"OLLAMA_BASE_URL", "ROUTER9_BASE_URL", "CLIPROXY_BASE_URL"})
+    return {name: value for name in names if (value := store.get(name))}
 
 
 def _daemon_base_url(provider_id: str) -> str:
@@ -302,7 +320,9 @@ async def list_provider_models(
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_id}'")
 
-    overrides = _build_overrides(entry, body.api_key, body.extra)
+    overrides = _provider_saved_overrides(entry) | _build_overrides(
+        entry, body.api_key, body.extra
+    )
     discovered = await discover_provider_models(entry, overrides=overrides)
     if discovered:
         return ProviderModelsResponse(
