@@ -26,6 +26,9 @@ export interface McpServerDraft {
   // http
   url: string
   headerPairs: KeyValuePair[]
+  oauthEnabled: boolean
+  oauthClientIdEnv: string
+  oauthClientSecretEnv: string
 }
 
 /** Server name format — matches the backend regex (see `app/agent/mcp/config.py`). */
@@ -41,6 +44,9 @@ export function emptyDraft(): McpServerDraft {
     envPairs: [],
     url: '',
     headerPairs: [],
+    oauthEnabled: false,
+    oauthClientIdEnv: '',
+    oauthClientSecretEnv: '',
   }
 }
 
@@ -56,6 +62,9 @@ export function draftFromServerBody(name: string, body: ServerBody): McpServerDr
       envPairs: Object.entries(body.env).map(([key, value]) => ({ key, value })),
       url: '',
       headerPairs: [],
+      oauthEnabled: false,
+      oauthClientIdEnv: '',
+      oauthClientSecretEnv: '',
     }
   }
   return {
@@ -67,6 +76,9 @@ export function draftFromServerBody(name: string, body: ServerBody): McpServerDr
     envPairs: [],
     url: body.url,
     headerPairs: Object.entries(body.headers).map(([key, value]) => ({ key, value })),
+    oauthEnabled: !!body.oauth,
+    oauthClientIdEnv: body.oauth?.client_id ?? '',
+    oauthClientSecretEnv: body.oauth?.client_secret ?? '',
   }
 }
 
@@ -106,6 +118,12 @@ export function draftToServerBody(
       transport: 'http',
       url: draft.url.trim(),
       headers: pairsToRecord(draft.headerPairs),
+      oauth: draft.oauthEnabled
+        ? {
+            client_id: draft.oauthClientIdEnv.trim() || null,
+            client_secret: draft.oauthClientSecretEnv.trim() || null,
+          }
+        : null,
       enabled: draft.enabled,
     },
   }
@@ -173,7 +191,12 @@ export function draftEquals(a: McpServerDraft, b: McpServerDraft): boolean {
     return pairsEqual(a.envPairs, b.envPairs)
   }
   if (a.url !== b.url) return false
-  return pairsEqual(a.headerPairs, b.headerPairs)
+  return (
+    pairsEqual(a.headerPairs, b.headerPairs) &&
+    a.oauthEnabled === b.oauthEnabled &&
+    a.oauthClientIdEnv === b.oauthClientIdEnv &&
+    a.oauthClientSecretEnv === b.oauthClientSecretEnv
+  )
 }
 
 function pairsEqual(a: KeyValuePair[], b: KeyValuePair[]): boolean {

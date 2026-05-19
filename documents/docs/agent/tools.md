@@ -347,12 +347,31 @@ External tools loaded over the [Model Context Protocol](https://modelcontextprot
     "remote": {
       "transport": "http",
       "url": "https://mcp.example.com/v1",
-      "headers": {"Authorization": "Bearer ..."},
+      "headers": {"Authorization": "Bearer ${REMOTE_MCP_TOKEN}"},
+      "enabled": true
+    },
+    "notion": {
+      "transport": "http",
+      "url": "https://mcp.notion.com/mcp",
+      "headers": {},
+      "oauth": {},
+      "enabled": true
+    },
+    "slack": {
+      "transport": "http",
+      "url": "https://mcp.slack.com/mcp",
+      "headers": {},
+      "oauth": {
+        "client_id": "${SLACK_MCP_CLIENT_ID}",
+        "client_secret": "${SLACK_MCP_CLIENT_SECRET}"
+      },
       "enabled": true
     }
   }
 }
 ```
+
+HTTP `headers` may reference secrets from the process env or `{CONFIG_DIR}/.env` via `$VAR` / `${VAR}`. API responses mask header values. OAuth app credentials may be configured with `oauth.client_id` / `oauth.client_secret`; Settings stores pasted values as `<SERVER>_MCP_CLIENT_ID` / `<SERVER>_MCP_CLIENT_SECRET` in `{CONFIG_DIR}/.env` and writes `${...}` refs to `mcp.json`. OAuth tokens are stored under `{OPENAGENTD_CACHE_DIR}/mcp-oauth/`; missing tokens show `state="auth_required"` until the user clicks **Connect OAuth** in Settings.
 
 **Lifecycle:** `MCPManager.start()` runs in `lifespan()` before `team_manager.start()`. Because `start()` only *spawns* runner tasks, `lifespan` then awaits `mcp_manager.wait_until_ready()` (10s default) so the team loader sees populated tool lists. Servers still pending after the timeout fall through to graceful empty — the agent loads with no tools from that server, matching the not-ready contract. Each server runs in a long-lived `asyncio.Task` holding the `ClientSession` open via `AsyncExitStack`; a failed server is logged with `state="error"` and never blocks others.
 

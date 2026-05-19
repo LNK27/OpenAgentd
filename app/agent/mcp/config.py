@@ -36,12 +36,14 @@ import tempfile
 from pathlib import Path
 from typing import Annotated, Literal
 
+from dotenv import dotenv_values
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 
 _CONFIG_FILENAME = "mcp.json"
+_ENV_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 
 _SERVER_NAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
@@ -68,6 +70,15 @@ class StdioServerConfig(BaseModel):
     enabled: bool = True
 
 
+class OAuthConfig(BaseModel):
+    """OAuth settings for remote HTTP MCP servers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str | None = None
+    client_secret: str | None = None
+
+
 class HttpServerConfig(BaseModel):
     """Connect to a remote MCP server over Streamable HTTP."""
 
@@ -76,7 +87,31 @@ class HttpServerConfig(BaseModel):
     transport: Literal["http"] = "http"
     url: Annotated[str, Field(min_length=1)]
     headers: dict[str, str] = Field(default_factory=dict)
+    oauth: OAuthConfig | None = None
     enabled: bool = True
+
+
+def resolve_secret_refs(value: str) -> str:
+    """Expand $VAR / ${VAR} using process env or the config .env file."""
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1) or match.group(2)
+        if name in os.environ:
+            return os.environ[name]
+        env_file = Path(settings.OPENAGENTD_CONFIG_DIR) / ".env"
+        if env_file.is_file():
+            env_value = dotenv_values(env_file).get(name)
+            if env_value is not None:
+                return env_value
+        return match.group(0)
+
+    return _ENV_REF_RE.sub(replace, value)
+
+
+def resolve_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Resolve env-var references in HTTP MCP headers at connection time."""
+
+    return {key: resolve_secret_refs(value) for key, value in headers.items()}
 
 
 MCPServerConfig = StdioServerConfig | HttpServerConfig

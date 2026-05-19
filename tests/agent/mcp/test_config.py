@@ -10,8 +10,10 @@ import pytest
 from app.agent.mcp.config import (
     HttpServerConfig,
     MCPConfig,
+    OAuthConfig,
     StdioServerConfig,
     load_config,
+    resolve_headers,
     save_config,
     validate_server_name,
 )
@@ -163,6 +165,53 @@ class TestLoadConfig:
         assert isinstance(loaded.servers["filesystem"], StdioServerConfig)
         assert isinstance(loaded.servers["github"], HttpServerConfig)
 
+    def test_load_config_http_oauth_accepts_refs_and_direct_values(
+        self, tmp_path: Path
+    ) -> None:
+        config_file = tmp_path / "mcp.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "servers": {
+                        "slack": {
+                            "transport": "http",
+                            "url": "https://mcp.slack.com/mcp",
+                            "oauth": {
+                                "client_id": "${SLACK_MCP_CLIENT_ID}",
+                                "client_secret": "direct-secret",
+                            },
+                        }
+                    }
+                }
+            )
+        )
+
+        loaded = load_config(config_file)
+        server = loaded.servers["slack"]
+        assert isinstance(server, HttpServerConfig)
+        assert server.oauth == OAuthConfig(
+            client_id="${SLACK_MCP_CLIENT_ID}", client_secret="direct-secret"
+        )
+
+    def test_load_config_rejects_legacy_oauth_env_fields(self, tmp_path: Path) -> None:
+        config_file = tmp_path / "mcp.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "servers": {
+                        "slack": {
+                            "transport": "http",
+                            "url": "https://mcp.slack.com/mcp",
+                            "oauth": {"client_id_env": "SLACK_MCP_CLIENT_ID"},
+                        }
+                    }
+                }
+            )
+        )
+
+        with pytest.raises(ValueError):
+            load_config(config_file)
+
 
 class TestSaveConfig:
     """Test save_config function."""
@@ -237,3 +286,23 @@ class TestSaveConfig:
         loaded = load_config(config_file)
 
         assert loaded.servers["disabled"].enabled is False
+
+
+class TestResolveHeaders:
+    def test_resolve_headers_expands_env_refs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SLACK_MCP_TOKEN", "xoxp-secret")
+
+        assert resolve_headers({"Authorization": "Bearer ${SLACK_MCP_TOKEN}"}) == {
+            "Authorization": "Bearer xoxp-secret"
+        }
+
+    def test_resolve_headers_keeps_missing_refs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("MISSING_MCP_TOKEN", raising=False)
+
+        assert resolve_headers({"Authorization": "Bearer $MISSING_MCP_TOKEN"}) == {
+            "Authorization": "Bearer $MISSING_MCP_TOKEN"
+        }

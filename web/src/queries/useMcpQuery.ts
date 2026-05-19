@@ -7,6 +7,7 @@ import {
   updateMcpServer,
   deleteMcpServer,
   restartMcpServer,
+  connectMcpOAuth,
   type ServerBody,
 } from '@/api/client'
 import { queryKeys } from './keys'
@@ -66,6 +67,17 @@ export function useRestartMcpServerMutation() {
     mutationFn: (name: string) => restartMcpServer(name),
     onSuccess: (_data, name) => {
       client.invalidateQueries({ queryKey: queryKeys.mcp.detail(name) })
+    },
+  })
+}
+
+export function useConnectMcpOAuthMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => connectMcpOAuth(name),
+    onSettled: (_data, _error, name) => {
+      client.invalidateQueries({ queryKey: queryKeys.mcp.detail(name) })
+      invalidateAll(client)
     },
   })
 }

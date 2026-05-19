@@ -132,7 +132,14 @@ config schema, transports, and lifecycle.
 | `PUT` | `/api/mcp/servers/{name}` | `ServerStatusResponse` — replace a server |
 | `DELETE` | `/api/mcp/servers/{name}` | `{name}` |
 | `POST` | `/api/mcp/servers/{name}/restart` | `ServerStatusResponse` — restart one runner |
+| `POST` | `/api/mcp/servers/{name}/oauth/connect` | `ServerStatusResponse` — start OAuth for an HTTP MCP server |
 | `POST` | `/api/mcp/apply` | `ServerListResponse` — re-read `mcp.json`, reconcile runners |
+
+For HTTP OAuth servers, create/update accepts pasted `oauth.client_id` and
+`oauth.client_secret` values. The API stores only `<SERVER>_MCP_CLIENT_ID` /
+`<SERVER>_MCP_CLIENT_SECRET` in `{OPENAGENTD_CONFIG_DIR}/.env`, updates the
+current process environment for those keys, and persists `${...}` references
+in `mcp.json`. Existing unrelated `.env` entries are preserved.
 
 `POST /apply` is the hook the `mcp-installer` skill calls after editing
 `mcp.json` directly: it validates the file (422 on parse error before

@@ -646,6 +646,10 @@ export type HttpServerBody = {
   transport: 'http'
   url: string
   headers: Record<string, string>
+  oauth?: {
+    client_id?: string | null
+    client_secret?: string | null
+  } | null
   enabled: boolean
 }
 
@@ -655,7 +659,7 @@ export type ServerStatus = {
   name: string
   transport: 'stdio' | 'http'
   enabled: boolean
-  state: 'stopped' | 'starting' | 'ready' | 'error'
+  state: 'stopped' | 'starting' | 'ready' | 'auth_required' | 'error'
   error: string | null
   tool_names: string[]
   started_at: string | null
@@ -708,6 +712,12 @@ export async function deleteMcpServer(name: string): Promise<ServerDeleteRespons
 export async function restartMcpServer(name: string): Promise<ServerStatus> {
   const res = await fetch(`${API}/mcp/servers/${encodeURIComponent(name)}/restart`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/restart`)
+  return res.json()
+}
+
+export async function connectMcpOAuth(name: string): Promise<ServerStatus> {
+  const res = await fetch(`${API}/mcp/servers/${encodeURIComponent(name)}/oauth/connect`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/oauth/connect`)
   return res.json()
 }
 

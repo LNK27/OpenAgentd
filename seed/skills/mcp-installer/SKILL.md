@@ -29,6 +29,13 @@ Pass `--base <url>` to override.
 # Add a remote HTTP server
 python "$SCRIPT" add <name> --http <url>
 
+# Add an OAuth HTTP server. Paste credential values; the API stores them
+# as <SERVER>_MCP_CLIENT_ID / <SERVER>_MCP_CLIENT_SECRET in .env and writes
+# ${...} refs to mcp.json. Omit values for dynamic-registration servers.
+python "$SCRIPT" add <name> --http <url> --oauth
+python "$SCRIPT" add slack --http https://mcp.slack.com/mcp \
+  --oauth-client-id <client-id> --oauth-client-secret <client-secret>
+
 # Add a stdio server
 python "$SCRIPT" add <name> --stdio <command> --args arg1 arg2 --env KEY=VALUE
 
@@ -42,24 +49,8 @@ python "$SCRIPT" remove <name>
 # Restart a runner (no config change)
 python "$SCRIPT" restart <name>
 
-# Re-read mcp.json and reconcile all runners
-python3 "$SCRIPT" apply
-
-# Add a remote HTTP server
-python3 "$SCRIPT" add <name> --http <url>
-
-# Add a stdio server
-python3 "$SCRIPT" add <name> --stdio <command> --args arg1 arg2 --env KEY=VALUE
-
-# Update an existing server
-python3 "$SCRIPT" update <name> --http <url>
-python3 "$SCRIPT" update <name> --stdio <command> --args ...
-
-# Remove a server
-python3 "$SCRIPT" remove <name>
-
-# Restart a runner (no config change)
-python3 "$SCRIPT" restart <name>
+# Start an explicit OAuth browser flow
+python "$SCRIPT" connect-oauth <name>
 
 # Re-read mcp.json and reconcile all runners
 python3 "$SCRIPT" apply
@@ -77,7 +68,7 @@ python3 "$SCRIPT" wait <name> [--timeout 30]
 |------|---------|
 | `0` | Success — or daemon unreachable but `mcp.json` updated as fallback |
 | `1` | API / validation error — detail on stderr |
-| `2` | Server ended up in `errored` state |
+| `2` | Server ended up in `error` or still needs OAuth (`auth_required`) |
 | `3` | `wait` timed out — server still `starting` |
 
 `add`, `update`, `remove`, and `apply` never exit 1 on connection refused —
@@ -98,14 +89,11 @@ always proceed to wiring after these commands regardless of daemon state.
 
 ## Workflow — install / update
 
-1. **Confirm secrets exist** before installing servers that need them:
+1. **Handle secrets safely** before installing servers that need them:
 
-   ```bash
-   printenv GITHUB_PERSONAL_ACCESS_TOKEN | head -c 4
-   ```
-
-   Empty → tell the user to add it to `{OPENAGENTD_CONFIG_DIR}/.env`. Don't
-   install a server you know will fail.
+   - For stdio servers that read env vars directly, confirm the env var exists with `printenv KEY | head -c 4`. Empty → tell the user to add it to `{OPENAGENTD_CONFIG_DIR}/.env`; don't install a server you know will fail.
+   - For HTTP OAuth servers, ask the user for the app client ID/secret when required. Pass the pasted values with `--oauth-client-id` / `--oauth-client-secret`; the API stores only generated `<SERVER>_MCP_CLIENT_ID` / `<SERVER>_MCP_CLIENT_SECRET` keys in `{OPENAGENTD_CONFIG_DIR}/.env` and writes `${...}` refs to `mcp.json`.
+   - For dynamic-registration OAuth servers such as Notion, use `--oauth` without credential values.
 
 2. **Expand `~` and relative paths** for stdio args — the daemon spawns under
    its own cwd. Use `realpath`:
@@ -120,6 +108,13 @@ always proceed to wiring after these commands regardless of daemon state.
    # Remote HTTP (preferred when the server offers a hosted URL)
    python3 "$SCRIPT" add excalidraw --http https://mcp.excalidraw.com
 
+   # HTTP OAuth, dynamic registration
+   python3 "$SCRIPT" add notion --http https://mcp.notion.com/mcp --oauth
+
+   # HTTP OAuth, app credentials required
+   python3 "$SCRIPT" add slack --http https://mcp.slack.com/mcp \
+     --oauth-client-id <client-id> --oauth-client-secret <client-secret>
+
    # Local stdio
    python3 "$SCRIPT" add filesystem --stdio npx \
      --args -y @modelcontextprotocol/server-filesystem /Users/you/Documents
@@ -127,16 +122,23 @@ always proceed to wiring after these commands regardless of daemon state.
 
    - Exit `0`: runner started (may still be `starting` — use `wait` if needed).
    - Exit `1`: API validation error — fix the config and retry.
-   - Exit `2`: runner started but immediately errored — show the error, fix
-     config, retry.
+   - Exit `2`: runner hit `error` or `auth_required` — show the error, fix
+     config or run `connect-oauth`, then retry.
 
-4. **Wait for ready** (optional but recommended):
+4. **Connect OAuth if needed.** If status is `auth_required`, run the explicit
+   browser flow:
+
+   ```bash
+   python3 "$SCRIPT" connect-oauth <name>
+   ```
+
+5. **Wait for ready** (optional but recommended):
 
    ```bash
    python3 "$SCRIPT" wait excalidraw --timeout 30
    ```
 
-5. **Wire into an agent.** Installing alone does NOT make the tools callable.
+6. **Wire into an agent.** Installing alone does NOT make the tools callable.
    This step is **mandatory** — do not consider the install complete until done.
 
    **The lead must wire it.** Two paths:
@@ -176,15 +178,19 @@ always proceed to wiring after these commands regardless of daemon state.
 | postgres     | `--stdio npx --args -y @modelcontextprotocol/server-postgres <conn-string>` |
 | sqlite       | `--stdio uvx --args mcp-server-sqlite --db-path <path>` |
 | excalidraw   | `--http https://mcp.excalidraw.com` |
+| notion       | `--http https://mcp.notion.com/mcp --oauth`, then `connect-oauth notion` |
+| slack        | `--http https://mcp.slack.com/mcp --oauth-client-id <id> --oauth-client-secret <secret>`, then `connect-oauth slack` |
 
 Verify package names with the user — npm names drift.
 
 ## Failure modes
 
-- **Exit 2 (`errored`)** → show the error field; suggest the obvious fix
+- **Exit 2 (`error`)** → show the error field; suggest the obvious fix
   (missing package, wrong path, missing env var). Don't retry blindly.
+- **`auth_required` state** → run `connect-oauth <name>`. If it still returns
+  a conflict, ask for the missing OAuth app credentials and update the server.
 - **Exit 0 with "daemon unreachable" message** → `mcp.json` was updated
-  as fallback. Proceed to step 5 (wire into agent) as normal. Changes
+  as fallback. Proceed to step 6 (wire into agent) as normal. Changes
   take effect on next daemon restart.
 - **`agent_config_refresh_failed`** (next turn's logs) → an agent's `tools:`
   list references a removed tool. Run `rg 'mcp_' {OPENAGENTD_CONFIG_DIR}/agents/`

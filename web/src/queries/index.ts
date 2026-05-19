@@ -49,6 +49,7 @@ export {
   useUpdateMcpServerMutation,
   useDeleteMcpServerMutation,
   useRestartMcpServerMutation,
+  useConnectMcpOAuthMutation,
 } from './useMcpQuery'
 export {
   useSandboxSettingsQuery,

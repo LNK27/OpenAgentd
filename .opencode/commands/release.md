@@ -89,11 +89,12 @@ git log ${PREV_TAG}..HEAD --oneline --no-merges
 - Skip commits unrelated to this branch's user-facing work (e.g. earlier docs-only commits that landed on `main` separately).
 - Tight, user-facing notes.
 - Prefer detailed bullets for `## What's changed`; one bullet per user-visible capability, fix, or behavior change.
-- Inspect commit details, not just commit subjects, before drafting bullets:
+- Inspect each included commit's full message body, stats, and changed files before drafting bullets. Do not rely on commit subjects alone:
 
   ```bash
+  git log ${PREV_TAG}..HEAD --format=fuller --no-merges
   git show --stat --oneline <commit>...
-  git show --name-only --format=fuller <commit>
+  git show --name-only --format=fuller <commit>...
   ```
 
 - Group related commits into a single bullet when they ship one visible outcome, but split distinct outcomes even if they landed in the same area.

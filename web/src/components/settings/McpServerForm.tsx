@@ -16,7 +16,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import type { KeyValuePair, McpServerDraft } from './McpServerDraft'
 
@@ -39,7 +38,6 @@ export function McpServerForm({
   errors,
 }: McpServerFormProps) {
   const set = (patch: Partial<McpServerDraft>) => onChange({ ...value, ...patch })
-
   return (
     <div className="flex flex-col gap-4">
       {/* Identity ─────────────────────────────────────────────────── */}
@@ -89,19 +87,11 @@ export function McpServerForm({
           <CardDescription>How the runtime talks to the server process.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs
+          <TransportToggle
             value={value.transport}
-            onValueChange={(v) => set({ transport: v as 'stdio' | 'http' })}
-          >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="stdio" disabled={disabled}>
-                Stdio
-              </TabsTrigger>
-              <TabsTrigger value="http" disabled={disabled}>
-                HTTP
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+            onChange={(transport) => set({ transport })}
+            disabled={disabled}
+          />
         </CardContent>
       </Card>
 
@@ -191,6 +181,56 @@ export function McpServerForm({
               onChange={(headerPairs) => set({ headerPairs })}
               disabled={disabled}
             />
+
+            <Field
+              label="OAuth"
+              error={errors?.oauth}
+              hint={
+                value.oauthEnabled
+                  ? 'Paste app credentials here. They are saved to .env and referenced from mcp.json.'
+                  : 'Enable for hosted servers like Slack or Notion that require user OAuth.'
+              }
+            >
+              <EnabledToggle
+                value={value.oauthEnabled}
+                onChange={(oauthEnabled) => set({ oauthEnabled })}
+                disabled={disabled}
+                enabledLabel="OAuth"
+                disabledLabel="None"
+              />
+            </Field>
+
+            {value.oauthEnabled && (
+              <div className="rounded-md border border-dashed border-(--color-border) p-3">
+                <p className="text-xs text-(--color-text-muted)">
+                  Leave blank only for servers that support dynamic OAuth registration, such
+                  as Notion.
+                </p>
+              </div>
+            )}
+
+            {value.oauthEnabled && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Client ID" hint="Paste the OAuth app client ID.">
+                  <Input
+                    value={value.oauthClientIdEnv}
+                    onChange={(e) => set({ oauthClientIdEnv: e.target.value })}
+                    disabled={disabled}
+                    placeholder="client id"
+                    className="font-mono"
+                  />
+                </Field>
+                <Field label="Client secret" hint="Paste the OAuth app client secret.">
+                  <Input
+                    value={value.oauthClientSecretEnv}
+                    onChange={(e) => set({ oauthClientSecretEnv: e.target.value })}
+                    disabled={disabled}
+                    placeholder="client secret"
+                    className="font-mono"
+                  />
+                </Field>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -242,10 +282,14 @@ function EnabledToggle({
   value,
   onChange,
   disabled,
+  enabledLabel = 'Enabled',
+  disabledLabel = 'Disabled',
 }: {
   value: boolean
   onChange: (next: boolean) => void
   disabled?: boolean
+  enabledLabel?: string
+  disabledLabel?: string
 }) {
   return (
     <div
@@ -257,13 +301,44 @@ function EnabledToggle({
         active={value}
         onClick={() => onChange(true)}
         disabled={disabled}
-        label="Enabled"
+        label={enabledLabel}
       />
       <ToggleOption
         active={!value}
         onClick={() => onChange(false)}
         disabled={disabled}
-        label="Disabled"
+        label={disabledLabel}
+      />
+    </div>
+  )
+}
+
+function TransportToggle({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: 'stdio' | 'http'
+  onChange: (next: 'stdio' | 'http') => void
+  disabled?: boolean
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="MCP transport"
+      className="grid h-10 w-full grid-cols-2 rounded-lg bg-(--bg-key) p-1 ring-1 ring-(--color-border)"
+    >
+      <ToggleOption
+        active={value === 'stdio'}
+        onClick={() => onChange('stdio')}
+        disabled={disabled}
+        label="Stdio"
+      />
+      <ToggleOption
+        active={value === 'http'}
+        onClick={() => onChange('http')}
+        disabled={disabled}
+        label="HTTP"
       />
     </div>
   )

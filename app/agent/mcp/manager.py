@@ -30,23 +30,90 @@ from __future__ import annotations
 
 import asyncio
 import os
+import urllib.parse
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
+from mcp.client.auth import OAuthRegistrationError
 
 from app.agent.mcp.config import (
     HttpServerConfig,
     StdioServerConfig,
     load_config,
+    resolve_headers,
+)
+from app.agent.mcp.oauth import (
+    OAuthRequiredError,
+    build_oauth_provider,
+    has_cached_oauth_tokens,
+    has_resolved_client_id,
+    interactive_oauth_allowed,
+    supports_dynamic_client_registration,
 )
 from app.agent.mcp.tools import MCPTool
 from app.agent.tools.registry import Tool
 
 if TYPE_CHECKING:
     from mcp import ClientSession
+
+
+def _find_exception(
+    exc: BaseException, kind: type[BaseException]
+) -> BaseException | None:
+    if isinstance(exc, kind):
+        return exc
+    if isinstance(exc, BaseExceptionGroup):
+        for child in exc.exceptions:
+            found = _find_exception(child, kind)
+            if found is not None:
+                return found
+    return None
+
+
+def _is_oauth_registration_failure(exc: BaseException) -> bool:
+    if _find_exception(exc, OAuthRegistrationError) is not None:
+        return True
+    if exc.__class__.__name__ == "OAuthRegistrationError":
+        return True
+    if isinstance(exc, BaseExceptionGroup):
+        return any(_is_oauth_registration_failure(child) for child in exc.exceptions)
+    message = str(exc)
+    return "Registration failed" in message or "OAuthRegistrationError" in message
+
+
+def _is_http_auth_failure(exc: BaseException) -> bool:
+    if isinstance(exc, BaseExceptionGroup):
+        return any(_is_http_auth_failure(child) for child in exc.exceptions)
+    message = str(exc).lower()
+    return (
+        "missing_token" in message
+        or "unauthorized" in message
+        or "401" in message
+        or "authentication" in message
+    )
+
+
+def _requires_oauth_config(cfg: HttpServerConfig) -> bool:
+    host = urllib.parse.urlparse(cfg.url).hostname or ""
+    return host == "mcp.slack.com"
+
+
+def _oauth_credentials_required_message(name: str) -> str:
+    return (
+        f"MCP server '{name}' requires OAuth app credentials. "
+        "Add the OAuth app client ID/secret in Settings, then Connect OAuth."
+    )
+
+
+def _oauth_config_required_message(name: str) -> str:
+    return (
+        f"MCP server '{name}' requires OAuth. "
+        "Enable OAuth, add the OAuth app client ID and secret in Settings, "
+        "then Connect OAuth."
+    )
 
 
 @dataclass
@@ -369,9 +436,30 @@ class MCPManager:
                         ClientSession(read, write)
                     )
                 else:
+                    if server_cfg.oauth is None and _requires_oauth_config(server_cfg):
+                        raise OAuthRequiredError(_oauth_config_required_message(name))
+                    if (
+                        server_cfg.oauth is not None
+                        and not has_cached_oauth_tokens(name)
+                        and not interactive_oauth_allowed(name)
+                    ):
+                        raise OAuthRequiredError(
+                            f"MCP server '{name}' needs OAuth. Use Settings -> MCP -> Connect OAuth."
+                        )
+                    if (
+                        server_cfg.oauth is not None
+                        and interactive_oauth_allowed(name)
+                        and not has_resolved_client_id(server_cfg)
+                        and not await supports_dynamic_client_registration(server_cfg)
+                    ):
+                        raise OAuthRequiredError(
+                            _oauth_credentials_required_message(name)
+                        )
                     transport = await stack.enter_async_context(
                         streamablehttp_client(
-                            server_cfg.url, headers=dict(server_cfg.headers) or None
+                            server_cfg.url,
+                            headers=resolve_headers(server_cfg.headers) or None,
+                            auth=build_oauth_provider(name, server_cfg),
                         )
                     )
                     # streamablehttp_client yields (read, write, get_session_id).
@@ -417,7 +505,38 @@ class MCPManager:
             runner.status.error = None
             runner.ready.set()
             raise
+        except OAuthRequiredError as exc:
+            runner.session = None
+            runner.tools = []
+            runner.status.state = "auth_required"
+            runner.status.error = str(exc)
+            runner.status.tool_names = []
+            runner.ready.set()
         except Exception as exc:
+            if (
+                isinstance(server_cfg, HttpServerConfig)
+                and server_cfg.oauth is None
+                and _is_http_auth_failure(exc)
+            ):
+                runner.session = None
+                runner.tools = []
+                runner.status.state = "auth_required"
+                runner.status.error = _oauth_config_required_message(name)
+                runner.status.tool_names = []
+                runner.ready.set()
+                return
+            if _is_oauth_registration_failure(exc) or (
+                isinstance(server_cfg, HttpServerConfig)
+                and server_cfg.oauth is not None
+                and not has_resolved_client_id(server_cfg)
+            ):
+                runner.session = None
+                runner.tools = []
+                runner.status.state = "auth_required"
+                runner.status.error = _oauth_credentials_required_message(name)
+                runner.status.tool_names = []
+                runner.ready.set()
+                return
             logger.error(
                 "mcp_server_failed name={} transport={} err={}",
                 name,
