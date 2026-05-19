@@ -184,8 +184,10 @@ No team teardown, no in-flight turn disruption, no restart.
 | `multimodal.yaml` | Read lazily on every `generate_image` / `generate_video` call — instant. |
 
 The only changes that still require a process restart are: adding or
-removing **agent files** themselves (team shape change), `.env` /
-secrets, and code changes. Don't claim a restart for anything else.
+removing **agent files** themselves (team shape change), manually editing `.env` /
+secrets, and code changes. MCP OAuth credentials saved through the MCP API are
+an exception: the API updates the current process environment immediately.
+Don't claim a restart for anything else.
 
 ## Agent frontmatter — fields you may edit
 
@@ -328,7 +330,7 @@ tools:
    ```
    - If `ready`: proceed.
    - If `starting`: wait a moment and retry once.
-   - If `errored` or absent from `mcp.json`: **delegate to `mcp-installer`** first.
+   - If `error`, `auth_required`, or absent from `mcp.json`: **delegate to `mcp-installer`** first.
    - If the daemon is unreachable: proceed anyway — add the `mcp:` entry to the agent file and note it takes effect on the next turn.
 
 2. **For selective `tools:` entries**, pick names from `tool_names`.

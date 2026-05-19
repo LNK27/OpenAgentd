@@ -11,18 +11,21 @@ wiring without any manual intervention.
 Usage:
   python mcp_apply.py apply
   python mcp_apply.py add <name> --http <url>
+  python mcp_apply.py add <name> --http <url> --oauth [--oauth-client-id ID --oauth-client-secret SECRET]
   python mcp_apply.py add <name> --stdio <command> [--args arg1 arg2 ...] [--env K=V ...]
   python mcp_apply.py update <name> --http <url>
+  python mcp_apply.py update <name> --http <url> --oauth [--oauth-client-id ID --oauth-client-secret SECRET]
   python mcp_apply.py update <name> --stdio <command> [--args arg1 arg2 ...] [--env K=V ...]
   python mcp_apply.py remove <name>
   python mcp_apply.py restart <name>
+  python mcp_apply.py connect-oauth <name>
   python mcp_apply.py status [<name>]
   python mcp_apply.py wait <name> [--timeout 30]
 
 Exit codes:
   0  success (or daemon unreachable but mcp.json updated as fallback)
   1  API / validation error (detail printed to stderr)
-  2  server ended up in errored state
+  2  server ended up in error or auth_required state
   3  wait timed out (server still starting)
 """
 
@@ -31,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -42,6 +46,8 @@ DEFAULT_BASE = "http://localhost:4082/api/mcp"
 DEFAULT_MCP_JSON = Path(
     os.environ.get("OPENAGENTD_CONFIG_DIR", Path.home() / ".openagentd" / "config")
 ) / "mcp.json"
+DEFAULT_ENV_FILE = DEFAULT_MCP_JSON.parent / ".env"
+MASKED_SECRET = "********"
 
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
@@ -93,13 +99,77 @@ def _load_mcp_json(path: Path) -> dict:
 
 
 def _save_mcp_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _oauth_env_key(name: str, field: str) -> str:
+    prefix = re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_").upper() or "MCP"
+    return f"{prefix}_MCP_{field}"
+
+
+def _quote_env_value(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _save_env_values(values: dict[str, str], env_file: Path) -> None:
+    if not values:
+        return
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    lines = env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else []
+    seen: set[str] = set()
+    next_lines: list[str] = []
+    for line in lines:
+        key = (
+            line.split("=", 1)[0].strip()
+            if "=" in line and not line.lstrip().startswith("#")
+            else ""
+        )
+        if key in values:
+            next_lines.append(f"{key}={_quote_env_value(values[key])}")
+            seen.add(key)
+        else:
+            next_lines.append(line)
+    for key, value in values.items():
+        if key not in seen:
+            next_lines.append(f"{key}={_quote_env_value(value)}")
+    env_file.write_text("\n".join(next_lines) + "\n", encoding="utf-8")
+    os.chmod(env_file, 0o600)
+
+
+def _store_oauth_secrets(name: str, body: dict, env_file: Path) -> dict:
+    oauth = body.get("oauth")
+    if body.get("transport") != "http" or oauth is None:
+        return body
+    env_values: dict[str, str] = {}
+    next_oauth = dict(oauth)
+    client_id = next_oauth.get("client_id")
+    client_secret = next_oauth.get("client_secret")
+    if client_id and client_id != MASKED_SECRET and not str(client_id).startswith("$"):
+        key = _oauth_env_key(name, "CLIENT_ID")
+        env_values[key] = client_id
+        next_oauth["client_id"] = f"${{{key}}}"
+    if client_secret and client_secret != MASKED_SECRET and not str(client_secret).startswith("$"):
+        key = _oauth_env_key(name, "CLIENT_SECRET")
+        env_values[key] = client_secret
+        next_oauth["client_secret"] = f"${{{key}}}"
+    _save_env_values(env_values, env_file)
+    return {**body, "oauth": next_oauth}
 
 
 def _server_body_to_config(body: dict) -> dict:
     """Convert API server body to mcp.json config shape."""
     if body["transport"] == "http":
-        return {"transport": "http", "url": body["url"], "headers": body.get("headers", {}), "enabled": body.get("enabled", True)}
+        config = {
+            "transport": "http",
+            "url": body["url"],
+            "headers": body.get("headers", {}),
+            "enabled": body.get("enabled", True),
+        }
+        if "oauth" in body:
+            config["oauth"] = body["oauth"]
+        return config
     return {
         "transport": "stdio",
         "command": body["command"],
@@ -109,15 +179,17 @@ def _server_body_to_config(body: dict) -> dict:
     }
 
 
-def _fallback_add(name: str, server_body: dict, mcp_json: Path) -> None:
+def _fallback_add(name: str, server_body: dict, mcp_json: Path, env_file: Path) -> None:
     data = _load_mcp_json(mcp_json)
+    server_body = _store_oauth_secrets(name, server_body, env_file)
     data.setdefault("servers", {})[name] = _server_body_to_config(server_body)
     _save_mcp_json(mcp_json, data)
     print(f"daemon unreachable — wrote {name} to {mcp_json} (takes effect on next daemon restart)")
 
 
-def _fallback_update(name: str, server_body: dict, mcp_json: Path) -> None:
+def _fallback_update(name: str, server_body: dict, mcp_json: Path, env_file: Path) -> None:
     data = _load_mcp_json(mcp_json)
+    server_body = _store_oauth_secrets(name, server_body, env_file)
     data.setdefault("servers", {})[name] = _server_body_to_config(server_body)
     _save_mcp_json(mcp_json, data)
     print(f"daemon unreachable — updated {name} in {mcp_json} (takes effect on next daemon restart)")
@@ -147,39 +219,39 @@ def cmd_apply(base: str, mcp_json: Path) -> None:
         return
     result = _ok(status, payload)
     servers = result.get("servers", [])
-    errored = [s for s in servers if s["state"] == "errored"]
+    failed = [s for s in servers if s["state"] in {"error", "auth_required"}]
     for s in servers:
         state = s["state"]
         tools = len(s.get("tool_names") or [])
         err = f"  error: {s['error']}" if s.get("error") else ""
         print(f"  {s['name']:20s}  {state:10s}  tools={tools}{err}")
-    if errored:
+    if failed:
         sys.exit(2)
 
 
-def cmd_add(base: str, name: str, server_body: dict, mcp_json: Path) -> None:
+def cmd_add(base: str, name: str, server_body: dict, mcp_json: Path, env_file: Path) -> None:
     """Add a new MCP server and start it."""
     try:
         status, payload = _request("POST", f"{base}/servers", {"name": name, "server": server_body})
     except DaemonUnreachable:
-        _fallback_add(name, server_body, mcp_json)
+        _fallback_add(name, server_body, mcp_json, env_file)
         return
     result = _ok(status, payload)
     _print_server(result)
-    if result.get("state") == "errored":
+    if result.get("state") in {"error", "auth_required"}:
         sys.exit(2)
 
 
-def cmd_update(base: str, name: str, server_body: dict, mcp_json: Path) -> None:
+def cmd_update(base: str, name: str, server_body: dict, mcp_json: Path, env_file: Path) -> None:
     """Update an existing MCP server config and restart it."""
     try:
         status, payload = _request("PUT", f"{base}/servers/{name}", {"server": server_body})
     except DaemonUnreachable:
-        _fallback_update(name, server_body, mcp_json)
+        _fallback_update(name, server_body, mcp_json, env_file)
         return
     result = _ok(status, payload)
     _print_server(result)
-    if result.get("state") == "errored":
+    if result.get("state") in {"error", "auth_required"}:
         sys.exit(2)
 
 
@@ -203,8 +275,19 @@ def cmd_restart(base: str, name: str) -> None:
         sys.exit(1)
     result = _ok(status, payload)
     _print_server(result)
-    if result.get("state") == "errored":
+    if result.get("state") in {"error", "auth_required"}:
         sys.exit(2)
+
+
+def cmd_connect_oauth(base: str, name: str) -> None:
+    """Start the explicit OAuth flow for an HTTP MCP server."""
+    try:
+        status, payload = _request("POST", f"{base}/servers/{name}/oauth/connect")
+    except DaemonUnreachable as exc:
+        print(f"error: daemon unreachable — cannot start OAuth: {exc}", file=sys.stderr)
+        sys.exit(1)
+    result = _ok(status, payload)
+    _print_server(result, verbose=True)
 
 
 def cmd_status(base: str, name: str | None) -> None:
@@ -225,7 +308,7 @@ def cmd_status(base: str, name: str | None) -> None:
 
 
 def cmd_wait(base: str, name: str, timeout: int) -> None:
-    """Poll until server is ready or errored, or timeout expires."""
+    """Poll until server is ready, error/auth_required, or timeout expires."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -241,7 +324,10 @@ def cmd_wait(base: str, name: str, timeout: int) -> None:
         if state == "ready":
             _print_server(result, verbose=True)
             return
-        if state == "errored":
+        if state == "error":
+            _print_server(result, verbose=True)
+            sys.exit(2)
+        if state == "auth_required":
             _print_server(result, verbose=True)
             sys.exit(2)
         time.sleep(1)
@@ -275,11 +361,20 @@ def _server_body_args(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--env", nargs="*", default=[], metavar="K=V", help="env vars for --stdio (KEY=VALUE)"
     )
+    p.add_argument("--oauth", action="store_true", help="enable HTTP OAuth with no app credentials")
+    p.add_argument("--oauth-client-id", metavar="VALUE", help="HTTP OAuth client ID value")
+    p.add_argument("--oauth-client-secret", metavar="VALUE", help="HTTP OAuth client secret value")
 
 
 def _parse_server_body(args: argparse.Namespace) -> dict:
     if args.http:
-        return {"transport": "http", "url": args.http}
+        body: dict[str, Any] = {"transport": "http", "url": args.http}
+        if args.oauth or args.oauth_client_id or args.oauth_client_secret:
+            body["oauth"] = {
+                "client_id": args.oauth_client_id,
+                "client_secret": args.oauth_client_secret,
+            }
+        return body
     env = {}
     for kv in (args.env or []):
         k, _, v = kv.partition("=")
@@ -293,6 +388,7 @@ def main() -> None:
     )
     p.add_argument("--base", default=DEFAULT_BASE, help=f"API base URL (default: {DEFAULT_BASE})")
     p.add_argument("--mcp-json", default=str(DEFAULT_MCP_JSON), help="Path to mcp.json for fallback writes")
+    p.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="Path to .env for fallback OAuth secret writes")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("apply", help="Re-read mcp.json and reconcile all runners")
@@ -311,6 +407,9 @@ def main() -> None:
     rst_p = sub.add_parser("restart", help="Restart an MCP server runner")
     rst_p.add_argument("name")
 
+    auth_p = sub.add_parser("connect-oauth", help="Start OAuth for an HTTP MCP server")
+    auth_p.add_argument("name")
+
     st_p = sub.add_parser("status", help="Show server state")
     st_p.add_argument("name", nargs="?", default=None)
 
@@ -321,17 +420,20 @@ def main() -> None:
     args = p.parse_args()
     base = args.base.rstrip("/")
     mcp_json = Path(args.mcp_json)
+    env_file = Path(args.env_file)
 
     if args.cmd == "apply":
         cmd_apply(base, mcp_json)
     elif args.cmd == "add":
-        cmd_add(base, args.name, _parse_server_body(args), mcp_json)
+        cmd_add(base, args.name, _parse_server_body(args), mcp_json, env_file)
     elif args.cmd == "update":
-        cmd_update(base, args.name, _parse_server_body(args), mcp_json)
+        cmd_update(base, args.name, _parse_server_body(args), mcp_json, env_file)
     elif args.cmd == "remove":
         cmd_remove(base, args.name, mcp_json)
     elif args.cmd == "restart":
         cmd_restart(base, args.name)
+    elif args.cmd == "connect-oauth":
+        cmd_connect_oauth(base, args.name)
     elif args.cmd == "status":
         cmd_status(base, args.name)
     elif args.cmd == "wait":
