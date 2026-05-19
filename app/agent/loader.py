@@ -54,12 +54,9 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
-from app.agent.schemas.agent import (
-    AgentContext,
-    TitleGenerationFileConfig,
-)
+from app.agent.schemas.agent import AgentContext
 
 if TYPE_CHECKING:
     from app.agent.mode.team.team import AgentTeam
@@ -156,75 +153,6 @@ def parse_agent_md(path: Path) -> AgentConfig:
 
     raw_meta["system_prompt"] = body or "You are a helpful assistant."
     return AgentConfig.model_validate(raw_meta)
-
-
-# ---------------------------------------------------------------------------
-# Title generation file config loader
-# ---------------------------------------------------------------------------
-
-_SENTINEL = object()
-_title_generation_file_cfg_cache: TitleGenerationFileConfig | None | object = _SENTINEL
-
-
-def load_title_generation_file_config(
-    path: str | Path | None = None,
-) -> TitleGenerationFileConfig | None:
-    """Load global title-generation defaults from a ``.md`` file with YAML frontmatter.
-
-    Returns ``None`` if the file does not exist.  Raises ``ValueError`` if
-    the file exists but is malformed.
-
-    The YAML frontmatter supplies ``model`` and ``wait_timeout_seconds``.
-    The Markdown body (after the closing ``---``) becomes the
-    title-generator system prompt when non-empty; if the body is empty the
-    built-in prompt at ``app/agent/prompts/title.md`` is used.
-
-    The result is cached after the first successful load.  Pass an explicit
-    *path* to bypass the cache (e.g. in tests).
-    """
-    global _title_generation_file_cfg_cache  # noqa: PLW0603
-
-    if path is None:
-        if _title_generation_file_cfg_cache is not _SENTINEL:
-            return cast(
-                "TitleGenerationFileConfig | None", _title_generation_file_cfg_cache
-            )
-        from app.agent.hooks.title_generation import title_generation_config_path
-
-        resolved = title_generation_config_path()
-    else:
-        resolved = Path(path)
-
-    if not resolved.exists():
-        if path is None:
-            _title_generation_file_cfg_cache = None
-        return None
-
-    text = resolved.read_text(encoding="utf-8")
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        raise ValueError(
-            f"Title generation config '{resolved}' is missing YAML frontmatter. "
-            "Expected '---\\n<yaml>\\n---\\n'."
-        )
-    raw = yaml.safe_load(m.group(1)) or {}
-    raw.pop("prompt", None)
-    body = m.group(2).strip()
-    if body:
-        raw["prompt"] = body
-    result = TitleGenerationFileConfig.model_validate(raw)
-
-    if path is None:
-        _title_generation_file_cfg_cache = result
-        logger.info(
-            "title_generation_file_config_loaded path={} model={} "
-            "wait_timeout_seconds={} prompt_override={}",
-            resolved,
-            result.model or "(agent default)",
-            result.wait_timeout_seconds,
-            result.prompt is not None,
-        )
-    return result
 
 
 # ---------------------------------------------------------------------------

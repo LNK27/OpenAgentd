@@ -17,8 +17,7 @@ Each agent is a single `.md` file with **YAML frontmatter** (config) and a **Mar
 |------|---------|
 | `{OPENAGENTD_CONFIG_DIR}/agents/*.md` | Normal-mode agents. Each directory loads as one team — exactly one file must have `role: lead`. |
 | `{OPENAGENTD_CONFIG_DIR}/agents/coding/*.md` | Coding-mode team. Same rules — exactly one `role: lead`. |
-| `{OPENAGENTD_CONFIG_DIR}/dream.md` | Dream agent config (`enabled`, `model`, `schedule`, `tools`). See [`agent/memory.md`](../agent/memory.md#dream-agent-config). |
-| `{OPENAGENTD_CONFIG_DIR}/title_generation.md` | Global title-generation defaults. |
+| `{OPENAGENTD_CONFIG_DIR}/settings.yaml` | Runtime settings for Dream and title generation. See [`agent/memory.md`](../agent/memory.md#dream-agent-config) and [`title-generation.md`](../title-generation.md). |
 | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | Image / video generation backends. |
 | `{OPENAGENTD_CONFIG_DIR}/speech.yaml` | Voice / speech config. |
 | `{OPENAGENTD_CONFIG_DIR}/mcp.json` | MCP client config — see [`agent/tools.md`](../agent/tools.md#mcp-servers-appagentmcp). |
@@ -43,8 +42,6 @@ tools:
 skills:
   - self-healing
   - skill-installer
-mcp:
-  - context7
 # fallback_model: copilot:gpt-5-mini
 ---
 
@@ -68,7 +65,7 @@ All from `AgentConfig` in `app/agent/loader.py`. Field types match the Pydantic 
 | `skills` | No | `list[str]` | Skill names to advertise in the system prompt (see [`skills.md`](./skills.md)). |
 | `temperature` | No | `float` | Sampling temperature. |
 | `thinking_level` | No | `"low"\|"medium"\|"high"` | Extended-reasoning effort. See [`providers.md`](./providers.md#thinking-thinking_level). |
-| `fallback_model` | No | `str` | `provider:model` used after primary exhausts retries. |
+| `fallback_model` | No | `str` | `provider:model` used after primary retry exhaustion, or immediately for quota-style 429s. |
 | `responses_api` | No | `bool` | Force OpenAI Responses API on/off (overrides the auto-route from `thinking_level`). |
 
 Summarisation has no per-agent overrides — see [`agent/summarization.md`](../agent/summarization.md). All tuning lives as constants in `app/agent/hooks/summarization.py`; the only per-session variation is the team mode (chat vs. coding), which selects the bundled prompt and keep window.

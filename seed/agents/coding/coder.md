@@ -17,8 +17,6 @@ tools:
   - rm
   - shell
   - write
-mcp:
-  - context7
 ---
 
 You are **coder**.

@@ -25,7 +25,7 @@ OpenAgentd splits runtime files across **six** XDG-aligned roots, one per catego
 **What lives where:**
 
 - **Data** — irreplaceable user data. SQLite DB (`openagentd.db`). **Back this up.**
-- **Config** — hand-edited configuration. Agents (`agents/`), skills (`skills/`), title-generation prompt (`title_generation.md`), generation config (`multimodal.yaml`), voice (`speech.yaml`), MCP (`mcp.json`), sandbox (`sandbox.yaml`), `.env`. (Summarisation has no file-based config — all tuning lives in `app/agent/hooks/summarization.py`.)
+- **Config** — hand-edited configuration. Agents (`agents/`), skills (`skills/`), runtime settings (`settings.yaml`), generation config (`multimodal.yaml`), voice (`speech.yaml`), MCP (`mcp.json`), sandbox (`sandbox.yaml`), `.env`. (Summarisation has no file-based config — all tuning lives in `app/agent/hooks/summarization.py`.)
 - **State** — historical bookkeeping. Logs (`logs/`), telemetry (`telemetry/`), OTEL rollups (`otel/`), `openagentd.pid`. Safe to archive.
 - **Cache** — regeneratable throwaway. `quoteoftheday.json`, `copilot_oauth.json`, `codex_oauth.json`. Safe to delete any time.
 - **Workspace** — per-session agent workspaces (`{root}/<sid>/`). User uploads live at `{root}/<sid>/uploads/`. Allowed by the sandbox so filesystem tools (`read`/`write`/`shell`) can operate there.
@@ -65,9 +65,8 @@ Dev-mode paths shown below — substitute the production columns from the table 
 │   ├── .env                                   # secrets (gitignored)
 │   ├── agents/*.md                            # per-agent config
 │   ├── agents/coding/*.md                     # coding-mode team
-│   ├── dream.md                               # dream agent config
 │   ├── skills/{name}/SKILL.md                 # skills
-│   ├── title_generation.md                    # global title-gen config
+│   ├── settings.yaml                          # Dream + title generation runtime settings
 │   ├── multimodal.yaml                        # image/video gen config
 │   ├── speech.yaml                            # voice input config
 │   ├── mcp.json                               # MCP server config

@@ -154,11 +154,12 @@ When the primary model fails with retryable errors (429, 5xx, timeouts), the age
 
 ```yaml
 model: zai:glm-5v-turbo             # primary
-fallback_model: copilot:gpt-5-mini  # used after primary exhausts retries
+fallback_model: copilot:gpt-5-mini  # used after retry exhaustion or quota 429s
 ```
 
-- Primary is retried 5× with exponential backoff.
-- On the last attempt, no sleep — switches to fallback immediately.
+- Primary is retried 5× with exponential backoff for transient failures.
+- Quota-style 429s, such as usage-limit or insufficient-balance responses, skip retries and switch to fallback immediately.
+- On the last transient attempt, no sleep — switches to fallback immediately.
 - Fallback gets its own 5-retry budget with the same backoff.
 - Non-retryable errors (400, 401, 403) are raised immediately — no fallback.
 - If unset, the existing retry-only behaviour is unchanged.

@@ -80,6 +80,20 @@ def _load_raw() -> dict[str, Any] | None:
     return data
 
 
+def load_raw_config() -> dict[str, Any]:
+    """Return raw multimodal config for settings UI round-trips."""
+    return _load_raw() or {}
+
+
+def save_raw_config(config: dict[str, Any]) -> None:
+    """Persist raw multimodal config and bust the mtime cache."""
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    global _cache
+    _cache = None
+
+
 def get_section(kind: str) -> MediaSectionConfig | None:
     """Return resolved config for ``kind`` or ``None`` if absent/malformed.
 

@@ -154,8 +154,8 @@ Paths are relative to `OPENAGENTD_WIKI_DIR`. See [`agent/memory.md`](../agent/me
 
 | Method | Path | Returns |
 |--------|------|---------|
-| `GET` | `/api/dream/config` | `{content, exists}` — raw `dream.md` content |
-| `PUT` | `/api/dream/config` | `{content, exists}` — overwrite `dream.md` and reload the scheduler |
+| `GET` | `/api/dream/config` | `{enabled, model, schedule}` — current Dream runtime settings |
+| `PUT` | `/api/dream/config` | `{enabled, model, schedule}` — persist Dream settings to `settings.yaml` and reload the scheduler |
 | `POST` | `/api/dream/run` | `{sessions_processed, notes_processed, remaining, failed, skipped?}` — trigger dream synthesis immediately; `skipped` is present when dream is not configured and pending items were preserved |
 
 ## Scheduler endpoints
@@ -206,6 +206,13 @@ field. V1 supports local transcription via `voice.model: local:base`, powered by
 ## Settings
 
 User-editable runtime settings persisted under `{OPENAGENTD_CONFIG_DIR}`. Sandbox patterns match resolved absolute paths for filesystem-tool calls; see [`configuration.md`](../configuration.md#sandbox-model-and-permissions).
+
+| Method | Path | Returns |
+|--------|------|---------|
+| `GET` | `/api/settings/title-generation` | `{enabled, model, wait_timeout_seconds}` from `settings.yaml` |
+| `PUT` | `/api/settings/title-generation` | Persist title generation runtime settings |
+| `GET` | `/api/settings/multimodal` | `{image, video}` from `multimodal.yaml` |
+| `PUT` | `/api/settings/multimodal` | Persist image/video generation defaults |
 
 | Method | Path | Returns |
 |--------|------|---------|
@@ -410,7 +417,7 @@ data: {"name": "web_search", "tool_call_id": "tc_abc"}
 | `tool_output_delta` | `{name, text, stream, sequence, tool_call_id, agent?}` | Live output from a running tool. Currently emitted by foreground `shell`. |
 | `tool_end` | `{name, result, tool_call_id, agent?}` | Tool result returned |
 | `usage` | `{prompt_tokens, completion_tokens, cached_tokens?, agent?}` | End of turn |
-| `rate_limit` | `{retry_after?, attempt?, max_attempts?}` | Provider rate limit hit; if `fallback_model` is configured, agent will switch to it after exhausting primary retries |
+| `rate_limit` | `{retry_after?, attempt?, max_attempts?}` | Transient provider rate limit hit. If `fallback_model` is configured, quota-style 429s skip retries and switch to fallback immediately; transient 429s switch after primary retries are exhausted. |
 | `error` | `{message, metadata?: {agent, exception}}` | Unrecoverable error. In team mode, emitted when the **lead** fails (member failures are routed to the lead via mailbox — see [`agent/teams.md`](../agent/teams.md#sse-events-team-specific)). The frontend surfaces this as an error toast via `useToastStore`. |
 | `done` | `{metadata?: {cancelled?: true}}` | Turn complete — DB is now authoritative. `cancelled: true` present when interrupted. Agent streams in `error` or `offline` status are **not** reset to `idle` by this event — those states persist until an explicit later lifecycle event. |
 | `title_update` | `{title}` | LLM-generated session title is ready. Fired on the first turn only, concurrently with the agent run. Pub/sub only — not replayed on reconnect. |

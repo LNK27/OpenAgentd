@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from app.agent.agent_loop import Agent
 from app.agent.agent_loop.retry import parse_retry_after, stream_with_retry
+from app.agent.errors import ProviderRateLimitError
 from app.agent.providers.base import LLMProviderBase
 from app.agent.tools.registry import Tool
 from app.agent.schemas.chat import (
@@ -1592,6 +1593,125 @@ async def test_fallback_model_used_when_primary_exhausts_retries():
     assert chunks[0].choices[0].delta.content == "fallback response"
 
 
+async def test_fallback_model_used_immediately_on_usage_limit_429():
+    """Quota exhaustion is not retried; fallback is attempted immediately."""
+    import httpx
+    from unittest.mock import AsyncMock, patch
+
+    primary_calls = 0
+
+    async def primary_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal primary_calls
+        primary_calls += 1
+        response = httpx.Response(
+            429,
+            request=httpx.Request("POST", "http://x"),
+            json={"error": {"type": "usage_limit_reached"}},
+        )
+        raise httpx.HTTPStatusError(
+            "usage limit reached", request=response.request, response=response
+        )
+        yield  # pragma: no cover
+
+    async def fallback_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        yield make_text_chunk("fallback response")
+
+    primary_provider = MockProvider([[]])
+    primary_provider.stream = primary_stream  # type: ignore[method-assign]
+
+    fallback_provider = MockProvider([[]])
+    fallback_provider.stream = fallback_stream  # type: ignore[method-assign]
+
+    agent = Agent(
+        name="bot",
+        llm_provider=primary_provider,
+        fallback_provider=fallback_provider,
+        fallback_model_id="fallback:model",
+    )
+
+    with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
+        chunks = [
+            c
+            async for c in stream_with_retry(
+                **retry_args(agent), messages=[], tools=None
+            )
+        ]
+
+    assert primary_calls == 1
+    assert len(chunks) == 1
+    assert chunks[0].choices[0].delta.content == "fallback response"
+
+
+async def test_fallback_model_used_immediately_on_insufficient_balance_429():
+    """Provider balance exhaustion is not retried; fallback is attempted immediately."""
+    import httpx
+    from unittest.mock import AsyncMock, patch
+
+    primary_calls = 0
+
+    async def primary_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal primary_calls
+        primary_calls += 1
+        response = httpx.Response(
+            429,
+            request=httpx.Request("POST", "http://x"),
+            json={
+                "error": {
+                    "code": "1113",
+                    "message": "Insufficient balance or no resource package. Please recharge.",
+                }
+            },
+        )
+        raise httpx.HTTPStatusError(
+            "insufficient balance", request=response.request, response=response
+        )
+        yield  # pragma: no cover
+
+    async def fallback_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        yield make_text_chunk("fallback response")
+
+    primary_provider = MockProvider([[]])
+    primary_provider.stream = primary_stream  # type: ignore[method-assign]
+
+    fallback_provider = MockProvider([[]])
+    fallback_provider.stream = fallback_stream  # type: ignore[method-assign]
+
+    agent = Agent(
+        name="bot",
+        llm_provider=primary_provider,
+        fallback_provider=fallback_provider,
+        fallback_model_id="fallback:model",
+    )
+
+    with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
+        chunks = [
+            c
+            async for c in stream_with_retry(
+                **retry_args(agent), messages=[], tools=None
+            )
+        ]
+
+    assert primary_calls == 1
+    assert len(chunks) == 1
+    assert chunks[0].choices[0].delta.content == "fallback response"
+
+
 async def test_fallback_model_not_used_on_non_retryable_error():
     """Non-retryable errors (e.g. 400) are raised immediately — no fallback."""
     import httpx
@@ -1706,7 +1826,7 @@ async def test_fallback_model_also_retried_on_failure():
 
 
 async def test_no_fallback_when_not_configured():
-    """Without fallback_provider, behaviour is unchanged — retry then raise."""
+    """Without fallback_provider, retry then raise a domain rate-limit error."""
     import httpx
     from unittest.mock import AsyncMock, patch
     import pytest as _pytest
@@ -1735,13 +1855,80 @@ async def test_no_fallback_when_not_configured():
     assert agent.fallback_provider is None
 
     with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
-        with _pytest.raises(httpx.HTTPStatusError):
+        with _pytest.raises(ProviderRateLimitError):
             async for _ in stream_with_retry(
                 **retry_args(agent), messages=[], tools=None
             ):
                 pass
 
     assert call_count == MAX_RETRIES
+
+
+async def test_fallback_rate_limit_exhaustion_raises_domain_error():
+    """If primary and fallback end on 429, callers get a controlled domain error."""
+    import httpx
+    from unittest.mock import AsyncMock, patch
+    import pytest as _pytest
+
+    primary_calls = 0
+    fallback_calls = 0
+
+    async def primary_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal primary_calls
+        primary_calls += 1
+        response = httpx.Response(
+            429,
+            request=httpx.Request("POST", "http://x"),
+            json={"error": {"message": "Insufficient balance"}},
+        )
+        raise httpx.HTTPStatusError(
+            "rate limited", request=response.request, response=response
+        )
+        yield  # pragma: no cover
+
+    async def fallback_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal fallback_calls
+        fallback_calls += 1
+        response = httpx.Response(
+            429,
+            request=httpx.Request("POST", "http://x"),
+            json={"error": {"type": "usage_limit_reached"}},
+        )
+        raise httpx.HTTPStatusError(
+            "rate limited", request=response.request, response=response
+        )
+        yield  # pragma: no cover
+
+    primary_provider = MockProvider([[]])
+    primary_provider.stream = primary_stream  # type: ignore[method-assign]
+
+    fallback_provider = MockProvider([[]])
+    fallback_provider.stream = fallback_stream  # type: ignore[method-assign]
+
+    agent = Agent(
+        name="bot",
+        llm_provider=primary_provider,
+        fallback_provider=fallback_provider,
+        fallback_model_id="fallback:model",
+    )
+
+    with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
+        with _pytest.raises(ProviderRateLimitError):
+            async for _ in stream_with_retry(
+                **retry_args(agent), messages=[], tools=None
+            ):
+                pass
+
+    assert primary_calls == 1
+    assert fallback_calls == 1
 
 
 async def test_fallback_connection_error_retried():

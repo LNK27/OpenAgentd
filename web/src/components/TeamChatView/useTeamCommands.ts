@@ -114,7 +114,7 @@ export function useTeamCommands({
     { id: 'settings-new-agent', group: 'Settings', label: 'New Agent',  description: 'Create a new agent',    action: () => navigate({ to: '/settings/agents/new' }) },
     { id: 'settings-skills', group: 'Settings', label: 'Manage Skills', description: 'Edit skill .md files',  action: () => navigate({ to: '/settings/skills' }) },
     { id: 'settings-new-skill', group: 'Settings', label: 'New Skill',  description: 'Create a new skill',    action: () => navigate({ to: '/settings/skills/new' }) },
-    { id: 'settings-dream', group: 'Settings', label: 'Dream Config',  description: 'Edit the dream agent prompt and schedule', action: () => navigate({ to: '/settings/dream' }) },
+    { id: 'settings-dream', group: 'Settings', label: 'Dream Settings',  description: 'Edit the dream model and schedule', action: () => navigate({ to: '/settings/dream' }) },
     ...agentNames.map((name) => ({
       id: `edit-${name}`, group: 'Settings',
       label: `Edit ${name}…`,

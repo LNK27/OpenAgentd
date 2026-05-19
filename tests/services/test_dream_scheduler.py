@@ -15,22 +15,26 @@ from app.services.dream_scheduler import DreamScheduler
 
 @pytest.fixture
 def _dream_md(tmp_path: Path, monkeypatch):
-    """Write a minimal enabled dream.md and point settings at the tmp dir."""
+    """Write enabled Dream settings and point settings at the tmp dir."""
     from app.core.config import settings
+    from app.core.runtime_settings import (
+        DreamSettings,
+        RuntimeSettings,
+        save_runtime_settings,
+    )
 
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    (config_dir / "dream.md").write_text(
-        "---\n"
-        "name: dream\n"
-        "model: mock:model\n"
-        "enabled: true\n"
-        "schedule: '* * * * *'\n"  # every minute, doesn't matter for these tests
-        "---\n"
-        "You are dream.\n",
-        encoding="utf-8",
-    )
     monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(config_dir))
+    save_runtime_settings(
+        RuntimeSettings(
+            dream=DreamSettings(
+                enabled=True,
+                model="mock:model",
+                schedule="* * * * *",
+            )
+        )
+    )
     yield config_dir
 
 
@@ -215,7 +219,7 @@ async def test_fire_logs_exception_with_traceback(_dream_md: Path):
 async def test_reload_without_prior_start_is_safe(_dream_md: Path):
     """Calling ``reload()`` before ``start()`` must not raise (the API
     routes call it unconditionally after ``PUT /api/dream/config``).
-    It should also leave the scheduler in a started state if dream.md
+    It should also leave the scheduler in a started state if Dream settings
     is enabled.
     """
     scheduler = DreamScheduler(db_factory=_fake_db_factory())
@@ -224,7 +228,7 @@ async def test_reload_without_prior_start_is_safe(_dream_md: Path):
     assert scheduler._task is None
     await scheduler.reload()
     # reload calls _start_unlocked which spawns a fresh loop task because
-    # dream.md is enabled in this fixture.
+    # Dream is enabled in this fixture.
     assert scheduler._task is not None
     assert not scheduler._task.done()
 
@@ -236,7 +240,7 @@ async def test_reload_without_prior_start_is_safe(_dream_md: Path):
 
 @pytest.mark.asyncio
 async def test_reload_with_disabled_dream_md_stops_scheduler(_dream_md: Path):
-    """When dream.md flips ``enabled: true`` → ``enabled: false`` and the
+    """When Dream flips ``enabled: true`` → ``enabled: false`` and the
     user calls ``PUT /api/dream/config``, the scheduler must NOT spawn a
     new loop task.  Otherwise disabling dream via the UI would have no
     effect until restart.
@@ -245,11 +249,13 @@ async def test_reload_with_disabled_dream_md_stops_scheduler(_dream_md: Path):
     await scheduler.start()
     assert scheduler._task is not None
 
-    # Rewrite dream.md disabled.
-    (_dream_md / "dream.md").write_text(
-        "---\nname: dream\nmodel: mock:model\nenabled: false\n---\nstop.\n",
-        encoding="utf-8",
+    from app.core.runtime_settings import (
+        DreamSettings,
+        RuntimeSettings,
+        save_runtime_settings,
     )
+
+    save_runtime_settings(RuntimeSettings(dream=DreamSettings(enabled=False)))
 
     await scheduler.reload()
     # After reload, the loop task should be gone (disabled config = no task).
@@ -306,19 +312,18 @@ async def test_stop_waits_for_running_fire(_dream_md: Path):
             assert scheduler._fire_task is None
 
 
-# ── Coverage gap: start() with no dream.md is a clean no-op ──────────────────
+# ── Coverage gap: start() with default settings is a clean no-op ─────────────
 
 
 @pytest.mark.asyncio
 async def test_start_no_dream_md_does_not_spawn_task(tmp_path: Path, monkeypatch):
-    """When dream.md is missing entirely, ``start()`` should silently leave
+    """When Dream settings are absent, ``start()`` should silently leave
     ``self._task`` as None — no orphaned scheduler task hanging around.
     """
     from app.core.config import settings
 
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    # NB: no dream.md written.
     monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(config_dir))
 
     scheduler = DreamScheduler(db_factory=_fake_db_factory())
@@ -328,38 +333,37 @@ async def test_start_no_dream_md_does_not_spawn_task(tmp_path: Path, monkeypatch
 
 @pytest.mark.asyncio
 async def test_start_disabled_dream_md_does_not_spawn_task(tmp_path: Path, monkeypatch):
-    """`enabled: false` in dream.md → start() exits without spawning."""
+    """`enabled: false` in settings → start() exits without spawning."""
     from app.core.config import settings
+    from app.core.runtime_settings import (
+        DreamSettings,
+        RuntimeSettings,
+        save_runtime_settings,
+    )
 
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    (config_dir / "dream.md").write_text(
-        "---\nname: dream\nmodel: mock:model\nenabled: false\n---\nbody\n",
-        encoding="utf-8",
-    )
     monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(config_dir))
+    save_runtime_settings(RuntimeSettings(dream=DreamSettings(enabled=False)))
 
     scheduler = DreamScheduler(db_factory=_fake_db_factory())
     await scheduler.start()
     assert scheduler._task is None
 
 
-# ── Coverage gap: start() with malformed dream.md degrades gracefully ────────
+# ── Coverage gap: start() with malformed settings degrades gracefully ────────
 
 
 @pytest.mark.asyncio
 async def test_start_malformed_dream_md_logs_and_skips(tmp_path: Path, monkeypatch):
-    """Bad YAML in dream.md must not crash startup; the scheduler logs and
+    """Bad YAML in settings.yaml must not crash startup; the scheduler logs and
     leaves itself off so the rest of the server still boots.
     """
     from app.core.config import settings
 
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    # Invalid YAML in frontmatter.
-    (config_dir / "dream.md").write_text(
-        "---\n: : malformed :\n---\nbody\n", encoding="utf-8"
-    )
+    (config_dir / "settings.yaml").write_text(": : malformed :\n", encoding="utf-8")
     monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(config_dir))
 
     scheduler = DreamScheduler(db_factory=_fake_db_factory())
@@ -371,12 +375,12 @@ async def test_start_malformed_dream_md_logs_and_skips(tmp_path: Path, monkeypat
 # ── Coverage gap: _fire CancelledError is not swallowed ──────────────────────
 
 
-# ── #3: filesystem edits to dream.md are picked up without a reload call ────
+# ── #3: filesystem edits to settings are picked up without a reload call ────
 
 
 @pytest.mark.asyncio
 async def test_loop_picks_up_filesystem_edit(_dream_md: Path):
-    """Writing a new ``enabled: false`` value directly to dream.md (without
+    """Writing a new ``enabled: false`` value directly to settings (without
     going through ``PUT /api/dream/config``) must cause the running loop
     to exit on its next iteration.
 
@@ -410,12 +414,16 @@ async def test_loop_picks_up_filesystem_edit(_dream_md: Path):
                         break
                     await original_sleep(0.01)
 
+                from app.core.runtime_settings import (
+                    DreamSettings,
+                    RuntimeSettings,
+                    save_runtime_settings,
+                )
+
                 # Rewrite the file with enabled: false — this is the
                 # filesystem-edit path we want the loop to honour.
-                (_dream_md / "dream.md").write_text(
-                    "---\nname: dream\nmodel: mock:model\nenabled: false\n"
-                    "schedule: '* * * * *'\n---\nstop.\n",
-                    encoding="utf-8",
+                save_runtime_settings(
+                    RuntimeSettings(dream=DreamSettings(enabled=False))
                 )
 
                 # The loop should exit on its own once it sees the mtime
@@ -427,7 +435,7 @@ async def test_loop_picks_up_filesystem_edit(_dream_md: Path):
                 except asyncio.CancelledError:
                     pass
                 except asyncio.TimeoutError:
-                    pytest.fail("Loop did not exit after dream.md was disabled on disk")
+                    pytest.fail("Loop did not exit after Dream was disabled on disk")
             finally:
                 await scheduler.stop()
 

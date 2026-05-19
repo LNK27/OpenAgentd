@@ -4,39 +4,6 @@ from uuid import UUID, uuid7
 from pydantic import BaseModel, Field, model_validator
 
 
-class TitleGenerationFileConfig(BaseModel):
-    """Global title-generation defaults loaded from ``.openagentd/config/title_generation.md``.
-
-    The file uses YAML frontmatter; the Markdown body (after the closing
-    ``---``) is the title-generator system prompt. Title generation only
-    runs when the file exists, ``enabled`` is ``true``, and the body is
-    non-empty — otherwise a warning is logged and the feature is skipped
-    (sessions keep their raw-truncation fallback title).
-
-    Fields
-    ------
-    enabled:
-        Feature switch. ``false`` disables title generation entirely (with
-        a warning at startup). Default ``true``.
-    model:
-        Provider:model string for the dedicated title LLM. Defaults to the
-        lead agent's own provider when omitted.
-    wait_timeout_seconds:
-        Best-effort cap (seconds) on how long ``after_agent`` will await the
-        background title task before the agent loop completes. Set to ``0``
-        to skip the wait entirely (fully non-blocking — the title still lands
-        via SSE whenever it is ready). Default ``3.0``.
-    prompt:
-        Populated from the file body by the loader — not a YAML frontmatter
-        field. ``None`` means the body was empty.
-    """
-
-    enabled: bool = True
-    model: str | None = None
-    wait_timeout_seconds: float | None = None
-    prompt: str | None = None
-
-
 class AgentStats(BaseModel):
     """Cumulative per-agent statistics, updated after each :meth:`~app.core.agent.Agent.run` call.
 

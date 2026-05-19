@@ -145,7 +145,7 @@ async def lifespan(app: FastAPI):
 
     await task_scheduler.start()
 
-    # Start dream scheduler (only if dream.md exists and enabled: true)
+    # Start dream scheduler (only if settings.yaml has dream.enabled: true)
     from app.core.db import async_session_factory
     from app.services.dream_scheduler import DreamScheduler
 

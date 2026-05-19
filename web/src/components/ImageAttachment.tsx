@@ -38,13 +38,21 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
   return (
     <>
       <div className="group relative inline-block">
-        <img
-          src={src}
-          alt={alt}
-          onError={() => setImageError(true)}
+        <button
+          type="button"
           onClick={() => setLightboxOpen(true)}
-          className={`${sizeClass} cursor-pointer rounded-lg border border-(--color-border) object-cover shadow-sm`}
-        />
+          className="rounded-lg text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+          aria-label={`Open ${alt} preview`}
+        >
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            decoding="async"
+            onError={() => setImageError(true)}
+            className={`${sizeClass} rounded-lg border border-(--color-border) object-cover shadow-sm`}
+          />
+        </button>
         {removable && onRemove && (
           <button
             onClick={(e) => {

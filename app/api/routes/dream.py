@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.config import settings
 from app.core.db import get_session
+from app.core.runtime_settings import load_runtime_settings, save_runtime_settings
 from app.services.dream import run_dream, run_dream_lint
 
 router = APIRouter(prefix="/dream", tags=["dream"])
@@ -19,14 +17,19 @@ router = APIRouter(prefix="/dream", tags=["dream"])
 
 
 class DreamConfigResponse(BaseModel):
-    content: str
-    """Raw markdown content of dream.md (frontmatter + body)."""
-    exists: bool
-    """False when dream.md has not been created yet."""
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    model: str
+    schedule: str
 
 
 class DreamConfigWriteRequest(BaseModel):
-    content: str
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    model: str = ""
+    schedule: str
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -34,11 +37,13 @@ class DreamConfigWriteRequest(BaseModel):
 
 @router.get("/config", response_model=DreamConfigResponse)
 async def get_dream_config() -> DreamConfigResponse:
-    """Return the raw contents of dream.md."""
-    path = Path(settings.OPENAGENTD_CONFIG_DIR) / "dream.md"
-    if not path.exists():
-        return DreamConfigResponse(content="", exists=False)
-    return DreamConfigResponse(content=path.read_text(encoding="utf-8"), exists=True)
+    """Return Dream runtime settings."""
+    cfg = load_runtime_settings().dream
+    return DreamConfigResponse(
+        enabled=cfg.enabled,
+        model=cfg.model or "",
+        schedule=cfg.schedule,
+    )
 
 
 @router.put("/config", response_model=DreamConfigResponse)
@@ -46,14 +51,16 @@ async def put_dream_config(
     body: DreamConfigWriteRequest,
     request: Request,
 ) -> DreamConfigResponse:
-    """Overwrite dream.md and reload the scheduler without a restart."""
-    path = Path(settings.OPENAGENTD_CONFIG_DIR) / "dream.md"
+    """Save Dream runtime settings and reload the scheduler."""
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(body.content, encoding="utf-8")
+        cfg = load_runtime_settings()
+        cfg.dream.enabled = body.enabled
+        cfg.dream.model = body.model.strip() or None
+        cfg.dream.schedule = body.schedule.strip() or "0 2 * * *"
+        save_runtime_settings(cfg)
     except OSError as exc:
         raise HTTPException(
-            status_code=500, detail=f"Failed to write dream.md: {exc}"
+            status_code=500, detail=f"Failed to write settings.yaml: {exc}"
         ) from exc
 
     # Reload the live scheduler so the new schedule / enabled flag takes
@@ -62,7 +69,11 @@ async def put_dream_config(
     if scheduler is not None:
         await scheduler.reload()
 
-    return DreamConfigResponse(content=body.content, exists=True)
+    return DreamConfigResponse(
+        enabled=cfg.dream.enabled,
+        model=cfg.dream.model or "",
+        schedule=cfg.dream.schedule,
+    )
 
 
 @router.post("/run")

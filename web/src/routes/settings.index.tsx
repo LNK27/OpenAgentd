@@ -11,12 +11,14 @@ import { Link } from '@tanstack/react-router'
 import {
   ChevronRight,
   Info,
+  Image,
   KeyRound,
   Mic,
   Moon,
   Plug,
   Shield,
   Sparkles,
+  Type,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
@@ -39,8 +41,10 @@ interface CardProps {
     | '/settings/skills'
     | '/settings/mcp'
     | '/settings/providers'
+    | '/settings/multimodal'
     | '/settings/sandbox'
     | '/settings/dream'
+    | '/settings/title-generation'
     | '/settings/voice'
   icon: LucideIcon
   title: string
@@ -185,10 +189,26 @@ export function SettingsHubPage() {
                   countLabel={sandboxCount === 1 ? 'pattern' : 'patterns'}
                 />
                 <SettingsNavCard
+                  to="/settings/multimodal"
+                  icon={Image}
+                  title="Multimodal"
+                  description="Configure image and video generation defaults"
+                  count={null}
+                  countLabel=""
+                />
+                <SettingsNavCard
                   to="/settings/dream"
                   icon={Moon}
                   title="Dream"
                   description="Cron agent that synthesises sessions into wiki topics"
+                  count={null}
+                  countLabel=""
+                />
+                <SettingsNavCard
+                  to="/settings/title-generation"
+                  icon={Type}
+                  title="Title generation"
+                  description="Configure automatic chat title model and latency"
                   count={null}
                   countLabel=""
                 />

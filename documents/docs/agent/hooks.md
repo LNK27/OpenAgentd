@@ -317,8 +317,9 @@ hook = SessionLogHook(session_id=session_id, agent_name=agent_name)
 
 Generates an LLM-based session title on the first user turn and pushes a
 `title_update` SSE event. Only injected for `role: lead` agents. Construct
-via `build_title_generation_hook` (reads `.openagentd/config/title_generation.md`);
-returns `None` if the config is missing, `enabled: false`, or the body is empty.
+via `build_title_generation_hook` (reads title generation settings from
+`settings.yaml` and uses the built-in prompt); returns `None` when disabled or
+model-less.
 
 `before_agent` fires when:
 1. `ctx.session_id` is set, **and**

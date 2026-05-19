@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING
 import httpx
 from loguru import logger
 
+from app.agent.errors import ProviderRateLimitError
+
 if TYPE_CHECKING:
     from app.agent.hooks import BaseAgentHook
     from app.agent.providers.base import LLMProviderBase
@@ -36,6 +38,14 @@ MAX_RETRIES = 5
 
 # Module-private timing knobs.
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+_NON_RETRYABLE_429_MARKERS = (
+    "usage_limit_reached",
+    "quota_exceeded",
+    "insufficient_quota",
+    "insufficient balance",
+    "no resource package",
+    "billing_not_active",
+)
 _BASE_DELAY = 1.0  # seconds — exponential base 3: 1, 3, 9, 27, 81
 _MAX_DELAY = 60.0  # seconds
 
@@ -69,6 +79,17 @@ def parse_retry_after(exc: httpx.HTTPStatusError) -> int:
         return int(match.group(1))
 
     return 0
+
+
+def is_non_retryable_429(exc: httpx.HTTPStatusError) -> bool:
+    """Return true for quota-style 429s where retrying cannot help."""
+    if exc.response.status_code != 429:
+        return False
+    try:
+        body = exc.response.text.lower()
+    except Exception:
+        return False
+    return any(marker in body for marker in _NON_RETRYABLE_429_MARKERS)
 
 
 async def stream_with_retry(
@@ -128,6 +149,15 @@ async def stream_with_retry(
                         await exc.response.aread()
                     except Exception:
                         pass
+                    if is_non_retryable_429(exc):
+                        logger.warning(
+                            "llm_provider_non_retryable_rate_limit model={} status={} attempt={}/{}",
+                            provider_label,
+                            exc.response.status_code,
+                            attempt + 1,
+                            MAX_RETRIES,
+                        )
+                        break
                     retry_after = parse_retry_after(exc)
                     if state and ctx:
                         for hook in hooks or []:
@@ -195,6 +225,13 @@ async def stream_with_retry(
             )
 
     assert last_exc is not None
+    if (
+        isinstance(last_exc, httpx.HTTPStatusError)
+        and last_exc.response.status_code == 429
+    ):
+        raise ProviderRateLimitError(
+            "All configured LLM providers are rate-limited or quota-exhausted."
+        ) from last_exc
     raise last_exc
 
 

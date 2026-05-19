@@ -33,11 +33,10 @@ class ProviderEntry(TypedDict, total=False):
       project + location + gcloud auth). UI renders the field list
       from ``env_vars``.
 
-    ``fallback_models`` is a curated list shown ONLY when a provider has
-    no live model-listing endpoint upstream. Today that's just
-    ``vertexai`` — every other provider has working live discovery in
-    :mod:`app.agent.providers.model_discovery`, so listing models in
-    the catalog would just be a staleness risk. See
+    ``fallback_models`` is a curated list shown when live discovery is
+    incomplete for supported model families (Vertex AI, plus Google
+    image/video models that are not reliably returned by the public
+    model-listing endpoint). See
     ``documents/techdebts/catalog-default-models.md`` for the history.
     """
 
@@ -60,6 +59,12 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Google AI Studio — free tier available.",
         "kind": "api_key",
         "env_var": "GOOGLE_API_KEY",
+        "fallback_models": [
+            "gemini-3.1-flash-image-preview",
+            "gemini-2.5-flash-image-preview",
+            "veo-3.1-generate-preview",
+            "veo-3.1-fast-generate-preview",
+        ],
         "docs_url": "https://aistudio.google.com/apikey",
     },
     {
@@ -169,6 +174,7 @@ _CATALOG: list[ProviderEntry] = [
             "gemini-3-flash-preview",
             "gemini-3.1-flash-lite-preview",
             "gemini-2.5-pro",
+            "imagen-4",
         ],
         "docs_url": "https://cloud.google.com/vertex-ai/docs/start/cloud-environment",
     },

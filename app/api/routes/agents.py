@@ -233,12 +233,14 @@ async def get_registry() -> RegistryResponse:
                 provider=provider,
                 model=model,
                 vision=caps.input.vision,
+                output_image=caps.output.image,
+                output_video=caps.output.video,
             )
         )
 
     # Live discovery covers every configured provider that has a working
     # ``/models`` endpoint. For the rare provider with no listing API
-    # upstream (vertexai today), the catalog carries a curated
+    # upstream, the catalog carries a curated
     # ``fallback_models`` list — but we only surface it when the provider
     # is configured, so the agent dropdown never advertises models the
     # user can't actually run.

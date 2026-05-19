@@ -21,7 +21,6 @@
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
-import { AnimatePresence } from 'framer-motion'
 
 import { Link, useNavigate } from '@tanstack/react-router'
 import { AgentCapabilities } from '../AgentCapabilities'
@@ -781,18 +780,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           onRedo={() => { void useTeamStore.getState().redoTeam() }}
         />
         </main>
-        <AnimatePresence initial={false}>
-          {mode === 'coding' && workspace && codingPanel !== null && (
-            <CodingWorkspacePanel
-              key={codingPanel}
-              workspace={workspace}
-              open
-              initialTab={codingPanel}
-              mobile={isMobile}
-              onClose={() => setCodingPanel(null)}
-            />
-          )}
-        </AnimatePresence>
+        {mode === 'coding' && workspace && codingPanel !== null && (
+          <CodingWorkspacePanel
+            key={codingPanel}
+            workspace={workspace}
+            open
+            initialTab={codingPanel}
+            mobile={isMobile}
+            onClose={() => setCodingPanel(null)}
+          />
+        )}
       </div>
 
       <AgentCapabilities

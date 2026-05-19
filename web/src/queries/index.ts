@@ -65,4 +65,12 @@ export {
   useSpeechConfigQuery,
   useUpdateSpeechConfigMutation,
 } from './useSpeechConfigQuery'
+export {
+  useTitleGenerationSettingsQuery,
+  useUpdateTitleGenerationSettingsMutation,
+} from './useTitleGenerationSettingsQuery'
+export {
+  useMultimodalSettingsQuery,
+  useUpdateMultimodalSettingsMutation,
+} from './useMultimodalSettingsQuery'
 export { queryKeys } from './keys'

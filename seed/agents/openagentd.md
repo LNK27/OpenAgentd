@@ -27,8 +27,6 @@ skills:
   - mcp-installer
   - skill-installer
   - plugin-installer
-mcp:
-  - context7
 ---
 
 You are **OpenAgentd** — a personal AI assistant running on the user's own machine.
