@@ -485,6 +485,7 @@ function OAuthLoginDialog({
   const [events, setEvents] = useState<OAuthLoginEvent[]>([])
   const [error, setError] = useState<string | null>(null)
   const [code, setCode] = useState('')
+  const [authMode, setAuthMode] = useState<'device' | 'browser'>('device')
   const [submittingCode, setSubmittingCode] = useState(false)
   const openedUrlRef = useRef<string | null>(null)
   const successHandledRef = useRef(false)
@@ -540,18 +541,25 @@ function OAuthLoginDialog({
         onError: (err) => setError(err.message),
       },
       abort.signal,
+      authMode === 'browser' ? 'browser' : undefined,
     )
     return () => abort.abort()
-  }, [open, provider.id, provider.label, queryClient])
+  }, [authMode, open, provider.id, provider.label, queryClient])
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setAuthMode('device')
+        onOpenChange(nextOpen)
+      }}
+    >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Connect {provider.label}</DialogTitle>
           <DialogDescription>Approve the browser prompt. This window will update when the token is saved.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <div className="flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--bg-key) p-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-(--bg-card) text-(--color-accent) ring-1 ring-(--color-border)">
               {isWorking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
@@ -562,13 +570,38 @@ function OAuthLoginDialog({
             </div>
           </div>
           {deviceEvent?.user_code && (
-            <div className="rounded-lg border border-(--accent-blue)/30 bg-(--accent-blue-soft) p-5 text-center">
-              <p className="text-xs text-(--color-text-muted)">Device code</p>
-              <p className="mt-2 font-mono text-3xl font-semibold tracking-[0.18em] text-(--color-text)">{deviceEvent.user_code}</p>
-              {deviceEvent.verification_uri && (
-                <Button className="mt-4" size="sm" onClick={() => void openExternalUrl(deviceEvent.verification_uri!)}>
-                  Open authorization page
-                </Button>
+            <div className="overflow-hidden rounded-xl border border-(--accent-blue)/25 bg-(--accent-blue-soft)">
+              <div className="p-5 text-center">
+                <p className="text-xs font-medium tracking-[0.18em] text-(--color-text-muted) uppercase">Device code</p>
+                <p className="mt-2 font-mono text-3xl font-semibold tracking-[0.18em] text-(--color-text)">{deviceEvent.user_code}</p>
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-(--color-text-muted)">
+                  Use this code for personal ChatGPT accounts. Keep this dialog open while the browser approves access.
+                </p>
+                {deviceEvent.verification_uri && (
+                  <Button className="mt-4" size="sm" onClick={() => void openExternalUrl(deviceEvent.verification_uri!)}>
+                    Open authorization page
+                  </Button>
+                )}
+              </div>
+              {provider.id === 'codex' && authMode !== 'browser' && !isSuccess && (
+                <div className="border-t border-(--accent-blue)/20 bg-(--bg-page)/70 p-4 text-left">
+                  <p className="text-xs font-medium text-(--color-text)">Workspace account?</p>
+                  <p className="mt-1 text-xs leading-relaxed text-(--color-text-muted)">
+                    If the Codex page says your admin must enable device-code authentication, switch to browser sign-in.
+                  </p>
+                  <Button
+                    className="mt-3 w-full"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setError(null)
+                      setEvents([])
+                      setAuthMode('browser')
+                    }}
+                  >
+                    Use browser sign-in instead
+                  </Button>
+                </div>
               )}
             </div>
           )}
@@ -608,9 +641,9 @@ function OAuthLoginDialog({
                 <TerminalSquare size={13} aria-hidden="true" />
                 Technical details
               </summary>
-              <div className="mt-3 max-h-40 space-y-2 overflow-auto">
+              <div className="mt-3 max-h-40 min-w-0 space-y-2 overflow-auto">
                 {events.map((event, index) => (
-                  <p key={`${event.event}-${index}`} className="text-xs text-(--color-text-muted)">
+                  <p key={`${event.event}-${index}`} className="min-w-0 text-xs text-(--color-text-muted) [overflow-wrap:anywhere]">
                     <span className="font-mono text-(--color-text)">{event.event}</span>
                     {event.message ? ` · ${event.message}` : ''}
                   </p>
