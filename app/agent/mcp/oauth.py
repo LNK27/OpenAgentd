@@ -72,10 +72,10 @@ async def supports_dynamic_client_registration(cfg: HttpServerConfig) -> bool:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(metadata_url)
         if response.status_code != 200:
-            return True
+            return False
         metadata = response.json()
     except Exception:
-        return True
+        return False
     return bool(
         metadata.get("registration_endpoint")
         or metadata.get("client_id_metadata_document_supported")

@@ -318,6 +318,70 @@ class TestMCPManagerOAuth:
             assert "needs OAuth" in (status.error or "")
 
     @pytest.mark.asyncio
+    async def test_slack_without_oauth_config_is_auth_required(self) -> None:
+        manager = MCPManager()
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(
+                servers={
+                    "slack": HttpServerConfig(
+                        url="https://mcp.slack.com/mcp",
+                        oauth=None,
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+
+            await manager.start()
+            runner = manager._runners["slack"]
+            await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("slack")
+            assert status is not None
+            assert status.state == "auth_required"
+            assert "requires OAuth" in (status.error or "")
+            assert "client ID and secret" in (status.error or "")
+
+    @pytest.mark.asyncio
+    async def test_http_missing_token_failure_without_oauth_config_is_auth_required(
+        self,
+    ) -> None:
+        manager = MCPManager()
+
+        class FailingStreamableHttpClient:
+            async def __aenter__(self):
+                raise ExceptionGroup(
+                    "unhandled errors in a TaskGroup",
+                    [RuntimeError('{"error":{"message":"missing_token"}}')],
+                )
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(
+                servers={
+                    "private": HttpServerConfig(
+                        url="https://mcp.example.com/mcp",
+                        oauth=None,
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+
+            with patch(
+                "mcp.client.streamable_http.streamablehttp_client",
+                return_value=FailingStreamableHttpClient(),
+            ):
+                await manager.start()
+                runner = manager._runners["private"]
+                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("private")
+            assert status is not None
+            assert status.state == "auth_required"
+            assert "requires OAuth" in (status.error or "")
+
+    @pytest.mark.asyncio
     async def test_oauth_registration_failure_is_auth_required(self) -> None:
         manager = MCPManager()
 
@@ -325,6 +389,53 @@ class TestMCPManagerOAuth:
             async def __aenter__(self):
                 raise ExceptionGroup(
                     "oauth failed", [OAuthRegistrationError("Registration failed: 404")]
+                )
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(
+                servers={
+                    "slack": HttpServerConfig(
+                        url="https://mcp.slack.com/mcp",
+                        oauth=OAuthConfig(),
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+
+            with (
+                patch(
+                    "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=True
+                ),
+                patch(
+                    "app.agent.mcp.manager.supports_dynamic_client_registration",
+                    return_value=True,
+                ),
+                patch(
+                    "mcp.client.streamable_http.streamablehttp_client",
+                    return_value=FailingStreamableHttpClient(),
+                ),
+            ):
+                await manager.start()
+                runner = manager._runners["slack"]
+                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("slack")
+            assert status is not None
+            assert status.state == "auth_required"
+            assert "client ID/secret" in (status.error or "")
+
+    @pytest.mark.asyncio
+    async def test_wrapped_oauth_registration_failure_is_auth_required(self) -> None:
+        manager = MCPManager()
+
+        class FailingStreamableHttpClient:
+            async def __aenter__(self):
+                raise ExceptionGroup(
+                    "unhandled errors in a TaskGroup",
+                    [RuntimeError("Registration failed: 404 <html>Slack</html>")],
                 )
 
             async def __aexit__(self, exc_type, exc, tb):
