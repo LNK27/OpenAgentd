@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Any
 from unittest.mock import MagicMock, patch
 from base64 import urlsafe_b64encode
 
@@ -21,6 +22,7 @@ from pydantic import SecretStr
 
 from app.agent.providers.codex.oauth import (
     CodexOAuth,
+    _device_login,
     _extract_account_id,
 )
 from app.agent.providers.codex.codex import (
@@ -368,6 +370,35 @@ class TestCodexOAuthRefresh:
             result = oauth.refresh(oauth_file)
 
             assert result.account_id == "original_account"
+
+
+def test_device_login_falls_back_to_pkce_when_device_code_disabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Business accounts can reject device-code auth; UI should get PKCE fallback."""
+    import httpx
+
+    events: list[tuple[str, dict[str, Any]]] = []
+
+    def sink(event: str, data: dict[str, Any]) -> None:
+        events.append((event, data))
+
+    request = httpx.Request("POST", "https://auth.openai.com/test")
+    response = httpx.Response(
+        403,
+        request=request,
+    )
+
+    monkeypatch.setattr(
+        "app.agent.providers.codex.oauth.httpx.post", lambda *_args, **_kwargs: response
+    )
+    pkce_login = MagicMock()
+    monkeypatch.setattr("app.agent.providers.codex.oauth._pkce_login", pkce_login)
+
+    _device_login(tmp_path / "oauth.json", event_sink=sink)
+
+    pkce_login.assert_called_once()
+    assert pkce_login.call_args.kwargs["event_sink"] is sink
 
 
 # ============================================================================

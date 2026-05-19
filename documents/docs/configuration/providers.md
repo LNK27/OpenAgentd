@@ -13,10 +13,10 @@ A model is selected by setting `model: <prefix>:<model-id>` in an agent's `.md` 
 
 ## Setup paths
 
-- **Desktop/web UI:** open **Settings → Providers**. API-key providers write to `{OPENAGENTD_CONFIG_DIR}/.env`; OAuth providers use the in-app flow and store tokens under `{OPENAGENTD_CACHE_DIR}`.
+- **Desktop/web UI:** open **Settings → Providers**. First launch creates the config/cache/state/data/workspace roots, `{OPENAGENTD_CONFIG_DIR}/plugins`, and default editable agents/skills with a placeholder model. Packaged installs download those defaults from the GitHub release seed bundle. API-key providers write to `{OPENAGENTD_CONFIG_DIR}/.env`; OAuth providers use the in-app flow and store tokens under `{OPENAGENTD_CACHE_DIR}`.
 - **CLI/server:** run `openagentd init` for first setup, or `openagentd auth copilot|codex` for OAuth-only providers.
 
-On first provider setup, the UI/CLI installs the default agents and skills without overwriting existing files.
+Provider setup replaces the seeded placeholder model without overwriting existing user-edited files.
 
 ## Registered prefixes
 
@@ -35,7 +35,7 @@ Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are
 | `deepseek` | `DEEPSEEK_API_KEY` | DeepSeek (OpenAI-compatible). |
 | `bedrock` | AWS creds (env / profile / instance) | Converse API across all Bedrock model families. |
 | `copilot` | `openagentd auth copilot` | GitHub Copilot OAuth (device flow). |
-| `codex` | `openagentd auth codex` | OpenAI Codex via ChatGPT subscription (PKCE or `--device`). |
+| `codex` | `openagentd auth codex` | OpenAI Codex via ChatGPT subscription. The UI tries device-code auth first, then falls back to browser PKCE when a workspace disables device-code auth. CLI uses browser PKCE by default; `--device` is available for headless setup. |
 | `router9` | `ROUTER9_API_KEY` (+ optional `ROUTER9_BASE_URL`) | Local [9Router](https://github.com/decolua/9router) proxy. |
 | `cliproxy` | `CLIPROXY_API_KEY` (+ optional `CLIPROXY_BASE_URL`) | Local [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) proxy. |
 | `ollama` | `OLLAMA_API_KEY` (placeholder; daemon ignores auth) | Local [Ollama](https://docs.ollama.com/api/openai) at `http://localhost:11434/v1`. |
