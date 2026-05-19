@@ -124,13 +124,9 @@ async def lifespan(app: FastAPI):
     setup_otel(service_name="openagentd")
     start_otel_retention()
 
-    # Start MCP servers and wait for them to finish initializing before any
-    # team builds lazily — otherwise the loader resolves agents' `mcp:` lists
-    # against not-yet-ready runners and they end up with zero MCP tools
-    # forever.  Servers still pending after the timeout fall back to graceful
-    # empty.
+    # Start MCP runners best-effort without blocking API startup. Agents already
+    # tolerate not-yet-ready MCP servers and pick up tools on their next refresh.
     await mcp_manager.start()
-    await mcp_manager.wait_until_ready()
 
     # Parse-only validation at boot: surfaces malformed agent ``.md`` files
     # immediately instead of waiting for the first request to fail.  The

@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all up down run dev test coverage migrate revision build-web build dist clean help
+.PHONY: all up down run dev kill-dev-ports test coverage migrate revision build-web build dist clean help
 
 # Default target
 all: test
@@ -14,7 +14,27 @@ down: ## Stop Docker services
 run: ## Start the API server only (no reload, no frontend; :8000)
 	uv run uvicorn app.server:app
 
-dev: ## Start backend (:8000 + reload) and frontend (Vite :5173) together
+kill-dev-ports: ## Stop processes listening on dev ports (:8000, :5173)
+	@command -v lsof >/dev/null 2>&1 || { echo "error: 'lsof' not found"; exit 1; }
+	@for port in 8000 5173; do \
+		pids=$$(lsof -tiTCP:$$port -sTCP:LISTEN); \
+		if [ -n "$$pids" ]; then \
+			echo "stopping processes on port $$port: $$pids"; \
+			kill $$pids; \
+			for i in 1 2 3 4 5; do \
+				sleep 0.2; \
+				pids=$$(lsof -tiTCP:$$port -sTCP:LISTEN); \
+				[ -z "$$pids" ] && break; \
+			done; \
+			pids=$$(lsof -tiTCP:$$port -sTCP:LISTEN); \
+			if [ -n "$$pids" ]; then \
+				echo "force stopping processes on port $$port: $$pids"; \
+				kill -9 $$pids; \
+			fi; \
+		fi; \
+	done
+
+dev: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :5173) together
 	@command -v bun >/dev/null 2>&1 || { echo "error: 'bun' not found — install from https://bun.sh"; exit 1; }
 	@trap 'kill 0' INT TERM EXIT; \
 	(uv run uvicorn app.server:app --reload --reload-dir app 2>&1 | sed 's/^/[api] /') & \

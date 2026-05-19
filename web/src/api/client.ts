@@ -739,6 +739,13 @@ export type ProviderInfo = {
   label: string
   description: string
   kind: 'api_key' | 'oauth' | 'local' | 'cloud_creds'
+  credentials: Array<{
+    name: string
+    label: string
+    secret: boolean
+    required: boolean
+    placeholder: string
+  }>
   env_var: string
   env_vars: string[]
   fallback_models: string[]
@@ -865,6 +872,16 @@ export function oauthLoginStream(
       })
     })
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
+}
+
+export async function submitOAuthCallback(providerId: string, code: string): Promise<{ ok: boolean; suggested_model?: string }> {
+  const res = await fetch(`${API}/auth/${encodeURIComponent(providerId)}/callback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /auth/${providerId}/callback`)
+  return res.json()
 }
 
 // ── /speech ──────────────────────────────────────────────────────────────────

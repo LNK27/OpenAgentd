@@ -4,8 +4,9 @@ Connects to external MCP servers (stdio subprocesses or remote Streamable HTTP
 endpoints) and exposes their tools to agents via the standard ``Tool`` registry.
 
 Tools are namespaced ``mcp_<server>_<tool>`` to avoid collisions with built-ins
-and across servers. Sessions are long-lived: opened in ``lifespan()`` startup,
-kept alive for the server's lifetime, and shut down on stop.
+and across servers. Sessions are long-lived: spawned best-effort in
+``lifespan()`` startup, kept alive for the server's lifetime, and shut down on
+stop.
 
 Public API:
 

@@ -17,6 +17,7 @@ import {
   installSeed,
   listProviderModels,
   oauthLoginStream,
+  submitOAuthCallback,
   type OAuthLoginEvent,
   type ProviderInfo,
 } from '@/api/client'
@@ -76,10 +77,11 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
   const trimmedKey = apiKey.trim()
   const trimmedBaseUrl = baseUrl.trim()
+  const primaryCredential = provider.credentials[0]
   const hasCandidateKey = trimmedKey.length > 0
   // Save is enabled only after List models succeeded for *this exact* key.
   const hasVerifiedKey = verifiedKey === trimmedKey && hasCandidateKey
-  const canSave = provider.kind === 'api_key' && hasVerifiedKey
+  const canSave = (provider.kind === 'api_key' || provider.kind === 'oauth') && hasVerifiedKey
 
   const daemon = DAEMON_BASE_URL[provider.id]
   // Only sends ``extra`` when the user actually typed something. An empty
@@ -205,11 +207,11 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
         <p className="text-xs text-(--color-text-muted)">{provider.description}</p>
 
         {/* ── API-key controls ─────────────────────────────────────────── */}
-        {provider.kind === 'api_key' && (
+        {(provider.kind === 'api_key' || (provider.kind === 'oauth' && primaryCredential)) && (
           <div className="space-y-2">
             <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
               <label className="min-w-0">
-                <span className="sr-only">{provider.env_var}</span>
+                <span className="sr-only">{primaryCredential?.label || provider.env_var}</span>
                 <Input
                   type="password"
                   value={apiKey}
@@ -217,7 +219,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
                     setApiKey(event.target.value)
                     setVerifiedKey('')
                   }}
-                  placeholder={provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key'}
+                  placeholder={primaryCredential?.placeholder || (provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key')}
                   autoComplete="off"
                   className="h-9"
                 />
@@ -271,7 +273,17 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
         {/* ── OAuth providers ──────────────────────────────────────────── */}
         {provider.kind === 'oauth' && (
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleListModels}
+              disabled={!provider.is_configured || listing}
+            >
+              {listing && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+              List models
+            </Button>
             <Button type="button" size="sm" onClick={() => setOauthOpen(true)}>
               <ShieldCheck size={14} aria-hidden="true" />
               Connect
@@ -472,6 +484,8 @@ function OAuthLoginDialog({
 }) {
   const [events, setEvents] = useState<OAuthLoginEvent[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [code, setCode] = useState('')
+  const [submittingCode, setSubmittingCode] = useState(false)
   const openedUrlRef = useRef<string | null>(null)
   const successHandledRef = useRef(false)
   const queryClient = useQueryClient()
@@ -557,6 +571,32 @@ function OAuthLoginDialog({
                 </Button>
               )}
             </div>
+          )}
+          {latest?.event === 'code_required' && (
+            <form
+              className="space-y-2 rounded-lg border border-(--color-border) bg-(--bg-page) p-3"
+              onSubmit={(event) => {
+                event.preventDefault()
+                setSubmittingCode(true)
+                submitOAuthCallback(provider.id, code)
+                  .then((result) => {
+                    setEvents((current) => [...current, { event: 'success', suggested_model: result.suggested_model }])
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+                    useToastStore.getState().push({ tone: 'success', title: 'Provider connected', description: provider.label })
+                  })
+                  .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+                  .finally(() => setSubmittingCode(false))
+              }}
+            >
+              <label className="block text-xs font-medium text-(--color-text-muted)">
+                Paste authorization callback URL/code
+                <Input value={code} onChange={(event) => setCode(event.target.value)} className="mt-1" autoComplete="off" />
+              </label>
+              <Button type="submit" size="sm" disabled={!code.trim() || submittingCode}>
+                {submittingCode && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                Finish connection
+              </Button>
+            </form>
           )}
           {isSuccess && (
             <p className="rounded-md bg-(--color-success-subtle) p-3 text-sm text-(--color-success)">Connected successfully.</p>

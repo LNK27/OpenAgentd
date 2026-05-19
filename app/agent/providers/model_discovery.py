@@ -246,6 +246,17 @@ async def discover_provider_models(
             case "bedrock":
                 return await _bedrock_models()
             case _:
+                from app.agent.providers.plugin_registry import (
+                    ProviderCredentialStore,
+                    find_provider_plugin,
+                )
+
+                plugin = find_provider_plugin(provider_id)
+                if plugin is not None:
+                    store = ProviderCredentialStore(provider_id, dict(overrides or {}))
+                    if plugin.discover_models is not None:
+                        return await plugin.discover_models(store)
+                    return list(plugin.fallback_models)
                 return []
     except Exception as exc:
         logger.info(

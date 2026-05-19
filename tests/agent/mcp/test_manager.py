@@ -527,5 +527,5 @@ class TestWaitUntilReady:
         )
         # Short timeout so the test stays fast.
         await manager.wait_until_ready(timeout=0.05)
-        # Runner is left in `starting` state — caller (lifespan) proceeds.
+        # Runner is left in `starting` state — caller proceeds best-effort.
         assert manager._runners["stuck"].status.state == "starting"

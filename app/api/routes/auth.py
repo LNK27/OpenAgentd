@@ -35,6 +35,7 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict
 from fastapi import APIRouter, HTTPException, Request
 from loguru import logger
 from sse_starlette.sse import EventSourceResponse
@@ -42,6 +43,12 @@ from sse_starlette.sse import EventSourceResponse
 from app.cli.commands.auth import _PROVIDERS
 
 router = APIRouter()
+
+
+class OAuthCallbackBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
 
 
 # Sentinel queued by the worker thread once login() returns or raises.
@@ -67,14 +74,21 @@ async def oauth_login(provider_id: str, request: Request):
     The stream auto-closes after ``success`` or ``failed``.
     """
     entry = _PROVIDERS.get(provider_id)
+    plugin_login = None
     if entry is None:
+        from app.agent.providers.plugin_registry import find_provider_plugin
+
+        plugin = find_provider_plugin(provider_id)
+        if plugin is not None and plugin.kind == "oauth" and plugin.login is not None:
+            plugin_login = plugin.login
+    if entry is None and plugin_login is None:
         raise HTTPException(
             status_code=404,
             detail=(
                 f"Unknown OAuth provider '{provider_id}'. Known: {sorted(_PROVIDERS)}."
             ),
         )
-    module_path, _ = entry
+    module_path = entry[0] if entry is not None else ""
 
     queue: asyncio.Queue[tuple[str, dict[str, Any]] | object] = asyncio.Queue()
     loop = asyncio.get_running_loop()
@@ -89,12 +103,15 @@ async def oauth_login(provider_id: str, request: Request):
         loop.call_soon_threadsafe(queue.put_nowait, (event, data))
 
     def _run_login() -> None:
-        mod = importlib.import_module(module_path)
         try:
             # All registered ``login`` functions accept ``event_sink`` as
             # a kwarg per the refactor in this PR; ``inspect`` is no
             # longer needed.
-            mod.login(event_sink=_sink)
+            if plugin_login is not None:
+                plugin_login(_sink)
+            else:
+                mod = importlib.import_module(module_path)
+                mod.login(event_sink=_sink)
         except Exception as exc:  # noqa: BLE001 — surface everything to UI
             logger.warning("oauth_login_failed provider={} error={}", provider_id, exc)
             if not failed_emitted:
@@ -130,3 +147,33 @@ async def oauth_login(provider_id: str, request: Request):
                 task.cancel()
 
     return EventSourceResponse(_gen())
+
+
+@router.post("/{provider_id}/callback")
+async def oauth_callback(provider_id: str, body: OAuthCallbackBody) -> dict[str, Any]:
+    from app.agent.providers.plugin_registry import find_provider_plugin
+
+    plugin = find_provider_plugin(provider_id)
+    if plugin is None or plugin.oauth_callback is None:
+        raise HTTPException(
+            status_code=404, detail=f"OAuth callback unsupported for '{provider_id}'"
+        )
+
+    events: list[tuple[str, dict[str, Any]]] = []
+
+    def _sink(event: str, data: dict[str, Any]) -> None:
+        events.append((event, data))
+
+    try:
+        plugin.oauth_callback(body.code, _sink)
+    except Exception as exc:  # noqa: BLE001 - return plugin auth failures to UI
+        logger.warning("oauth_callback_failed provider={} error={}", provider_id, exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    failed = next((data for event, data in events if event == "failed"), None)
+    if failed is not None:
+        raise HTTPException(
+            status_code=400, detail=failed.get("message", "OAuth callback failed")
+        )
+    success = next((data for event, data in events if event == "success"), {})
+    return {"ok": True, **success}

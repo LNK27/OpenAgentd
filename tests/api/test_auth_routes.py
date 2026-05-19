@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routes.auth import router
+from app.agent.providers.plugin_api import ProviderPlugin
 
 
 def _make_app() -> FastAPI:
@@ -168,6 +169,100 @@ def test_sse_stream_does_not_duplicate_provider_failed_event(
     assert text.count("event: failed") == 1
     assert "device expired" in text
     assert "device_code_expired" not in text
+
+
+def test_plugin_oauth_login_streams_plugin_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OAuth provider plugins use the same SSE login endpoint as built-ins."""
+    import app.agent.providers.plugin_registry as registry
+
+    def login(event_sink: Any = None) -> None:
+        assert event_sink is not None
+        event_sink("started", {"message": "plugin started"})
+        event_sink("code_required", {"message": "paste code"})
+
+    plugin = ProviderPlugin(
+        id="plugin-oauth",
+        label="Plugin OAuth",
+        description="Synthetic OAuth provider.",
+        kind="oauth",
+        factory=lambda ctx: (_ for _ in ()).throw(AssertionError("not used")),
+        login=login,
+    )
+    monkeypatch.setattr(registry, "find_provider_plugin", lambda _id: plugin)
+
+    client = TestClient(_make_app())
+    with client.stream("GET", "/api/auth/plugin-oauth/login") as response:
+        text = b"".join(response.iter_bytes()).decode("utf-8")
+
+    assert response.status_code == 200
+    assert "event: started" in text
+    assert "plugin started" in text
+    assert "event: code_required" in text
+
+
+def test_plugin_oauth_callback_returns_success_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callback route delegates code exchange to the owning provider plugin."""
+    import app.agent.providers.plugin_registry as registry
+
+    seen_codes: list[str] = []
+
+    def callback(code: str, event_sink: Any = None) -> None:
+        seen_codes.append(code)
+        assert event_sink is not None
+        event_sink("token_acquired", {"message": "saved"})
+        event_sink("success", {"suggested_model": "plugin-oauth:model-a"})
+
+    plugin = ProviderPlugin(
+        id="plugin-oauth",
+        label="Plugin OAuth",
+        description="Synthetic OAuth provider.",
+        kind="oauth",
+        factory=lambda ctx: (_ for _ in ()).throw(AssertionError("not used")),
+        oauth_callback=callback,
+    )
+    monkeypatch.setattr(registry, "find_provider_plugin", lambda _id: plugin)
+
+    response = TestClient(_make_app()).post(
+        "/api/auth/plugin-oauth/callback",
+        json={"code": "code#state"},
+    )
+
+    assert response.status_code == 200
+    assert seen_codes == ["code#state"]
+    assert response.json() == {"ok": True, "suggested_model": "plugin-oauth:model-a"}
+
+
+def test_plugin_oauth_callback_failure_returns_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider-owned callback failures are surfaced as client errors."""
+    import app.agent.providers.plugin_registry as registry
+
+    def callback(_code: str, event_sink: Any = None) -> None:
+        assert event_sink is not None
+        event_sink("failed", {"message": "bad verifier", "reason": "state_mismatch"})
+
+    plugin = ProviderPlugin(
+        id="plugin-oauth",
+        label="Plugin OAuth",
+        description="Synthetic OAuth provider.",
+        kind="oauth",
+        factory=lambda ctx: (_ for _ in ()).throw(AssertionError("not used")),
+        oauth_callback=callback,
+    )
+    monkeypatch.setattr(registry, "find_provider_plugin", lambda _id: plugin)
+
+    response = TestClient(_make_app()).post(
+        "/api/auth/plugin-oauth/callback",
+        json={"code": "wrong"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "bad verifier"
 
 
 async def test_event_sink_pushes_via_loop(monkeypatch: pytest.MonkeyPatch) -> None:

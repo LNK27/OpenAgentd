@@ -405,6 +405,77 @@ def test_save_provider_persists_base_url_extra(
     assert os.environ.get("ROUTER9_BASE_URL") is None
 
 
+def test_save_provider_supports_plugin_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plugin providers persist declared credential fields, including extras."""
+    from app.agent.providers.plugin_registry import clear_provider_plugin_cache
+
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    (plugin_dir / "sample_provider.py").write_text(
+        """
+from app.agent.providers.base import LLMProviderBase
+from app.agent.providers.plugin_api import ProviderPlugin, ProviderCredentialField
+
+class DummyProvider(LLMProviderBase):
+    async def chat(self, messages, tools=None, **kwargs):
+        raise AssertionError('not used')
+    async def stream(self, messages, tools=None, **kwargs):
+        if False:
+            yield None
+
+provider = ProviderPlugin(
+    id='sample',
+    label='Sample',
+    description='Synthetic provider.',
+    kind='api_key',
+    credentials=[
+        ProviderCredentialField(name='SAMPLE_KEY', label='Sample key'),
+        ProviderCredentialField(name='SAMPLE_BASE_URL', label='Base URL', secret=False, required=False),
+    ],
+    factory=lambda ctx: DummyProvider(),
+)
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_PLUGINS_DIRS", str(plugin_dir)
+    )
+    monkeypatch.delenv("SAMPLE_KEY", raising=False)
+    monkeypatch.delenv("SAMPLE_BASE_URL", raising=False)
+    clear_provider_plugin_cache()
+
+    try:
+        client = TestClient(_make_app())
+        response = client.put(
+            "/api/settings/providers/sample",
+            json={
+                "api_key": "sk-test",
+                "extra": {"SAMPLE_BASE_URL": "https://local.test/v1"},
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["saved"] is True
+        env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+        assert "SAMPLE_KEY=sk-test" in env_text
+        assert "SAMPLE_BASE_URL=https://local.test/v1" in env_text
+
+        listed = client.get("/api/settings/providers")
+        sample = next(p for p in listed.json()["providers"] if p["id"] == "sample")
+        assert sample["is_configured"] is True
+        assert [field["name"] for field in sample["credentials"]] == [
+            "SAMPLE_KEY",
+            "SAMPLE_BASE_URL",
+        ]
+    finally:
+        clear_provider_plugin_cache()
+
+
 def test_save_provider_404_for_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     app = _make_app()
     client = TestClient(app)
@@ -694,6 +765,22 @@ def test_list_provider_models_does_not_mutate_os_environ(
     assert captured["overrides"] == {"OPENAI_API_KEY": "candidate-key"}
 
 
+def test_provider_configuration_reads_saved_config_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from app.agent.providers.catalog import find
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=saved-key\n", encoding="utf-8")
+
+    entry = find("openai")
+    assert entry is not None
+    assert settings_routes._provider_is_configured(entry) is True
+
+
 # ── /agents/registry — concurrent + cached discovery ────────────────────────
 
 
@@ -758,6 +845,44 @@ def test_registry_caches_discovery_within_ttl(monkeypatch: pytest.MonkeyPatch) -
     client.get("/api/agents/registry")
 
     assert call_count == 1
+
+
+def test_registry_discovery_uses_saved_config_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from fastapi import FastAPI
+
+    from app.api.routes import agents as agents_module
+    from app.api.routes.agents import router as agents_router
+
+    agents_module._registry_model_cache.clear()
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=saved-key\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "app.api.routes.settings._provider_is_configured",
+        lambda entry: entry["id"] == "openai",
+    )
+
+    captured: dict[str, object] = {}
+
+    async def _spy(_entry, **kwargs):  # type: ignore[no-untyped-def]
+        captured["overrides"] = kwargs.get("overrides")
+        return ["saved-model"]
+
+    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
+
+    app = FastAPI()
+    app.include_router(agents_router, prefix="/api/agents")
+    client = TestClient(app)
+
+    response = client.get("/api/agents/registry")
+
+    assert response.status_code == 200
+    assert captured["overrides"] == {"OPENAI_API_KEY": "saved-key"}
+    assert "openai:saved-model" in {m["id"] for m in response.json()["models"]}
 
 
 def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> None:

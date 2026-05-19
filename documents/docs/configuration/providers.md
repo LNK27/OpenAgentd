@@ -2,25 +2,25 @@
 title: LLM Providers
 description: Every provider registered in build_provider — keys, model IDs, vision defaults, OAuth flows.
 status: stable
-updated: 2026-05-16
+updated: 2026-05-19
 ---
 
 # LLM Providers
 
-**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/catalog.py`, `app/api/routes/settings.py`, `app/agent/providers/capabilities.py`
+**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/catalog.py`, `app/agent/providers/plugin_registry.py`, `app/api/routes/settings.py`, `app/agent/providers/capabilities.py`
 
 A model is selected by setting `model: <prefix>:<model-id>` in an agent's `.md` frontmatter. The prefix selects the provider; the rest is passed verbatim to that provider's API.
 
 ## Setup paths
 
-- **Desktop/web UI:** open **Settings → Providers**. API-key providers write to `{OPENAGENTD_CONFIG_DIR}/.env`; OAuth providers use the in-app device flow and store tokens under `{OPENAGENTD_CACHE_DIR}`.
+- **Desktop/web UI:** open **Settings → Providers**. API-key providers write to `{OPENAGENTD_CONFIG_DIR}/.env`; OAuth providers use the in-app flow and store tokens under `{OPENAGENTD_CACHE_DIR}`.
 - **CLI/server:** run `openagentd init` for first setup, or `openagentd auth copilot|codex` for OAuth-only providers.
 
 On first provider setup, the UI/CLI installs the default agents and skills without overwriting existing files.
 
 ## Registered prefixes
 
-`build_provider("provider:model")` resolves the prefix with a single `match` statement (`app/agent/providers/factory.py`):
+Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are resolved from `{OPENAGENTD_CONFIG_DIR}/plugins/` after built-ins.
 
 | Prefix | Auth | Notes |
 |--------|------|-------|
@@ -41,6 +41,17 @@ On first provider setup, the UI/CLI installs the default agents and skills witho
 | `ollama` | `OLLAMA_API_KEY` (placeholder; daemon ignores auth) | Local [Ollama](https://docs.ollama.com/api/openai) at `http://localhost:11434/v1`. |
 
 The model id after the prefix is passed **verbatim** to the upstream — OpenAgentd does not maintain a model catalog. Use the upstream's `/v1/models` endpoint or dashboard for the live list.
+
+## Provider plugins
+
+Drop-in provider plugins live in `{OPENAGENTD_CONFIG_DIR}/plugins/` and export a `ProviderPlugin` named `provider`. They can:
+
+- appear in **Settings → Providers** with declared credential fields;
+- save credentials to `{OPENAGENTD_CONFIG_DIR}/.env`;
+- store provider-owned OAuth tokens under `{OPENAGENTD_CACHE_DIR}/provider-plugins/<provider-id>/`;
+- provide model discovery and a factory returning `LLMProviderBase`.
+
+OAuth plugins can emit a `code_required` event; the UI then shows a paste field and posts the code to `/api/auth/{provider}/callback`.
 
 ## Capability detection
 
@@ -131,7 +142,7 @@ Enables extended reasoning on supporting models.
 | `medium` | Balanced reasoning. |
 | `high` | Maximum reasoning effort. |
 
-Mapping varies per provider — e.g. OpenAI's `reasoning.effort`, Anthropic/Copilot Claude's `thinking: {budget_tokens: …}`. Non-reasoning models ignore the field.
+Mapping varies per provider. Some use reasoning effort fields, some use provider-specific thinking objects, and non-reasoning models ignore the field.
 
 ## Fallback model
 

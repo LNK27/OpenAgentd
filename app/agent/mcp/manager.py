@@ -1,7 +1,7 @@
 """Long-lived MCP client manager.
 
-Owns one :class:`mcp.ClientSession` per configured server. Sessions are
-opened during application startup and kept alive for the server's lifetime,
+Owns one :class:`mcp.ClientSession` per configured server. Sessions are spawned
+best-effort during application startup and kept alive for the server's lifetime,
 matching the lifecycle of ``team_manager`` and ``task_scheduler``.
 
 A failed server does NOT block startup: the error is logged, status is set
@@ -147,10 +147,9 @@ class MCPManager:
         tools and load gracefully (matching :meth:`get_tools_for_server`'s
         existing not-ready contract).
 
-        Called from ``lifespan()`` between :meth:`start` and team start so
-        agents that depend on MCP tools get them on first load. Without this,
-        :meth:`start` only *spawns* runner tasks — they may still be doing
-        ``session.initialize()`` when the team builds its agents.
+        Kept for explicit callers that need to wait after a restart or config
+        apply. Normal API startup intentionally does not call this; MCP runners
+        initialize in the background and agents tolerate not-yet-ready servers.
         """
         events = [r.ready for r in self._runners.values()]
         if not events:
