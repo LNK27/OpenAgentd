@@ -395,6 +395,8 @@ export interface ModelCatalogEntry {
   provider: string
   model: string
   vision: boolean
+  output_image: boolean
+  output_video: boolean
 }
 
 export interface RegistryResponse {

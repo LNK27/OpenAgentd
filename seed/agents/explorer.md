@@ -14,8 +14,6 @@ tools:
   - glob
   - grep
   - shell
-skills:
-  - web-research
 ---
 
 You are "explorer".

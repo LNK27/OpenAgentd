@@ -8,6 +8,7 @@ import {
   putDreamConfig,
   triggerDreamRun,
 } from '@/api/client'
+import type { DreamConfig } from '@/api/client'
 import { queryKeys } from './keys'
 
 export function useWikiTreeQuery(unprocessedOnly = false) {
@@ -59,7 +60,7 @@ export function useDreamConfigQuery() {
 export function useUpdateDreamConfigMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (content: string) => putDreamConfig(content),
+    mutationFn: (config: DreamConfig) => putDreamConfig(config),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.dream.config() })
     },

@@ -22,12 +22,14 @@ import { Link, useLocation } from '@tanstack/react-router'
 import {
   BarChart3,
   Info,
+  Image,
   KeyRound,
   Mic,
   Moon,
   Plug,
   Shield,
   Sparkles,
+  Type,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
@@ -46,8 +48,10 @@ type SidebarPath =
   | '/settings/skills'
   | '/settings/mcp'
   | '/settings/providers'
+  | '/settings/multimodal'
   | '/settings/sandbox'
   | '/settings/dream'
+  | '/settings/title-generation'
   | '/settings/voice'
   | '/telemetry'
   | '/settings'
@@ -151,10 +155,22 @@ export function SettingsSidebar() {
         count: sandboxQ.data?.denied_patterns.length ?? null,
       },
       {
+        to: '/settings/multimodal',
+        label: 'Multimodal',
+        icon: Image,
+        matchPrefix: '/settings/multimodal',
+      },
+      {
         to: '/settings/dream',
         label: 'Dream',
         icon: Moon,
         matchPrefix: '/settings/dream',
+      },
+      {
+        to: '/settings/title-generation',
+        label: 'Title generation',
+        icon: Type,
+        matchPrefix: '/settings/title-generation',
       },
       {
         to: '/settings/voice',

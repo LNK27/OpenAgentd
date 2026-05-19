@@ -233,6 +233,8 @@ async def get_registry() -> RegistryResponse:
                 provider=provider,
                 model=model,
                 vision=caps.input.vision,
+                output_image=caps.output.image,
+                output_video=caps.output.video,
             )
         )
 

@@ -3,23 +3,19 @@
 Dream reads unprocessed chat sessions and note files, runs the dream agent
 over each one, and writes to the wiki root and knowledge directories.
 
-The dream agent is loaded from .openagentd/config/dream.md.  If that file is
-missing or has no ``model:`` field, synthesis is skipped and non-empty items
-remain pending.  ``enabled: false`` disables the scheduler, but manual runs
-still process pending items when a model is configured.
+The dream prompt is bundled in code. Runtime choices (enabled/model/schedule)
+come from ``{OPENAGENTD_CONFIG_DIR}/settings.yaml``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import yaml
 from loguru import logger
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.exc import IntegrityError
@@ -32,6 +28,7 @@ from app.models.chat import (
     DreamNotesLog,
     SessionMessage,
 )
+from app.core.runtime_settings import load_runtime_settings, runtime_settings_path
 from app.services.wiki import (
     COMPARISONS_DIR,
     ENTITIES_DIR,
@@ -50,11 +47,9 @@ if TYPE_CHECKING:
     from app.agent.agent_loop import Agent
     from app.agent.sandbox import SandboxConfig
 
-_FRONTMATTER_RE = re.compile(r"^\s*---\r?\n(.*?)\r?\n---\r?\n?(.*)", re.DOTALL)
-
 # ── Dream config schema ───────────────────────────────────────────────────────
 
-# Tools always injected into the dream agent regardless of dream.md listing.
+# Tools always injected into the dream agent.
 # ``edit`` and ``rm`` are required by the system prompt — without them, the
 # "surgical update" and (rare) "delete on user request" rules cannot be honoured.
 _REQUIRED_TOOLS: list[str] = ["read", "write", "edit", "rm", "ls", "wiki_search"]
@@ -64,6 +59,48 @@ _REQUIRED_TOOLS: list[str] = ["read", "write", "edit", "rm", "ls", "wiki_search"
 DEFAULT_LLM_TIMEOUT_SECONDS = 300  # 5 min — covers most reasonable transcripts
 DEFAULT_MAX_PROMPT_CHARS = 60_000  # ~15k tokens — fits inside any modern context
 PER_MESSAGE_CAP_CHARS = 4_000
+BATCH_SIZE = 1
+
+DREAM_SYSTEM_PROMPT = """\
+You are the dream agent. Your job is to maintain a wiki — a structured,
+interlinked markdown knowledge base — from unprocessed conversation sessions
+and notes.
+
+The wiki is a persistent, compounding artifact: every source you ingest should
+make existing pages richer, not just add new isolated pages.
+
+Working directory layout:
+- USER.md: durable facts about the user. Keep this file as pure YAML.
+- INDEX.md: table-of-contents catalogue listing every knowledge page.
+- LOG.md: append-only chronological log. Never edit it.
+- LINT.md: most recent lint report.
+- topics/{slug}.md: concepts, techniques, and patterns.
+- entities/{slug}.md: concrete people, tools, products, and organisations.
+- sources/{slug}.md: one summary per ingested source.
+- comparisons/{slug}.md: X vs Y pages.
+- notes/{date}.md: read-only input; never edit notes.
+
+Each prompt begins with Today, Wiki state, and Source-Slug headers. Use Today
+verbatim in updated frontmatter. Prefer editing existing pages listed in Wiki
+state over creating duplicates.
+
+For every meaningful source:
+1. Create or update sources/{Source-Slug}.md first.
+2. Update USER.md only for durable user facts.
+3. Create or update topic, entity, and comparison pages with YAML frontmatter:
+   description, tags, updated, confidence, sources, and related.
+4. Update related existing pages and INDEX.md.
+
+Rules:
+- Only promote durable facts worth remembering across sessions.
+- Skip noise, small talk, and one-off observations.
+- If a source is trivial, do not write source or derivative pages.
+- Use edit for surgical updates to existing pages.
+- Never write to, edit, or delete anything under notes/.
+- Never edit LOG.md.
+- Slugs are lowercase-kebab-case.
+- Write precise, query-friendly descriptions because they drive wiki_search.
+"""
 
 # Cap on bytes of ``INDEX.md`` injected into each per-item prompt as
 # de-duplication context.  Keeps prompt token budget predictable even when
@@ -77,12 +114,10 @@ _run_lock = asyncio.Lock()
 
 
 class DreamAgentConfig(BaseModel):
-    """Parsed configuration from dream.md.
+    """Dream runtime configuration.
 
-    Extends the agent frontmatter schema with dream-specific fields
-    (``enabled``, ``schedule``, ``batch_size``, ``timeout_seconds``).
-    Dream.md is NOT a regular agent file — it has its own loader so these
-    fields are first-class, not silently ignored extras.
+    Contains the runtime fields needed to build and run the built-in Dream
+    agent.
     """
 
     # ── Agent identity (mirrors AgentConfig subset) ──
@@ -92,12 +127,12 @@ class DreamAgentConfig(BaseModel):
     temperature: float | None = None
     thinking_level: str | None = None
     tools: list[str] = Field(default_factory=list)
-    system_prompt: str = ""
+    system_prompt: str = DREAM_SYSTEM_PROMPT
 
     # ── Dream-specific ────────────────────────────────
     enabled: bool = False
     schedule: str = "0 2 * * *"
-    batch_size: int = 1
+    batch_size: int = BATCH_SIZE
     """Number of sessions/notes to process per run_dream() call.
 
     Defaults to 1 — each scheduler fire (or manual /dream/run trigger)
@@ -119,7 +154,7 @@ class DreamAgentConfig(BaseModel):
         if self.timeout_seconds < 1:
             raise ValueError(
                 f"Dream timeout_seconds must be >= 1 second, got "
-                f"{self.timeout_seconds}. Set a positive value in dream.md."
+                f"{self.timeout_seconds}."
             )
         return self
 
@@ -140,72 +175,19 @@ class DreamAgentConfig(BaseModel):
         return self
 
 
-def parse_dream_md(path: Path) -> DreamAgentConfig:
-    """Parse dream.md into a :class:`DreamAgentConfig`.
-
-    dream.md uses the same ``---\\nyaml\\n---\\nbody`` format as agent files,
-    with the body becoming the system prompt and dream-specific frontmatter
-    keys (``enabled``, ``schedule``, ``batch_size``, ``timeout_seconds``).
-
-    Raises :exc:`ValueError` when the file is missing a frontmatter block or
-    the YAML is invalid.
-    """
-    text = path.read_text(encoding="utf-8")
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        raise ValueError(
-            f"dream.md at '{path}' is missing YAML frontmatter "
-            "(expected '---\\n<yaml>\\n---\\n<system prompt>')."
-        )
-    try:
-        raw: dict = yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError as exc:
-        raise ValueError(f"dream.md YAML parse error: {exc}") from exc
-
-    if not isinstance(raw, dict):
-        raise ValueError("dream.md frontmatter must be a YAML mapping.")
-
-    # Warn if the user accidentally specified ``system_prompt`` in the
-    # frontmatter — dream.md's contract is "body becomes system prompt",
-    # so a frontmatter override would be silently ignored otherwise.
-    if "system_prompt" in raw:
-        logger.warning(
-            "dream_md_frontmatter_system_prompt_ignored path={} "
-            "(use the markdown body as the system prompt instead)",
-            path,
-        )
-
-    # Normalise CRLF → LF so a Windows-edited dream.md doesn't smuggle ``\r``
-    # bytes into the LLM system prompt (some providers reject them, others
-    # silently strip and de-sync the rendered token count).
-    body = m.group(2).replace("\r\n", "\n").replace("\r", "\n").strip()
-    raw["system_prompt"] = body or "You are the dream agent."
-
-    # name defaults to "dream" if not set in the file
-    raw.setdefault("name", "dream")
-
-    cfg = DreamAgentConfig.model_validate(raw)
-
-    # Surface a config-time warning if dream is enabled but has no model.
-    # Synthesis will silently be skipped (infra-only mode), but users
-    # almost certainly forgot to set ``model:`` rather than asking for
-    # this on purpose.
-    if cfg.enabled and not cfg.model:
-        logger.warning(
-            "dream_md_enabled_without_model path={} "
-            "(synthesis will be skipped; set 'model: provider:name' to enable)",
-            path,
-        )
-
-    return cfg
+def load_dream_config() -> DreamAgentConfig:
+    settings_cfg = load_runtime_settings().dream
+    return DreamAgentConfig(
+        model=settings_cfg.model,
+        enabled=settings_cfg.enabled,
+        schedule=settings_cfg.schedule,
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-# Default sentinel agent_name for dream's own sessions.  Overridable via
-# ``dream.md`` (``name:`` field) and passed to ``get_unprocessed_sessions``
-# so dream cannot feed itself even if the agent is renamed.
+# Default sentinel agent_name for dream's own sessions.
 DREAM_AGENT_NAME = "dream"
 
 
@@ -455,12 +437,11 @@ def _load_dream_agent(
     token = set_sandbox(SandboxConfig(workspace=str(wiki_root())))
 
     try:
-        config_path = _dream_config_path()
         agent = _build_agent(
             agent_cfg,
             _default_tool_registry(),
             build_provider,
-            source_path=config_path,
+            source_path=runtime_settings_path(),
         )
         logger.info("dream_agent_loaded model={} tools={}", cfg.model, cfg.tools)
         return agent, token
@@ -468,12 +449,6 @@ def _load_dream_agent(
         logger.warning("dream_agent_build_failed error={}", exc)
         _sandbox_ctx.reset(token)
         return None
-
-
-def _dream_config_path() -> Path:
-    from app.core.config import settings
-
-    return Path(settings.OPENAGENTD_CONFIG_DIR) / "dream.md"
 
 
 # ── Existing-wiki context (E2: de-duplication prompt prefix) ──────────────────
@@ -912,8 +887,8 @@ async def run_dream_lint(db: AsyncSession) -> dict:  # noqa: ARG001 — db kept 
     """Run the dream agent in lint mode, writing findings to ``wiki/LINT.md``.
 
     Returns ``{lint_completed_at, lint_path}`` on success, or
-    ``{skipped: <reason>}`` when dream isn't configured (no dream.md, no
-    model).  Like :func:`run_dream`, this is serialised by ``_run_lock`` so
+    ``{skipped: <reason>}`` when dream has no model configured. Like
+    :func:`run_dream`, this is serialised by ``_run_lock`` so
     a lint pass can't race a synthesis fire.
 
     Lint is intentionally distinct from synthesis: it has its own prompt,
@@ -934,13 +909,11 @@ async def _run_dream_lint_locked() -> dict:
     from app.agent.schemas.agent import RunConfig
     from app.agent.schemas.chat import HumanMessage
 
-    dream_cfg: DreamAgentConfig | None = None
-    config_path = _dream_config_path()
-    if config_path.exists():
-        try:
-            dream_cfg = await asyncio.to_thread(parse_dream_md, config_path)
-        except ValueError as exc:
-            logger.warning("dream_lint_config_parse_failed error={}", exc)
+    try:
+        dream_cfg = await asyncio.to_thread(load_dream_config)
+    except ValueError as exc:
+        logger.warning("dream_lint_config_parse_failed error={}", exc)
+        dream_cfg = None
 
     if dream_cfg is None or not dream_cfg.model:
         logger.info("dream_lint_skip reason=no_model_configured")
@@ -1008,8 +981,8 @@ async def run_dream(db: AsyncSession, *, drain: bool = False) -> dict:
     ``dream_log.session_id`` UNIQUE constraint.
 
     ``drain``:
-      - ``False`` (scheduler default) — process up to ``batch_size`` items
-        from ``dream.md``.  Keeps scheduled fires bounded.
+      - ``False`` (scheduler default) — process one item. Keeps scheduled fires
+        bounded.
       - ``True`` (manual API / CLI default) — process every pending item.
         Matches user intent for "Run now": drain the queue.  The previous
         behaviour of also honouring ``batch_size`` here meant manual runs
@@ -1039,21 +1012,13 @@ async def run_dream(db: AsyncSession, *, drain: bool = False) -> dict:
 
 async def _run_dream_locked(db: AsyncSession, *, drain: bool) -> dict:
     """Inner implementation — assumes ``_run_lock`` is held."""
-    # Parse dream.md once and pass the config down — avoids re-reading the
-    # file mid-run if the user edits it (bug #14).  Wrap in ``to_thread``
-    # because YAML parsing + ``Path.read_text`` are synchronous and would
-    # otherwise block the event loop, stalling other FastAPI requests (A2).
     dream_cfg: DreamAgentConfig | None = None
     skip_reason: str | None = None
-    config_path = _dream_config_path()
-    if config_path.exists():
-        try:
-            dream_cfg = await asyncio.to_thread(parse_dream_md, config_path)
-        except ValueError as exc:
-            logger.warning("dream_run_config_parse_failed error={}", exc)
-            skip_reason = "config_parse_failed"
-    else:
-        skip_reason = "no_dream_config"
+    try:
+        dream_cfg = await asyncio.to_thread(load_dream_config)
+    except ValueError as exc:
+        logger.warning("dream_run_config_parse_failed error={}", exc)
+        skip_reason = "config_parse_failed"
 
     if dream_cfg is not None and not dream_cfg.model:
         skip_reason = "no_model_configured"

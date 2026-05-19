@@ -1,6 +1,6 @@
 # seed/
 
-Default agents, skills, and configuration shipped to first-time users.
+Default agents, skills, and file-based configuration shipped to first-time users.
 
 When a user runs `openagentd init`, the CLI copies the contents of this
 directory (locally if running from a source checkout, otherwise from the
@@ -19,16 +19,15 @@ into their own `{OPENAGENTD_CONFIG_DIR}/`.
 seed/
 ├── agents/                # one .md per agent — exactly one must have `role: lead`
 ├── skills/                # one subdirectory per skill, each containing SKILL.md
-├── mcp.json               # default MCP server config (context7 enabled)
-├── multimodal.yaml        # image / video provider config
-└── title_generation.md    # title-generation config + system prompt
+└── mcp.json               # empty MCP server config
 ```
 
-> Summarisation has no file-based config and is not seeded. All tuning
-> (prompts + numeric thresholds + keep window) lives in
-> ``app/agent/hooks/summarization.py`` — see
-> ``documents/docs/agent/summarization.md`` for the rationale and the full
-> list of constants.
+> Summarisation, title generation, and Dream prompts are built in and are not
+> seeded as editable prompt files. Runtime choices such as enable/model/schedule
+> live in `{OPENAGENTD_CONFIG_DIR}/settings.yaml`, which the app creates from
+> the known schema instead of copying from `seed/`. `speech.yaml` and
+> `multimodal.yaml` are also generated from known schemas rather than copied
+> from GitHub seed content.
 
 `README.md` (this file) is the only top-level item not copied — every
 other top-level entry ships, but `init` skips files the user already
@@ -38,7 +37,9 @@ has, so re-running `init` after a release won't clobber edits.
 
 - **Lead agent first.** `agents/openagentd.md` is the lead; the others are members.
 - **Model placeholder.** Every agent's `model:` field is rewritten by
-  `openagentd init` to match the provider/model the user picked.
+  `openagentd init` to match the provider/model the user picked. The same
+  selected model is written into generated `settings.yaml` for title generation
+  and Dream defaults.
   After install, users can run `self-healing` to swap individual member
   models (e.g. give the executor a faster model than the lead).
 - **No secrets, ever.** These files are public. `mcp.json` should
@@ -46,6 +47,6 @@ has, so re-running `init` after a release won't clobber edits.
   values.
 - **Keep skills self-contained.** Each `skills/<name>/` should run with no
   outside files. Bundle reference scripts and templates in the same dir.
-- **Top-level configs are fill-in-gap defaults.** `mcp.json`,
-  `multimodal.yaml`, `title_generation.md` only land if the target
-  file doesn't exist. Existing files are never overwritten.
+- **Top-level configs are fill-in-gap defaults.** `mcp.json` only lands if the
+  target file doesn't exist. Generated configs (`settings.yaml`,
+  `multimodal.yaml`, `speech.yaml`) follow the same no-overwrite rule.

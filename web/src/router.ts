@@ -18,7 +18,9 @@ const NewMcpServerPage = lazy(() => import('./routes/settings.mcp.new').then((m)
 const McpServerDetailPage = lazy(() => import('./routes/settings.mcp.$name').then((m) => ({ default: m.McpServerDetailPage })))
 const SandboxSettingsPage = lazy(() => import('./routes/settings.sandbox').then((m) => ({ default: m.SandboxSettingsPage })))
 const ProvidersSettingsPage = lazy(() => import('./routes/settings.providers').then((m) => ({ default: m.ProvidersSettingsPage })))
+const MultimodalSettingsPage = lazy(() => import('./routes/settings.multimodal').then((m) => ({ default: m.MultimodalSettingsPage })))
 const DreamSettingsPage = lazy(() => import('./routes/settings.dream').then((m) => ({ default: m.DreamSettingsPage })))
+const TitleGenerationSettingsPage = lazy(() => import('./routes/settings.title-generation').then((m) => ({ default: m.TitleGenerationSettingsPage })))
 const VoiceSettingsPage = lazy(() => import('./routes/settings.voice').then((m) => ({ default: m.VoiceSettingsPage })))
 const TelemetryPage = lazy(() => import('./routes/telemetry').then((m) => ({ default: m.TelemetryPage })))
 const SchedulerPage = lazy(() => import('./routes/scheduler').then((m) => ({ default: m.SchedulerPage })))
@@ -146,11 +148,23 @@ const settingsProvidersRoute = createRoute({
   component: ProvidersSettingsPage,
 })
 
+const settingsMultimodalRoute = createRoute({
+  getParentRoute: () => settingsLayoutRoute,
+  path: 'multimodal',
+  component: MultimodalSettingsPage,
+})
+
 // /settings/dream
 const settingsDreamRoute = createRoute({
   getParentRoute: () => settingsLayoutRoute,
   path: 'dream',
   component: DreamSettingsPage,
+})
+
+const settingsTitleGenerationRoute = createRoute({
+  getParentRoute: () => settingsLayoutRoute,
+  path: 'title-generation',
+  component: TitleGenerationSettingsPage,
 })
 
 // /settings/voice
@@ -191,7 +205,9 @@ const routeTree = rootRoute.addChildren([
     settingsMcpDetailRoute,
     settingsSandboxRoute,
     settingsProvidersRoute,
+    settingsMultimodalRoute,
     settingsDreamRoute,
+    settingsTitleGenerationRoute,
     settingsVoiceRoute,
   ]),
   telemetryRoute,

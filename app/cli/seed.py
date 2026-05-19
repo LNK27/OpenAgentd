@@ -10,8 +10,8 @@ What ships
   desktop seeding.
 - ``skills/`` — one subdirectory per skill, each with at minimum a
   ``SKILL.md``.
-- Top-level config files: ``mcp.json``, ``multimodal.yaml``, ``speech.yaml``,
-  ``title_generation.md``. These are the defaults the user can edit later;
+- Top-level config files: ``mcp.json`` plus generated ``settings.yaml``,
+  ``multimodal.yaml``, and ``speech.yaml``. These are the defaults the user can edit later;
   any file already present in the user's config dir is left untouched.
   ``summarization.md`` is **not** seeded — the summariser prompt lives in
   code (see ``CHAT_SUMMARY_PROMPT`` / ``CODING_SUMMARY_PROMPT`` in
@@ -59,11 +59,7 @@ PROVIDER_MODEL_TOKEN = "__PROVIDER_MODEL__"
 #: Anything else at seed root (README.md, etc.) is **not** copied.
 _SEED_ROOT_FILES: frozenset[str] = frozenset(
     {
-        "dream.md",
         "mcp.json",
-        "multimodal.yaml",
-        "speech.yaml",
-        "title_generation.md",
     }
 )
 
@@ -72,6 +68,27 @@ _SEED_TREE_DIRS: frozenset[str] = frozenset({"agents", "skills"})
 
 #: Network timeout (seconds) for each GitHub fetch attempt.
 _FETCH_TIMEOUT = 20
+
+_DEFAULT_MULTIMODAL_YAML = """\
+image:
+  model: googlegenai:gemini-3.1-flash-image-preview
+  aspect_ratio: "1:1"
+  image_size: 1K
+
+video:
+  model: googlegenai:veo-3.1-generate-preview
+  aspect_ratio: "16:9"
+  resolution: "720p"
+  duration_seconds: "8"
+"""
+
+_DEFAULT_SPEECH_YAML = """\
+voice:
+  enabled: false
+  model: local:base
+  language: auto
+  max_file_mb: 25
+"""
 
 
 @dataclass(slots=True)
@@ -232,6 +249,17 @@ def _install_from_local(
     skills_written: list[str] = []
     configs_written: list[str] = []
 
+    from app.core.runtime_settings import ensure_runtime_settings
+
+    if ensure_runtime_settings(
+        config_dir / "settings.yaml", provider_model=provider_model
+    ):
+        configs_written.append("settings.yaml")
+    if _ensure_text_config(config_dir / "multimodal.yaml", _DEFAULT_MULTIMODAL_YAML):
+        configs_written.append("multimodal.yaml")
+    if _ensure_text_config(config_dir / "speech.yaml", _DEFAULT_SPEECH_YAML):
+        configs_written.append("speech.yaml")
+
     for src in sorted(seed_dir.rglob("*")):
         if not src.is_file():
             continue
@@ -267,6 +295,17 @@ def _install_from_github(
     agents_written: list[str] = []
     skills_written: list[str] = []
     configs_written: list[str] = []
+
+    from app.core.runtime_settings import ensure_runtime_settings
+
+    if ensure_runtime_settings(
+        config_dir / "settings.yaml", provider_model=provider_model
+    ):
+        configs_written.append("settings.yaml")
+    if _ensure_text_config(config_dir / "multimodal.yaml", _DEFAULT_MULTIMODAL_YAML):
+        configs_written.append("multimodal.yaml")
+    if _ensure_text_config(config_dir / "speech.yaml", _DEFAULT_SPEECH_YAML):
+        configs_written.append("speech.yaml")
 
     with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as tf:
         for member in tf.getmembers():
@@ -364,6 +403,14 @@ def _copy_with_substitution(src: Path, target: Path, provider_model: str) -> Non
         )
     else:
         shutil.copy2(src, target)
+
+
+def _ensure_text_config(path: Path, content: str) -> bool:
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return True
 
 
 def _replace_placeholder_if_needed(target: Path, provider_model: str) -> bool:

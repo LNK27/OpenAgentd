@@ -1,12 +1,12 @@
-/** /settings/dream — edit Dream runtime settings. */
+/** /settings/title-generation — edit automatic chat title settings. */
 import { useMemo, useState } from 'react'
-import { ArrowLeft, Moon, Play, Save } from 'lucide-react'
+import { ArrowLeft, Save, Type } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import {
-  useDreamConfigQuery,
-  useUpdateDreamConfigMutation,
-  useTriggerDreamMutation,
+  useRegistryQuery,
+  useTitleGenerationSettingsQuery,
+  useUpdateTitleGenerationSettingsMutation,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -15,33 +15,31 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { ModelCombobox } from '@/components/settings/AgentForm'
 import { validateModel } from '@/components/settings/schema'
-import { useRegistryQuery } from '@/queries'
-import type { DreamConfig } from '@/api/client'
+import type { TitleGenerationSettings } from '@/api/client'
 
-const DEFAULT_FORM: DreamConfig = {
-  enabled: false,
+const DEFAULT_FORM: TitleGenerationSettings = {
+  enabled: true,
   model: '',
-  schedule: '0 2 * * *',
+  wait_timeout_seconds: 3,
 }
 
-function normalized(form: DreamConfig): DreamConfig {
+function normalized(form: TitleGenerationSettings): TitleGenerationSettings {
   return {
     enabled: form.enabled,
     model: form.model.trim(),
-    schedule: form.schedule.trim() || '0 2 * * *',
+    wait_timeout_seconds: Math.max(0, form.wait_timeout_seconds),
   }
 }
 
-export function DreamSettingsPage() {
+export function TitleGenerationSettingsPage() {
   const isMobile = useIsMobile()
-  const { data, isLoading, error } = useDreamConfigQuery()
-  const updateMut = useUpdateDreamConfigMutation()
-  const dreamMut = useTriggerDreamMutation()
+  const { data, isLoading, error } = useTitleGenerationSettingsQuery()
+  const updateMut = useUpdateTitleGenerationSettingsMutation()
   const registry = useRegistryQuery()
   const push = useToastStore((s) => s.push)
 
-  const [form, setForm] = useState<DreamConfig>(DEFAULT_FORM)
-  const [sourceRaw, setSourceRaw] = useState<DreamConfig | null>(null)
+  const [form, setForm] = useState<TitleGenerationSettings>(DEFAULT_FORM)
+  const [sourceRaw, setSourceRaw] = useState<TitleGenerationSettings | null>(null)
 
   if (data && data !== sourceRaw) {
     setForm(data)
@@ -55,50 +53,28 @@ export function DreamSettingsPage() {
     return (
       current.enabled !== source.enabled ||
       current.model !== source.model ||
-      current.schedule !== source.schedule
+      current.wait_timeout_seconds !== source.wait_timeout_seconds
     )
   }, [form, sourceRaw])
+
   const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
   const validModelIds = useMemo(() => modelOptions.map((m) => m.id), [modelOptions])
   const modelError = validateModel(form.model, { validValues: validModelIds })
 
-  const setField = <K extends keyof DreamConfig>(key: K, val: DreamConfig[K]) =>
-    setForm((prev) => ({ ...prev, [key]: val }))
+  const setField = <K extends keyof TitleGenerationSettings>(
+    key: K,
+    val: TitleGenerationSettings[K],
+  ) => setForm((prev) => ({ ...prev, [key]: val }))
 
   const handleSave = async () => {
     try {
       const saved = await updateMut.mutateAsync(normalized(form))
       setSourceRaw(saved)
-      push({ tone: 'success', title: 'Dream settings saved' })
+      push({ tone: 'success', title: 'Title generation settings saved' })
     } catch (err) {
       push({
         tone: 'error',
         title: 'Save failed',
-        description: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-
-  const handleRunNow = async () => {
-    try {
-      const result = await dreamMut.mutateAsync()
-      if (result.skipped) {
-        push({
-          tone: 'info',
-          title: 'Dream skipped',
-          description: `${result.skipped}. ${result.remaining ?? 0} pending.`,
-        })
-        return
-      }
-      push({
-        tone: 'success',
-        title: 'Dream run complete',
-        description: `${result.sessions_processed} sessions, ${result.notes_processed} notes processed.`,
-      })
-    } catch (err) {
-      push({
-        tone: 'error',
-        title: 'Dream run failed',
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -116,13 +92,9 @@ export function DreamSettingsPage() {
             <ArrowLeft size={14} />
           </Link>
         )}
-        <Moon size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-        <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Dream</h1>
+        <Type size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+        <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Title generation</h1>
         {dirty && <span className="text-xs text-(--color-text-muted)">Unsaved</span>}
-        <Button size="sm" variant="outline" onClick={handleRunNow} disabled={dreamMut.isPending}>
-          <Play size={12} aria-hidden="true" />
-          <span className="hidden sm:inline">{dreamMut.isPending ? 'Running...' : 'Run now'}</span>
-        </Button>
         <Button size="sm" onClick={handleSave} disabled={!dirty || !!modelError || updateMut.isPending}>
           <Save size={12} aria-hidden="true" />
           <span className="hidden sm:inline">{updateMut.isPending ? 'Saving...' : 'Save'}</span>
@@ -132,8 +104,8 @@ export function DreamSettingsPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl space-y-5 p-6">
           <p className="text-sm leading-relaxed text-(--color-text-muted)">
-            Dream synthesises unprocessed conversation sessions and notes into the wiki.
-            Its prompt and tools are built in; configure only when it runs and which model it uses.
+            Title generation creates short session names after the first user message.
+            Choose a small, fast model to keep titles quick and cost-efficient.
           </p>
 
           {isLoading && <p className="text-sm text-(--color-text-muted)">Loading...</p>}
@@ -147,7 +119,7 @@ export function DreamSettingsPage() {
             <div className="space-y-5">
               <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
-                  Schedule
+                  Status
                 </h2>
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-(--color-text)">
                   <Switch
@@ -156,21 +128,6 @@ export function DreamSettingsPage() {
                   />
                   Enabled
                 </label>
-                <div className="grid gap-1.5">
-                  <label htmlFor="dream-schedule" className="text-xs font-medium text-(--color-text-muted)">
-                    Cron expression
-                  </label>
-                  <Input
-                    id="dream-schedule"
-                    value={form.schedule}
-                    onChange={(e) => setField('schedule', e.target.value)}
-                    placeholder="0 2 * * *"
-                    className="h-9 font-mono text-sm"
-                  />
-                  <p className="text-[11px] text-(--color-text-muted)">
-                    Standard 5-field cron in UTC. Disabled Dream can still be triggered with Run now.
-                  </p>
-                </div>
               </section>
 
               <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
@@ -178,7 +135,7 @@ export function DreamSettingsPage() {
                   Model
                 </h2>
                 <div className="grid gap-1.5">
-                  <label htmlFor="dream-model" className="text-xs font-medium text-(--color-text-muted)">
+                  <label htmlFor="title-model" className="text-xs font-medium text-(--color-text-muted)">
                     Model ID
                   </label>
                   <ModelCombobox
@@ -186,15 +143,38 @@ export function DreamSettingsPage() {
                     onChange={(value) => setField('model', value)}
                     options={modelOptions}
                     invalid={!!modelError}
-                    placeholder="codex:gpt-5.5"
+                    placeholder="codex:gpt-5.5-mini"
                   />
                   {modelError ? (
                     <p className="text-[11px] text-(--color-error)">{modelError}</p>
                   ) : (
                     <p className="text-[11px] text-(--color-text-muted)">
-                      Choose from the same registry used by agent setup. Leave empty to skip LLM synthesis.
+                      Leave empty to use the current agent model. Prefer small, low-latency models for this background task.
                     </p>
                   )}
+                </div>
+              </section>
+
+              <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
+                  Timing
+                </h2>
+                <div className="grid gap-1.5">
+                  <label htmlFor="title-wait-timeout" className="text-xs font-medium text-(--color-text-muted)">
+                    Wait timeout seconds
+                  </label>
+                  <Input
+                    id="title-wait-timeout"
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={String(form.wait_timeout_seconds)}
+                    onChange={(e) => setField('wait_timeout_seconds', Number(e.target.value))}
+                    className="h-9 font-mono text-sm"
+                  />
+                  <p className="text-[11px] text-(--color-text-muted)">
+                    Best-effort wait before the final done event. Set to 0 for fully background title updates.
+                  </p>
                 </div>
               </section>
             </div>

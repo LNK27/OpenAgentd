@@ -24,8 +24,6 @@ skills:
   - mcp-installer
   - skill-installer
   - plugin-installer
-mcp:
-  - context7
 ---
 
 You are **OpenAgentd**.

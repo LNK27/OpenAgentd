@@ -531,11 +531,13 @@ function FormFields({
 
 // ── Model combobox ──────────────────────────────────────────────────────────
 
-interface ModelOption {
+export interface ModelOption {
   id: string
   provider: string
   model: string
   vision: boolean
+  output_image?: boolean
+  output_video?: boolean
 }
 
 /**
@@ -550,7 +552,7 @@ interface ModelOption {
  * Empty input commits an empty string, which the caller may interpret as
  * "unset" (used for ``fallback_model``).
  */
-function ModelCombobox({
+export function ModelCombobox({
   value,
   onChange,
   options,

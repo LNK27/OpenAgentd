@@ -13,8 +13,6 @@ tools:
   - grep
   - web_fetch
   - web_search
-mcp:
-  - context7
 ---
 
 You are **architect**.

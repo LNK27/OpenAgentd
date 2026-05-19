@@ -13,6 +13,27 @@ class SandboxSettingsBody(BaseModel):
     denied_patterns: list[str] = Field(default_factory=list)
 
 
+class TitleGenerationSettingsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    model: str = ""
+    wait_timeout_seconds: float = 3.0
+
+
+class MultimodalSectionBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    model: str = ""
+
+
+class MultimodalSettingsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    image: MultimodalSectionBody = Field(default_factory=MultimodalSectionBody)
+    video: MultimodalSectionBody = Field(default_factory=MultimodalSectionBody)
+
+
 # ── Providers (Settings → Providers tab) ────────────────────────────────────
 
 

@@ -7,9 +7,7 @@ Intended to be called as a fire-and-forget ``asyncio.create_task`` immediately
 after the first user message is saved — before the agent runs. Failures are
 logged and swallowed; the session keeps its raw-truncation fallback title.
 
-The system prompt is *required* and must be provided by the caller — it is
-resolved from ``.openagentd/config/title_generation.md`` by
-:func:`~app.agent.hooks.title_generation.build_title_generation_hook`.
+The system prompt is *required* and must be provided by the caller.
 """
 
 from __future__ import annotations
@@ -61,15 +59,10 @@ async def generate_and_save_title(
     Safe to call as ``asyncio.create_task(generate_and_save_title(...))``.
     All exceptions are caught and logged — never propagated.
 
-    ``system_prompt`` is required and sourced from
-    ``.openagentd/config/title_generation.md``. Passing an empty string raises
-    ``ValueError``.
+    Passing an empty ``system_prompt`` raises ``ValueError``.
     """
     if not system_prompt or not system_prompt.strip():
-        raise ValueError(
-            "generate_and_save_title requires a non-empty system_prompt "
-            "(configure .openagentd/config/title_generation.md)."
-        )
+        raise ValueError("generate_and_save_title requires a non-empty system_prompt.")
 
     session_id_str = str(session_id)
     user_text = user_message[:_MAX_CONTENT_CHARS]

@@ -55,6 +55,8 @@ class ModelCatalogEntry(BaseModel):
     provider: str
     model: str
     vision: bool
+    output_image: bool = False
+    output_video: bool = False
 
 
 class RegistryResponse(BaseModel):

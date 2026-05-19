@@ -10,14 +10,12 @@ Because the task is fire-and-forget, the agent loop is never blocked by the
 LLM call itself. ``after_agent`` performs a best-effort ``await`` on the task
 so the ``title_update`` SSE arrives before ``done`` is emitted, but the wait
 is capped by ``wait_timeout`` (default ``3.0`` s, configurable via
-``.openagentd/config/title_generation.md``). Set ``wait_timeout=0`` to make
+``.openagentd/config/settings.yaml``). Set ``wait_timeout=0`` to make
 the hook fully non-blocking — the title still lands via SSE whenever it is
 ready.
 
-Configuration lives in ``.openagentd/config/title_generation.md``. If the file
-is missing, ``enabled: false``, or the body (prompt) is empty,
-:func:`build_title_generation_hook` logs a warning and returns ``None`` —
-sessions keep their raw-truncation fallback title.
+Runtime settings live in ``.openagentd/config/settings.yaml``. The title prompt
+is bundled in code, like summarization.
 
 Usage::
 
@@ -35,7 +33,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -44,7 +41,7 @@ from loguru import logger
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.providers.factory import build_provider
 from app.agent.schemas.chat import AssistantMessage, HumanMessage
-from app.core.config import settings
+from app.core.runtime_settings import load_runtime_settings
 
 if TYPE_CHECKING:
     from app.agent.providers.base import LLMProviderBase
@@ -58,6 +55,23 @@ if TYPE_CHECKING:
 # entirely — the title still arrives via SSE when the task finishes.
 DEFAULT_WAIT_TIMEOUT_SECONDS = 3.0
 MIN_TITLE_WORDS = 3
+TITLE_GENERATION_PROMPT = """\
+You are a title generator. You output ONLY a conversation title. Nothing else.
+
+Generate a brief title that would help the user find this conversation later.
+
+Your output must be:
+- A single line
+- <=50 characters
+- No explanations
+
+Rules:
+- Use the same language as the user message you are summarizing.
+- Title must be grammatically correct and read naturally.
+- Focus on the main topic, question, or goal the user wants to accomplish.
+- Keep exact proper nouns, numbers, names, and specific terms relevant to the topic.
+- Never respond to the conversation; only generate a title for it.
+"""
 GREETING_ONLY_RE = re.compile(
     r"^\s*(?:hi|hello|hey|yo|good\s+(?:morning|afternoon|evening))\s*[!.?]*\s*$",
     re.IGNORECASE,
@@ -71,19 +85,10 @@ def _should_skip_title_generation(user_text: str) -> bool:
     return len(text.split()) < MIN_TITLE_WORDS
 
 
-def title_generation_config_path() -> Path:
-    """Return the path to the global title-generation config file.
-
-    Defaults to ``{OPENAGENTD_CONFIG_DIR}/title_generation.md``.
-    """
-    return Path(settings.OPENAGENTD_CONFIG_DIR) / "title_generation.md"
-
-
 class TitleGenerationHook(BaseAgentHook):
     """Fires background title generation on the first turn of a session.
 
-    Construct via :func:`build_title_generation_hook` — the ``system_prompt``
-    is required and sourced from the config file body.
+    Construct via :func:`build_title_generation_hook`.
 
     Args:
         provider: LLM provider used for the lightweight title generation call.
@@ -103,10 +108,7 @@ class TitleGenerationHook(BaseAgentHook):
         wait_timeout: float = DEFAULT_WAIT_TIMEOUT_SECONDS,
     ) -> None:
         if not system_prompt or not system_prompt.strip():
-            raise ValueError(
-                "TitleGenerationHook requires a non-empty system_prompt "
-                "(configure .openagentd/config/title_generation.md)."
-            )
+            raise ValueError("TitleGenerationHook requires a non-empty system_prompt.")
         self._provider = provider
         self._db_factory = db_factory
         self._system_prompt = system_prompt
@@ -193,59 +195,28 @@ def build_title_generation_hook(
     default_provider: "LLMProviderBase",
     db_factory: "DbFactory",
 ) -> "TitleGenerationHook | None":
-    """Construct a :class:`TitleGenerationHook` from ``.openagentd/config/title_generation.md``.
-
-    Returns ``None`` (with a warning logged) when any of the following
-    disables the feature — the caller should simply not add the hook:
-
-    * The config file does not exist.
-    * ``enabled: false`` in the frontmatter.
-    * The file body (the prompt) is empty.
-
-    Resolution order for non-prompt fields:
-
-    1. ``.openagentd/config/title_generation.md`` frontmatter
-    2. Module-level ``DEFAULT_*`` constants in this module
-    """
-    from app.agent.loader import load_title_generation_file_config
-
-    file_cfg = load_title_generation_file_config()
-
-    if file_cfg is None:
+    """Construct a :class:`TitleGenerationHook` from runtime settings."""
+    try:
+        cfg = load_runtime_settings().title_generation
+    except ValueError as exc:
         logger.warning(
-            "title_generation_disabled reason=config_missing path={}",
-            title_generation_config_path(),
+            "title_generation_disabled reason=settings_invalid error={}", exc
         )
         return None
 
-    if not file_cfg.enabled:
-        logger.warning(
-            "title_generation_disabled reason=enabled_false path={}",
-            title_generation_config_path(),
-        )
+    if not cfg.enabled:
+        logger.warning("title_generation_disabled reason=enabled_false")
         return None
 
-    if not file_cfg.prompt:
-        logger.warning(
-            "title_generation_disabled reason=empty_prompt_body path={}",
-            title_generation_config_path(),
-        )
-        return None
-
-    # Provider: dedicated title model from file config, else agent's own provider.
     provider = default_provider
-    if file_cfg.model:
-        provider = build_provider(file_cfg.model)
+    if cfg.model:
+        provider = build_provider(cfg.model)
 
-    wait_timeout = (
-        file_cfg.wait_timeout_seconds
-        if file_cfg.wait_timeout_seconds is not None
-        else DEFAULT_WAIT_TIMEOUT_SECONDS
-    )
+    wait_timeout = cfg.wait_timeout_seconds or DEFAULT_WAIT_TIMEOUT_SECONDS
 
     return TitleGenerationHook(
         provider=provider,
         db_factory=db_factory,
-        system_prompt=file_cfg.prompt,
+        system_prompt=TITLE_GENERATION_PROMPT,
         wait_timeout=wait_timeout,
     )

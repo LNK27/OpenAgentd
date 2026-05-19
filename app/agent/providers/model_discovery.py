@@ -78,7 +78,9 @@ async def _google_genai_models(overrides: Mapping[str, str] | None) -> list[str]
             continue
         name = item.get("name")
         methods = item.get("supportedGenerationMethods", [])
-        if isinstance(name, str) and "generateContent" in methods:
+        if isinstance(name, str) and (
+            "generateContent" in methods or "predictLongRunning" in methods
+        ):
             models.append(name.removeprefix("models/"))
     return sorted(models)
 

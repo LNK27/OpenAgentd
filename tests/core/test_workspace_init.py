@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.cli.seed import SeedResult
+from app.cli.seed import _install_from_local
 from app.cli.seed import _replace_placeholder_if_needed
 from app.core.workspace_init import ensure_workspace_initialized
 
@@ -114,3 +115,26 @@ def test_replace_placeholder_updates_only_seed_model(tmp_path: Path) -> None:
     assert agent.read_text(encoding="utf-8") == (
         "---\nname: openagentd\nmodel: codex:gpt-5.5\n---\n\nCustom prompt\n"
     )
+
+
+def test_install_seed_writes_runtime_settings_model(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "agents").mkdir()
+    (seed / "skills").mkdir()
+
+    result = _install_from_local(
+        seed,
+        tmp_path / "config",
+        provider_model="codex:gpt-5.5",
+    )
+
+    assert result.configs_written == [
+        "multimodal.yaml",
+        "settings.yaml",
+        "speech.yaml",
+    ]
+    settings = (tmp_path / "config" / "settings.yaml").read_text(encoding="utf-8")
+    assert "title_generation:" in settings
+    assert "dream:" in settings
+    assert "model: codex:gpt-5.5" in settings

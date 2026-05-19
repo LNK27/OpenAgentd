@@ -397,8 +397,9 @@ export async function deleteWikiFile(path: string): Promise<void> {
 // ── /dream ────────────────────────────────────────────────────────────────────
 
 export interface DreamConfig {
-  content: string
-  exists: boolean
+  enabled: boolean
+  model: string
+  schedule: string
 }
 
 export async function getDreamConfig(): Promise<DreamConfig> {
@@ -407,11 +408,11 @@ export async function getDreamConfig(): Promise<DreamConfig> {
   return res.json()
 }
 
-export async function putDreamConfig(content: string): Promise<DreamConfig> {
+export async function putDreamConfig(config: DreamConfig): Promise<DreamConfig> {
   const res = await fetch(`${API}/dream/config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(config),
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
@@ -729,6 +730,58 @@ export async function updateSandboxSettings(
     body: JSON.stringify(body),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/sandbox')
+  return res.json()
+}
+
+export type TitleGenerationSettings = {
+  enabled: boolean
+  model: string
+  wait_timeout_seconds: number
+}
+
+export async function getTitleGenerationSettings(): Promise<TitleGenerationSettings> {
+  const res = await fetch(`${API}/settings/title-generation`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/title-generation')
+  return res.json()
+}
+
+export async function updateTitleGenerationSettings(
+  body: TitleGenerationSettings,
+): Promise<TitleGenerationSettings> {
+  const res = await fetch(`${API}/settings/title-generation`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/title-generation')
+  return res.json()
+}
+
+export type MultimodalSectionSettings = {
+  model: string
+  [key: string]: string | number | boolean | null
+}
+
+export type MultimodalSettings = {
+  image: MultimodalSectionSettings
+  video: MultimodalSectionSettings
+}
+
+export async function getMultimodalSettings(): Promise<MultimodalSettings> {
+  const res = await fetch(`${API}/settings/multimodal`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/multimodal')
+  return res.json()
+}
+
+export async function updateMultimodalSettings(
+  body: MultimodalSettings,
+): Promise<MultimodalSettings> {
+  const res = await fetch(`${API}/settings/multimodal`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/multimodal')
   return res.json()
 }
 
