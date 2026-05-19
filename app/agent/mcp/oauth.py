@@ -26,6 +26,10 @@ class OAuthRequiredError(RuntimeError):
 _interactive_oauth: set[str] = set()
 
 
+def _unresolved_secret_ref(raw: str, resolved: str) -> bool:
+    return raw.startswith("$") and raw == resolved
+
+
 def allow_interactive_oauth(name: str) -> None:
     _interactive_oauth.add(name)
 
@@ -47,6 +51,14 @@ def has_cached_oauth_tokens(name: str) -> bool:
     except Exception:
         return False
     return bool(data.get("tokens"))
+
+
+def has_resolved_client_id(cfg: HttpServerConfig) -> bool:
+    oauth = cfg.oauth
+    if not oauth or not oauth.client_id:
+        return False
+    client_id = resolve_secret_refs(oauth.client_id)
+    return bool(client_id and not _unresolved_secret_ref(oauth.client_id, client_id))
 
 
 async def supports_dynamic_client_registration(cfg: HttpServerConfig) -> bool:
@@ -152,16 +164,20 @@ class FileTokenStorage:
         if raw:
             return OAuthClientInformationFull.model_validate(raw)
         oauth = self._cfg.oauth
-        if not oauth or not oauth.client_id_env:
+        if not oauth or not oauth.client_id:
             return None
-        client_id = resolve_secret_refs(f"${{{oauth.client_id_env}}}")
+        client_id = resolve_secret_refs(oauth.client_id)
         client_secret = (
-            resolve_secret_refs(f"${{{oauth.client_secret_env}}}")
-            if oauth.client_secret_env
-            else None
+            resolve_secret_refs(oauth.client_secret) if oauth.client_secret else None
         )
-        if not client_id or client_id == f"${{{oauth.client_id_env}}}":
+        if not client_id or _unresolved_secret_ref(oauth.client_id, client_id):
             return None
+        if (
+            oauth.client_secret
+            and client_secret
+            and _unresolved_secret_ref(oauth.client_secret, client_secret)
+        ):
+            client_secret = None
         return OAuthClientInformationFull.model_validate(
             {
                 "client_id": client_id,
@@ -217,7 +233,7 @@ def build_oauth_provider(
             {
                 "redirect_uris": [callback.redirect_uri],
                 "token_endpoint_auth_method": "client_secret_post"
-                if cfg.oauth.client_secret_env
+                if cfg.oauth.client_secret
                 else "none",
                 "client_name": "OpenAgentd",
             }

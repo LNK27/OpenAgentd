@@ -10,6 +10,7 @@ import pytest
 from app.agent.mcp.config import (
     HttpServerConfig,
     MCPConfig,
+    OAuthConfig,
     StdioServerConfig,
     load_config,
     resolve_headers,
@@ -163,6 +164,53 @@ class TestLoadConfig:
         assert len(loaded.servers) == 2
         assert isinstance(loaded.servers["filesystem"], StdioServerConfig)
         assert isinstance(loaded.servers["github"], HttpServerConfig)
+
+    def test_load_config_http_oauth_accepts_refs_and_direct_values(
+        self, tmp_path: Path
+    ) -> None:
+        config_file = tmp_path / "mcp.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "servers": {
+                        "slack": {
+                            "transport": "http",
+                            "url": "https://mcp.slack.com/mcp",
+                            "oauth": {
+                                "client_id": "${SLACK_MCP_CLIENT_ID}",
+                                "client_secret": "direct-secret",
+                            },
+                        }
+                    }
+                }
+            )
+        )
+
+        loaded = load_config(config_file)
+        server = loaded.servers["slack"]
+        assert isinstance(server, HttpServerConfig)
+        assert server.oauth == OAuthConfig(
+            client_id="${SLACK_MCP_CLIENT_ID}", client_secret="direct-secret"
+        )
+
+    def test_load_config_rejects_legacy_oauth_env_fields(self, tmp_path: Path) -> None:
+        config_file = tmp_path / "mcp.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "servers": {
+                        "slack": {
+                            "transport": "http",
+                            "url": "https://mcp.slack.com/mcp",
+                            "oauth": {"client_id_env": "SLACK_MCP_CLIENT_ID"},
+                        }
+                    }
+                }
+            )
+        )
+
+        with pytest.raises(ValueError):
+            load_config(config_file)
 
 
 class TestSaveConfig:

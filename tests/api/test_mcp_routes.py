@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -166,6 +167,54 @@ class TestCreateServer:
             assert response.status_code == 201
             data = response.json()
             assert data["name"] == "github"
+
+    def test_create_server_stores_oauth_values_in_env_file(
+        self, tmp_path: Path
+    ) -> None:
+        app = _make_app()
+        with (
+            patch("app.api.routes.mcp.mcp_manager") as mock_manager,
+            patch("app.api.routes.mcp.load_config") as mock_load,
+            patch("app.api.routes.mcp.save_config") as mock_save,
+            patch("app.api.routes.mcp.settings.OPENAGENTD_CONFIG_DIR", str(tmp_path)),
+            patch.dict(os.environ, {}, clear=True),
+        ):
+            mock_load.return_value = MCPConfig()
+            mock_manager.restart_server = AsyncMock(
+                return_value=MCPServerStatus(
+                    name="slack", transport="http", enabled=True, state="auth_required"
+                )
+            )
+
+            client = TestClient(app)
+            response = client.post(
+                "/api/mcp/servers",
+                json={
+                    "name": "slack",
+                    "server": {
+                        "transport": "http",
+                        "url": "https://mcp.slack.com/mcp",
+                        "headers": {},
+                        "oauth": {
+                            "client_id": "3660753192626.8903469228982",
+                            "client_secret": "secret-value",
+                        },
+                    },
+                },
+            )
+
+            assert response.status_code == 201
+            env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+            assert 'SLACK_MCP_CLIENT_ID="3660753192626.8903469228982"' in env_text
+            assert 'SLACK_MCP_CLIENT_SECRET="secret-value"' in env_text
+            assert os.environ["SLACK_MCP_CLIENT_ID"] == "3660753192626.8903469228982"
+            assert os.environ["SLACK_MCP_CLIENT_SECRET"] == "secret-value"
+            saved = mock_save.call_args.args[0]
+            saved_slack = saved.servers["slack"]
+            assert isinstance(saved_slack, HttpServerConfig)
+            assert saved_slack.oauth is not None
+            assert saved_slack.oauth.client_id == "${SLACK_MCP_CLIENT_ID}"
+            assert saved_slack.oauth.client_secret == "${SLACK_MCP_CLIENT_SECRET}"
 
     def test_create_server_duplicate_name_returns_409(self) -> None:
         """POST /api/mcp/servers with duplicate name returns 409."""
@@ -358,6 +407,77 @@ class TestUpdateServer:
             assert saved.servers["slack"].headers == {
                 "Authorization": "Bearer ${SLACK_MCP_TOKEN}"
             }
+
+    def test_update_server_overwrites_existing_oauth_env_values(
+        self, tmp_path: Path
+    ) -> None:
+        app = _make_app()
+        (tmp_path / ".env").write_text(
+            'SLACK_MCP_CLIENT_ID="old-id"\n'
+            'SLACK_MCP_CLIENT_SECRET="old-secret"\n'
+            'OTHER_KEY="kept"\n',
+            encoding="utf-8",
+        )
+        with (
+            patch("app.api.routes.mcp.mcp_manager") as mock_manager,
+            patch("app.api.routes.mcp.load_config") as mock_load,
+            patch("app.api.routes.mcp.save_config") as mock_save,
+            patch("app.api.routes.mcp.settings.OPENAGENTD_CONFIG_DIR", str(tmp_path)),
+            patch.dict(
+                os.environ,
+                {
+                    "SLACK_MCP_CLIENT_ID": "old-id",
+                    "SLACK_MCP_CLIENT_SECRET": "old-secret",
+                },
+                clear=True,
+            ),
+        ):
+            mock_load.return_value = MCPConfig(
+                servers={
+                    "slack": HttpServerConfig(
+                        url="https://mcp.slack.com/mcp",
+                        oauth={
+                            "client_id": "${SLACK_MCP_CLIENT_ID}",
+                            "client_secret": "${SLACK_MCP_CLIENT_SECRET}",
+                        },
+                    )
+                }
+            )
+            mock_manager.restart_server = AsyncMock(
+                return_value=MCPServerStatus(
+                    name="slack", transport="http", enabled=True, state="auth_required"
+                )
+            )
+
+            client = TestClient(app)
+            response = client.put(
+                "/api/mcp/servers/slack",
+                json={
+                    "server": {
+                        "transport": "http",
+                        "url": "https://mcp.slack.com/mcp",
+                        "headers": {},
+                        "oauth": {
+                            "client_id": "new-id",
+                            "client_secret": "new-secret",
+                        },
+                    }
+                },
+            )
+
+            assert response.status_code == 200
+            env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+            assert 'SLACK_MCP_CLIENT_ID="new-id"' in env_text
+            assert 'SLACK_MCP_CLIENT_SECRET="new-secret"' in env_text
+            assert 'OTHER_KEY="kept"' in env_text
+            assert os.environ["SLACK_MCP_CLIENT_ID"] == "new-id"
+            assert os.environ["SLACK_MCP_CLIENT_SECRET"] == "new-secret"
+            saved = mock_save.call_args.args[0]
+            saved_slack = saved.servers["slack"]
+            assert isinstance(saved_slack, HttpServerConfig)
+            assert saved_slack.oauth is not None
+            assert saved_slack.oauth.client_id == "${SLACK_MCP_CLIENT_ID}"
+            assert saved_slack.oauth.client_secret == "${SLACK_MCP_CLIENT_SECRET}"
 
 
 class TestDeleteServer:

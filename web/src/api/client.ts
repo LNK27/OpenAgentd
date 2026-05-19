@@ -647,8 +647,8 @@ export type HttpServerBody = {
   url: string
   headers: Record<string, string>
   oauth?: {
-    client_id_env?: string | null
-    client_secret_env?: string | null
+    client_id?: string | null
+    client_secret?: string | null
   } | null
   enabled: boolean
 }

@@ -401,6 +401,43 @@ class TestMCPManagerOAuth:
             assert "client ID/secret" in (status.error or "")
 
     @pytest.mark.asyncio
+    async def test_oauth_with_unresolved_client_id_ref_requires_credentials(
+        self,
+    ) -> None:
+        manager = MCPManager()
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(
+                servers={
+                    "slack": HttpServerConfig(
+                        url="https://mcp.slack.com/mcp",
+                        oauth=OAuthConfig(client_id="${MISSING_SLACK_CLIENT_ID}"),
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+
+            with (
+                patch(
+                    "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=False
+                ),
+                patch(
+                    "app.agent.mcp.manager.interactive_oauth_allowed", return_value=True
+                ),
+                patch(
+                    "app.agent.mcp.manager.supports_dynamic_client_registration",
+                    return_value=False,
+                ),
+            ):
+                await manager.start()
+                runner = manager._runners["slack"]
+                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("slack")
+            assert status is not None
+            assert status.state == "auth_required"
+            assert "client ID/secret" in (status.error or "")
+
+    @pytest.mark.asyncio
     async def test_restart_server_with_mocked_server(self) -> None:
         """MCPManager.restart_server() restarts a server."""
         manager = MCPManager()

@@ -77,8 +77,8 @@ export function draftFromServerBody(name: string, body: ServerBody): McpServerDr
     url: body.url,
     headerPairs: Object.entries(body.headers).map(([key, value]) => ({ key, value })),
     oauthEnabled: !!body.oauth,
-    oauthClientIdEnv: body.oauth?.client_id_env ?? '',
-    oauthClientSecretEnv: body.oauth?.client_secret_env ?? '',
+    oauthClientIdEnv: body.oauth?.client_id ?? '',
+    oauthClientSecretEnv: body.oauth?.client_secret ?? '',
   }
 }
 
@@ -120,8 +120,8 @@ export function draftToServerBody(
       headers: pairsToRecord(draft.headerPairs),
       oauth: draft.oauthEnabled
         ? {
-            client_id_env: draft.oauthClientIdEnv.trim() || null,
-            client_secret_env: draft.oauthClientSecretEnv.trim() || null,
+            client_id: draft.oauthClientIdEnv.trim() || null,
+            client_secret: draft.oauthClientSecretEnv.trim() || null,
           }
         : null,
       enabled: draft.enabled,

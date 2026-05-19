@@ -30,13 +30,13 @@ class StdioServerBody(BaseModel):
 class OAuthBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    client_id_env: str | None = None
-    client_secret_env: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
 
     def to_config(self) -> OAuthConfig:
         return OAuthConfig(
-            client_id_env=self.client_id_env,
-            client_secret_env=self.client_secret_env,
+            client_id=self.client_id,
+            client_secret=self.client_secret,
         )
 
 

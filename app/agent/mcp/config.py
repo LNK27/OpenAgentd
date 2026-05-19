@@ -75,8 +75,8 @@ class OAuthConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    client_id_env: str | None = None
-    client_secret_env: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
 
 
 class HttpServerConfig(BaseModel):

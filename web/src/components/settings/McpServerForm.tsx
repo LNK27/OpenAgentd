@@ -38,13 +38,6 @@ export function McpServerForm({
   errors,
 }: McpServerFormProps) {
   const set = (patch: Partial<McpServerDraft>) => onChange({ ...value, ...patch })
-  const oauthHasCredentials = !!value.oauthClientIdEnv || !!value.oauthClientSecretEnv
-  const credentialPrefix = value.name
-    .trim()
-    .replace(/[^a-zA-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .toUpperCase()
-
   return (
     <div className="flex flex-col gap-4">
       {/* Identity ─────────────────────────────────────────────────── */}
@@ -194,7 +187,7 @@ export function McpServerForm({
               error={errors?.oauth}
               hint={
                 value.oauthEnabled
-                  ? 'Use env var names for client credentials. Tokens are stored outside mcp.json.'
+                  ? 'Paste app credentials here. They are saved to .env and referenced from mcp.json.'
                   : 'Enable for hosted servers like Slack or Notion that require user OAuth.'
               }
             >
@@ -207,47 +200,32 @@ export function McpServerForm({
               />
             </Field>
 
-            {value.oauthEnabled && !oauthHasCredentials && (
+            {value.oauthEnabled && (
               <div className="rounded-md border border-dashed border-(--color-border) p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-(--color-text-muted)">
-                    No app credentials configured. This is correct for servers that support
-                    dynamic OAuth registration, such as Notion.
-                  </p>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={disabled}
-                    onClick={() =>
-                      set({
-                        oauthClientIdEnv: `${credentialPrefix || 'MCP'}_MCP_CLIENT_ID`,
-                        oauthClientSecretEnv: `${credentialPrefix || 'MCP'}_MCP_CLIENT_SECRET`,
-                      })
-                    }
-                  >
-                    Add app credentials
-                  </Button>
-                </div>
+                <p className="text-xs text-(--color-text-muted)">
+                  Leave blank only for servers that support dynamic OAuth registration, such
+                  as Notion.
+                </p>
               </div>
             )}
 
-            {value.oauthEnabled && oauthHasCredentials && (
+            {value.oauthEnabled && (
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Client ID env var" hint="Example: SLACK_MCP_CLIENT_ID.">
+                <Field label="Client ID" hint="Paste the OAuth app client ID.">
                   <Input
                     value={value.oauthClientIdEnv}
                     onChange={(e) => set({ oauthClientIdEnv: e.target.value })}
                     disabled={disabled}
-                    placeholder="SLACK_MCP_CLIENT_ID"
+                    placeholder="client id"
                     className="font-mono"
                   />
                 </Field>
-                <Field label="Client secret env var" hint="Example: SLACK_MCP_CLIENT_SECRET.">
+                <Field label="Client secret" hint="Paste the OAuth app client secret.">
                   <Input
                     value={value.oauthClientSecretEnv}
                     onChange={(e) => set({ oauthClientSecretEnv: e.target.value })}
                     disabled={disabled}
-                    placeholder="SLACK_MCP_CLIENT_SECRET"
+                    placeholder="client secret"
                     className="font-mono"
                   />
                 </Field>

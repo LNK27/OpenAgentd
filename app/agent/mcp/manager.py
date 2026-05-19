@@ -48,6 +48,7 @@ from app.agent.mcp.oauth import (
     OAuthRequiredError,
     build_oauth_provider,
     has_cached_oauth_tokens,
+    has_resolved_client_id,
     interactive_oauth_allowed,
     supports_dynamic_client_registration,
 )
@@ -402,7 +403,7 @@ class MCPManager:
                     if (
                         server_cfg.oauth is not None
                         and interactive_oauth_allowed(name)
-                        and not server_cfg.oauth.client_id_env
+                        and not has_resolved_client_id(server_cfg)
                         and not await supports_dynamic_client_registration(server_cfg)
                     ):
                         raise OAuthRequiredError(
