@@ -152,7 +152,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
 
       # ``tauri-cli`` is a single 30 MB prebuilt binary
-      # (``~/.cargo/bin/cargo-tauri``). The naïve flow — install
+      # (``~/.cargo/bin/cargo-tauri`` or ``cargo-tauri.exe`` on Windows).
+      # The naïve flow — install
       # ``cargo-binstall``, then ``binstall --version "^2.0"`` — has
       # two hidden costs:
       #
@@ -174,7 +175,9 @@ jobs:
         id: cache-tauri-cli
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/cargo-tauri
+          path: |
+            ~/.cargo/bin/cargo-tauri
+            ~/.cargo/bin/cargo-tauri.exe
           key: tauri-cli-2.11.1-${{ runner.os }}-${{ runner.arch }}
 
       - name: Install cargo-binstall
