@@ -448,52 +448,74 @@ async def restore(
                 to_delete.append(path)
         to_checkout: list[str] = [*added, *modified]
 
-        # ── Load the snapshot tree into the index ─────────────────
-        code, _, err = await _git(
-            *_CORE_FLAGS,
-            *_gitdir_args(gitdir, workspace),
-            "read-tree",
-            snapshot,
-            cwd=workspace,
-        )
-        if code != 0:
-            logger.warning(
-                "snapshot_read_tree_failed session_id={} hash={} stderr={}",
-                session_id,
-                snapshot,
-                err.decode(errors="replace"),
-            )
-            return RestoreResult(ok=False)
-
         # ── Materialise only the changed paths ────────────────────
-        # Feed paths via stdin so we don't blow argv on big patches.
-        # ``-z`` matches the NUL-separated input.
+        # We need the snapshot tree's blobs available to ``checkout-index``,
+        # which only ever reads from an index. The naive approach is
+        # ``read-tree <snapshot>`` (loads into the main index) + then
+        # ``checkout-index`` — but ``read-tree`` REPLACES the main index
+        # with a bare tree, wiping every entry's stat-cache. The next
+        # ``track``'s ``diff-files`` then has to re-hash every file
+        # (no fast path), turning the *following* /undo into a 600 ms
+        # whole-workspace re-stage on 5 000 files (6 s on 30 000).
+        #
+        # Fix: load the snapshot tree into a TEMP index instead via
+        # ``GIT_INDEX_FILE``. The main index stays untouched — its
+        # stat-cache for unchanged paths remains valid — and the next
+        # ``track``'s ``diff-files`` is back to its O(changed) cost.
         if to_checkout:
-            stdin = ("\0".join(to_checkout) + "\0").encode()
-            code, _, err = await _git(
-                *_CORE_FLAGS,
-                *_gitdir_args(gitdir, workspace),
-                "checkout-index",
-                "-f",
-                "-z",
-                "--stdin",
-                cwd=workspace,
-                stdin=stdin,
-            )
-            if code != 0:
-                logger.warning(
-                    "snapshot_checkout_failed session_id={} hash={} stderr={} count={}",
-                    session_id,
+            # Per-call index file; pid+hash makes the name unique so
+            # two concurrent restores on different sessions never
+            # collide. Lives inside the snapshot dir which is cleaned
+            # at session end.
+            temp_index = gitdir / f"restore-{os.getpid()}-{snapshot[:8]}.idx"
+            temp_env = {"GIT_INDEX_FILE": str(temp_index)}
+            try:
+                code, _, err = await _git(
+                    *_CORE_FLAGS,
+                    *_gitdir_args(gitdir, workspace),
+                    "read-tree",
                     snapshot,
-                    err.decode(errors="replace"),
-                    len(to_checkout),
+                    cwd=workspace,
+                    env=temp_env,
                 )
-                return RestoreResult(ok=False)
+                if code != 0:
+                    logger.warning(
+                        "snapshot_read_tree_failed session_id={} hash={} stderr={}",
+                        session_id,
+                        snapshot,
+                        err.decode(errors="replace"),
+                    )
+                    return RestoreResult(ok=False)
 
-        # ``to_delete`` was computed from the diff; if diff-tree
-        # errored we still need to clean *some* extras — fall back
-        # to the full ``current - target`` set in that case. Cheap
-        # because both index walks happen in parallel.
+                stdin = ("\0".join(to_checkout) + "\0").encode()
+                code, _, err = await _git(
+                    *_CORE_FLAGS,
+                    *_gitdir_args(gitdir, workspace),
+                    "checkout-index",
+                    "-f",
+                    "-z",
+                    "--stdin",
+                    cwd=workspace,
+                    env=temp_env,
+                    stdin=stdin,
+                )
+                if code != 0:
+                    logger.warning(
+                        "snapshot_checkout_failed session_id={} hash={} stderr={} count={}",
+                        session_id,
+                        snapshot,
+                        err.decode(errors="replace"),
+                        len(to_checkout),
+                    )
+                    return RestoreResult(ok=False)
+            finally:
+                try:
+                    temp_index.unlink()
+                except FileNotFoundError:
+                    pass
+
+        # ``to_delete`` was computed from the diff; the file removal is
+        # cheap (per-path unlink) so we don't gather it in parallel.
         _delete_extras(workspace, set(to_delete))
 
         logger.debug(

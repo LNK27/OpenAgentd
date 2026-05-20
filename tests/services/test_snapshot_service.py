@@ -187,6 +187,62 @@ async def test_undo_redo_round_trip(state_dir: Path, workspace: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_restore_preserves_main_index_stat_cache(
+    state_dir: Path, workspace: Path
+) -> None:
+    """After ``restore``, the *next* ``track`` must remain O(changed paths).
+
+    Regression guard for the slow-/undo bug fixed by routing
+    ``read-tree`` + ``checkout-index`` through a temp index file
+    (``GIT_INDEX_FILE=...``) instead of the main one. The old code
+    invoked ``read-tree`` against the main index, wiping every entry's
+    stat-cache. The *next* ``track``'s ``diff-files`` then couldn't
+    use its fast path and re-hashed every file in the worktree —
+    turning a "/undo of 1 file" into a whole-workspace re-stage
+    (~600 ms on 5 000 files; 6 s on 30 000).
+
+    Test shape: track a 10-file workspace twice (so we have a snapshot
+    to restore against), restore back to the first snapshot, then ask
+    the snapshot service for the candidate paths the *next* track
+    would stage. We expect zero — the worktree exactly matches the
+    main index, which restore left alone.
+    """
+    for i in range(10):
+        (workspace / f"f{i}.txt").write_text(f"v1-{i}")
+    snap_a = await snapshot_service.track("stat-cache", workspace)
+    assert snap_a is not None
+
+    (workspace / "f0.txt").write_text("v2-0")
+    snap_b = await snapshot_service.track("stat-cache", workspace)
+    assert snap_b is not None
+    assert snap_b != snap_a
+
+    # Restore to snap_a — only f0.txt actually changes on disk.
+    result = await snapshot_service.restore("stat-cache", workspace, snap_a)
+    assert result.ok is True
+    assert (workspace / "f0.txt").read_text() == "v1-0"
+    assert result.modified == ["f0.txt"]
+    assert result.added == []
+    assert result.removed == []
+
+    # The smoking-gun assertion: the next track's candidate walk sees
+    # ONLY the file that actually changed on disk (``f0.txt``) — not
+    # all 10. Before the temp-index fix this returned every entry in
+    # the index because ``read-tree`` wiped the stat-cache for all of
+    # them, forcing ``diff-files`` to re-hash the whole worktree. The
+    # cost-equivalence is O(restored paths) ↔ O(workspace size), so
+    # the difference is "10× slower on 5 k files, 50× slower on 30 k".
+    gitdir = snapshot_service.snapshot_dir("stat-cache")
+    candidates = await snapshot_service._list_candidate_paths(gitdir, workspace)
+    assert candidates == ["f0.txt"], (
+        f"next track would re-stage {len(candidates)} files; expected exactly "
+        "['f0.txt']. If the count blew up to ~10, the main index stat-cache "
+        "was wiped — check the temp-index (GIT_INDEX_FILE) wiring around "
+        "read-tree + checkout-index in snapshot_service.restore."
+    )
+
+
+@pytest.mark.asyncio
 async def test_remove_drops_repo(state_dir: Path, workspace: Path) -> None:
     (workspace / "a").write_text("x")
     await snapshot_service.track("doomed", workspace)
