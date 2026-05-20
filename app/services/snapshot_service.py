@@ -1,0 +1,469 @@
+"""Out-of-tree Git-based workspace snapshots for session undo/redo.
+
+Direct port of opencode's ``packages/opencode/src/snapshot/index.ts`` design,
+adapted to Python/openagentd. Key properties mirror the original:
+
+- **Out-of-tree git directory** — ``GIT_DIR`` lives in
+  ``{OPENAGENTD_STATE_DIR}/snapshot/{session_id}/`` while ``GIT_WORK_TREE``
+  points at the actual session workspace. The workspace itself stays free
+  of any ``.git`` pollution, and the snapshot repo can coexist with an
+  unrelated user-level git repo in coding mode.
+- **Tree hashes, not commits** — ``track()`` returns the output of
+  ``git write-tree``. There are no commits, refs, or branches; snapshots
+  are dangling trees referenced only by hash. ``git gc --prune`` cleans
+  them up after expiry.
+- **Bulldozer restore** — ``restore(hash)`` runs ``read-tree`` + ``checkout-index
+  -a -f``, replacing every tracked file in the workspace with the snapshot's
+  version. Untracked files are left alone (we don't delete user-uploaded
+  files we never recorded).
+- **Per-session async lock** — concurrent track/restore on the same session
+  are serialised via :class:`asyncio.Lock` to avoid corrupting the snapshot
+  index.
+
+Failures degrade gracefully. If the ``git`` binary is missing, or any git
+invocation returns non-zero, the service logs a warning and returns ``None``.
+Callers must treat snapshot operations as best-effort — undo/redo still
+moves the conversation boundary; only the filesystem rollback is lost.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import shutil
+from pathlib import Path
+
+from loguru import logger
+
+from app.core.config import settings
+
+# Files >2 MiB are not tracked (matches opencode's 2 * 1024 * 1024 ceiling).
+# This keeps the snapshot repo small and skips large binary outputs that
+# would balloon checkout times.
+_MAX_FILE_SIZE = 2 * 1024 * 1024
+
+# Core git config flags that must accompany every invocation. They make
+# behaviour deterministic across platforms (no CRLF translation, full
+# long-path / symlink support, no fsmonitor coupling to the user repo)
+# and avoid contending with an unrelated host-side git for ``index.lock``
+# via ``--no-optional-locks``.
+_CORE_FLAGS: tuple[str, ...] = (
+    "--no-optional-locks",
+    "-c",
+    "core.longpaths=true",
+    "-c",
+    "core.symlinks=true",
+    "-c",
+    "core.autocrlf=false",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.quotepath=false",
+)
+
+# One asyncio.Lock per session_id keeps concurrent track/restore safe.
+_locks: dict[str, asyncio.Lock] = {}
+
+
+def _lock(session_id: str) -> asyncio.Lock:
+    lock = _locks.get(session_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _locks[session_id] = lock
+    return lock
+
+
+def snapshot_dir(session_id: str) -> Path:
+    """Return the on-disk ``GIT_DIR`` for this session's snapshot repo."""
+    return Path(settings.OPENAGENTD_STATE_DIR) / "snapshot" / session_id
+
+
+def is_available() -> bool:
+    """Return True when the ``git`` binary is on PATH."""
+    return shutil.which("git") is not None
+
+
+async def _git(
+    *args: str,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    stdin: bytes | None = None,
+) -> tuple[int, bytes, bytes]:
+    """Run ``git`` and return ``(exit_code, stdout, stderr)``.
+
+    Never raises — all failures are surfaced as a non-zero exit code so the
+    caller can decide whether to warn or recover.
+    """
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            *args,
+            cwd=str(cwd) if cwd else None,
+            env=merged_env,
+            stdin=asyncio.subprocess.PIPE if stdin is not None else None,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await proc.communicate(stdin)
+        return proc.returncode or 0, out, err
+    except (OSError, asyncio.CancelledError) as exc:
+        logger.warning("snapshot_git_spawn_failed args={} error={}", args, exc)
+        return 1, b"", str(exc).encode()
+
+
+def _gitdir_args(gitdir: Path, worktree: Path) -> list[str]:
+    """Standard ``--git-dir / --work-tree`` prefix for ``_git`` calls."""
+    return ["--git-dir", str(gitdir), "--work-tree", str(worktree)]
+
+
+async def _init_repo(gitdir: Path, worktree: Path) -> bool:
+    """Initialise the out-of-tree git repo if needed. Idempotent."""
+    gitdir.mkdir(parents=True, exist_ok=True)
+    head_file = gitdir / "HEAD"
+    if head_file.exists():
+        return True
+
+    code, _, err = await _git(
+        "init",
+        env={"GIT_DIR": str(gitdir), "GIT_WORK_TREE": str(worktree)},
+    )
+    if code != 0:
+        logger.warning(
+            "snapshot_init_failed gitdir={} stderr={}",
+            gitdir,
+            err.decode(errors="replace"),
+        )
+        return False
+
+    # Match opencode's config — autocrlf off, symlinks/longpaths/fsmonitor sane.
+    for key, value in (
+        ("core.autocrlf", "false"),
+        ("core.longpaths", "true"),
+        ("core.symlinks", "true"),
+        ("core.fsmonitor", "false"),
+        # The snapshot repo has no user identity; provide a stable one so any
+        # future ``git commit`` (we don't issue any today, but be defensive)
+        # does not prompt or fail.
+        ("user.email", "snapshot@openagentd.local"),
+        ("user.name", "openagentd-snapshot"),
+    ):
+        await _git("--git-dir", str(gitdir), "config", key, value)
+
+    logger.info("snapshot_initialised session_gitdir={}", gitdir)
+    return True
+
+
+async def _list_candidate_paths(gitdir: Path, worktree: Path) -> list[str]:
+    """Return ``worktree``-relative paths to stage: modified + untracked.
+
+    Mirrors opencode's ``add()`` helper. Hidden dotfiles and gitignored
+    paths are filtered by ``--exclude-standard`` plus our own size cap.
+    The two ``git`` invocations run concurrently because they read from
+    disjoint sources (work-tree stat cache vs untracked walk) and the
+    ``--no-optional-locks`` flag avoids ``index.lock`` contention.
+    """
+    args = _gitdir_args(gitdir, worktree)
+
+    tracked_task = _git(
+        *_CORE_FLAGS,
+        *args,
+        "diff-files",
+        "--name-only",
+        "-z",
+        "--",
+        ".",
+        cwd=worktree,
+    )
+    untracked_task = _git(
+        *_CORE_FLAGS,
+        *args,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        "--",
+        ".",
+        cwd=worktree,
+    )
+    (code_d, out_d, _), (code_o, out_o, _) = await asyncio.gather(
+        tracked_task, untracked_task
+    )
+
+    if code_d != 0 or code_o != 0:
+        return []
+
+    tracked = [p for p in out_d.decode(errors="replace").split("\0") if p]
+    untracked = [p for p in out_o.decode(errors="replace").split("\0") if p]
+
+    seen: set[str] = set()
+    result: list[str] = []
+    untracked_set = set(untracked)
+    for path in (*tracked, *untracked):
+        if path in seen:
+            continue
+        seen.add(path)
+        # Skip oversized files. Already-tracked oversize files keep
+        # flowing in via ``diff-files``; we only screen new untracked
+        # paths so a freshly-introduced 100 MB blob never enters the
+        # repo.
+        if path in untracked_set:
+            try:
+                size = (worktree / path).stat().st_size
+            except OSError:
+                continue
+            if size > _MAX_FILE_SIZE:
+                continue
+        result.append(path)
+    return result
+
+
+async def _stage(gitdir: Path, worktree: Path, paths: list[str]) -> bool:
+    """Stage the given worktree-relative paths into the snapshot index."""
+    if not paths:
+        return True
+    stdin = ("\0".join(paths) + "\0").encode()
+    code, _, err = await _git(
+        *_CORE_FLAGS,
+        *_gitdir_args(gitdir, worktree),
+        "add",
+        "--all",
+        "--sparse",
+        "--pathspec-from-file=-",
+        "--pathspec-file-nul",
+        cwd=worktree,
+        stdin=stdin,
+    )
+    if code != 0:
+        logger.warning("snapshot_stage_failed stderr={}", err.decode(errors="replace"))
+        return False
+    return True
+
+
+async def track(session_id: str, workspace: Path) -> str | None:
+    """Snapshot the workspace state and return its tree hash.
+
+    Returns ``None`` when git is unavailable, the workspace does not exist,
+    or any git invocation fails. Safe to call concurrently — locked
+    per-session.
+    """
+    if not is_available():
+        return None
+    if not workspace.exists() or not workspace.is_dir():
+        return None
+
+    gitdir = snapshot_dir(session_id)
+    async with _lock(session_id):
+        if not await _init_repo(gitdir, workspace):
+            return None
+
+        # When the working tree hasn't changed since the last track,
+        # ``_list_candidate_paths`` returns an empty list and we skip
+        # ``git add`` entirely — write-tree on the existing index gives
+        # the same hash. Saves one subprocess per quiescent track.
+        paths = await _list_candidate_paths(gitdir, workspace)
+        if paths:
+            await _stage(gitdir, workspace, paths)
+
+        code, out, err = await _git(
+            *_CORE_FLAGS,
+            *_gitdir_args(gitdir, workspace),
+            "write-tree",
+            cwd=workspace,
+        )
+        if code != 0:
+            logger.warning(
+                "snapshot_write_tree_failed session_id={} stderr={}",
+                session_id,
+                err.decode(errors="replace"),
+            )
+            return None
+        snapshot_hash = out.decode().strip()
+        if not snapshot_hash:
+            return None
+        logger.debug(
+            "snapshot_tracked session_id={} hash={}",
+            session_id,
+            snapshot_hash,
+        )
+        return snapshot_hash
+
+
+async def restore(session_id: str, workspace: Path, snapshot: str) -> bool:
+    """Restore the workspace to the given snapshot tree hash.
+
+    Replaces every tracked file in the worktree with its version in
+    ``snapshot``. Untracked files (i.e. files that were never recorded
+    in any snapshot) are left intact.
+
+    Returns ``True`` on success, ``False`` if git is unavailable or the
+    restore failed for any reason.
+    """
+    if not is_available():
+        return False
+    if not snapshot:
+        return False
+
+    gitdir = snapshot_dir(session_id)
+    if not (gitdir / "HEAD").exists():
+        # No snapshot repo for this session — nothing to restore against.
+        logger.warning(
+            "snapshot_restore_no_repo session_id={} hash={}", session_id, snapshot
+        )
+        return False
+
+    workspace.mkdir(parents=True, exist_ok=True)
+    async with _lock(session_id):
+        # Capture the *current* live file set BEFORE clobbering the index
+        # via ``read-tree``. Anything in the live set but missing from
+        # the target tree gets unlinked once the snapshot is restored,
+        # so that previously-tracked artifacts of later turns are wiped
+        # alongside the file overwrites — matching opencode's bulldozer
+        # semantics for full-state restores.
+        live_paths = await _list_candidate_paths(gitdir, workspace)
+        if live_paths:
+            await _stage(gitdir, workspace, live_paths)
+        # ``ls-files`` and ``ls-tree`` are independent reads — fire them
+        # in parallel to halve the latency of this step.
+        current, target = await asyncio.gather(
+            _list_index_paths(gitdir, workspace),
+            _list_tree_paths(gitdir, workspace, snapshot),
+        )
+        extras = current - target
+
+        code, _, err = await _git(
+            *_CORE_FLAGS,
+            *_gitdir_args(gitdir, workspace),
+            "read-tree",
+            snapshot,
+            cwd=workspace,
+        )
+        if code != 0:
+            logger.warning(
+                "snapshot_read_tree_failed session_id={} hash={} stderr={}",
+                session_id,
+                snapshot,
+                err.decode(errors="replace"),
+            )
+            return False
+
+        code, _, err = await _git(
+            *_CORE_FLAGS,
+            *_gitdir_args(gitdir, workspace),
+            "checkout-index",
+            "-a",
+            "-f",
+            cwd=workspace,
+        )
+        if code != 0:
+            logger.warning(
+                "snapshot_checkout_failed session_id={} hash={} stderr={}",
+                session_id,
+                snapshot,
+                err.decode(errors="replace"),
+            )
+            return False
+
+        _delete_extras(workspace, extras)
+
+        logger.debug(
+            "snapshot_restored session_id={} hash={} extras={}",
+            session_id,
+            snapshot,
+            len(extras),
+        )
+        return True
+
+
+async def _list_index_paths(gitdir: Path, workspace: Path) -> set[str]:
+    """Return the set of paths currently in the snapshot index."""
+    code, out, _ = await _git(
+        *_CORE_FLAGS,
+        *_gitdir_args(gitdir, workspace),
+        "ls-files",
+        "-z",
+        cwd=workspace,
+    )
+    if code != 0:
+        return set()
+    return {p for p in out.decode(errors="replace").split("\0") if p}
+
+
+async def _list_tree_paths(gitdir: Path, workspace: Path, snapshot: str) -> set[str]:
+    """Return the set of file paths recorded in ``snapshot``."""
+    code, out, _ = await _git(
+        *_CORE_FLAGS,
+        *_gitdir_args(gitdir, workspace),
+        "ls-tree",
+        "-r",
+        "--name-only",
+        "-z",
+        snapshot,
+        cwd=workspace,
+    )
+    if code != 0:
+        return set()
+    return {p for p in out.decode(errors="replace").split("\0") if p}
+
+
+def _delete_extras(workspace: Path, extras: set[str]) -> None:
+    """Unlink files in ``extras`` and drop any now-empty directories."""
+    for rel in extras:
+        target = workspace / rel
+        try:
+            target.unlink()
+        except OSError as exc:
+            logger.debug("snapshot_extra_unlink_failed path={} error={}", target, exc)
+    if not extras:
+        return
+    # Drop now-empty directories, deepest first.
+    for dirpath, _, _ in sorted(
+        ((Path(dp), dn, fn) for dp, dn, fn in os.walk(workspace, topdown=False)),
+        key=lambda item: len(item[0].parts),
+        reverse=True,
+    ):
+        if dirpath == workspace:
+            continue
+        try:
+            if not any(dirpath.iterdir()):
+                dirpath.rmdir()
+        except OSError:
+            continue
+
+
+async def cleanup(session_id: str) -> None:
+    """Run ``git gc --prune=now`` on the snapshot repo.
+
+    Safe to call periodically. No-ops when the repo does not exist or git
+    is unavailable.
+    """
+    if not is_available():
+        return
+    gitdir = snapshot_dir(session_id)
+    if not (gitdir / "HEAD").exists():
+        return
+    async with _lock(session_id):
+        await _git(
+            *_CORE_FLAGS,
+            "--git-dir",
+            str(gitdir),
+            "gc",
+            "--prune=now",
+            "--quiet",
+        )
+
+
+async def remove(session_id: str) -> None:
+    """Delete the snapshot repo for this session.
+
+    Called when a session is permanently deleted. Best-effort — ignores
+    missing directories and surface-level OS errors.
+    """
+    gitdir = snapshot_dir(session_id)
+    try:
+        if gitdir.exists():
+            await asyncio.to_thread(shutil.rmtree, gitdir, ignore_errors=True)
+    finally:
+        _locks.pop(session_id, None)

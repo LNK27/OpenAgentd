@@ -854,3 +854,113 @@ async def test_heal_skips_summary_messages_when_finding_latest_assistant(session
 
     healed = await heal_orphaned_tool_calls(session, chat_session.id)
     assert healed == 1
+
+
+@pytest.mark.asyncio
+async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypatch):
+    """End-to-end: /undo restores the workspace to the target user message's
+    snapshot, and /redo returns it to the original live tip.
+
+    Models a session with two user turns:
+
+        U1 (snapshot=S1) → assistant writes ``v2`` to ``doc.md``
+        U2 (snapshot=S2) → assistant writes ``v3`` to ``doc.md``
+
+    After /undo the workspace should match S2 (state when U2 was sent =
+    ``doc.md`` contents from U1's assistant turn, i.e. ``v2``). The
+    pre-undo "live" state is captured as the redo anchor, and /redo
+    restores that anchor.
+    """
+    import shutil
+
+    if shutil.which("git") is None:
+        pytest.skip("git binary not available")
+
+    from app.core.config import settings
+    from app.services import snapshot_service
+    from app.services.chat_service import (
+        redo_session_messages,
+        undo_session_messages,
+    )
+
+    # Direct the snapshot repo into tmp so we don't pollute real state.
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(state))
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    import app.services.chat_service as cs
+
+    monkeypatch.setattr(cs, "session_workspace_dir", lambda sid, w: ws)
+
+    chat_session = await create_chat_session(session)
+
+    # ── Turn 1 ────────────────────────────────────────────────────────
+    doc = ws / "doc.md"
+    doc.write_text("v1")
+    snap_u1 = await snapshot_service.track(str(chat_session.id), ws)
+    assert snap_u1 is not None
+    u1 = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="hello"),
+        extra={"snapshot": snap_u1},
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="ok"))
+    # Simulate the assistant writing v2.
+    doc.write_text("v2")
+
+    # ── Turn 2 ────────────────────────────────────────────────────────
+    snap_u2 = await snapshot_service.track(str(chat_session.id), ws)
+    assert snap_u2 is not None
+    u2 = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="again"),
+        extra={"snapshot": snap_u2},
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="done"))
+    # Simulate the assistant writing v3 (current live state).
+    doc.write_text("v3")
+    await session.commit()
+
+    # ── /undo #1: boundary lands on U2, workspace rewinds to snap_u2 ──
+    target = await undo_session_messages(session, chat_session.id)
+    assert target is not None
+    assert target.id == u2.id
+    assert doc.read_text() == "v2"
+
+    refreshed = await session.get(ChatSession, chat_session.id)
+    assert refreshed is not None
+    assert refreshed.revert is not None
+    redo_anchor = refreshed.revert.get("snapshot")
+    assert isinstance(redo_anchor, str) and len(redo_anchor) == 40
+
+    # ── /undo #2: boundary moves to U1, workspace rewinds to snap_u1 ──
+    target = await undo_session_messages(session, chat_session.id)
+    assert target is not None
+    assert target.id == u1.id
+    assert doc.read_text() == "v1"
+
+    refreshed = await session.get(ChatSession, chat_session.id)
+    assert refreshed is not None
+    # Redo anchor must be the *same* hash captured on the first /undo —
+    # so /redo eventually returns to the live tip (v3), not the
+    # intermediate v2 state.
+    assert refreshed.revert is not None
+    assert refreshed.revert.get("snapshot") == redo_anchor
+
+    # ── /redo #1: boundary moves forward to U2, workspace = snap_u2 ───
+    moved = await redo_session_messages(session, chat_session.id)
+    assert moved is True
+    assert doc.read_text() == "v2"
+
+    # ── /redo #2: no more user messages ahead → clear revert, restore
+    # the live tip via the preserved redo anchor.
+    moved = await redo_session_messages(session, chat_session.id)
+    assert moved is True
+    assert doc.read_text() == "v3"
+    refreshed = await session.get(ChatSession, chat_session.id)
+    assert refreshed is not None
+    assert refreshed.revert is None

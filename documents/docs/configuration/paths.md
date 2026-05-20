@@ -79,6 +79,7 @@ Dev-mode paths shown below — substitute the production columns from the table 
 │   │       ├── session.log                    # human-readable per-session sink
 │   │       └── {agent}.jsonl                  # structured events (SessionLogHook)
 │   ├── telemetry/{session_id}/{user_msg_id}.jsonl  # context window snapshots
+│   ├── snapshot/{session_id}/                 # out-of-tree git repo for /undo + /redo
 │   ├── otel/                                  # OTEL spans + metrics
 │   └── openagentd.pid                         # server PID file
 └── cache/                                 # OPENAGENTD_CACHE_DIR

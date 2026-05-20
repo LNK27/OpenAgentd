@@ -84,12 +84,23 @@ def _guess_media_type(path: Path) -> str:
 
 
 async def _session_workspace(session_id: str) -> Path:
+    """Resolve a session's workspace root, tolerating absent DB rows.
+
+    Coding-mode sessions stash an absolute project path in
+    ``ChatSession.workspace``; normal sessions leave it ``NULL`` and fall
+    back to the per-session sandbox directory under
+    ``OPENAGENTD_WORKSPACE_DIR``. The fallback uses this module's local
+    ``workspace_dir`` reference so tests can monkey-patch it.
+    """
+    row = None
     try:
         async with async_session_factory() as db:
             row = await db.get(ChatSession, uuid.UUID(session_id))
     except Exception:
-        return workspace_dir(session_id)
-    return session_workspace_dir(session_id, row.workspace if row else None)
+        row = None
+    if row is not None and row.workspace:
+        return session_workspace_dir(session_id, row.workspace)
+    return workspace_dir(session_id)
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -131,7 +142,12 @@ async def get_workspace_media(session_id: str, file_path: str) -> FileResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid session id.")
 
+    # Workspace state is authoritative — when the session is in a reverted
+    # tail, :mod:`app.services.snapshot_service` has already restored the
+    # filesystem to the boundary's snapshot, so files that should be
+    # hidden simply do not exist on disk and ``_safe_resolve`` 404s.
     resolved = _safe_resolve(await _session_workspace(session_id), file_path)
+
     return FileResponse(
         path=str(resolved),
         media_type=_guess_media_type(resolved),
@@ -216,7 +232,13 @@ async def list_workspace_files(session_id: str) -> WorkspaceFilesResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid session id.")
 
-    return _list_workspace_files(await _session_workspace(session_id), session_id)
+    # No boundary filtering needed — snapshot_service has restored the
+    # workspace to the reverted-boundary state, so the on-disk file set
+    # already reflects what should be visible.
+    return _list_workspace_files(
+        await _session_workspace(session_id),
+        session_id,
+    )
 
 
 def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse:

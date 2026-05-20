@@ -56,7 +56,7 @@ different things in different projects without manual switching.
 ## Picker behaviour
 
 - **Built-in commands** (`/stop`, `/continue`, `/compact`, `/undo`, `/redo`, `/new`) execute immediately on pick.
-  `/continue` resumes the last assistant response; `/compact` runs the session summarizer; `/undo` reverts to the latest user turn and puts its text back in the composer; `/redo` restores the next undone turn.
+  `/continue` resumes the last assistant response; `/compact` runs the session summarizer; `/undo` reverts to the latest user turn and puts its text back in the composer (also restoring the workspace filesystem to the snapshot taken when that message was sent — see `app/services/snapshot_service.py`); `/redo` restores the next undone turn, replaying the workspace forward.
 - **Discovered commands** insert `/<name> ` into the textarea so you
   can type arguments before submitting.
 

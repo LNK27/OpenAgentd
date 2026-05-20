@@ -43,8 +43,10 @@ from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
 from app.agent.schemas.events import DoneEvent
 from app.agent.tools.registry import Tool
 from app.core.db import DbFactory, resolve_db_factory
+from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession, SessionMessage
 from app.services import memory_stream_store as stream_store
+from app.services import snapshot_service
 from app.services.stream_envelope import StreamEnvelope
 from app.services.chat_service import (
     get_messages_for_llm,
@@ -428,6 +430,20 @@ class AgentTeam:
                     lead_row.mode = self.mode
                     lead_row.workspace = self.workspace
                     db.add(lead_row)
+
+                # Snapshot the workspace state *as the user pressed send*.
+                # Stored on the user message's ``extra["snapshot"]`` so
+                # later /undo can rewind the filesystem to exactly here.
+                # Best-effort: ``None`` when git is unavailable or the
+                # workspace doesn't exist yet (fresh session).
+                workspace_path = session_workspace_dir(str(lead_uuid), self.workspace)
+                snapshot_hash = await snapshot_service.track(
+                    str(lead_uuid), workspace_path
+                )
+                if snapshot_hash:
+                    extra_with_snapshot = dict(msg_extra or {})
+                    extra_with_snapshot["snapshot"] = snapshot_hash
+                    msg_extra = extra_with_snapshot
 
                 await save_message(db, lead_uuid, user_msg, extra=msg_extra)
 
