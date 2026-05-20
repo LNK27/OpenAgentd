@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
@@ -26,7 +27,21 @@ async def get_todos(session_id: str) -> TodosResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid session id.")
 
-    root = workspace_dir(session_id)
+    from app.core.db import async_session_factory
+    from app.models.chat import ChatSession
+
+    try:
+        async with async_session_factory() as db:
+            row = await db.get(ChatSession, uuid.UUID(session_id))
+            workspace = row.workspace if row else None
+    except Exception:
+        workspace = None
+
+    if workspace:
+        root = Path(workspace).resolve()
+    else:
+        root = workspace_dir(session_id)
+
     path = root / ".openagentd" / "sessions" / session_id / TODOS_FILENAME
     if not path.exists():
         return TodosResponse(todos=[])
