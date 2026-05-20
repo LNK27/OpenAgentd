@@ -728,8 +728,16 @@ class AgentTeam:
         )
         return session_id, message
 
-    async def handle_redo(self, session_id: str) -> str:
-        """Move the revert boundary forward or clear it."""
+    async def handle_redo(self, session_id: str) -> tuple[str, SessionMessage | None]:
+        """Move the revert boundary forward or clear it.
+
+        Returns ``(session_id, next_message)`` where ``next_message`` is
+        the user message the boundary now points at, or ``None`` when
+        the boundary was cleared back to the live tip. Plumbed up so
+        ``POST /api/team/commands`` can echo the new boundary to the
+        client — the React store uses the timestamp to apply the
+        boundary locally and skip a full history refetch.
+        """
         if self._has_active_turn:
             raise ContinuePreconditionError("Lead is already working.")
 
@@ -747,15 +755,17 @@ class AgentTeam:
                 raise ContinuePreconditionError(
                     f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
                 )
-            changed = await redo_session_messages(db, lead_uuid)
+            changed, next_message = await redo_session_messages(db, lead_uuid)
             if not changed:
                 raise ContinuePreconditionError("No undone message to redo.")
             await db.commit()
+            if next_message is not None:
+                await db.refresh(next_message)
 
         logger.info(
             "team_redo_applied session_id={} agent={}", session_id, self.lead.name
         )
-        return session_id
+        return session_id, next_message
 
     async def _restore_or_drop_members_for_lead(self, lead_session_id: str) -> None:
         """Realign live spawned instances to child sessions of *lead_session_id*.

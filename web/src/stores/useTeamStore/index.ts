@@ -20,7 +20,7 @@ import { immer } from 'zustand/middleware/immer'
 import { postTeamChat, postTeamCommand, teamStream, teamStatus, teamHistory } from '@/api/client'
 import { parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
-import { revokeBlobUrlsFromBlocks } from './helpers'
+import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { createSSEHandler } from './sse-reducer'
 import { useToastStore } from '@/stores/useToastStore'
 import type { TeamStore } from './types'
@@ -43,27 +43,6 @@ function messagesBeforeTime(messages: MessageResponse[], boundaryTime: number | 
 
 function messagesBeforeRevert(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): MessageResponse[] {
   return messagesBeforeTime(session.messages, revertBoundaryTime(session))
-}
-
-function revertedMessageCount(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): number {
-  const boundaryTime = revertBoundaryTime(session)
-  if (boundaryTime === null) return 0
-  return session.messages.filter((msg) => {
-    if (!msg.created_at) return false
-    return msg.role === 'user' && new Date(msg.created_at).getTime() >= boundaryTime
-  }).length
-}
-
-function revertedMessagePreview(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): Array<{ role: string; content: string }> {
-  const boundaryTime = revertBoundaryTime(session)
-  if (boundaryTime === null) return []
-  return session.messages
-    .filter((msg) => msg.role === 'user' && msg.created_at && new Date(msg.created_at).getTime() >= boundaryTime)
-    .map((msg) => ({
-      role: msg.role,
-      content: msg.is_summary ? 'Session compacted' : (msg.content ?? ''),
-    }))
-    .filter((msg) => msg.content.trim().length > 0)
 }
 
 // Re-export types so existing ``import type { AgentStream } from
@@ -173,6 +152,7 @@ export const useTeamStore = create<TeamStore>()(
           state.agentStreams[name]._completionBase = 0
           state.agentStreams[name].revertedCount = 0
           state.agentStreams[name].revertedMessages = []
+          state.agentStreams[name]._revertedSuffix = []
         })
       })
     },
@@ -206,10 +186,20 @@ export const useTeamStore = create<TeamStore>()(
           draft.isContinuing = false
           draft.error = null
           draft.setupRequired = null
-        // Push user message as an optimistic block into the lead's stream
+        // The backend's ``cleanup_reverted_tail`` deletes post-boundary
+        // rows the moment a new user message lands, so any
+        // locally-stashed revert suffix is now stale — clear it on
+        // every agent stream so a stray /redo doesn't resurrect dead
+        // blocks. Also drop ``_leadRevertTime`` for the same reason:
+        // the boundary is gone server-side.
+        draft._leadRevertTime = null
+        Object.values(draft.agentStreams).forEach((stream) => {
+          stream._revertedSuffix = []
+          stream.revertedCount = 0
+          stream.revertedMessages = []
+        })
+        // Push user message as an optimistic block into the lead's stream.
         if (leadName && draft.agentStreams[leadName]) {
-          draft.agentStreams[leadName].revertedCount = 0
-          draft.agentStreams[leadName].revertedMessages = []
           draft.agentStreams[leadName].currentBlocks.push({
             id: `user-${Date.now()}`,
             type: 'user',
@@ -308,11 +298,25 @@ export const useTeamStore = create<TeamStore>()(
       try {
         set((draft) => { draft.error = null })
         const response = await postTeamCommand('undo', sessionId)
-        // Preserve the coding-mode workspace path across ``loadSession`` —
-        // calling it without the second arg would clobber ``_workspace``
-        // to null and route the post-undo invalidation to the wrong
-        // query key.
-        await get().loadSession(sessionId, get()._workspace)
+        // Apply the new boundary *locally* instead of refetching
+        // history via ``loadSession``. The response carries the user
+        // message the boundary now points at; its ``created_at`` is
+        // the new boundary time. ``applyRevertBoundary`` slices the
+        // tail off each agent's ``blocks`` into ``_revertedSuffix`` so
+        // a subsequent /redo can put them back without a refetch.
+        //
+        // Saves ~150–500ms per /undo (the history GET + parse +
+        // store-overwrite that ``loadSession`` performs) — the cost
+        // we used to pay was redundant because /undo is a *boundary
+        // move*: no DB rows change, only ``ChatSession.revert``.
+        const boundaryIso = response.message?.created_at
+        const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
+        set((draft) => {
+          draft._leadRevertTime = boundaryTime
+          Object.values(draft.agentStreams).forEach((stream) => {
+            applyRevertBoundary(stream, boundaryTime)
+          })
+        })
         // /undo restores the workspace to the target user message's
         // snapshot (see app/services/snapshot_service.py). Push a cache
         // invalidation so the Files panel + git-diff re-fetch the
@@ -336,9 +340,28 @@ export const useTeamStore = create<TeamStore>()(
 
       try {
         set((draft) => { draft.error = null })
-        await postTeamCommand('redo', sessionId)
-        // Same workspace-preserving call as ``undoTeam`` above.
-        await get().loadSession(sessionId, get()._workspace)
+        const response = await postTeamCommand('redo', sessionId)
+        // Same local-boundary trick as ``undoTeam`` — but /redo
+        // returns ``message: null`` when it cleared the boundary back
+        // to the live tip, in which case the boundary becomes
+        // ``null`` and ``applyRevertBoundary`` flushes every stream's
+        // ``_revertedSuffix`` back into its ``blocks``.
+        //
+        // Note: when ``_revertedSuffix`` is empty (e.g. session was
+        // initially loaded with the boundary off the page-size edge),
+        // applying the new boundary may not bring back the missing
+        // blocks. That's a tolerable edge case — pressing Refresh /
+        // switching sessions will refetch. The common case (the user
+        // pressing /undo and then /redo) is fully local because
+        // ``loadSession`` populates the suffix on initial load.
+        const boundaryIso = response.message?.created_at
+        const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
+        set((draft) => {
+          draft._leadRevertTime = boundaryTime
+          Object.values(draft.agentStreams).forEach((stream) => {
+            applyRevertBoundary(stream, boundaryTime)
+          })
+        })
         // /redo restores either the next user message's snapshot or
         // the original live-tip anchor (see snapshot_service); same
         // refresh hook as /undo.
@@ -490,28 +513,38 @@ export const useTeamStore = create<TeamStore>()(
           draft.agentNames = allNames
           const leadRevertTime = revertBoundaryTime(history.lead)
 
-          // Load lead blocks (includes user blocks from parseTeamBlocks)
+          // Load lead blocks (includes user blocks from parseTeamBlocks).
+          // Parse ALL messages — visible + post-boundary — then apply
+          // the revert boundary via ``applyRevertBoundary``. That
+          // populates ``_revertedSuffix`` on initial load so /redo can
+          // restore the tail locally instead of refetching history.
+          // ``usage`` and ``_completionBase`` still come from the
+          // visible slice — reverted turns must not count toward
+          // committed tokens.
           if (leadName) {
             if (!draft.agentStreams[leadName]) {
               draft.agentStreams[leadName] = createDefaultAgentStream()
             }
             // Revoke blob URLs from old blocks before replacing them
             revokeBlobUrlsFromBlocks(draft.agentStreams[leadName].currentBlocks)
-            const leadMessages = messagesBeforeRevert(history.lead)
-            draft.agentStreams[leadName].blocks = parseTeamBlocks(leadMessages)
-            draft.agentStreams[leadName].revertedCount = revertedMessageCount(history.lead)
-            draft.agentStreams[leadName].revertedMessages = revertedMessagePreview(history.lead)
-            draft.agentStreams[leadName].currentBlocks = []
-            draft.agentStreams[leadName].currentText = ''
-            draft.agentStreams[leadName].currentThinking = ''
-            draft.agentStreams[leadName].status = 'idle'
-            const leadUsage = sumUsageFromMessages(leadMessages)
-            draft.agentStreams[leadName].usage = leadUsage
+            const leadStream = draft.agentStreams[leadName]
+            leadStream.blocks = parseTeamBlocks(history.lead.messages)
+            leadStream._revertedSuffix = []
+            applyRevertBoundary(leadStream, leadRevertTime)
+            leadStream.currentBlocks = []
+            leadStream.currentText = ''
+            leadStream.currentThinking = ''
+            leadStream.status = 'idle'
+            const leadVisibleMsgs = messagesBeforeRevert(history.lead)
+            const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
+            leadStream.usage = leadUsage
             // Seed _completionBase so next live turn accumulates correctly
-            draft.agentStreams[leadName]._completionBase = leadUsage.completionTokens
+            leadStream._completionBase = leadUsage.completionTokens
           }
 
-          // Load member blocks
+          // Load member blocks — members are sliced by the lead's
+          // boundary (members don't have their own revert pointer).
+          // Same all-then-split pattern so /redo works locally.
           history.members.forEach((member) => {
             const existingStatus = draft.agentStreams[member.name]?.status
             const isLiveMember = liveNames === null || liveNames.includes(member.name)
@@ -520,19 +553,22 @@ export const useTeamStore = create<TeamStore>()(
             }
             // Revoke blob URLs from old blocks before replacing them
             revokeBlobUrlsFromBlocks(draft.agentStreams[member.name].currentBlocks)
-            const memberMessages = messagesBeforeTime(member.messages, leadRevertTime)
-            draft.agentStreams[member.name].blocks = parseTeamBlocks(memberMessages)
-            draft.agentStreams[member.name].currentBlocks = []
-            draft.agentStreams[member.name].currentText = ''
-            draft.agentStreams[member.name].currentThinking = ''
-            draft.agentStreams[member.name].status =
+            const memberStream = draft.agentStreams[member.name]
+            memberStream.blocks = parseTeamBlocks(member.messages)
+            memberStream._revertedSuffix = []
+            applyRevertBoundary(memberStream, leadRevertTime)
+            memberStream.currentBlocks = []
+            memberStream.currentText = ''
+            memberStream.currentThinking = ''
+            memberStream.status =
               !isLiveMember
                 ? 'offline'
                 : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
-            const memberUsage = sumUsageFromMessages(memberMessages)
-            draft.agentStreams[member.name].usage = memberUsage
+            const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
+            const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
+            memberStream.usage = memberUsage
             // Seed _completionBase so next live turn accumulates correctly
-            draft.agentStreams[member.name]._completionBase = memberUsage.completionTokens
+            memberStream._completionBase = memberUsage.completionTokens
           })
 
           if (!draft.activeAgent || !allNames.includes(draft.activeAgent)) {

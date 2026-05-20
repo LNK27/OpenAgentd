@@ -274,11 +274,25 @@ async def team_command(
 
     if body.command == "redo":
         try:
-            sid = await team_obj.handle_redo(body.session_id)
+            sid, message = await team_obj.handle_redo(body.session_id)
         except ContinuePreconditionError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_redo session_id={}", sid)
-        return {"status": "accepted", "session_id": sid, "command": "redo"}
+        # ``message`` is the user message the boundary now points at, or
+        # ``None`` when we cleared the boundary back to the live tip.
+        # The client uses the timestamp to apply the new boundary
+        # locally instead of refetching history — see
+        # ``useTeamStore.redoTeam``.
+        return {
+            "status": "accepted",
+            "session_id": sid,
+            "command": "redo",
+            "message": (
+                _message_response(message).model_dump(mode="json")
+                if message is not None
+                else None
+            ),
+        }
 
     # Defensive — the Literal makes this unreachable, but pyright/ty wants it.
     raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")

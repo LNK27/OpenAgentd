@@ -469,7 +469,9 @@ async def undo_session_messages(
     return target
 
 
-async def redo_session_messages(db: AsyncSession, session_id: UUID) -> bool:
+async def redo_session_messages(
+    db: AsyncSession, session_id: UUID
+) -> tuple[bool, SessionMessage | None]:
     """Move the revert boundary forward, or clear it at the end.
 
     Each step restores the workspace to the snapshot of the user message
@@ -478,11 +480,18 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> bool:
     pre-undo "redo anchor" snapshot recorded by
     :func:`undo_session_messages`, returning the workspace to its live
     tip exactly as it stood before any /undo was issued.
+
+    Returns ``(changed, next_user)`` where ``changed`` is ``True`` when
+    the boundary actually moved and ``next_user`` is the user message
+    we landed on — or ``None`` when we cleared the boundary back to the
+    live tip. The next-user pointer is plumbed up so the HTTP layer can
+    echo it to the client, which uses the timestamp as the new local
+    revert-boundary marker (avoiding a full history refetch).
     """
     session = await db.get(ChatSession, session_id)
     boundary = await _revert_boundary(db, session_id)
     if session is None or boundary is None:
-        return False
+        return False, None
     redo_anchor = _redo_anchor(session)
     next_user = (
         await db.exec(
@@ -511,7 +520,7 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> bool:
         session.revert = revert_state
     db.add(session)
     await db.flush()
-    return True
+    return True, next_user
 
 
 async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:

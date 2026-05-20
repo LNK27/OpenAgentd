@@ -952,14 +952,19 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
     assert refreshed.revert.get("snapshot") == redo_anchor
 
     # ── /redo #1: boundary moves forward to U2, workspace = snap_u2 ───
-    moved = await redo_session_messages(session, chat_session.id)
+    moved, next_msg = await redo_session_messages(session, chat_session.id)
     assert moved is True
+    # The next-user pointer is plumbed back so /api/team/commands can
+    # echo it to the client for local boundary application.
+    assert next_msg is not None
+    assert next_msg.id == u2.id
     assert doc.read_text() == "v2"
 
     # ── /redo #2: no more user messages ahead → clear revert, restore
     # the live tip via the preserved redo anchor.
-    moved = await redo_session_messages(session, chat_session.id)
+    moved, next_msg = await redo_session_messages(session, chat_session.id)
     assert moved is True
+    assert next_msg is None  # cleared, no boundary
     assert doc.read_text() == "v3"
     refreshed = await session.get(ChatSession, chat_session.id)
     assert refreshed is not None

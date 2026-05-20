@@ -17,6 +17,7 @@
  * file attachments when a ``loadSession`` call replaces the live blocks.
  */
 import type { ContentBlock } from '@/api/types'
+import type { AgentStream } from './types'
 
 // Tools that can mutate the wiki tree when their `path` argument targets
 // the `wiki/` root.  Read-only tools (`read`, `ls`, `grep`, `glob`) are
@@ -81,4 +82,75 @@ export function revokeBlobUrlsFromBlocks(blocks: ContentBlock[]) {
       }
     }
   }
+}
+
+/**
+ * Move blocks across the `blocks` / `_revertedSuffix` split to match a
+ * new revert boundary.
+ *
+ * Invariant: ``blocks ∪ _revertedSuffix`` is the full chronological
+ * sequence of finalized blocks this agent has produced; nothing is
+ * destroyed by a boundary change. Blocks whose source-message
+ * timestamp is ``< boundaryTime`` are visible (``blocks``); the
+ * remainder sit in ``_revertedSuffix`` ready for /redo to put back.
+ *
+ * ``boundaryTime`` is the ms timestamp of the user message at the new
+ * boundary, or ``null`` when the boundary is cleared (live tip). The
+ * function also recomputes ``revertedCount`` (count of user/compaction
+ * blocks in the suffix — matches the server-side count of reverted
+ * user messages) and ``revertedMessages`` (up-to-3 preview the
+ * ``RevertNotice`` UI displays).
+ *
+ * Exported separately from the store so `undoTeam` / `redoTeam` can
+ * apply the boundary locally instead of falling back to a full
+ * ``loadSession`` history refetch — that refetch is the dominant
+ * source of /undo + /redo latency.
+ */
+export function applyRevertBoundary(
+  stream: AgentStream,
+  boundaryTime: number | null,
+): void {
+  const all = [...stream.blocks, ...(stream._revertedSuffix ?? [])]
+
+  if (boundaryTime === null) {
+    // No boundary — everything is visible.
+    stream.blocks = all
+    stream._revertedSuffix = []
+    stream.revertedCount = 0
+    stream.revertedMessages = []
+    return
+  }
+
+  // Find the first block at-or-after the boundary; everything from
+  // there on is reverted. Linear scan is fine — `all` is already in
+  // chronological order (parseTeamBlocks sorts by created_at, and
+  // suffix entries were appended in order they crossed the boundary).
+  let splitIdx = all.length
+  for (let i = 0; i < all.length; i++) {
+    const t = all[i].timestamp?.getTime() ?? 0
+    if (t >= boundaryTime) {
+      splitIdx = i
+      break
+    }
+  }
+
+  const visible = all.slice(0, splitIdx)
+  const reverted = all.slice(splitIdx)
+  stream.blocks = visible
+  stream._revertedSuffix = reverted
+
+  // Mirror server-side ``revertedMessageCount`` / ``revertedMessagePreview``:
+  // count user-role messages (compaction summaries are role='user' on
+  // the wire and parseTeamBlocks splits them into a distinct block
+  // type, so we include both here for parity).
+  const userBlocks = reverted.filter(
+    (b) => b.type === 'user' || b.type === 'compaction',
+  )
+  stream.revertedCount = userBlocks.length
+  stream.revertedMessages = userBlocks
+    .map((b) => ({
+      role: 'user',
+      content: b.type === 'compaction' ? 'Session compacted' : (b.content ?? ''),
+    }))
+    .filter((m) => m.content.trim().length > 0)
 }

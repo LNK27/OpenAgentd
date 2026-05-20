@@ -63,6 +63,21 @@ export interface AgentStream {
   lastError: string | null
   revertedCount?: number
   revertedMessages?: Array<{ role: string; content: string }>
+  /**
+   * Finalized blocks that have been hidden by a /undo boundary, in
+   * original chronological order. ``blocks`` and ``_revertedSuffix``
+   * together form the full per-agent history; ``_revertedSuffix`` is
+   * the contiguous tail whose source messages have ``created_at`` >=
+   * the current revert boundary.
+   *
+   * Populated by ``loadSession`` (so /redo works locally even on a
+   * session that was loaded *while* already reverted) and by
+   * ``undoTeam`` (which slices the tail off ``blocks``). Drained back
+   * into ``blocks`` by ``redoTeam`` based on the new boundary, and
+   * cleared by ``sendMessage`` / ``newSession`` since the backend
+   * deletes post-boundary rows on the next user message.
+   */
+  _revertedSuffix?: ContentBlock[]
 }
 
 export interface TeamStoreState {
