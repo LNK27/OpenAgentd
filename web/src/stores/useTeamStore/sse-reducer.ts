@@ -56,6 +56,7 @@ import {
 import { createDefaultAgentStream } from './defaults'
 import {
   WIKI_MUTATING_TOOLS,
+  FS_MUTATING_TOOLS,
   NOTE_TOOLS,
   SCHEDULER_MUTATING_TOOLS,
   TODO_MUTATING_TOOLS,
@@ -203,6 +204,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (NOTE_TOOLS.has(toolName)) {
           events.push({ kind: 'wiki' })
         }
+        // Wiki vs. workspace: write/edit/rm with a ``wiki/`` path
+        // invalidate ONLY the wiki tree — the workspace cache stays
+        // untouched in that case (writes never landed in the
+        // workspace). Other file-mutating tools (shell, patch,
+        // generate_image, …) always invalidate the workspace.
+        let touchedWiki = false
         if (WIKI_MUTATING_TOOLS.has(toolName)) {
           const stream = get().agentStreams[agent]
           const block = stream?.currentBlocks.find(
@@ -210,6 +217,20 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           )
           if (touchesWiki(toolName, block?.toolArgs)) {
             events.push({ kind: 'wiki' })
+            touchedWiki = true
+          }
+        }
+        // Workspace caches. Coding mode and normal mode share the same
+        // file-mutation triggers but invalidate disjoint query keys:
+        //   - coding: queryKeys.coding.{files,diff,status}(workspace)
+        //   - normal: queryKeys.team.files(sessionId)
+        // Shell / patch / multimodal generators always invalidate; for
+        // path-typed tools (write/edit/rm) we skip when the write
+        // landed in ``wiki/`` (handled above).
+        if (FS_MUTATING_TOOLS.has(toolName) && !touchedWiki) {
+          const workspace = get()._workspace
+          if (workspace) {
+            events.push({ kind: 'coding_workspace', workspace })
           } else {
             // Guarded by sessionId so stale turns after newSession()
             // don't queue an event keyed on a mismatched session id.

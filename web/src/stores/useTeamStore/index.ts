@@ -77,6 +77,29 @@ export type {
   TeamStore,
 } from './types'
 
+/**
+ * Push a workspace-files invalidation event onto the store queue.
+ *
+ * Coding mode targets the absolute workspace path (shared across
+ * sessions/tabs); normal mode keys by sessionId. Used by undoTeam /
+ * redoTeam after the command resolves so the Coding Workspace Sidebar
+ * and Artifacts panel re-fetch on the snapshot-restored disk state.
+ */
+function enqueueWorkspaceInvalidation(
+  set: (fn: (draft: TeamStore) => void) => void,
+  get: () => TeamStore,
+  sessionId: string,
+) {
+  const workspace = get()._workspace
+  set((draft) => {
+    draft.cacheInvalidations.push(
+      workspace
+        ? { kind: 'coding_workspace', workspace }
+        : { kind: 'workspace_files', sessionId },
+    )
+  })
+}
+
 export const useTeamStore = create<TeamStore>()(
   immer((set, get) => ({
     // State
@@ -208,6 +231,17 @@ export const useTeamStore = create<TeamStore>()(
         )
         set((draft) => {
           draft.sessionId = result.session_id
+          // Persist the coding-mode workspace on the store *before*
+          // ``connectStream`` opens the SSE feed. Tool events fire as
+          // soon as the lead starts working; without this, the first
+          // turn's ``tool_end`` reducer sees ``_workspace = null`` and
+          // emits a session-scoped ``workspace_files`` event instead
+          // of the coding-mode key, leaving the Files / Diff sidebar
+          // stale until the user clicks Refresh. ``loadSession`` will
+          // overwrite this later with the same value.
+          if (options?.workspace) {
+            draft._workspace = options.workspace
+          }
         })
         get().connectStream()
       } catch (err) {
@@ -274,7 +308,16 @@ export const useTeamStore = create<TeamStore>()(
       try {
         set((draft) => { draft.error = null })
         const response = await postTeamCommand('undo', sessionId)
-        await get().loadSession(sessionId)
+        // Preserve the coding-mode workspace path across ``loadSession`` —
+        // calling it without the second arg would clobber ``_workspace``
+        // to null and route the post-undo invalidation to the wrong
+        // query key.
+        await get().loadSession(sessionId, get()._workspace)
+        // /undo restores the workspace to the target user message's
+        // snapshot (see app/services/snapshot_service.py). Push a cache
+        // invalidation so the Files panel + git-diff re-fetch the
+        // post-restore state instead of showing stale data.
+        enqueueWorkspaceInvalidation(set, get, sessionId)
         return response
       } catch (err) {
         set((draft) => {
@@ -294,7 +337,12 @@ export const useTeamStore = create<TeamStore>()(
       try {
         set((draft) => { draft.error = null })
         await postTeamCommand('redo', sessionId)
-        await get().loadSession(sessionId)
+        // Same workspace-preserving call as ``undoTeam`` above.
+        await get().loadSession(sessionId, get()._workspace)
+        // /redo restores either the next user message's snapshot or
+        // the original live-tip anchor (see snapshot_service); same
+        // refresh hook as /undo.
+        enqueueWorkspaceInvalidation(set, get, sessionId)
       } catch (err) {
         set((draft) => {
           draft.error = err instanceof Error ? err.message : 'Failed to redo'

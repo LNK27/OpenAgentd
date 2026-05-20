@@ -35,6 +35,7 @@ export interface PendingMessage {
 export type CacheInvalidation =
   | { kind: 'wiki' }
   | { kind: 'workspace_files'; sessionId: string }
+  | { kind: 'coding_workspace'; workspace: string }
   | { kind: 'scheduler' }
   | { kind: 'todos'; sessionId: string }
   | { kind: 'team_agents' }

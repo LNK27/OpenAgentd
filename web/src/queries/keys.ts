@@ -14,6 +14,20 @@ export const queryKeys = {
     // Workspace-files listing per session — powers the Artifacts panel.
     files: (sessionId: string) => ['team', 'files', sessionId] as const,
   },
+  // Coding-mode workspace sidebar — keyed by the absolute workspace path
+  // (a single project may be shared across multiple sessions/tabs, so the
+  // cache is keyed by path rather than session id). The reducer enqueues
+  // ``coding_workspace`` invalidations on every file-mutating tool_end and
+  // after /undo + /redo so the panel reflects disk state in real time.
+  coding: {
+    all: (workspace: string) => ['coding-workspace', workspace] as const,
+    files: (workspace: string) =>
+      ['coding-workspace-files', workspace] as const,
+    diff: (workspace: string) =>
+      ['coding-workspace-diff', workspace] as const,
+    status: (workspace: string) =>
+      ['coding-workspace-status', workspace] as const,
+  },
   // File references for the input bar's @-mention picker. Keyed by the
   // workspace path (coding mode) or session id (normal mode) so the two
   // origins don't share a cache entry.

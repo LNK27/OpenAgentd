@@ -23,6 +23,29 @@ import type { ContentBlock } from '@/api/types'
 // intentionally excluded — reads do not invalidate the tree cache.
 export const WIKI_MUTATING_TOOLS = new Set(['write', 'edit', 'rm'])
 
+// Tools that touch the filesystem in arbitrary ways. ``shell`` / ``bg``
+// are included because their commands routinely create, modify, or
+// delete files; ``patch`` rewrites multiple files atomically; the
+// ``generate_image`` / ``generate_video`` multimodal tools drop their
+// outputs straight into the workspace. The coding-workspace sidebar
+// must refresh after any of these even when a specific path isn't
+// surfaced in the tool args. Read-only tools (``read``, ``ls``,
+// ``grep``, ``glob``) are intentionally absent.
+//
+// Wiki invalidation still piggybacks on ``WIKI_MUTATING_TOOLS`` +
+// ``touchesWiki`` because we don't want to evict the wiki cache on
+// every shell call.
+export const FS_MUTATING_TOOLS = new Set([
+  'write',
+  'edit',
+  'rm',
+  'patch',
+  'shell',
+  'bg',
+  'generate_image',
+  'generate_video',
+])
+
 // Tools that always write to wiki/notes/ — invalidate the wiki tree
 // unconditionally on tool_end (no path check needed).
 export const NOTE_TOOLS = new Set(['note'])

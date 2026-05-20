@@ -15,6 +15,7 @@ import { formatDistanceToNowStrict } from 'date-fns'
 import { Folder, GitBranch } from 'lucide-react'
 
 import { getCodingWorkspaceStatus } from '@/api/client'
+import { queryKeys } from '@/queries'
 
 interface Props {
   workspace: string
@@ -22,7 +23,7 @@ interface Props {
 
 export function WorkspaceInfoCard({ workspace }: Props) {
   const { data, isLoading } = useQuery({
-    queryKey: ['coding-workspace-status', workspace],
+    queryKey: queryKeys.coding.status(workspace),
     queryFn: () => getCodingWorkspaceStatus(workspace),
     // Refetch on every new-chat open (component re-mount) — no caching
     // beyond the in-flight request, no manual refresh affordance.

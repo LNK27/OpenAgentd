@@ -43,6 +43,14 @@ export function applyCacheInvalidations(
       case 'workspace_files':
         queryClient.invalidateQueries({ queryKey: queryKeys.team.files(event.sessionId) })
         break
+      case 'coding_workspace':
+        // Coding sidebar shows files + git diff side by side; refresh
+        // both panels off the same domain event so the UI catches up
+        // immediately after a file mutation or /undo + /redo.
+        queryClient.invalidateQueries({ queryKey: queryKeys.coding.files(event.workspace) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.coding.diff(event.workspace) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.coding.status(event.workspace) })
+        break
       case 'scheduler':
         queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
         break

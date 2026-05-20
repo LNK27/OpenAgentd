@@ -39,6 +39,23 @@ describe('applyCacheInvalidations', () => {
     })
   })
 
+  it('maps `coding_workspace` event to files+diff+status keys', () => {
+    const client = makeMockClient()
+    applyCacheInvalidations(client, [
+      { kind: 'coding_workspace', workspace: '/Users/me/proj' },
+    ])
+    expect(client.invalidateQueries).toHaveBeenCalledTimes(3)
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.coding.files('/Users/me/proj'),
+    })
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.coding.diff('/Users/me/proj'),
+    })
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.coding.status('/Users/me/proj'),
+    })
+  })
+
   it('maps `scheduler` event to scheduler.list()', () => {
     const client = makeMockClient()
     applyCacheInvalidations(client, [{ kind: 'scheduler' }])

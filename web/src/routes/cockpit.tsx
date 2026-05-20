@@ -61,6 +61,22 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
     }
   }, [mode, sessionId, workspace])
 
+  // Keep ``useTeamStore._workspace`` in sync with the URL-derived
+  // workspace path the moment we render the layout. The SSE reducer
+  // reads this field to decide whether to fire ``coding_workspace`` or
+  // ``workspace_files`` cache-invalidation events on ``tool_end``;
+  // doing it here (instead of waiting for the async ``loadSession``
+  // round-trip in ``TeamChatView``) closes the race window where the
+  // first turn's tool events would otherwise see ``_workspace = null``
+  // and invalidate the wrong query key, leaving the Coding Workspace
+  // sidebar Files / Diff panels stale until the next manual refresh.
+  useLayoutEffect(() => {
+    if (mode !== 'coding') return
+    useTeamStore.setState((state) => {
+      state._workspace = workspace ?? null
+    })
+  }, [mode, workspace])
+
   // When team store gets a new sessionId, navigate to the matching session route.
   useEffect(() => {
     return useTeamStore.subscribe((state, prev) => {
