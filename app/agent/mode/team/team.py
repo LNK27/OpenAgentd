@@ -123,6 +123,33 @@ class ContinuePreconditionError(Exception):
         self.status = status
 
 
+# ── Per-session command lock ──────────────────────────────────────────
+# Serialises /undo + /redo against themselves and each other on the
+# same session id. Without this, two quick clicks (or a stuck Cmd-Z)
+# would race on the read→commit window in ``handle_undo`` /
+# ``handle_redo``: both fork separate DB sessions, both read the same
+# ``ChatSession.revert.message_id`` boundary, both compute the *same*
+# next user message, then both commit ``revert={next.id}`` — net
+# effect: the boundary moves one step instead of two. The
+# snapshot-service file lock doesn't help because it kicks in after
+# the DB rows have already been read.
+#
+# Keyed by ``session_id`` so unrelated sessions stay concurrent. Locks
+# live for the process lifetime; sessions are cheap and we'd rather
+# leak a few asyncio.Lock objects than pay synchronisation cost on
+# every command.
+_command_locks: dict[str, asyncio.Lock] = {}
+
+
+def _command_lock(session_id: str) -> asyncio.Lock:
+    """Return the (lazily-created) per-session command lock."""
+    lock = _command_locks.get(session_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _command_locks[session_id] = lock
+    return lock
+
+
 def _is_interrupted_thinking_only_tail(messages: list) -> bool:
     """Return true for a stopped assistant row that has no visible output."""
     if not messages:
@@ -708,20 +735,25 @@ class AgentTeam:
         except ValueError as exc:
             raise ContinuePreconditionError("Invalid session id.") from exc
 
-        db_factory = resolve_db_factory(self.lead.db_factory)
-        async with db_factory() as db:
-            row = await db.get(ChatSession, lead_uuid)
-            if row is None:
-                raise ContinuePreconditionError("Session not found.")
-            if row.agent_name and row.agent_name != self.lead.name:
-                raise ContinuePreconditionError(
-                    f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
-                )
-            message = await undo_session_messages(db, lead_uuid)
-            if message is None:
-                raise ContinuePreconditionError("No user message to undo.")
-            await db.commit()
-            await db.refresh(message)
+        # Serialise concurrent /undo (and /redo) on the same session —
+        # see ``_command_locks`` rationale above. The lock spans the
+        # whole DB read→commit cycle so a burst of clicks sees each
+        # other's committed boundary.
+        async with _command_lock(session_id):
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            async with db_factory() as db:
+                row = await db.get(ChatSession, lead_uuid)
+                if row is None:
+                    raise ContinuePreconditionError("Session not found.")
+                if row.agent_name and row.agent_name != self.lead.name:
+                    raise ContinuePreconditionError(
+                        f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
+                    )
+                message = await undo_session_messages(db, lead_uuid)
+                if message is None:
+                    raise ContinuePreconditionError("No user message to undo.")
+                await db.commit()
+                await db.refresh(message)
 
         logger.info(
             "team_undo_applied session_id={} agent={}", session_id, self.lead.name
@@ -746,21 +778,26 @@ class AgentTeam:
         except ValueError as exc:
             raise ContinuePreconditionError("Invalid session id.") from exc
 
-        db_factory = resolve_db_factory(self.lead.db_factory)
-        async with db_factory() as db:
-            row = await db.get(ChatSession, lead_uuid)
-            if row is None:
-                raise ContinuePreconditionError("Session not found.")
-            if row.agent_name and row.agent_name != self.lead.name:
-                raise ContinuePreconditionError(
-                    f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
-                )
-            changed, next_message = await redo_session_messages(db, lead_uuid)
-            if not changed:
-                raise ContinuePreconditionError("No undone message to redo.")
-            await db.commit()
-            if next_message is not None:
-                await db.refresh(next_message)
+        # Same per-session serialisation as ``handle_undo`` — two quick
+        # /redo clicks must each see the other's committed boundary,
+        # otherwise both compute the same ``next_user`` and the
+        # boundary moves one step instead of two.
+        async with _command_lock(session_id):
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            async with db_factory() as db:
+                row = await db.get(ChatSession, lead_uuid)
+                if row is None:
+                    raise ContinuePreconditionError("Session not found.")
+                if row.agent_name and row.agent_name != self.lead.name:
+                    raise ContinuePreconditionError(
+                        f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
+                    )
+                changed, next_message = await redo_session_messages(db, lead_uuid)
+                if not changed:
+                    raise ContinuePreconditionError("No undone message to redo.")
+                await db.commit()
+                if next_message is not None:
+                    await db.refresh(next_message)
 
         logger.info(
             "team_redo_applied session_id={} agent={}", session_id, self.lead.name

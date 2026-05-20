@@ -309,3 +309,84 @@ class TestPostTeamCommands:
             json={"command": "blow_up_session", "session_id": str(uuid.uuid7())},
         )
         assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_concurrent_redos_each_advance_boundary_one_step(
+        self, app_with_lead_only_team
+    ):
+        """Two parallel /redo calls must NOT both land on the same target.
+
+        Regression: without per-session command serialisation, both
+        handlers open separate DB sessions, read the same
+        ``revert.message_id``, compute the same ``next_user``, and
+        commit the same new boundary — net effect: the boundary moves
+        one step instead of two even though two requests were issued.
+        """
+        import asyncio
+
+        from httpx import ASGITransport, AsyncClient
+
+        sid = uuid.uuid7()
+        await _seed_session_and_messages(
+            sid,
+            [
+                ("user", "u1", None),
+                ("assistant", "a1", None),
+                ("user", "u2", None),
+                ("assistant", "a2", None),
+                ("user", "u3", None),
+                ("assistant", "a3", None),
+            ],
+        )
+
+        # Sync /undo three times — landing the boundary at u1.
+        client = TestClient(app_with_lead_only_team)
+        for _ in range(3):
+            r = client.post(
+                "/api/team/commands",
+                json={"command": "undo", "session_id": str(sid)},
+            )
+            assert r.status_code == 202
+
+        # Fire two /redo calls truly in parallel via httpx.AsyncClient
+        # — TestClient's .post() is synchronous so a loop of
+        # sequential calls would mask the race. ``asyncio.gather``
+        # ensures both requests enter the route handler before either
+        # commits, exercising the lock window.
+        transport = ASGITransport(app=app_with_lead_only_team)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            r1, r2 = await asyncio.gather(
+                ac.post(
+                    "/api/team/commands",
+                    json={"command": "redo", "session_id": str(sid)},
+                ),
+                ac.post(
+                    "/api/team/commands",
+                    json={"command": "redo", "session_id": str(sid)},
+                ),
+            )
+
+        assert r1.status_code == 202
+        assert r2.status_code == 202
+        m1 = r1.json()["message"]
+        m2 = r2.json()["message"]
+        assert m1 is not None and m2 is not None
+        # Each /redo must echo a *different* user message; otherwise
+        # the boundary effectively moved only one step.
+        assert m1["id"] != m2["id"], (
+            f"both /redo responses landed on the same boundary "
+            f"({m1['content']!r}) — concurrency race regressed"
+        )
+        # The set of advanced-to messages must be exactly {u2, u3}.
+        assert {m1["content"], m2["content"]} == {"u2", "u3"}
+
+        # Final DB state: boundary advanced two full steps.
+        async with _db.async_session_factory() as db:
+            session = await db.get(ChatSession, sid)
+        assert session is not None
+        # Both /redo calls fired, so boundary should be at u3 (or
+        # cleared if u3 was the live tip — but u3 has a3 after it).
+        # Either way the boundary is NOT u2 (which would mean only
+        # one /redo took effect).
+        assert session.revert is not None
+        assert session.revert["message_id"] != m1["id"] or m1["content"] == "u3"
