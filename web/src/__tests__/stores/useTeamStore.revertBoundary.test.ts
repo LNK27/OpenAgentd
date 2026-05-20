@@ -360,9 +360,83 @@ describe("undoTeam — local boundary application", () => {
 
     await useTeamStore.getState().undoTeam()
 
+    // No ``changed_paths`` in the response → broad invalidation. This
+    // is the conservative fallback used when the server hasn't
+    // recorded a snapshot (e.g. git unavailable).
     expect(useTeamStore.getState().cacheInvalidations).toEqual([
       { kind: "coding_workspace", workspace: "/tmp/proj" },
     ])
+  })
+
+  it("emits a SCOPED coding_workspace_paths event when changed_paths is non-empty", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _workspace: "/tmp/proj",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [
+            block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({ created_at: "2024-01-01T00:00:02Z" }),
+        changed_paths: {
+          added: ["src/added.ts"],
+          modified: ["src/lib/util.ts"],
+          removed: ["dist/stale.txt"],
+        },
+      }),
+    )
+
+    await useTeamStore.getState().undoTeam()
+
+    // Bridge should receive a scoped event listing every touched path.
+    // The deduplicated union drives a per-path git-diff splice
+    // instead of a full repo refetch.
+    const invalidations = useTeamStore.getState().cacheInvalidations
+    expect(invalidations).toHaveLength(1)
+    expect(invalidations[0]).toEqual({
+      kind: "coding_workspace_paths",
+      workspace: "/tmp/proj",
+      paths: ["src/added.ts", "src/lib/util.ts", "dist/stale.txt"],
+    })
+  })
+
+  it("skips invalidation when the server reports empty changed_paths", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _workspace: "/tmp/proj",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({ created_at: "2024-01-01T00:00:00Z" }),
+        changed_paths: { added: [], modified: [], removed: [] },
+      }),
+    )
+
+    await useTeamStore.getState().undoTeam()
+
+    // Empty path partition means the snapshot restore had no
+    // filesystem effect — skip the invalidation so we don't trigger
+    // a needless 30k-file git-diff refetch.
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([])
   })
 
   it("accumulates suffix correctly across multiple consecutive undos", async () => {

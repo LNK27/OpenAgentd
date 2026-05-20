@@ -57,19 +57,58 @@ export type {
 } from './types'
 
 /**
- * Push a workspace-files invalidation event onto the store queue.
+ * Flatten the server's ``ChangedPaths`` envelope into a single,
+ * deduped list. Returns ``undefined`` when the server didn't supply
+ * the envelope (legacy / non-snapshot path) so the caller falls
+ * back to broad invalidation.
+ */
+function mergeChangedPaths(
+  changed: { added: string[]; modified: string[]; removed: string[] } | undefined,
+): string[] | undefined {
+  if (!changed) return undefined
+  const seen = new Set<string>()
+  for (const p of changed.added) seen.add(p)
+  for (const p of changed.modified) seen.add(p)
+  for (const p of changed.removed) seen.add(p)
+  return [...seen]
+}
+
+/**
+ * Push a workspace cache-invalidation event after a /undo or /redo.
  *
- * Coding mode targets the absolute workspace path (shared across
- * sessions/tabs); normal mode keys by sessionId. Used by undoTeam /
- * redoTeam after the command resolves so the Coding Workspace Sidebar
- * and Artifacts panel re-fetch on the snapshot-restored disk state.
+ * When the server reports which paths the snapshot restore actually
+ * touched (``changed_paths`` — added/modified/removed), we drive a
+ * *scoped* ``coding_workspace_paths`` event so the bridge can splice
+ * a per-path git diff into the cached one instead of refetching the
+ * whole repo (~30 ms saved on 30k files). When no paths changed
+ * (e.g. /redo cleared the boundary but the workspace already matched
+ * the live tip) we skip invalidation entirely.
+ *
+ * When ``paths`` is omitted (server didn't supply ``changed_paths``,
+ * or we're in normal session-keyed mode), fall back to the broad
+ * invalidation kinds — coding mode targets the absolute workspace
+ * path; normal mode keys by sessionId.
  */
 function enqueueWorkspaceInvalidation(
   set: (fn: (draft: TeamStore) => void) => void,
   get: () => TeamStore,
   sessionId: string,
+  paths?: string[],
 ) {
   const workspace = get()._workspace
+  if (workspace && paths !== undefined) {
+    // Empty list = no filesystem change; skip the invalidation to
+    // avoid an unnecessary diff/files refetch.
+    if (paths.length === 0) return
+    set((draft) => {
+      draft.cacheInvalidations.push({
+        kind: 'coding_workspace_paths',
+        workspace,
+        paths,
+      })
+    })
+    return
+  }
   set((draft) => {
     draft.cacheInvalidations.push(
       workspace
@@ -318,10 +357,16 @@ export const useTeamStore = create<TeamStore>()(
           })
         })
         // /undo restores the workspace to the target user message's
-        // snapshot (see app/services/snapshot_service.py). Push a cache
-        // invalidation so the Files panel + git-diff re-fetch the
-        // post-restore state instead of showing stale data.
-        enqueueWorkspaceInvalidation(set, get, sessionId)
+        // snapshot (see app/services/snapshot_service.py). The server
+        // returns the exact A/M/D path partition the restore touched
+        // — pass it through so the bridge does a scoped diff splice
+        // instead of a whole-repo refetch.
+        enqueueWorkspaceInvalidation(
+          set,
+          get,
+          sessionId,
+          mergeChangedPaths(response.changed_paths),
+        )
         return response
       } catch (err) {
         set((draft) => {
@@ -364,8 +409,13 @@ export const useTeamStore = create<TeamStore>()(
         })
         // /redo restores either the next user message's snapshot or
         // the original live-tip anchor (see snapshot_service); same
-        // refresh hook as /undo.
-        enqueueWorkspaceInvalidation(set, get, sessionId)
+        // scoped-paths hook as /undo.
+        enqueueWorkspaceInvalidation(
+          set,
+          get,
+          sessionId,
+          mergeChangedPaths(response.changed_paths),
+        )
       } catch (err) {
         set((draft) => {
           draft.error = err instanceof Error ? err.message : 'Failed to redo'

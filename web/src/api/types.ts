@@ -373,11 +373,31 @@ export interface CommandRenderResponse {
   content: string
 }
 
+/**
+ * Workspace paths the server's snapshot restore touched during a
+ * ``undo`` / ``redo`` command. Empty lists mean the restore had no
+ * filesystem effect (or no snapshot was recorded) — the client uses
+ * that as a signal to skip the Coding Workspace cache invalidation
+ * entirely, saving a full ``git diff`` fetch on a 30k-file workspace.
+ */
+export interface ChangedPaths {
+  added: string[]
+  modified: string[]
+  removed: string[]
+}
+
 export interface TeamCommandResponse {
   status: string
   session_id: string
   command: 'continue' | 'compact' | 'undo' | 'redo'
   message?: MessageResponse
+  /**
+   * Present on ``undo`` / ``redo`` responses only. The client uses
+   * the union of all three buckets to drive a scoped
+   * ``coding_workspace_paths`` invalidation — splicing the cached git
+   * diff for just these paths instead of refetching the whole repo.
+   */
+  changed_paths?: ChangedPaths
 }
 
 // ── Registry (dropdown catalog) ─────────────────────────────────────────────

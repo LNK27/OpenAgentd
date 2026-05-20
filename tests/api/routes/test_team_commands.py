@@ -200,6 +200,16 @@ class TestPostTeamCommands:
         body = resp.json()
         assert body["command"] == "undo"
         assert body["message"]["content"] == "second"
+        # ``changed_paths`` always rides along on the response so the
+        # client can drive scoped Coding Workspace cache invalidations
+        # without a full sidebar refetch. Without a git snapshot (these
+        # tests don't track one), all three buckets are empty — but the
+        # envelope shape is part of the contract.
+        assert body["changed_paths"] == {
+            "added": [],
+            "modified": [],
+            "removed": [],
+        }
 
         async with _db.async_session_factory() as db:
             session = await db.get(ChatSession, sid)
@@ -267,6 +277,13 @@ class TestPostTeamCommands:
         assert redo_body["message"] is not None
         assert redo_body["message"]["id"] == first.json()["message"]["id"]
         assert redo_body["message"]["content"] == "second"
+        # Same scoped-paths envelope as /undo — empty here because no
+        # snapshots were recorded, but the field must always exist.
+        assert redo_body["changed_paths"] == {
+            "added": [],
+            "modified": [],
+            "removed": [],
+        }
 
         # /redo a second time clears the boundary entirely — the
         # response carries ``message: null`` to signal "live tip".

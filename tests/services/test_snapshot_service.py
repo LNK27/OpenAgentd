@@ -82,9 +82,14 @@ async def test_restore_replaces_modified_file(state_dir: Path, workspace: Path) 
     await snapshot_service.track("sess-mod", workspace)  # commit v2 to index
 
     # Restore baseline.
-    ok = await snapshot_service.restore("sess-mod", workspace, baseline)
-    assert ok is True
+    result = await snapshot_service.restore("sess-mod", workspace, baseline)
+    assert result.ok is True
     assert file.read_text() == "v1"
+    # The restore reverts a modification, so the file should appear in
+    # ``modified`` — not in ``added`` or ``removed``.
+    assert "config.txt" in result.modified
+    assert result.added == []
+    assert result.removed == []
 
 
 @pytest.mark.asyncio
@@ -101,12 +106,17 @@ async def test_restore_deletes_files_added_after_snapshot(
     # Track to bring it under the index before restoring back.
     await snapshot_service.track("sess-add", workspace)
 
-    ok = await snapshot_service.restore("sess-add", workspace, baseline)
-    assert ok is True
+    result = await snapshot_service.restore("sess-add", workspace, baseline)
+    assert result.ok is True
     assert not new_file.exists(), (
         "Newly-added file must be removed when restoring to a snapshot that predates it"
     )
     assert (workspace / "keep.txt").exists()
+    # The new artifact only existed in the post-snapshot index, so it
+    # must be reported as removed by the restore.
+    assert "new_artifact.md" in result.removed
+    assert "new_artifact.md" not in result.added
+    assert "new_artifact.md" not in result.modified
 
 
 @pytest.mark.asyncio
@@ -121,16 +131,25 @@ async def test_restore_brings_back_deleted_file(
     # Simulate agent deleting the file.
     target.unlink()
 
-    ok = await snapshot_service.restore("sess-del", workspace, baseline)
-    assert ok is True
+    result = await snapshot_service.restore("sess-del", workspace, baseline)
+    assert result.ok is True
     assert target.exists()
     assert target.read_text() == "important"
+    # The file existed in the snapshot but not in the live index, so
+    # the restore created it — report it as added.
+    assert "deleted_by_agent.txt" in result.added
+    assert result.modified == []
+    assert result.removed == []
 
 
 @pytest.mark.asyncio
 async def test_restore_no_repo_returns_false(state_dir: Path, workspace: Path) -> None:
-    ok = await snapshot_service.restore("sess-unknown", workspace, "0" * 40)
-    assert ok is False
+    result = await snapshot_service.restore("sess-unknown", workspace, "0" * 40)
+    assert result.ok is False
+    # Failed restores carry no path partition — callers must check ``ok``.
+    assert result.added == []
+    assert result.modified == []
+    assert result.removed == []
 
 
 @pytest.mark.asyncio
@@ -139,8 +158,8 @@ async def test_restore_unknown_hash_returns_false(
 ) -> None:
     (workspace / "a.txt").write_text("x")
     await snapshot_service.track("sess-bad-hash", workspace)
-    ok = await snapshot_service.restore("sess-bad-hash", workspace, "0" * 40)
-    assert ok is False
+    result = await snapshot_service.restore("sess-bad-hash", workspace, "0" * 40)
+    assert result.ok is False
 
 
 @pytest.mark.asyncio
@@ -157,11 +176,13 @@ async def test_undo_redo_round_trip(state_dir: Path, workspace: Path) -> None:
     assert snap_live is not None
 
     # /undo → restore v1.
-    assert await snapshot_service.restore("rt", workspace, snap_v1) is True
+    result = await snapshot_service.restore("rt", workspace, snap_v1)
+    assert result.ok is True
     assert file.read_text() == "v1"
 
     # /redo → restore live.
-    assert await snapshot_service.restore("rt", workspace, snap_live) is True
+    result = await snapshot_service.restore("rt", workspace, snap_live)
+    assert result.ok is True
     assert file.read_text() == "v2"
 
 

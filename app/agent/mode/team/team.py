@@ -49,6 +49,7 @@ from app.services import memory_stream_store as stream_store
 from app.services import snapshot_service
 from app.services.stream_envelope import StreamEnvelope
 from app.services.chat_service import (
+    BoundaryShift,
     get_messages_for_llm,
     heal_orphaned_tool_calls,
     redo_session_messages,
@@ -725,8 +726,16 @@ class AgentTeam:
         )
         return session_id
 
-    async def handle_undo(self, session_id: str) -> tuple[str, SessionMessage]:
-        """Move the revert boundary to the latest visible user turn."""
+    async def handle_undo(self, session_id: str) -> tuple[str, BoundaryShift]:
+        """Move the revert boundary to the latest visible user turn.
+
+        Returns ``(session_id, shift)`` where ``shift.target`` is the
+        user message we landed on and ``shift.added/modified/removed``
+        carry the workspace paths the snapshot restore touched. The
+        HTTP layer forwards both up to the client so the React store
+        can apply the boundary locally *and* splice a scoped Coding
+        Workspace diff without a full sidebar refetch.
+        """
         if self._has_active_turn:
             raise ContinuePreconditionError("Lead is already working.")
 
@@ -749,26 +758,26 @@ class AgentTeam:
                     raise ContinuePreconditionError(
                         f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
                     )
-                message = await undo_session_messages(db, lead_uuid)
-                if message is None:
+                shift = await undo_session_messages(db, lead_uuid)
+                if not shift.applied or shift.target is None:
                     raise ContinuePreconditionError("No user message to undo.")
                 await db.commit()
-                await db.refresh(message)
+                await db.refresh(shift.target)
 
         logger.info(
             "team_undo_applied session_id={} agent={}", session_id, self.lead.name
         )
-        return session_id, message
+        return session_id, shift
 
-    async def handle_redo(self, session_id: str) -> tuple[str, SessionMessage | None]:
+    async def handle_redo(self, session_id: str) -> tuple[str, BoundaryShift]:
         """Move the revert boundary forward or clear it.
 
-        Returns ``(session_id, next_message)`` where ``next_message`` is
-        the user message the boundary now points at, or ``None`` when
-        the boundary was cleared back to the live tip. Plumbed up so
-        ``POST /api/team/commands`` can echo the new boundary to the
-        client — the React store uses the timestamp to apply the
-        boundary locally and skip a full history refetch.
+        Returns ``(session_id, shift)``. ``shift.target`` is the user
+        message the boundary now points at, or ``None`` when the
+        boundary was cleared back to the live tip. The path partition
+        rides along so the HTTP layer can drive scoped cache
+        invalidations on the client, skipping a full history *and*
+        sidebar refetch.
         """
         if self._has_active_turn:
             raise ContinuePreconditionError("Lead is already working.")
@@ -792,17 +801,17 @@ class AgentTeam:
                     raise ContinuePreconditionError(
                         f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
                     )
-                changed, next_message = await redo_session_messages(db, lead_uuid)
-                if not changed:
+                shift = await redo_session_messages(db, lead_uuid)
+                if not shift.applied:
                     raise ContinuePreconditionError("No undone message to redo.")
                 await db.commit()
-                if next_message is not None:
-                    await db.refresh(next_message)
+                if shift.target is not None:
+                    await db.refresh(shift.target)
 
         logger.info(
             "team_redo_applied session_id={} agent={}", session_id, self.lead.name
         )
-        return session_id, next_message
+        return session_id, shift
 
     async def _restore_or_drop_members_for_lead(self, lead_session_id: str) -> None:
         """Realign live spawned instances to child sessions of *lead_session_id*.

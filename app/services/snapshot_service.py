@@ -31,11 +31,43 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from loguru import logger
 
 from app.core.config import settings
+
+
+@dataclass(slots=True)
+class RestoreResult:
+    """Outcome of a :func:`restore` call.
+
+    Carries the exact A/M/D path partition diff-index produced so the
+    higher layers (HTTP route, frontend cache bridge) can drive scoped
+    refreshes — file lists, git diffs — without a whole-repo refetch.
+
+    On failure (``ok=False``) the path lists are empty.
+    """
+
+    ok: bool
+    #: Paths present in the snapshot but absent from the live index —
+    #: i.e. files the restore *created* in the worktree. From the
+    #: user's perspective these are files that were deleted by the
+    #: agent and have just been brought back.
+    added: list[str] = field(default_factory=list)
+    #: Paths present in both, differing — the restore *overwrote* them.
+    modified: list[str] = field(default_factory=list)
+    #: Paths present in the live index but absent from the snapshot —
+    #: the restore *removed* them. From the user's perspective these
+    #: are files the agent created during the now-undone turn.
+    removed: list[str] = field(default_factory=list)
+
+    @property
+    def changed_paths(self) -> list[str]:
+        """Flat union of every path the restore touched."""
+        return [*self.added, *self.modified, *self.removed]
+
 
 # Files >2 MiB are not tracked (matches opencode's 2 * 1024 * 1024 ceiling).
 # This keeps the snapshot repo small and skips large binary outputs that
@@ -297,7 +329,7 @@ async def restore(
     snapshot: str,
     *,
     skip_stage: bool = False,
-) -> bool:
+) -> RestoreResult:
     """Restore the workspace to the given snapshot tree hash.
 
     Replaces every tracked file in the worktree with its version in
@@ -313,13 +345,16 @@ async def restore(
     cost of getting this wrong: a stale index produces an incorrect
     A/M/D set and the wrong files get restored.
 
-    Returns ``True`` on success, ``False`` if git is unavailable or the
-    restore failed for any reason.
+    Returns a :class:`RestoreResult` whose ``ok`` flag indicates
+    success. On success the ``added`` / ``modified`` / ``removed``
+    fields carry the exact path partition diff-index produced, so
+    callers can drive scoped cache invalidations downstream. On
+    failure all path lists are empty.
     """
     if not is_available():
-        return False
+        return RestoreResult(ok=False)
     if not snapshot:
-        return False
+        return RestoreResult(ok=False)
 
     gitdir = snapshot_dir(session_id)
     if not (gitdir / "HEAD").exists():
@@ -327,7 +362,7 @@ async def restore(
         logger.warning(
             "snapshot_restore_no_repo session_id={} hash={}", session_id, snapshot
         )
-        return False
+        return RestoreResult(ok=False)
 
     workspace.mkdir(parents=True, exist_ok=True)
     async with _lock(session_id):
@@ -374,32 +409,44 @@ async def restore(
             snapshot,
             cwd=workspace,
         )
-        to_checkout: list[str] = []
-        to_delete: list[str] = []
-        full_checkout = False
         if diff_code != 0:
-            # Fall back to whole-tree checkout if diff-index fails —
-            # at worst we pay the legacy cost; we never silently
-            # skip a restore.
-            full_checkout = True
-        else:
-            # ``-z --name-status`` output format: ``X\0path\0X\0path\0...``
-            # where ``X`` is one of A / M / D / T (type-change).
-            parts = diff_out.decode(errors="replace").split("\0")
-            i = 0
-            while i + 1 < len(parts):
-                status = parts[i]
-                path = parts[i + 1]
-                i += 2
-                if not status or not path:
-                    continue
-                # ``T`` (type-change, e.g. file→symlink) is rare; we
-                # treat it as a modification — checkout-index will
-                # rewrite the blob, ignoring the mode change.
-                if status[0] in ("A", "M", "T"):
-                    to_checkout.append(path)
-                elif status[0] == "D":
-                    to_delete.append(path)
+            # ``diff-index`` is the source of truth for what needs to
+            # change. If it fails we have no safe partition to act on
+            # — surfacing the failure is better than a hidden
+            # whole-tree checkout that quietly papers over the bug.
+            logger.warning(
+                "snapshot_diff_index_failed session_id={} hash={}",
+                session_id,
+                snapshot,
+            )
+            return RestoreResult(ok=False)
+
+        # A and M are kept *separate* (not merged into a single
+        # ``to_checkout`` list) so the return value can carry the full
+        # partition up to the HTTP route. Type-changes are extremely
+        # rare; we bucket them with M for restore purposes since
+        # checkout-index will rewrite the blob either way.
+        # ``-z --name-status`` output format: ``X\0path\0X\0path\0...``
+        # where ``X`` is one of A / M / D / T (type-change).
+        added: list[str] = []
+        modified: list[str] = []
+        to_delete: list[str] = []
+        parts = diff_out.decode(errors="replace").split("\0")
+        i = 0
+        while i + 1 < len(parts):
+            status = parts[i]
+            path = parts[i + 1]
+            i += 2
+            if not status or not path:
+                continue
+            first = status[0]
+            if first == "A":
+                added.append(path)
+            elif first in ("M", "T"):
+                modified.append(path)
+            elif first == "D":
+                to_delete.append(path)
+        to_checkout: list[str] = [*added, *modified]
 
         # ── Load the snapshot tree into the index ─────────────────
         code, _, err = await _git(
@@ -416,23 +463,12 @@ async def restore(
                 snapshot,
                 err.decode(errors="replace"),
             )
-            return False
+            return RestoreResult(ok=False)
 
         # ── Materialise only the changed paths ────────────────────
-        if full_checkout:
-            # diff-tree errored — fall back to the legacy "write
-            # everything" path so the restore still completes.
-            code, _, err = await _git(
-                *_CORE_FLAGS,
-                *_gitdir_args(gitdir, workspace),
-                "checkout-index",
-                "-a",
-                "-f",
-                cwd=workspace,
-            )
-        elif to_checkout:
-            # Feed paths via stdin so we don't blow argv on big
-            # patches. ``-z`` matches the NUL-separated input.
+        # Feed paths via stdin so we don't blow argv on big patches.
+        # ``-z`` matches the NUL-separated input.
+        if to_checkout:
             stdin = ("\0".join(to_checkout) + "\0").encode()
             code, _, err = await _git(
                 *_CORE_FLAGS,
@@ -444,72 +480,35 @@ async def restore(
                 cwd=workspace,
                 stdin=stdin,
             )
-        else:
-            # No A/M paths — only deletions need handling.
-            code = 0
-        if code != 0:
-            logger.warning(
-                "snapshot_checkout_failed session_id={} hash={} stderr={} count={}",
-                session_id,
-                snapshot,
-                err.decode(errors="replace") if isinstance(err, bytes) else "",
-                len(to_checkout),
-            )
-            return False
+            if code != 0:
+                logger.warning(
+                    "snapshot_checkout_failed session_id={} hash={} stderr={} count={}",
+                    session_id,
+                    snapshot,
+                    err.decode(errors="replace"),
+                    len(to_checkout),
+                )
+                return RestoreResult(ok=False)
 
         # ``to_delete`` was computed from the diff; if diff-tree
         # errored we still need to clean *some* extras — fall back
         # to the full ``current - target`` set in that case. Cheap
         # because both index walks happen in parallel.
-        if full_checkout:
-            current, target = await asyncio.gather(
-                _list_index_paths(gitdir, workspace),
-                _list_tree_paths(gitdir, workspace, snapshot),
-            )
-            extras: set[str] = current - target
-        else:
-            extras = set(to_delete)
-        _delete_extras(workspace, extras)
+        _delete_extras(workspace, set(to_delete))
 
         logger.debug(
             "snapshot_restored session_id={} hash={} checkout={} extras={}",
             session_id,
             snapshot,
-            "all" if full_checkout else len(to_checkout),
-            len(extras),
+            len(to_checkout),
+            len(to_delete),
         )
-        return True
-
-
-async def _list_index_paths(gitdir: Path, workspace: Path) -> set[str]:
-    """Return the set of paths currently in the snapshot index."""
-    code, out, _ = await _git(
-        *_CORE_FLAGS,
-        *_gitdir_args(gitdir, workspace),
-        "ls-files",
-        "-z",
-        cwd=workspace,
-    )
-    if code != 0:
-        return set()
-    return {p for p in out.decode(errors="replace").split("\0") if p}
-
-
-async def _list_tree_paths(gitdir: Path, workspace: Path, snapshot: str) -> set[str]:
-    """Return the set of file paths recorded in ``snapshot``."""
-    code, out, _ = await _git(
-        *_CORE_FLAGS,
-        *_gitdir_args(gitdir, workspace),
-        "ls-tree",
-        "-r",
-        "--name-only",
-        "-z",
-        snapshot,
-        cwd=workspace,
-    )
-    if code != 0:
-        return set()
-    return {p for p in out.decode(errors="replace").split("\0") if p}
+        return RestoreResult(
+            ok=True,
+            added=added,
+            modified=modified,
+            removed=to_delete,
+        )
 
 
 def _delete_extras(workspace: Path, extras: set[str]) -> None:

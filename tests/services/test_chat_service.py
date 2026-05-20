@@ -926,10 +926,16 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
     await session.commit()
 
     # ── /undo #1: boundary lands on U2, workspace rewinds to snap_u2 ──
-    target = await undo_session_messages(session, chat_session.id)
-    assert target is not None
-    assert target.id == u2.id
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target is not None
+    assert shift.target.id == u2.id
     assert doc.read_text() == "v2"
+    # The restore reverted a modification — doc.md should appear in
+    # ``modified``, with empty ``added`` and ``removed``. The HTTP
+    # layer pipes this partition out to the client.
+    assert "doc.md" in shift.modified
+    assert shift.added == [] and shift.removed == []
 
     refreshed = await session.get(ChatSession, chat_session.id)
     assert refreshed is not None
@@ -938,9 +944,10 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
     assert isinstance(redo_anchor, str) and len(redo_anchor) == 40
 
     # ── /undo #2: boundary moves to U1, workspace rewinds to snap_u1 ──
-    target = await undo_session_messages(session, chat_session.id)
-    assert target is not None
-    assert target.id == u1.id
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target is not None
+    assert shift.target.id == u1.id
     assert doc.read_text() == "v1"
 
     refreshed = await session.get(ChatSession, chat_session.id)
@@ -952,20 +959,22 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
     assert refreshed.revert.get("snapshot") == redo_anchor
 
     # ── /redo #1: boundary moves forward to U2, workspace = snap_u2 ───
-    moved, next_msg = await redo_session_messages(session, chat_session.id)
-    assert moved is True
+    shift = await redo_session_messages(session, chat_session.id)
+    assert shift.applied is True
     # The next-user pointer is plumbed back so /api/team/commands can
     # echo it to the client for local boundary application.
-    assert next_msg is not None
-    assert next_msg.id == u2.id
+    assert shift.target is not None
+    assert shift.target.id == u2.id
     assert doc.read_text() == "v2"
+    assert "doc.md" in shift.modified
 
     # ── /redo #2: no more user messages ahead → clear revert, restore
     # the live tip via the preserved redo anchor.
-    moved, next_msg = await redo_session_messages(session, chat_session.id)
-    assert moved is True
-    assert next_msg is None  # cleared, no boundary
+    shift = await redo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target is None  # cleared, no boundary
     assert doc.read_text() == "v3"
+    assert "doc.md" in shift.modified
     refreshed = await session.get(ChatSession, chat_session.id)
     assert refreshed is not None
     assert refreshed.revert is None
