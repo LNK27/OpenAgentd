@@ -31,7 +31,7 @@ from __future__ import annotations
 import asyncio
 import os
 import urllib.parse
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -82,22 +82,26 @@ def _format_exception(exc: BaseException) -> str:
 
 _CACHED_USER_PATH: str | None = None
 _USER_PATH_LOCK = asyncio.Lock()
+_USER_PATH_TIMEOUT_SECONDS = 3.0
+_PATH_OUTPUT_PREFIX = "__OPENAGENTD_PATH__"
 
 
-async def _get_user_path() -> str:
+async def _get_user_path(*, force_refresh: bool = False) -> str:
     global _CACHED_USER_PATH
-    if _CACHED_USER_PATH is not None:
+    if _CACHED_USER_PATH is not None and not force_refresh:
         return _CACHED_USER_PATH
 
     async with _USER_PATH_LOCK:
-        if _CACHED_USER_PATH is not None:
+        if _CACHED_USER_PATH is not None and not force_refresh:
             return _CACHED_USER_PATH
 
         try:
             from app.agent.tools.builtin import shell_runtime
 
             shell_bin = shell_runtime.acceptable()
-            argv = shell_runtime.build_argv(shell_bin, "echo $PATH")
+            argv = shell_runtime.build_argv(
+                shell_bin, f'printf "{_PATH_OUTPUT_PREFIX}%s\\n" "$PATH"'
+            )
             proc = await asyncio.create_subprocess_exec(
                 shell_bin,
                 *argv,
@@ -105,17 +109,61 @@ async def _get_user_path() -> str:
                 stderr=asyncio.subprocess.DEVNULL,
                 stdin=asyncio.subprocess.DEVNULL,
             )
-            stdout, _ = await proc.communicate()
+            try:
+                stdout, _ = await asyncio.wait_for(
+                    proc.communicate(), timeout=_USER_PATH_TIMEOUT_SECONDS
+                )
+            except TimeoutError:
+                with suppress(ProcessLookupError):
+                    proc.kill()
+                with suppress(ProcessLookupError):
+                    await proc.wait()
+                raise
             if proc.returncode == 0:
-                path_str = stdout.decode().strip()
-                if path_str:
-                    _CACHED_USER_PATH = path_str
-                    return _CACHED_USER_PATH
+                for line in reversed(stdout.decode().splitlines()):
+                    if line.startswith(_PATH_OUTPUT_PREFIX):
+                        path_str = line.removeprefix(_PATH_OUTPUT_PREFIX).strip()
+                        if path_str:
+                            _CACHED_USER_PATH = path_str
+                            return _CACHED_USER_PATH
         except Exception:
             pass
 
         _CACHED_USER_PATH = os.environ.get("PATH", "")
         return _CACHED_USER_PATH
+
+
+@dataclass(frozen=True)
+class _StdioLaunch:
+    command: str
+    env: dict[str, str]
+
+
+async def _resolve_stdio_launch(server_cfg: StdioServerConfig) -> _StdioLaunch:
+    import shutil
+
+    configured_path = server_cfg.env.get("PATH")
+    if configured_path is not None:
+        effective_path = configured_path
+    else:
+        user_path = await _get_user_path()
+        effective_path = user_path or os.environ.get("PATH", "")
+    resolved_command = shutil.which(server_cfg.command, path=effective_path)
+
+    if not resolved_command and configured_path is None:
+        user_path = await _get_user_path(force_refresh=True)
+        effective_path = user_path or os.environ.get("PATH", "")
+        resolved_command = shutil.which(server_cfg.command, path=effective_path)
+
+    env: dict[str, str] = {}
+    if effective_path:
+        env["PATH"] = effective_path
+    env.update(server_cfg.env)
+
+    return _StdioLaunch(
+        command=resolved_command or server_cfg.command,
+        env=env,
+    )
 
 
 def _is_oauth_registration_failure(exc: BaseException) -> bool:
@@ -469,33 +517,11 @@ class MCPManager:
         try:
             async with AsyncExitStack() as stack:
                 if isinstance(server_cfg, StdioServerConfig):
-                    import shutil
-
-                    user_path = await _get_user_path()
-                    resolved_command = shutil.which(server_cfg.command, path=user_path)
-
-                    # If command is not found on the cached PATH, clear cache and try re-detecting once.
-                    # This is extremely helpful for desktop users who install a tool (like node/npx)
-                    # and restart the MCP server without restarting the entire desktop app.
-                    if not resolved_command:
-                        global _CACHED_USER_PATH
-                        _CACHED_USER_PATH = None
-                        user_path = await _get_user_path()
-                        resolved_command = (
-                            shutil.which(server_cfg.command, path=user_path)
-                            or server_cfg.command
-                        )
-
-                    env = {**os.environ}
-                    if user_path:
-                        env["PATH"] = user_path
-                    if server_cfg.env:
-                        env.update(server_cfg.env)
-
+                    launch = await _resolve_stdio_launch(server_cfg)
                     params = StdioServerParameters(
-                        command=resolved_command,
+                        command=launch.command,
                         args=list(server_cfg.args),
-                        env=env,
+                        env=launch.env,
                     )
                     read, write = await stack.enter_async_context(stdio_client(params))
                     session = await stack.enter_async_context(

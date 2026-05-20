@@ -871,31 +871,66 @@ class TestWaitUntilReady:
         assert path == os.environ.get("PATH", "")
 
     @pytest.mark.asyncio
-    async def test_stdio_server_dynamic_redetection(self, monkeypatch) -> None:
+    async def test_get_user_path_timeout_fallback(self, monkeypatch) -> None:
+        from app.agent.mcp.manager import _get_user_path
+        import app.agent.mcp.manager as mcp_manager_mod
+
+        mcp_manager_mod._CACHED_USER_PATH = None
+        monkeypatch.setenv("PATH", "/fallback/bin")
+        monkeypatch.setattr(mcp_manager_mod, "_USER_PATH_TIMEOUT_SECONDS", 0.01)
+
+        class HangingProcess:
+            returncode = 0
+
+            def __init__(self) -> None:
+                self.killed = False
+
+            async def communicate(self):
+                await asyncio.sleep(1)
+                return b"", b""
+
+            def kill(self) -> None:
+                self.killed = True
+
+            async def wait(self) -> None:
+                return None
+
+        proc = HangingProcess()
+
+        async def mock_create_subprocess_exec(*args, **kwargs):
+            return proc
+
+        monkeypatch.setattr(
+            asyncio, "create_subprocess_exec", mock_create_subprocess_exec
+        )
+
+        path = await _get_user_path()
+
+        assert path == "/fallback/bin"
+        assert proc.killed is True
+
+    @pytest.mark.asyncio
+    async def test_resolve_stdio_launch_dynamic_redetection(self, monkeypatch) -> None:
         import app.agent.mcp.manager as mcp_manager_mod
         import shutil
 
-        # Reset cache
-        mcp_manager_mod._CACHED_USER_PATH = None
-
-        # Mock shutil.which to fail on first call, then succeed on second call
+        path_calls = []
         which_calls = []
+
+        async def mock_get_user_path(*, force_refresh=False):
+            path_calls.append(force_refresh)
+            return "/fresh/bin" if force_refresh else "/stale/bin"
 
         def mock_which(cmd, path=None):
             which_calls.append((cmd, path))
-            if len(which_calls) == 1:
-                return None
-            return "/mocked/path/to/npx"
 
-        monkeypatch.setattr(shutil, "which", mock_which)
-
-        # Mock _get_user_path to return a dummy path
-        async def mock_get_user_path():
-            return "/dummy/path"
+            if path == "/fresh/bin":
+                return "/fresh/bin/npx"
+            return None
 
         monkeypatch.setattr(mcp_manager_mod, "_get_user_path", mock_get_user_path)
+        monkeypatch.setattr(shutil, "which", mock_which)
 
-        # We will simulate the _run_server logic for stdio command resolution
         server_cfg = StdioServerConfig(
             transport="stdio",
             command="npx",
@@ -904,16 +939,63 @@ class TestWaitUntilReady:
             enabled=True,
         )
 
-        # First call fails to find command, clears cache, and tries again
-        user_path = await mcp_manager_mod._get_user_path()
-        resolved_command = shutil.which(server_cfg.command, path=user_path)
+        launch = await mcp_manager_mod._resolve_stdio_launch(server_cfg)
 
-        if not resolved_command:
-            mcp_manager_mod._CACHED_USER_PATH = None
-            user_path = await mcp_manager_mod._get_user_path()
-            resolved_command = (
-                shutil.which(server_cfg.command, path=user_path) or server_cfg.command
-            )
+        assert launch.command == "/fresh/bin/npx"
+        assert launch.env == {"PATH": "/fresh/bin"}
+        assert path_calls == [False, True]
+        assert which_calls == [("npx", "/stale/bin"), ("npx", "/fresh/bin")]
 
-        assert resolved_command == "/mocked/path/to/npx"
-        assert len(which_calls) == 2
+    @pytest.mark.asyncio
+    async def test_resolve_stdio_launch_uses_configured_path(self, monkeypatch) -> None:
+        import app.agent.mcp.manager as mcp_manager_mod
+        import shutil
+
+        which_calls = []
+
+        async def fail_get_user_path(*, force_refresh=False):
+            pytest.fail("configured PATH should avoid shell PATH detection")
+
+        def mock_which(cmd, path=None):
+            which_calls.append((cmd, path))
+            return "/custom/bin/npx"
+
+        monkeypatch.setattr(mcp_manager_mod, "_get_user_path", fail_get_user_path)
+        monkeypatch.setattr(shutil, "which", mock_which)
+
+        server_cfg = StdioServerConfig(
+            command="npx",
+            env={"PATH": "/custom/bin", "FOO": "bar"},
+        )
+
+        launch = await mcp_manager_mod._resolve_stdio_launch(server_cfg)
+
+        assert launch.command == "/custom/bin/npx"
+        assert launch.env == {"PATH": "/custom/bin", "FOO": "bar"}
+        assert which_calls == [("npx", "/custom/bin")]
+
+    @pytest.mark.asyncio
+    async def test_resolve_stdio_launch_does_not_leak_process_env(
+        self, monkeypatch
+    ) -> None:
+        import app.agent.mcp.manager as mcp_manager_mod
+        import shutil
+
+        monkeypatch.setenv("OPENAI_API_KEY", "secret")
+
+        async def mock_get_user_path(*, force_refresh=False):
+            return "/detected/bin"
+
+        def mock_which(cmd, path=None):
+            return "/detected/bin/npx"
+
+        monkeypatch.setattr(mcp_manager_mod, "_get_user_path", mock_get_user_path)
+        monkeypatch.setattr(shutil, "which", mock_which)
+
+        server_cfg = StdioServerConfig(command="npx", env={"FOO": "bar"})
+
+        launch = await mcp_manager_mod._resolve_stdio_launch(server_cfg)
+
+        assert launch.command == "/detected/bin/npx"
+        assert launch.env == {"PATH": "/detected/bin", "FOO": "bar"}
+        assert "OPENAI_API_KEY" not in launch.env

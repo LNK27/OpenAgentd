@@ -378,6 +378,7 @@ When running the desktop app in production (e.g., launched from the macOS Dock o
 To ensure stdio MCP servers run seamlessly:
 - **User Shell PATH Resolution:** The manager queries the user's login shell (e.g., `zsh -l` or `bash -l`) to retrieve their full terminal `PATH` and merges it into the subprocess environment.
 - **Surgical Command Resolution:** It uses `shutil.which` with the resolved path to locate the absolute path of the command (e.g., `/usr/local/bin/npx`).
+- **Minimal Environment Inheritance:** Stdio servers receive the detected `PATH` plus explicit per-server `env` entries only; the full OpenAgentd process environment is not forwarded to avoid leaking provider keys or desktop credentials.
 - **Dynamic Re-detection:** If a command is not found, the manager clears its cached path and re-runs the shell detection once. This allows desktop users to install a missing tool (like Node/npx) in their terminal and simply click **Restart** on the MCP server in the settings UI without restarting the entire desktop app.
 - **Thundering Herd Prevention:** Concurrent startup requests for the user's shell path are serialized using an `asyncio.Lock` to avoid spawning multiple shell processes.
 

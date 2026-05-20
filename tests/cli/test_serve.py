@@ -111,12 +111,19 @@ class TestDesktopTokenConfig:
         assert _configure_desktop_token(False) is None
 
     def test_generate_desktop_token_sets_env(self, monkeypatch):
+        original_token = os.environ.get("OPENAGENTD_DESKTOP_TOKEN")
         monkeypatch.delenv("OPENAGENTD_DESKTOP_TOKEN", raising=False)
 
-        token = _configure_desktop_token(True)
+        try:
+            token = _configure_desktop_token(True)
 
-        assert token
-        assert os.environ["OPENAGENTD_DESKTOP_TOKEN"] == token
+            assert token
+            assert os.environ["OPENAGENTD_DESKTOP_TOKEN"] == token
+        finally:
+            if original_token is None:
+                os.environ.pop("OPENAGENTD_DESKTOP_TOKEN", None)
+            else:
+                os.environ["OPENAGENTD_DESKTOP_TOKEN"] = original_token
 
 
 class TestPidAlive:
