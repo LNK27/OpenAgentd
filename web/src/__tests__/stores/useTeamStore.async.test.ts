@@ -551,7 +551,7 @@ describe("sendMessage: queue behaviour", () => {
     expect(pending[2].content).toBe("third")
   })
 
-  it("drains all queued messages in one shot after 'done' event", async () => {
+  it("drains one queued message per 'done' event (no concatenation)", async () => {
     useTeamStore.setState({
       leadName: "lead",
       agentStreams: {
@@ -566,12 +566,12 @@ describe("sendMessage: queue behaviour", () => {
       ],
     })
     useTeamStore.getState()._handleSSEEvent("done", {})
-    // Drain is async — wait one tick for sendMessage to run
     await new Promise((r) => setTimeout(r, 0))
-    // All pending messages combined into a single postTeamChat call
     expect(mockPostTeamChat).toHaveBeenCalledTimes(1)
-    expect(mockPostTeamChat.mock.calls[0][0]).toBe("first queued\n\nsecond queued")
-    expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
+    expect(mockPostTeamChat.mock.calls[0][0]).toBe("first queued")
+    const remaining = useTeamStore.getState()._pendingMessages
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].content).toBe("second queued")
   })
 
   it("removePendingMessage removes message by id", () => {

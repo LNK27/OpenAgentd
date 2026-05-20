@@ -31,11 +31,11 @@ Only the **lead's** status matters. Members running background sub-tasks do not 
 | Step | What happens |
 |------|-------------|
 | User submits while lead is busy | Message pushed to `_pendingMessages` (no API call, no optimistic block) |
-| SSE `done` event fires | All pending messages combined into one turn (`\n\n` join), files merged, sent as a single `POST /api/team/chat` |
+| SSE `done` event fires | The first pending message is popped and sent as its own turn (`POST /api/team/chat`); the rest stay queued for the next `done` |
 | User clicks × on a queued item | Removed from store; text restored to the input bar |
 | `newSession()` called | Queue cleared |
 
-The drain happens in `sse-reducer.ts` inside the `done` case — after flushing `currentBlocks`, the entire queue is consumed at once. This means two queued messages ("then say hi" + "also summarise") become one combined turn, not two sequential ones.
+The drain happens in `sse-reducer.ts` inside the `done` case — after flushing `currentBlocks`, one pending message is consumed per `done` event. Two queued messages ("then say hi" + "also summarise") become two sequential turns with their own user bubbles and assistant replies — never concatenated.
 
 ---
 

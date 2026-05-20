@@ -293,10 +293,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         })
         const pending = get()._pendingMessages
         if (pending.length > 0) {
-          const content = pending.map((m) => m.content).join('\n\n')
-          const files = pending.flatMap((m) => m.files ?? [])
-          set((draft) => { draft._pendingMessages = [] })
-          void get().sendMessage(content, files.length > 0 ? files : undefined)
+          const [next, ...rest] = pending
+          set((draft) => { draft._pendingMessages = rest })
+          void get().sendMessage(next.content, next.files)
         }
         break
       }
