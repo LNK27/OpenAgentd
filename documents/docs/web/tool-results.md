@@ -59,18 +59,29 @@ Inside the summary, wrap only the **argument value** with `<Arg>` so it can be s
 
 ```tsx
 // summary produced for `read`:
-<>Reading <Arg>agent_loop.py</Arg></>
-// renders in the full header as: Read: Reading agent_loop.py
+<Arg>agent_loop.py</Arg>
+// renders in the full header as: Read: agent_loop.py
 ```
 
 Every custom header case returns both a `ReactNode` (for display) and a plain-string `headerTitle` (used for the `title="…"` tooltip when the header is truncated, and for `aria-label`). HTML attributes can't accept ReactNodes, hence the parallel string.
+
+### Line Change Counts
+
+For file-modifying tools (`edit`, `patch`, and `write`), the header displays line change counts (`+` and `-`) in green and red next to the summary:
+
+```
+Edit: main.py +5 -2
+```
+
+These stats are calculated dynamically from the tool arguments using `getDiffStats()`.
 
 ### Expandable details panel
 
 When expanded, the args and/or result sections slide open below the header inside one codeblock-style container:
 
 - The container uses `surface-raised`, `rounded-md`, `border border-(--color-border)`, and `bg-(--bg-card)`, matching markdown codeblock chrome.
-- Each section has a header strip (`bg-(--bg-key)`, bottom divider) with an uppercase 10px mono label (`arguments` / `terminal` / `output` / `result`) and a copy button when applicable.
+- For file-modifying tools (`edit`, `patch`, and `write`), the raw arguments and results are hidden. Instead, an inline Git-like **Diff View** (`DiffView.tsx`) is rendered directly inside the container, filling it completely without nested borders or padding.
+- For other tools, each section has a header strip (`bg-(--bg-key)`, bottom divider) with an uppercase 10px mono label (`arguments` / `terminal` / `output` / `result`) and a copy button when applicable.
 - Result content is capped with `max-h-80 overflow-auto`; live and terminal output use their own scrollable max heights.
 
 ---
@@ -99,21 +110,21 @@ Verbs are **deterministic** (no randomised phrase pools). Argument values shown 
 |------|--------|---------------|------------|
 | `date` | tool name | hidden | — |
 | `shell` | *[description]* (falls back to tool name if empty) | command string as bash block with non-selectable `$ ` prefix | `bash` |
-| `web_search` | Searching *["query"]* | hidden | — |
-| `web_fetch` | Reading *[domain]* (`www.` stripped) | hidden | — |
-| `write` | Writing *[filename]* | file content only (no JSON wrapper) | `arguments` |
-| `read` | Reading *[filename]* — range suffix ` [start:end]` when `offset`/`limit` set | hidden | — |
-| `edit` | Editing *[filename]* | full JSON (`path`, `old_string`, `new_string`, `replace_all`) | `arguments` |
-| `rm` | Removing *[filename]* | hidden | — |
-| `ls` | `Listing workspace` (default path) or `Listing` *[path]* | hidden | — |
-| `glob` | Finding *[pattern]* ` in {dir}` ` (by name)` (optional suffixes) | hidden | — |
-| `grep` | Searching *[pattern]* ` in {dir}` ` ({include})` (optional suffixes) | hidden | — |
+| `web_search` | *["query"]* | hidden | — |
+| `web_fetch` | *[domain]* (`www.` stripped) | hidden | — |
+| `write` | *[filename]* | rendered as an inline Git-like Diff View (all lines added) | — |
+| `read` | *[filename]* — range suffix ` [start:end]` when `offset`/`limit` set | hidden | — |
+| `edit` | *[filename]* | rendered as an inline Git-like Diff View | — |
+| `rm` | *[filename]* | hidden | — |
+| `ls` | `workspace` (default path) or *[path]* | hidden | — |
+| `glob` | *[pattern]* ` in {dir}` ` (by name)` (optional suffixes) | hidden | — |
+| `grep` | *[pattern]* ` in {dir}` ` ({include})` (optional suffixes) | hidden | — |
 | `remember` | `Saving to memory…` | `[category] key: value` per item | `arguments` |
 | `forget` | `Removing from memory…` | `category: key` per item | `arguments` |
 | `recall` | `Checking memory…` | `category: key` filter, or hidden if empty | `arguments` |
-| `skill` | `Loading skill: `*[skill_name]* (or `Loading skill…`) | hidden | — |
+| `skill` | *[skill_name]* | hidden | — |
 | `note` | `Recording note…` | note `content` only (no JSON wrapper) | `arguments` |
-| `wiki_search` | `Searching wiki for `*["query"]* | hidden | — |
+| `wiki_search` | *["query"]* | hidden | — |
 | `todo_manage` | Action summary, e.g. `Creating todo: `*[content]*, `Updating `*[N todos]*`…`, `Reading todos…` | simplified action list for create/update/batches; hidden for read/claim/delete | `arguments` when shown |
 | `schedule_task` | Action summary, e.g. `Scheduling `*[name]*, `Listing scheduled tasks…`, `Pausing scheduled task `*[task_id]* | schedule and prompt details for create; hidden for list/pause/resume/delete/trigger | `arguments` when shown |
 | `bg` | Action-based — e.g. `Listing background processes…`, `Checking process `*[pid]*`…`, `Reading output of process `*[pid]*`…`, `Stopping process `*[pid]*`…`, `Managing background process…` | hidden | — |

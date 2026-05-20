@@ -100,7 +100,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const mainColumnRef = useRef<HTMLDivElement>(null)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'files' | 'diff'>(null)
-  const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(false)
+  const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showPalette, setShowPalette] = useState(false)

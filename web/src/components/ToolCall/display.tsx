@@ -142,8 +142,8 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     const query = str(parsed, 'query')
     const truncated = query ? trunc(query) : null
     return {
-      header: truncated ? <>Searching <Arg>"{truncated}"</Arg></> : null,
-      headerTitle: truncated ? `Searching "${truncated}"` : null,
+      header: truncated ? <Arg>"{truncated}"</Arg> : null,
+      headerTitle: truncated ? `"${truncated}"` : null,
       formattedArgs: null,
     }
   }
@@ -162,8 +162,8 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     }
     const truncated = domain ? trunc(domain) : null
     return {
-      header: truncated ? <>Reading <Arg>{truncated}</Arg></> : null,
-      headerTitle: truncated ? `Reading ${truncated}` : null,
+      header: truncated ? <Arg>{truncated}</Arg> : null,
+      headerTitle: truncated ? truncated : null,
       formattedArgs: null,
     }
   }
@@ -265,8 +265,8 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
   if (name === 'skill') {
     const skillName = str(parsed, 'skill_name')
     return {
-      header: skillName ? <>Loading skill: <Arg>{skillName}</Arg></> : 'Loading skill…',
-      headerTitle: skillName ? `Loading skill: ${skillName}` : 'Loading skill…',
+      header: skillName ? <Arg>{skillName}</Arg> : null,
+      headerTitle: skillName ? skillName : null,
       formattedArgs: null,
     }
   }
@@ -285,8 +285,8 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     const query = str(parsed, 'query')
     const truncated = query ? trunc(query) : null
     return {
-      header: truncated ? <>Searching wiki for <Arg>"{truncated}"</Arg></> : 'Searching wiki…',
-      headerTitle: truncated ? `Searching wiki for "${truncated}"` : 'Searching wiki…',
+      header: truncated ? <Arg>"{truncated}"</Arg> : null,
+      headerTitle: truncated ? `"${truncated}"` : null,
       formattedArgs: null,
     }
   }
@@ -381,8 +381,8 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     const fileName = path ? path.split('/').pop() ?? path : null
     const content = str(parsed, 'content')
     return {
-      header: fileName ? <>Writing <Arg>{fileName}</Arg></> : 'Writing file…',
-      headerTitle: fileName ? `Writing ${fileName}` : 'Writing file…',
+      header: fileName ? <Arg>{fileName}</Arg> : 'file',
+      headerTitle: fileName ? fileName : 'file',
       formattedArgs: content,
     }
   }
@@ -400,8 +400,8 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
       rangeLabel = ` [${start}:${end}]`
     }
     return {
-      header: fileName ? <>Reading <Arg>{fileName}{rangeLabel}</Arg></> : 'Reading file…',
-      headerTitle: fileName ? `Reading ${fileName}${rangeLabel}` : 'Reading file…',
+      header: fileName ? <Arg>{fileName}{rangeLabel}</Arg> : 'file',
+      headerTitle: fileName ? `${fileName}${rangeLabel}` : 'file',
       formattedArgs: null,
     }
   }
@@ -411,8 +411,8 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     const path = str(parsed, 'path')
     const fileName = path ? path.split('/').pop() ?? path : null
     return {
-      header: fileName ? <>Editing <Arg>{fileName}</Arg></> : 'Editing file…',
-      headerTitle: fileName ? `Editing ${fileName}` : 'Editing file…',
+      header: fileName ? <Arg>{fileName}</Arg> : 'file',
+      headerTitle: fileName ? fileName : 'file',
       formattedArgs: JSON.stringify(parsed, null, 2),
     }
   }
@@ -422,8 +422,8 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     const path = str(parsed, 'path')
     const fileName = path ? path.split('/').pop() ?? path : null
     return {
-      header: fileName ? <>Removing <Arg>{fileName}</Arg></> : 'Removing file…',
-      headerTitle: fileName ? `Removing ${fileName}` : 'Removing file…',
+      header: fileName ? <Arg>{fileName}</Arg> : 'file',
+      headerTitle: fileName ? fileName : 'file',
       formattedArgs: null,
     }
   }
