@@ -2,7 +2,7 @@
 title: API Reference
 description: HTTP routes, SSE event protocol, file upload, workspace listing, media proxy, team chat, and planned speech endpoints.
 status: stable
-updated: 2026-05-16
+updated: 2026-05-20
 ---
 
 # API Reference
@@ -363,15 +363,17 @@ Returns 409 (`{"detail": "..."}`) when compaction cannot run:
 
 ### `command: "undo"`
 
-Move the session revert boundary to the latest visible user message. Messages at or after that boundary remain in history for redo, but future LLM context and the web UI render only messages before the boundary. The response includes the reverted user message so the client can place it back into the composer for editing.
+Move the session revert boundary to the latest visible user message and restore that turn's workspace snapshot. Messages at or after that boundary remain in history for redo, but future LLM context and the web UI render only messages before the boundary. The response includes the reverted user message so the client can place it back into the composer for editing.
 
-Returns 202 with `{"status": "accepted", "session_id": "...", "command": "undo", "message": {...}}`.
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "undo", "message": {...}, "changed_paths": [...]}`. `changed_paths` is omitted when scoped workspace refresh is unavailable.
 
 ### `command: "redo"`
 
-Move the session revert boundary forward to the next undone user message, or clear it when no later undone user message exists. Repeated redo calls advance through undone turns until all messages are visible again.
+Move the session revert boundary forward by one undone user turn and restore its workspace snapshot. When no later undone user message exists, the boundary is cleared and the session is live again. The web UI repeats this command for `/redo` until all undone turns are visible.
 
-Returns 202 with `{"status": "accepted", "session_id": "...", "command": "redo"}`.
+Returns 202 with `{"status": "accepted", "session_id": "...", "command": "redo", "message": {...}, "changed_paths": [...]}` while another undone turn was restored. Returns `message: null` when the boundary is cleared. `changed_paths` is omitted when scoped workspace refresh is unavailable.
+
+Returns 409 (`{"detail": "No undone message to redo."}`) when there is no revert boundary.
 
 Returns 422 for unknown commands (rejected by the `Literal["continue", "compact", "undo", "redo"]` validator before any handler runs).
 

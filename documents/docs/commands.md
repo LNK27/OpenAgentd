@@ -2,7 +2,7 @@
 title: Slash commands
 description: Reusable prompt templates triggered with `/name` in the chat input. Compatible with opencode's command format.
 status: stable
-updated: 2026-05-18
+updated: 2026-05-20
 ---
 
 # Slash commands
@@ -56,7 +56,7 @@ different things in different projects without manual switching.
 ## Picker behaviour
 
 - **Built-in commands** (`/stop`, `/continue`, `/compact`, `/undo`, `/redo`, `/new`) execute immediately on pick.
-  `/continue` resumes the last assistant response; `/compact` runs the session summarizer; `/undo` reverts to the latest user turn and puts its text back in the composer (also restoring the workspace filesystem to the snapshot taken when that message was sent — see `app/services/snapshot_service.py`); `/redo` restores all undone turns sequentially, replaying the workspace forward to the live tip.
+  `/continue` resumes the last assistant response; `/compact` runs the session summarizer; `/undo` reverts the latest user turn, restores its workspace snapshot, and puts the text back in the composer; `/redo` restores all undone turns sequentially, replaying the workspace forward to the live tip.
 - **Discovered commands** insert `/<name> ` into the textarea so you
   can type arguments before submitting.
 
