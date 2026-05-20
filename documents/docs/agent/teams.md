@@ -2,7 +2,7 @@
 title: Multi-Agent Teams
 description: Team architecture, activation loop, mailbox coordination, and member protocols.
 status: stable
-updated: 2026-05-12
+updated: 2026-05-21
 ---
 
 # Agent Teams
@@ -159,8 +159,9 @@ _run_activation() ← one-shot task
 ├─ _on_turn_success()
 │    └─ TeamMember only: safety net — if not _replied → send "[done — no explicit reply]" to lead
 ├─ (on error) _on_turn_error()
+│    ├─ Provider auth / unconfigured-model failures: push `agent_not_configured` to the lead stream
 │    ├─ TeamMember: notify lead via mailbox ("[name]: System error — temporarily unavailable…")
-│    └─ TeamLead: push typed ErrorEvent to stream (SSE `error` event) so UI surfaces the failure
+│    └─ TeamLead: push typed ErrorEvent to stream (SSE `error` event) for non-auth failures
 │
 └─ finally:
     _on_turn_finally()       ← TeamMember: clear _current_task_id

@@ -570,11 +570,18 @@ class TeamMemberBase(abc.ABC):
             await self._on_turn_success()
 
         except Exception as exc:
-            from app.agent.errors import ProviderRateLimitError
+            from app.agent.errors import (
+                ProviderAuthenticationError,
+                ProviderRateLimitError,
+            )
 
             if isinstance(exc, ProviderRateLimitError):
                 logger.warning(
                     "team_member_provider_rate_limit name={} error={}", self.name, exc
+                )
+            elif isinstance(exc, ProviderAuthenticationError):
+                logger.warning(
+                    "team_member_provider_auth_failed name={} error={}", self.name, exc
                 )
             else:
                 logger.exception("team_member_error name={} error={}", self.name, exc)
@@ -653,16 +660,19 @@ class TeamMemberBase(abc.ABC):
         :class:`~app.agent.providers.unconfigured.UnconfiguredProviderError`
         before any role-specific handling runs.
         """
+        from app.agent.errors import ProviderAuthenticationError
         from app.agent.providers.unconfigured import UnconfiguredProviderError
 
-        if isinstance(exc, UnconfiguredProviderError):
+        if isinstance(exc, UnconfiguredProviderError | ProviderAuthenticationError):
             from app.agent.schemas.events import AgentNotConfiguredEvent
             from app.services import memory_stream_store as stream_store
             from app.services.stream_envelope import StreamEnvelope
 
             try:
                 await stream_store.push_event(
-                    self.session_id,
+                    self._team.lead.session_id
+                    if self._team is not None
+                    else self.session_id,
                     StreamEnvelope.from_event(
                         AgentNotConfiguredEvent(
                             agent=self.name,
@@ -906,10 +916,11 @@ class TeamLead(TeamMemberBase):
         :class:`AgentNotConfiguredEvent` by the base class; we skip the
         generic ``ErrorEvent`` here so the UI doesn't show two banners.
         """
+        from app.agent.errors import ProviderAuthenticationError
         from app.agent.providers.unconfigured import UnconfiguredProviderError
 
         await super()._on_turn_error(exc)
-        if isinstance(exc, UnconfiguredProviderError):
+        if isinstance(exc, UnconfiguredProviderError | ProviderAuthenticationError):
             return
 
         from app.agent.schemas.events import ErrorEvent
@@ -1022,6 +1033,7 @@ class TeamMember(TeamMemberBase):
         base class via :class:`AgentNotConfiguredEvent`; we also notify the
         lead so it can pick a different member instead of retrying us.
         """
+        from app.agent.errors import ProviderAuthenticationError
         from app.agent.providers.unconfigured import UnconfiguredProviderError
 
         await super()._on_turn_error(exc)
@@ -1050,6 +1062,11 @@ class TeamMember(TeamMemberBase):
             reason = (
                 f"[{self.name}]: I have no model configured. "
                 f"Ask the user to add a provider in Settings, then re-spawn me.{suffix}"
+            )
+        elif isinstance(exc, ProviderAuthenticationError):
+            reason = (
+                f"[{self.name}]: My provider credentials are not authenticated. "
+                f"Ask the user to reconnect the provider in Settings, then re-spawn me.{suffix}"
             )
         else:
             reason = (

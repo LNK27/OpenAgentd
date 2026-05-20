@@ -2,7 +2,7 @@
 title: LLM Providers
 description: Every provider registered in build_provider — keys, model IDs, vision defaults, OAuth flows.
 status: stable
-updated: 2026-05-19
+updated: 2026-05-21
 ---
 
 # LLM Providers
@@ -56,6 +56,8 @@ The same directory can also contain agent hook plugins. Files that export
 skipped by the agent hook loader.
 
 OAuth plugins can emit a `code_required` event; the UI then shows a paste field and posts the code to `/api/auth/{provider}/callback`.
+
+If an OAuth refresh token is rejected by the upstream provider, the provider should raise `ProviderAuthenticationError`. Team execution maps that to the same actionable `agent_not_configured` stream event as an unconfigured model, so the UI can ask the user to reconnect the provider instead of surfacing an internal stack trace.
 
 ## Capability detection
 

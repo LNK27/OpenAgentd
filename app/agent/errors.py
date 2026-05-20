@@ -45,6 +45,10 @@ class ProviderConnectionError(ProviderError):
     """Could not reach the provider (network / DNS / timeout)."""
 
 
+class ProviderAuthenticationError(ProviderError):
+    """Provider credentials are missing, expired, or rejected."""
+
+
 # ── Tool errors ───────────────────────────────────────────────────────────
 
 
