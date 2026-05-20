@@ -383,43 +383,69 @@ export const useTeamStore = create<TeamStore>()(
         return
       }
 
+      const MAX_ITER = 200
+      const allChangedPaths = new Set<string>()
+      let sawChangedPaths = false
+      let sawMissingChangedPaths = false
+      let sawResponse = false
       try {
         set((draft) => { draft.error = null })
-        const response = await postTeamCommand('redo', sessionId)
-        // Same local-boundary trick as ``undoTeam`` — but /redo
-        // returns ``message: null`` when it cleared the boundary back
-        // to the live tip, in which case the boundary becomes
-        // ``null`` and ``applyRevertBoundary`` flushes every stream's
-        // ``_revertedSuffix`` back into its ``blocks``.
-        //
-        // Note: when ``_revertedSuffix`` is empty (e.g. session was
-        // initially loaded with the boundary off the page-size edge),
-        // applying the new boundary may not bring back the missing
-        // blocks. That's a tolerable edge case — pressing Refresh /
-        // switching sessions will refetch. The common case (the user
-        // pressing /undo and then /redo) is fully local because
-        // ``loadSession`` populates the suffix on initial load.
-        const boundaryIso = response.message?.created_at
-        const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
-        set((draft) => {
-          draft._leadRevertTime = boundaryTime
-          Object.values(draft.agentStreams).forEach((stream) => {
-            applyRevertBoundary(stream, boundaryTime)
+        for (let i = 0; i < MAX_ITER; i++) {
+          const response = await postTeamCommand('redo', sessionId)
+          sawResponse = true
+          // The backend advances one redo boundary per call. The UI
+          // action restores all undone turns, so loop until the
+          // boundary clears (message: null).
+          const boundaryIso = response.message?.created_at
+          const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
+          set((draft) => {
+            draft._leadRevertTime = boundaryTime
+            Object.values(draft.agentStreams).forEach((stream) => {
+              applyRevertBoundary(stream, boundaryTime)
+            })
           })
-        })
-        // /redo restores either the next user message's snapshot or
-        // the original live-tip anchor (see snapshot_service); same
-        // scoped-paths hook as /undo.
-        enqueueWorkspaceInvalidation(
-          set,
-          get,
-          sessionId,
-          mergeChangedPaths(response.changed_paths),
-        )
+          if (response.changed_paths === undefined) {
+            sawMissingChangedPaths = true
+          } else {
+            sawChangedPaths = true
+          }
+          const merged = mergeChangedPaths(response.changed_paths)
+          merged?.forEach((p) => allChangedPaths.add(p))
+          if (response.message === null) break
+
+          if (i === MAX_ITER - 1) {
+            throw new Error('Redo did not reach the live tip')
+          }
+        }
       } catch (err) {
-        set((draft) => {
-          draft.error = err instanceof Error ? err.message : 'Failed to redo'
-        })
+        const message = err instanceof Error ? err.message : String(err)
+        if (message.includes('No undone message to redo')) {
+          set((draft) => {
+            draft._leadRevertTime = null
+            Object.values(draft.agentStreams).forEach((stream) => {
+              applyRevertBoundary(stream, null)
+            })
+          })
+        } else {
+          set((draft) => {
+            draft.error = `Failed to redo: ${message}`
+          })
+        }
+      } finally {
+        if (sawMissingChangedPaths) {
+          enqueueWorkspaceInvalidation(set, get, sessionId)
+        } else if (allChangedPaths.size > 0) {
+          enqueueWorkspaceInvalidation(
+            set,
+            get,
+            sessionId,
+            [...allChangedPaths],
+          )
+        } else if (sawChangedPaths) {
+          enqueueWorkspaceInvalidation(set, get, sessionId, [])
+        } else if (sawResponse) {
+          enqueueWorkspaceInvalidation(set, get, sessionId)
+        }
       }
     },
 

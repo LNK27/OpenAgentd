@@ -133,6 +133,7 @@ export interface TeamStoreActions {
   continueTeam: () => Promise<void>
   compactTeam: () => Promise<void>
   undoTeam: () => Promise<TeamCommandResponse | undefined>
+  /** Restore all undone user messages sequentially back to the live tip. */
   redoTeam: () => Promise<void>
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
