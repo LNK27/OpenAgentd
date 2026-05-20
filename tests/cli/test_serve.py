@@ -15,6 +15,7 @@ from contextlib import redirect_stdout
 
 from app.cli.commands.serve import (
     _bind_socket,
+    _configure_desktop_token,
     _emit_handshake,
     _pid_alive,
 )
@@ -96,6 +97,26 @@ class TestHandshakeFormat:
             buf.getvalue().removeprefix("OPENAGENTD_HANDSHAKE ").strip()
         )
         assert "token" not in payload
+
+
+class TestDesktopTokenConfig:
+    def test_reuses_existing_desktop_token(self, monkeypatch):
+        monkeypatch.setenv("OPENAGENTD_DESKTOP_TOKEN", "existing-token")
+
+        assert _configure_desktop_token(False) == "existing-token"
+
+    def test_empty_existing_desktop_token_is_ignored(self, monkeypatch):
+        monkeypatch.setenv("OPENAGENTD_DESKTOP_TOKEN", "")
+
+        assert _configure_desktop_token(False) is None
+
+    def test_generate_desktop_token_sets_env(self, monkeypatch):
+        monkeypatch.delenv("OPENAGENTD_DESKTOP_TOKEN", raising=False)
+
+        token = _configure_desktop_token(True)
+
+        assert token
+        assert os.environ["OPENAGENTD_DESKTOP_TOKEN"] == token
 
 
 class TestPidAlive:

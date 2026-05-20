@@ -190,6 +190,14 @@ def _emit_handshake(*, port: int, token: str | None, version: str) -> None:
     sys.stdout.flush()
 
 
+def _configure_desktop_token(generate_token: bool) -> str | None:
+    if generate_token:
+        token = secrets.token_urlsafe(32)
+        os.environ["OPENAGENTD_DESKTOP_TOKEN"] = token
+        return token
+    return os.environ.get("OPENAGENTD_DESKTOP_TOKEN") or None
+
+
 def cmd_serve(args: argparse.Namespace) -> None:
     # Lazy imports so ``openagentd --help`` stays fast.
     import uvicorn
@@ -198,10 +206,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
     # Token must be in env *before* the app is imported so the middleware
     # picks it up at construction time.
-    token: str | None = None
-    if args.generate_token:
-        token = secrets.token_urlsafe(32)
-        os.environ["OPENAGENTD_DESKTOP_TOKEN"] = token
+    token = _configure_desktop_token(args.generate_token)
 
     # Hard-enforce production mode in this entry point — the desktop
     # sidecar must never run with dev hot-reload, dev XDG roots, etc.

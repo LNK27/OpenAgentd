@@ -21,6 +21,8 @@ use crate::sidecar::{Handshake, Sidecar};
 /// Shared application state.
 struct AppState {
     sidecar: Arc<Mutex<Option<Sidecar>>>,
+    desktop_token: Arc<Mutex<Option<String>>>,
+    force_reloading: Arc<AtomicBool>,
     quitting: Arc<AtomicBool>,
     tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
     tray_session: Arc<Mutex<Option<MenuItem<Wry>>>>,
@@ -151,21 +153,108 @@ fn quit_app(app: &AppHandle) {
     app.exit(0);
 }
 
-/// Reload the main webview. ``force`` bypasses the WebView cache via a
-/// unique query-param, matching the browser's Shift+Reload behaviour.
-fn reload_main_window(app: &AppHandle, force: bool) {
+fn reload_main_window(app: &AppHandle) {
     show_main_window(app);
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-        if force {
-            let _ = window.eval(
-                "(() => { const u = new URL(window.location.href); \
-                 u.searchParams.set('__oad_reload', Date.now().toString()); \
-                 window.location.replace(u.toString()); })();",
-            );
-        } else {
-            let _ = window.eval("window.location.reload();");
-        }
+        let _ = window.eval("window.location.reload();");
     }
+}
+
+fn force_reload_app(app: &AppHandle) {
+    let state: tauri::State<'_, AppState> = app.state();
+    if state.force_reloading.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        update_tray_status(&handle, "Status: Reloading…");
+        let result = if std::env::var("OPENAGENTD_DEV_BACKEND_URL").is_ok() {
+            reload_main_window(&handle);
+            Ok(())
+        } else {
+            restart_sidecar_and_reload_window(&handle).await
+        };
+        if let Err(e) = result {
+            log::error!("failed to force reload backend: {e:#}");
+            update_tray_status(&handle, "Status: Error");
+            handle
+                .emit(
+                    "backend-error",
+                    BackendError {
+                        message: format!("{e:#}"),
+                    },
+                )
+                .ok();
+        }
+
+        let state: tauri::State<'_, AppState> = handle.state();
+        state.force_reloading.store(false, Ordering::SeqCst);
+    });
+}
+
+async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
+    let state: tauri::State<'_, AppState> = app.state();
+    let token = state
+        .desktop_token
+        .lock()
+        .await
+        .clone()
+        .ok_or_else(|| anyhow!("desktop token missing"))?;
+
+    shutdown_sidecar_now(app).await;
+
+    let mut sidecar = Sidecar::spawn_with_desktop_token(app, Some(&token)).context("spawn sidecar")?;
+    let handshake: Handshake = sidecar
+        .read_handshake(Duration::from_secs(30))
+        .await
+        .context("read sidecar handshake")?;
+
+    log::info!(
+        "sidecar handshake: port={} pid={} version={}",
+        handshake.port,
+        handshake.pid,
+        handshake.version
+    );
+
+    let base = format!("http://127.0.0.1:{}", handshake.port);
+    wait_for_health(&base, 60, Duration::from_millis(250))
+        .await
+        .context("wait_for_health")?;
+
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        let mut target = base;
+        if let Ok(current_url) = window.url() {
+            target.push_str(current_url.path());
+            if let Some(query) = current_url.query() {
+                target.push('?');
+                target.push_str(query);
+            }
+            if let Some(fragment) = current_url.fragment() {
+                target.push('#');
+                target.push_str(fragment);
+            }
+        }
+        let url = target.parse().context("parse backend url")?;
+        window.navigate(url).context("navigate main window")?;
+        show_main_window(app);
+    } else {
+        return Err(anyhow!("main window missing"));
+    }
+
+    let _ = state.desktop_token.lock().await.replace(token);
+    let _ = state.sidecar.lock().await.replace(sidecar);
+    app.emit(
+        "backend-ready",
+        BackendReady {
+            port: handshake.port,
+            version: handshake.version,
+        },
+    )
+    .ok();
+    update_tray_status(app, "Status: Running");
+
+    Ok(())
 }
 
 fn handle_desktop_menu(app: &AppHandle, id: &str) {
@@ -175,8 +264,8 @@ fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_CODING => navigate_main_window(app, "/coding"),
         MENU_SETTINGS => navigate_main_window(app, "/settings"),
         MENU_TELEMETRY => navigate_main_window(app, "/telemetry"),
-        MENU_RELOAD => reload_main_window(app, false),
-        MENU_FORCE_RELOAD => reload_main_window(app, true),
+        MENU_RELOAD => reload_main_window(app),
+        MENU_FORCE_RELOAD => force_reload_app(app),
         MENU_ZOOM_IN => adjust_zoom(app, ZOOM_STEP),
         MENU_ZOOM_OUT => adjust_zoom(app, 1.0 / ZOOM_STEP),
         MENU_ZOOM_RESET => set_zoom(app, ZOOM_DEFAULT),
@@ -732,6 +821,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     update_tray_status(&app, "Status: Running");
 
     let _ = state.sidecar.lock().await.replace(sidecar);
+    let _ = state.desktop_token.lock().await.replace(handshake.token);
 
     app.emit(
         "backend-ready",
@@ -748,6 +838,8 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
 fn main() {
     let state = AppState {
         sidecar: Arc::new(Mutex::new(None)),
+        desktop_token: Arc::new(Mutex::new(None)),
+        force_reloading: Arc::new(AtomicBool::new(false)),
         quitting: Arc::new(AtomicBool::new(false)),
         tray_status: Arc::new(Mutex::new(None)),
         tray_session: Arc::new(Mutex::new(None)),

@@ -46,6 +46,10 @@ pub struct Sidecar {
 
 impl Sidecar {
     pub fn spawn(app: &AppHandle) -> Result<Self> {
+        Self::spawn_with_desktop_token(app, None)
+    }
+
+    pub fn spawn_with_desktop_token(app: &AppHandle, desktop_token: Option<&str>) -> Result<Self> {
         let resource_dir = app
             .path()
             .resource_dir()
@@ -131,9 +135,15 @@ impl Sidecar {
             .arg("127.0.0.1")
             .arg("--port")
             .arg("0")
-            .arg("--handshake")
-            .arg("--generate-token")
-            .arg("--parent-pid")
+            .arg("--handshake");
+
+        if let Some(token) = desktop_token {
+            cmd.env("OPENAGENTD_DESKTOP_TOKEN", token);
+        } else {
+            cmd.arg("--generate-token");
+        }
+
+        cmd.arg("--parent-pid")
             .arg(parent_pid.to_string())
             .env("PYTHONUNBUFFERED", "1")
             .env("APP_ENV", "production")
