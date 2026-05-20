@@ -363,7 +363,7 @@ Returns 409 (`{"detail": "..."}`) when compaction cannot run:
 
 ### `command: "undo"`
 
-Move the session revert boundary to the latest visible user message and restore that turn's workspace snapshot. Messages at or after that boundary remain in history for redo, but future LLM context and the web UI render only messages before the boundary. The response includes the reverted user message so the client can place it back into the composer for editing.
+Move the session revert boundary to the latest visible user message and restore that turn's workspace snapshot. Messages at or after that boundary remain in history for redo, but future LLM context and the web UI render only messages before the boundary. The response includes the reverted user message so the client can place it back into the composer for editing. Clients should apply the boundary to any in-flight local stream blocks as well as persisted blocks, because a stopped turn can leave optimistic user/tool blocks in memory before the final reload arrives.
 
 Returns 202 with `{"status": "accepted", "session_id": "...", "command": "undo", "message": {...}, "changed_paths": [...]}`. `changed_paths` is omitted when scoped workspace refresh is unavailable.
 

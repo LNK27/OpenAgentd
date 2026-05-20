@@ -106,6 +106,7 @@ async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == session_id)
         .where(col(SessionMessage.role) == "assistant")
+        .where(~col(SessionMessage.exclude_from_context))
         .order_by(col(SessionMessage.created_at).desc())
         .limit(1)
     )

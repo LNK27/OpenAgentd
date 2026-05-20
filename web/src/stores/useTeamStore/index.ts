@@ -273,7 +273,10 @@ export const useTeamStore = create<TeamStore>()(
         set((draft) => {
           draft._leadRevertTime = boundaryTime
           Object.values(draft.agentStreams).forEach((stream) => {
-            applyRevertBoundary(stream, boundaryTime)
+            applyRevertBoundary(stream, boundaryTime, {
+              includeCurrent: true,
+              boundaryContent: response.message?.content ?? null,
+            })
           })
         })
         enqueueWorkspaceInvalidation(

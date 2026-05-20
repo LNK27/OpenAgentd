@@ -82,8 +82,14 @@ export function revokeBlobUrlsFromBlocks(blocks: ContentBlock[]) {
 export function applyRevertBoundary(
   stream: AgentStream,
   boundaryTime: number | null,
+  options: {
+    includeCurrent?: boolean
+    boundaryContent?: string | null
+  } = {},
 ): void {
-  const all = [...stream.blocks, ...(stream._revertedSuffix ?? [])]
+  const current = options.includeCurrent ? stream.currentBlocks : []
+  const all = [...stream.blocks, ...current, ...(stream._revertedSuffix ?? [])]
+  if (options.includeCurrent) stream.currentBlocks = []
 
   if (boundaryTime === null) {
     stream.blocks = all
@@ -99,6 +105,16 @@ export function applyRevertBoundary(
     if (t >= boundaryTime) {
       splitIdx = i
       break
+    }
+  }
+
+  if (options.boundaryContent) {
+    for (let i = all.length - 1; i >= 0; i--) {
+      const block = all[i]
+      if (block.type === 'user' && block.content === options.boundaryContent) {
+        splitIdx = Math.min(splitIdx, i)
+        break
+      }
     }
   }
 

@@ -14,6 +14,7 @@ from app.agent.schemas.chat import (
     ToolMessage,
 )
 from app.services.chat_service import (
+    cleanup_reverted_tail,
     create_chat_session,
     get_messages,
     get_messages_for_llm,
@@ -854,6 +855,47 @@ async def test_heal_skips_summary_messages_when_finding_latest_assistant(session
 
     healed = await heal_orphaned_tool_calls(session, chat_session.id)
     assert healed == 1
+
+
+@pytest.mark.asyncio
+async def test_heal_ignores_reverted_assistant_after_undo_cleanup(session):
+    """Undo + edited resend must not heal the hidden stopped tool-call branch.
+
+    Reproduction shape:
+    U1 -> A1 -> U2 -> A2(tool_calls, interrupted) -> undo U2 -> send edited U2.
+    ``cleanup_reverted_tail`` hides U2/A2 before the resend. The orphan healer
+    must not inspect hidden A2 and create a visible tool result with no visible
+    matching assistant function call, which the Responses API rejects.
+    """
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="first"))
+    await save_message(session, chat_session.id, AssistantMessage(content="answer"))
+    second = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="second"),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("fc_hidden", "search")),
+        extra={"interrupted": True},
+    )
+    chat_session.revert = {"message_id": str(second.id)}
+    session.add(chat_session)
+    await session.commit()
+
+    hidden_count = await cleanup_reverted_tail(session, chat_session.id)
+    await save_message(session, chat_session.id, HumanMessage(content="edited second"))
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    await session.commit()
+
+    assert hidden_count == 2
+    assert healed == 0
+    msgs = await get_messages_for_llm(session, chat_session.id)
+    assert [m.role for m in msgs] == ["user", "assistant", "user"]
+    assert msgs[-1].content == "edited second"
+    assert not any(isinstance(m, ToolMessage) for m in msgs)
 
 
 @pytest.mark.asyncio

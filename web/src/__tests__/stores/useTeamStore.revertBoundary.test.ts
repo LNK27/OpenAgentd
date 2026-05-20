@@ -252,6 +252,45 @@ describe("applyRevertBoundary", () => {
     applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
     expect(s.revertedMessages).toEqual([{ role: "user", content: "real" }])
   })
+
+  it("can include in-flight blocks and match the optimistic user by content", () => {
+    const s = makeStream({
+      blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+      currentBlocks: [
+        // Optimistic client timestamp can be earlier than the server-created
+        // undo boundary, especially when the turn is stopped mid-response.
+        block("u2", "user", "second", "2024-01-01T00:00:01Z"),
+        block("partial", "text", "partial answer", "2024-01-01T00:00:01Z"),
+      ],
+    })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime(), {
+      includeCurrent: true,
+      boundaryContent: "second",
+    })
+
+    expect(s.blocks.map((b) => b.id)).toEqual(["u1"])
+    expect(s.currentBlocks).toEqual([])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["u2", "partial"])
+  })
+
+  it("tightens a timestamp split when the optimistic user predates the boundary", () => {
+    const s = makeStream({
+      blocks: [
+        block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+        block("u2", "user", "second", "2024-01-01T00:00:01Z"),
+        block("tool", "tool", "", "2024-01-01T00:00:03Z"),
+      ],
+    })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime(), {
+      boundaryContent: "second",
+    })
+
+    expect(s.blocks.map((b) => b.id)).toEqual(["u1"])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["u2", "tool"])
+    expect(s.revertedMessages).toEqual([{ role: "user", content: "second" }])
+  })
 })
 
 describe("undoTeam — local boundary application", () => {
@@ -475,6 +514,41 @@ describe("undoTeam — local boundary application", () => {
     expect(lead.blocks.map((b) => b.id)).toEqual(["L-u1"])
     expect(worker.blocks.map((b) => b.id)).toEqual(["W-t1"])
     expect(worker._revertedSuffix?.map((b) => b.id)).toEqual(["W-t2"])
+  })
+
+  it("removes stopped-turn current blocks immediately", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          currentBlocks: [
+            block("u2", "user", "second", "2024-01-01T00:00:01Z"),
+            block("tool", "tool", "", "2024-01-01T00:00:01Z"),
+          ],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({
+          role: "user",
+          content: "second",
+          created_at: "2024-01-01T00:00:02Z",
+        }),
+      }),
+    )
+
+    await useTeamStore.getState().undoTeam()
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
+    expect(stream.currentBlocks).toEqual([])
+    expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u2", "tool"])
   })
 })
 
