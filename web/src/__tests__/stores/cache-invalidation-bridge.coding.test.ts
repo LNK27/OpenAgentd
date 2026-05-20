@@ -17,6 +17,12 @@
 
 import { describe, it, expect, mock, beforeEach } from 'bun:test'
 
+// Inter-file isolation note: ``mock.module("@/api/client", …)`` below
+// would leak into other test files if Bun ran them in the same
+// worker process. We rely on ``bun test --parallel`` to spawn a
+// fresh worker per file — see the same note in
+// ``useTeamStore.async.test.ts``.
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const mockGetDiff = mock(() =>
   Promise.resolve({

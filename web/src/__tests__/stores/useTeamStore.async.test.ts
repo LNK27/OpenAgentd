@@ -8,6 +8,17 @@
 
 import { mock, describe, it, expect, beforeEach, spyOn } from "bun:test"
 
+// NOTE on isolation: ``mock.module("@/api/client", …)`` below patches
+// Bun's global module registry and ``mock.restore()`` does NOT undo
+// it — without inter-file isolation the stubbed client would leak
+// into ``client.test.ts`` / ``auth.test.ts`` / ``MacTitleBar.test.tsx``
+// and break them. We rely on ``bun test --parallel`` (see
+// package.json) to run each test file in its own worker process,
+// which is the *only* reliable way to scope a ``mock.module`` call
+// to one file. If you ever drop ``--parallel``, you'll need to
+// restructure these tests to use ``spyOn`` + dependency injection
+// instead of a module-level replacement.
+
 // ── Mock @/api/client BEFORE importing the store ──────────────────────────────
 // NOTE: Bun mock types require explicit `any` assertions for compatibility
 
