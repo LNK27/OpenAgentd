@@ -1,8 +1,8 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
 // Temporarily disabled for clean recordings — re-enable when done.
 // import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { Link, Outlet } from '@tanstack/react-router'
+import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { Home } from 'lucide-react'
 import { ToastStack } from '@/components/ToastStack'
@@ -13,6 +13,25 @@ export function Root() {
   // Theme application is handled by `initTheme()` in main.tsx and the
   // inline pre-paint script in index.html. Do not force `.dark` here —
   // it would override the user's preference.
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    const LAST_ROUTE_KEY = 'oa-last-route'
+    if (window.location.pathname === '/' && window.location.search === '') {
+      const savedRoute = localStorage.getItem(LAST_ROUTE_KEY)
+      if (savedRoute && savedRoute !== '/') {
+        navigate({ to: savedRoute, replace: true })
+      }
+    }
+  }, [navigate])
+
+  useEffect(() => {
+    const LAST_ROUTE_KEY = 'oa-last-route'
+    const fullPath = window.location.pathname + window.location.search + window.location.hash
+    localStorage.setItem(LAST_ROUTE_KEY, fullPath)
+  }, [location])
+
   return (
     <QueryClientProvider client={queryClient}>
       <SkipLink />
