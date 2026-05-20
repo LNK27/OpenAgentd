@@ -170,6 +170,7 @@ _CATALOG: list[ProviderEntry] = [
         # This curated list mirrors the Gemini families we actually
         # support; refresh when Google ships a new generation.
         "fallback_models": [
+            "gemini-3.5-flash",
             "gemini-3.1-pro-preview",
             "gemini-3-flash-preview",
             "gemini-3.1-flash-lite-preview",

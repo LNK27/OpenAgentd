@@ -70,6 +70,8 @@
   output: { text: false, image: true }
 "googlegenai:gemini-2.5-flash-image-preview":
   output: { text: false, image: true }
+"googlegenai:gemini-3.5-flash":
+  input: { vision: true }
 "googlegenai:gemini-3.1-pro-preview":
   input: { vision: true }
 "googlegenai:gemini-3-flash-preview":
@@ -84,6 +86,8 @@
 # ── Vertex AI ───────────────────────────────────────────────────────────────
 "vertexai:imagen-4":
   output: { text: false, image: true }
+"vertexai:gemini-3.5-flash":
+  input: { vision: true }
 "vertexai:gemini-3.1-pro-preview":
   input: { vision: true }
 "vertexai:gemini-3-flash-preview":
@@ -111,6 +115,8 @@
 "copilot:claude-sonnet-4-6":
   input: { vision: true }
 "copilot:claude-haiku-4-5":
+  input: { vision: true }
+"copilot:gemini-3.5-flash":
   input: { vision: true }
 "copilot:gemini-3.1-pro-preview":
   input: { vision: true }
