@@ -41,6 +41,12 @@ The Gemini API rejects JSON Schema fields it doesn't recognise (`discriminator`,
 
 Usually means two server instances are running. Run `openagentd stop`, then `openagentd`.
 
+## MCP stdio server fails with `ExceptionGroup` or `FileNotFoundError`
+
+If an MCP server configured with stdio (e.g., using `npx` or `uvx`) fails to start:
+- Make sure the command is installed and available in your terminal.
+- The desktop app automatically resolves your terminal's `PATH` by querying your login shell. If you just installed the tool, click **Restart** on the MCP server in the settings UI to trigger a dynamic re-detection of your `PATH` without restarting the desktop app.
+
 ## Docker: `permission denied` on `/data`
 
 The container runs as a non-root user. Make sure the volume mount is writable:

@@ -371,6 +371,16 @@ External tools loaded over the [Model Context Protocol](https://modelcontextprot
 }
 ```
 
+#### Stdio PATH Resolution & Desktop App Robustness
+
+When running the desktop app in production (e.g., launched from the macOS Dock or Finder), the application inherits a minimal system `PATH` that lacks user-installed tools like Node, npm, `npx`, or `uvx`.
+
+To ensure stdio MCP servers run seamlessly:
+- **User Shell PATH Resolution:** The manager queries the user's login shell (e.g., `zsh -l` or `bash -l`) to retrieve their full terminal `PATH` and merges it into the subprocess environment.
+- **Surgical Command Resolution:** It uses `shutil.which` with the resolved path to locate the absolute path of the command (e.g., `/usr/local/bin/npx`).
+- **Dynamic Re-detection:** If a command is not found, the manager clears its cached path and re-runs the shell detection once. This allows desktop users to install a missing tool (like Node/npx) in their terminal and simply click **Restart** on the MCP server in the settings UI without restarting the entire desktop app.
+- **Thundering Herd Prevention:** Concurrent startup requests for the user's shell path are serialized using an `asyncio.Lock` to avoid spawning multiple shell processes.
+
 HTTP `headers` may reference secrets from the process env or `{CONFIG_DIR}/.env` via `$VAR` / `${VAR}`. API responses mask header values. OAuth app credentials may be configured with `oauth.client_id` / `oauth.client_secret`; Settings stores pasted values as `<SERVER>_MCP_CLIENT_ID` / `<SERVER>_MCP_CLIENT_SECRET` in `{CONFIG_DIR}/.env` and writes `${...}` refs to `mcp.json`. OAuth tokens are stored under `{OPENAGENTD_CACHE_DIR}/mcp-oauth/`; missing tokens show `state="auth_required"` until the user clicks **Connect OAuth** in Settings.
 
 **Lifecycle:** `MCPManager.start()` runs in `lifespan()` before `team_manager.start()`. Because `start()` only *spawns* runner tasks, `lifespan` then awaits `mcp_manager.wait_until_ready()` (10s default) so the team loader sees populated tool lists. Servers still pending after the timeout fall through to graceful empty — the agent loads with no tools from that server, matching the not-ready contract. Each server runs in a long-lived `asyncio.Task` holding the `ClientSession` open via `AsyncExitStack`; a failed server is logged with `state="error"` and never blocks others.

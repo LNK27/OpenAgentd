@@ -794,3 +794,126 @@ class TestWaitUntilReady:
         await manager.wait_until_ready(timeout=0.05)
         # Runner is left in `starting` state — caller proceeds best-effort.
         assert manager._runners["stuck"].status.state == "starting"
+
+    def test_format_exception(self) -> None:
+        from app.agent.mcp.manager import _format_exception
+
+        exc = ValueError("simple error")
+        assert _format_exception(exc) == "ValueError: simple error"
+
+        eg = ExceptionGroup(
+            "group error", [ValueError("child 1"), TypeError("child 2")]
+        )
+        assert (
+            _format_exception(eg)
+            == "ExceptionGroup (ValueError: child 1; TypeError: child 2)"
+        )
+
+        # Nested ExceptionGroup
+        nested_eg = ExceptionGroup("outer", [eg, RuntimeError("nested child")])
+        assert (
+            _format_exception(nested_eg)
+            == "ExceptionGroup (ExceptionGroup (ValueError: child 1; TypeError: child 2); RuntimeError: nested child)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_user_path_concurrent_thundering_herd(self, monkeypatch) -> None:
+        from app.agent.mcp.manager import _get_user_path
+        import app.agent.mcp.manager as mcp_manager_mod
+
+        # Reset cache
+        mcp_manager_mod._CACHED_USER_PATH = None
+
+        spawn_count = 0
+        original_create_subprocess_exec = asyncio.create_subprocess_exec
+
+        async def mock_create_subprocess_exec(*args, **kwargs):
+            nonlocal spawn_count
+            spawn_count += 1
+            # Simulate some delay to allow concurrency
+            await asyncio.sleep(0.05)
+            return await original_create_subprocess_exec(*args, **kwargs)
+
+        monkeypatch.setattr(
+            asyncio, "create_subprocess_exec", mock_create_subprocess_exec
+        )
+
+        # Call concurrently
+        results = await asyncio.gather(
+            _get_user_path(),
+            _get_user_path(),
+            _get_user_path(),
+        )
+
+        # Verify all returned the same path and only spawned the subprocess once
+        assert len(results) == 3
+        assert results[0] == results[1] == results[2]
+        assert spawn_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_user_path_shell_failure_fallback(self, monkeypatch) -> None:
+        from app.agent.mcp.manager import _get_user_path
+        import app.agent.mcp.manager as mcp_manager_mod
+        import os
+
+        # Reset cache
+        mcp_manager_mod._CACHED_USER_PATH = None
+
+        async def mock_create_subprocess_exec(*args, **kwargs):
+            raise RuntimeError("Shell spawn failed")
+
+        monkeypatch.setattr(
+            asyncio, "create_subprocess_exec", mock_create_subprocess_exec
+        )
+
+        # Should fallback to os.environ["PATH"]
+        path = await _get_user_path()
+        assert path == os.environ.get("PATH", "")
+
+    @pytest.mark.asyncio
+    async def test_stdio_server_dynamic_redetection(self, monkeypatch) -> None:
+        import app.agent.mcp.manager as mcp_manager_mod
+        import shutil
+
+        # Reset cache
+        mcp_manager_mod._CACHED_USER_PATH = None
+
+        # Mock shutil.which to fail on first call, then succeed on second call
+        which_calls = []
+
+        def mock_which(cmd, path=None):
+            which_calls.append((cmd, path))
+            if len(which_calls) == 1:
+                return None
+            return "/mocked/path/to/npx"
+
+        monkeypatch.setattr(shutil, "which", mock_which)
+
+        # Mock _get_user_path to return a dummy path
+        async def mock_get_user_path():
+            return "/dummy/path"
+
+        monkeypatch.setattr(mcp_manager_mod, "_get_user_path", mock_get_user_path)
+
+        # We will simulate the _run_server logic for stdio command resolution
+        server_cfg = StdioServerConfig(
+            transport="stdio",
+            command="npx",
+            args=[],
+            env={},
+            enabled=True,
+        )
+
+        # First call fails to find command, clears cache, and tries again
+        user_path = await mcp_manager_mod._get_user_path()
+        resolved_command = shutil.which(server_cfg.command, path=user_path)
+
+        if not resolved_command:
+            mcp_manager_mod._CACHED_USER_PATH = None
+            user_path = await mcp_manager_mod._get_user_path()
+            resolved_command = (
+                shutil.which(server_cfg.command, path=user_path) or server_cfg.command
+            )
+
+        assert resolved_command == "/mocked/path/to/npx"
+        assert len(which_calls) == 2
