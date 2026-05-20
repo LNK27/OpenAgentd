@@ -1,46 +1,3 @@
-/**
- * SSE event → store mutation reducer for the team chat stream.
- *
- * Factored out as a free function ``createSSEHandler({ set, get })`` so
- * the bulk of the switch (one case per server event type) can live
- * outside the store creator. Behaviour is identical to the previous
- * inline ``_handleSSEEvent``: each case takes the loosely-typed event
- * payload, narrows it, and applies the matching draft mutation via
- * Immer.
- *
- * Handled events:
- *   - ``session``        — session id arrives.
- *   - ``title_update``   — server-generated session title.
- *   - ``thinking``       — model thinking-stream chunk for one agent.
- *   - ``message``        — model message-stream chunk for one agent.
- *   - ``tool_call``      — tool reservation (creates an empty tool block).
- *   - ``tool_start``     — tool args arrive (may stream as JSON fragments).
- *   - ``tool_output_delta`` — live output chunk from a running tool.
- *   - ``tool_end``       — tool result arrives; may invalidate query caches
- *                          (wiki / workspace files / scheduler / todos)
- *                          based on which root the tool touched.
- *   - ``usage``          — per-delta token counters (turn_total summary skipped).
- *   - ``inbox``          — cross-agent message; rendered as a synthetic user
- *                          block on the recipient stream so split view shows it.
- *   - ``agent_status``   — per-agent idle/working/offline/error transitions; also
- *                          recomputes the team-wide ``isTeamWorking`` flag.
- *   - ``done``           — flush ``currentBlocks`` into ``blocks``, stamp any
- *                          unstamped block with the completion time, commit
- *                          ``_completionBase`` for cross-turn token math.
- *   - ``summarization_start`` / ``_content`` / ``_end`` — context-window
- *                          compaction lifecycle; rendered as an inline
- *                          "Session compacting → compacted" divider block
- *                          in the active agent's pane.
- *   - ``error``          — propagate the error message and clear working flag.
- *
- * Cache invalidation: rather than calling ``queryClient.invalidateQueries``
- * directly (which would couple the store to TanStack Query), the
- * ``tool_end`` case pushes domain events onto ``draft.cacheInvalidations``.
- * A React-side subscriber in ``routes/team.tsx`` drains the queue via
- * ``_drainCacheInvalidations`` and performs the actual invalidation —
- * mirroring the pre-existing sessionId/title bridge in that file. This
- * keeps the store free of TanStack imports.
- */
 import {
   appendThinking,
   appendText,
@@ -56,9 +13,11 @@ import {
 import { createDefaultAgentStream } from './defaults'
 import {
   WIKI_MUTATING_TOOLS,
+  FS_MUTATING_TOOLS,
   NOTE_TOOLS,
   SCHEDULER_MUTATING_TOOLS,
   TODO_MUTATING_TOOLS,
+  extractToolPaths,
   touchesWiki,
 } from './helpers'
 import type { CacheInvalidation, TeamStore } from './types'
@@ -190,19 +149,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             )
           })
         }
-        // Build the domain events this tool_end should fire — one
-        // per affected cache.  The bridge in routes/team.tsx drains
-        // the queue and performs the actual TanStack invalidations.
-        //
-        // Wiki vs. workspace-files: write/edit/rm with a path
-        // targeting ``wiki/`` invalidates the wiki tree; anything
-        // else landed in the session workspace.  Path is read from
-        // the matching tool block's stored args (captured on
-        // tool_start).
         const events: CacheInvalidation[] = []
         if (NOTE_TOOLS.has(toolName)) {
           events.push({ kind: 'wiki' })
         }
+        let touchedWiki = false
         if (WIKI_MUTATING_TOOLS.has(toolName)) {
           const stream = get().agentStreams[agent]
           const block = stream?.currentBlocks.find(
@@ -210,9 +161,32 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           )
           if (touchesWiki(toolName, block?.toolArgs)) {
             events.push({ kind: 'wiki' })
+            touchedWiki = true
+          }
+        }
+        if (FS_MUTATING_TOOLS.has(toolName) && !touchedWiki) {
+          const workspace = get()._workspace
+          if (workspace) {
+            const stream = get().agentStreams[agent]
+            const block = stream?.currentBlocks.find(
+              (b) =>
+                b.type === 'tool' &&
+                (toolCallId ? b.toolCallId === toolCallId : b.toolName === toolName),
+            )
+            const paths = extractToolPaths(toolName, block?.toolArgs)
+            const workspacePaths = paths?.filter(
+              (p) => !p.startsWith('wiki/') && p !== 'wiki',
+            )
+            if (workspacePaths && workspacePaths.length > 0) {
+              events.push({
+                kind: 'coding_workspace_paths',
+                workspace,
+                paths: workspacePaths,
+              })
+            } else {
+              events.push({ kind: 'coding_workspace', workspace })
+            }
           } else {
-            // Guarded by sessionId so stale turns after newSession()
-            // don't queue an event keyed on a mismatched session id.
             const sid = get().sessionId
             if (sid) events.push({ kind: 'workspace_files', sessionId: sid })
           }
@@ -235,20 +209,15 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
       case 'usage': {
         const meta = d.metadata as Record<string, unknown> | undefined
-        // Skip the aggregated turn_total summary — use per-delta events only.
         if (meta?.turn_total) break
-        // Agent name lives in metadata, not top-level.
         const agent = (meta?.agent as string) ?? (d.agent as string)
         if (!agent) break
         set((draft) => {
           ensureAgent(draft, agent)
           const stream = draft.agentStreams[agent]
           const u = stream.usage
-          // completion_tokens is a running total within the current turn (not a delta).
-          // Add _completionBase (committed from prior turns) to get the session total.
           u.promptTokens     = (d.prompt_tokens as number) || 0
           u.completionTokens = stream._completionBase + ((d.completion_tokens as number) || 0)
-          // cached_tokens is null on most chunks; preserve last known value.
           u.cachedTokens     = (d.cached_tokens as number) ?? u.cachedTokens
           u.totalTokens      = u.promptTokens + u.completionTokens
         })
@@ -256,7 +225,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'inbox': {
-        // Push inbox message as user block so split view shows it live.
         const agent = d.agent as string
         set((draft) => {
           ensureAgent(draft, agent)
@@ -293,9 +261,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               (d.metadata as Record<string, unknown>)?.message as string ?? null
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
           }
-          // Recompute global flag — keeps header/composer in sync when a single
-          // agent goes idle even before the whole team emits `done`. `done` still
-          // forces false, so this is a safe superset of the prior behaviour.
           if (status !== 'working') {
             draft.isTeamWorking = Object.values(draft.agentStreams).some(
               (s) => s.status === 'working',
@@ -313,29 +278,19 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           Object.keys(draft.agentStreams).forEach((name) => {
             const stream = draft.agentStreams[name]
             if (stream.currentBlocks.length > 0) {
-              // Stamp blocks that have no timestamp with the completion time
               const stamped = stream.currentBlocks.map((b) =>
                 b.timestamp ? b : { ...b, timestamp: completedAt },
               )
-              // Flush currentBlocks into finalized blocks
               stream.blocks = [...stream.blocks, ...stamped]
               stream.currentBlocks = []
             }
-            // Commit this turn's output so next turn accumulates on top
             stream._completionBase = stream.usage.completionTokens
             stream._completionEstimated = 0
-            // Preserve terminal statuses so offline panes stay out of the
-            // live roster and errors stay visible until retry.
-            // user retries (agent_status → working will clear it).
             if (stream.status !== 'error' && stream.status !== 'offline') {
               stream.status = 'idle'
             }
           })
         })
-        // Drain the full pending queue in one shot. Combine all queued message
-        // texts into a single turn (joined by double newline) and merge their
-        // file lists. Clear the queue atomically before calling sendMessage so
-        // nothing re-enqueues if the lead briefly appears working again.
         const pending = get()._pendingMessages
         if (pending.length > 0) {
           const content = pending.map((m) => m.content).join('\n\n')

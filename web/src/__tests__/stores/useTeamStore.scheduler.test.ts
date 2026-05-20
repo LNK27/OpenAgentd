@@ -55,6 +55,11 @@ describe("useTeamStore — scheduler invalidation", () => {
       error: null,
       _pendingMessages: [],
       _sessionGeneration: 0,
+      // Must reset ``_workspace`` here — the coding-workspace test
+      // suite (run before this in alphabetical order) sets it to a
+      // path, and a leaked value would re-route this suite's
+      // ``workspace_files`` assertions to ``coding_workspace`` events.
+      _workspace: null,
       cacheInvalidations: [],
     })
   })

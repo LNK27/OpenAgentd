@@ -145,8 +145,18 @@ export async function listCodingWorkspaceFiles(workspace: string): Promise<Codin
   return res.json()
 }
 
-export async function getCodingWorkspaceGitDiff(workspace: string): Promise<WorkspaceGitDiffResponse> {
+export async function getCodingWorkspaceGitDiff(
+  workspace: string,
+  paths?: string[],
+): Promise<WorkspaceGitDiffResponse> {
   const params = new URLSearchParams({ workspace })
+  // Repeated ``paths`` params translate to FastAPI's
+  // ``Query(list[str])`` — scoped diff response covering just these
+  // entries, used by the SSE cache-invalidation bridge for surgical
+  // splice instead of a whole-repo refresh.
+  if (paths && paths.length > 0) {
+    for (const p of paths) params.append('paths', p)
+  }
   const res = await fetch(`${API}/team/workspace/git-diff/view?${params}`)
   if (!res.ok) throw new Error(`getCodingWorkspaceGitDiff failed: ${res.status}`)
   return res.json()

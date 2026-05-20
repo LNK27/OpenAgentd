@@ -35,6 +35,7 @@ from app.services import (
 )
 from app.services.agent_service import AttachmentError, RawAttachment
 from app.services.chat_service import (
+    BoundaryShift,
     cleanup_reverted_tail,
     delete_session,
     get_team_history,
@@ -98,6 +99,21 @@ def _validate_workspace_or_422(workspace: str) -> str:
         return team_manager.validate_workspace(workspace)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _changed_paths_payload(shift: BoundaryShift) -> dict:
+    """Serialise the A/M/D path partition from a /undo or /redo restore.
+
+    The client uses this to splice the cached Coding Workspace git
+    diff for just these paths instead of refetching the whole sidebar.
+    Empty lists are valid and meaningful — "no paths changed" still
+    tells the client to skip invalidation entirely.
+    """
+    return {
+        "added": shift.added,
+        "modified": shift.modified,
+        "removed": shift.removed,
+    }
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -261,24 +277,36 @@ async def team_command(
 
     if body.command == "undo":
         try:
-            sid, message = await team_obj.handle_undo(body.session_id)
+            sid, shift = await team_obj.handle_undo(body.session_id)
         except ContinuePreconditionError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_undo session_id={}", sid)
+        assert shift.target is not None
         return {
             "status": "accepted",
             "session_id": sid,
             "command": "undo",
-            "message": _message_response(message).model_dump(mode="json"),
+            "message": _message_response(shift.target).model_dump(mode="json"),
+            "changed_paths": _changed_paths_payload(shift),
         }
 
     if body.command == "redo":
         try:
-            sid = await team_obj.handle_redo(body.session_id)
+            sid, shift = await team_obj.handle_redo(body.session_id)
         except ContinuePreconditionError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_redo session_id={}", sid)
-        return {"status": "accepted", "session_id": sid, "command": "redo"}
+        return {
+            "status": "accepted",
+            "session_id": sid,
+            "command": "redo",
+            "message": (
+                _message_response(shift.target).model_dump(mode="json")
+                if shift.target is not None
+                else None
+            ),
+            "changed_paths": _changed_paths_payload(shift),
+        }
 
     # Defensive — the Literal makes this unreachable, but pyright/ty wants it.
     raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")

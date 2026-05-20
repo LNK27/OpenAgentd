@@ -1,26 +1,9 @@
-/**
- * Team chat Zustand store.
- *
- * Owns the live state for the team chat route: per-agent streams,
- * session id/title, working flag, the SSE abort controller, and the
- * pending-message queue.  Public actions are split between session
- * lifecycle (``sendMessage``, ``stopTeam``, ``connectStream``,
- * ``loadTeamStatus``, ``loadSession``, ``newSession``) and small UI
- * accessors (``setActiveAgent``, ``cycleActiveAgent``, ``toggleSidebar``).
- *
- * The bulk of streaming logic — one switch case per SSE event type —
- * lives in ``./sse-reducer.ts`` to keep this file focused on store
- * assembly.  Helpers, types, and defaults live in their own modules.
- *
- * The public import path ``@/stores/useTeamStore`` resolves to this
- * file via folder-with-index, so consumers don't need updating.
- */
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { postTeamChat, postTeamCommand, teamStream, teamStatus, teamHistory } from '@/api/client'
 import { parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
-import { revokeBlobUrlsFromBlocks } from './helpers'
+import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { createSSEHandler } from './sse-reducer'
 import { useToastStore } from '@/stores/useToastStore'
 import type { TeamStore } from './types'
@@ -45,29 +28,6 @@ function messagesBeforeRevert(session: { revert?: { message_id?: string } | null
   return messagesBeforeTime(session.messages, revertBoundaryTime(session))
 }
 
-function revertedMessageCount(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): number {
-  const boundaryTime = revertBoundaryTime(session)
-  if (boundaryTime === null) return 0
-  return session.messages.filter((msg) => {
-    if (!msg.created_at) return false
-    return msg.role === 'user' && new Date(msg.created_at).getTime() >= boundaryTime
-  }).length
-}
-
-function revertedMessagePreview(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): Array<{ role: string; content: string }> {
-  const boundaryTime = revertBoundaryTime(session)
-  if (boundaryTime === null) return []
-  return session.messages
-    .filter((msg) => msg.role === 'user' && msg.created_at && new Date(msg.created_at).getTime() >= boundaryTime)
-    .map((msg) => ({
-      role: msg.role,
-      content: msg.is_summary ? 'Session compacted' : (msg.content ?? ''),
-    }))
-    .filter((msg) => msg.content.trim().length > 0)
-}
-
-// Re-export types so existing ``import type { AgentStream } from
-// '@/stores/useTeamStore'`` consumers keep working.
 export type {
   AgentStream,
   CacheInvalidation,
@@ -77,9 +37,46 @@ export type {
   TeamStore,
 } from './types'
 
+function mergeChangedPaths(
+  changed: { added: string[]; modified: string[]; removed: string[] } | undefined,
+): string[] | undefined {
+  if (!changed) return undefined
+  const seen = new Set<string>()
+  for (const p of changed.added) seen.add(p)
+  for (const p of changed.modified) seen.add(p)
+  for (const p of changed.removed) seen.add(p)
+  return [...seen]
+}
+
+function enqueueWorkspaceInvalidation(
+  set: (fn: (draft: TeamStore) => void) => void,
+  get: () => TeamStore,
+  sessionId: string,
+  paths?: string[],
+) {
+  const workspace = get()._workspace
+  if (workspace && paths !== undefined) {
+    if (paths.length === 0) return
+    set((draft) => {
+      draft.cacheInvalidations.push({
+        kind: 'coding_workspace_paths',
+        workspace,
+        paths,
+      })
+    })
+    return
+  }
+  set((draft) => {
+    draft.cacheInvalidations.push(
+      workspace
+        ? { kind: 'coding_workspace', workspace }
+        : { kind: 'workspace_files', sessionId },
+    )
+  })
+}
+
 export const useTeamStore = create<TeamStore>()(
   immer((set, get) => ({
-    // State
     agentStreams: {},
     activeAgent: null,
     leadName: null,
@@ -117,9 +114,6 @@ export const useTeamStore = create<TeamStore>()(
         state._abortController = null
         state._pendingMessages = []
         state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
-        // Drop any pending cache invalidations from the previous
-        // session — workspace_files / todos events are session-keyed
-        // and would target the wrong cache after the reset.
         state.cacheInvalidations = []
         state._pendingMessages = []
         state.hasMore = false
@@ -127,14 +121,10 @@ export const useTeamStore = create<TeamStore>()(
         state._leadRevertTime = null
         state._workspace = null
         state._loadingOlder = false
-        // A fresh chat starts with only the lead. Historical member streams can
-        // remain cached for prior sessions, but they must not stay in the live roster.
         state.agentNames = leadName ? [leadName] : []
         state.liveAgentNames = leadName ? [leadName] : null
         state.activeAgent = leadName ?? null
 
-        // Reset the lead and drop member streams. A fresh chat gets a fresh
-        // team roster; prior session members reload from history on demand.
         Object.keys(state.agentStreams).forEach((name) => {
           if (name !== leadName) {
             delete state.agentStreams[name]
@@ -150,6 +140,7 @@ export const useTeamStore = create<TeamStore>()(
           state.agentStreams[name]._completionBase = 0
           state.agentStreams[name].revertedCount = 0
           state.agentStreams[name].revertedMessages = []
+          state.agentStreams[name]._revertedSuffix = []
         })
       })
     },
@@ -158,8 +149,6 @@ export const useTeamStore = create<TeamStore>()(
       const { leadName, agentStreams } = get()
       const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
-      // Only queue if the lead is busy. Members running in the background
-      // (e.g. sub-tasks) don't block the user from sending a new message.
       if (leadWorking) {
         set((draft) => {
           draft._pendingMessages.push({ id: `pm-${Date.now()}`, content, files })
@@ -170,7 +159,6 @@ export const useTeamStore = create<TeamStore>()(
 
       get()._abortController?.abort()
 
-      // Build optimistic attachments from files for immediate display
       const optimisticAttachments = files?.map((f) => ({
         original_name: f.name,
         media_type: f.type,
@@ -183,10 +171,13 @@ export const useTeamStore = create<TeamStore>()(
           draft.isContinuing = false
           draft.error = null
           draft.setupRequired = null
-        // Push user message as an optimistic block into the lead's stream
+        draft._leadRevertTime = null
+        Object.values(draft.agentStreams).forEach((stream) => {
+          stream._revertedSuffix = []
+          stream.revertedCount = 0
+          stream.revertedMessages = []
+        })
         if (leadName && draft.agentStreams[leadName]) {
-          draft.agentStreams[leadName].revertedCount = 0
-          draft.agentStreams[leadName].revertedMessages = []
           draft.agentStreams[leadName].currentBlocks.push({
             id: `user-${Date.now()}`,
             type: 'user',
@@ -208,6 +199,9 @@ export const useTeamStore = create<TeamStore>()(
         )
         set((draft) => {
           draft.sessionId = result.session_id
+          if (options?.workspace) {
+            draft._workspace = options.workspace
+          }
         })
         get().connectStream()
       } catch (err) {
@@ -274,7 +268,20 @@ export const useTeamStore = create<TeamStore>()(
       try {
         set((draft) => { draft.error = null })
         const response = await postTeamCommand('undo', sessionId)
-        await get().loadSession(sessionId)
+        const boundaryIso = response.message?.created_at
+        const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
+        set((draft) => {
+          draft._leadRevertTime = boundaryTime
+          Object.values(draft.agentStreams).forEach((stream) => {
+            applyRevertBoundary(stream, boundaryTime)
+          })
+        })
+        enqueueWorkspaceInvalidation(
+          set,
+          get,
+          sessionId,
+          mergeChangedPaths(response.changed_paths),
+        )
         return response
       } catch (err) {
         set((draft) => {
@@ -291,14 +298,66 @@ export const useTeamStore = create<TeamStore>()(
         return
       }
 
+      const MAX_ITER = 200
+      const allChangedPaths = new Set<string>()
+      let sawChangedPaths = false
+      let sawMissingChangedPaths = false
+      let sawResponse = false
       try {
         set((draft) => { draft.error = null })
-        await postTeamCommand('redo', sessionId)
-        await get().loadSession(sessionId)
+        for (let i = 0; i < MAX_ITER; i++) {
+          const response = await postTeamCommand('redo', sessionId)
+          sawResponse = true
+          const boundaryIso = response.message?.created_at
+          const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
+          set((draft) => {
+            draft._leadRevertTime = boundaryTime
+            Object.values(draft.agentStreams).forEach((stream) => {
+              applyRevertBoundary(stream, boundaryTime)
+            })
+          })
+          if (response.changed_paths === undefined) {
+            sawMissingChangedPaths = true
+          } else {
+            sawChangedPaths = true
+          }
+          const merged = mergeChangedPaths(response.changed_paths)
+          merged?.forEach((p) => allChangedPaths.add(p))
+          if (response.message === null) break
+
+          if (i === MAX_ITER - 1) {
+            throw new Error('Redo did not reach the live tip')
+          }
+        }
       } catch (err) {
-        set((draft) => {
-          draft.error = err instanceof Error ? err.message : 'Failed to redo'
-        })
+        const message = err instanceof Error ? err.message : String(err)
+        if (message.includes('No undone message to redo')) {
+          set((draft) => {
+            draft._leadRevertTime = null
+            Object.values(draft.agentStreams).forEach((stream) => {
+              applyRevertBoundary(stream, null)
+            })
+          })
+        } else {
+          set((draft) => {
+            draft.error = `Failed to redo: ${message}`
+          })
+        }
+      } finally {
+        if (sawMissingChangedPaths) {
+          enqueueWorkspaceInvalidation(set, get, sessionId)
+        } else if (allChangedPaths.size > 0) {
+          enqueueWorkspaceInvalidation(
+            set,
+            get,
+            sessionId,
+            [...allChangedPaths],
+          )
+        } else if (sawChangedPaths) {
+          enqueueWorkspaceInvalidation(set, get, sessionId, [])
+        } else if (sawResponse) {
+          enqueueWorkspaceInvalidation(set, get, sessionId)
+        }
       }
     },
 
@@ -312,13 +371,11 @@ export const useTeamStore = create<TeamStore>()(
       const sessionId = get().sessionId
       if (!sessionId || !get().isTeamWorking) return
 
-      // Interrupt all working members (interrupt=true, no message)
       try {
         await postTeamChat(null, sessionId, true)
       } catch (err) {
         console.warn('stopTeam failed', err)
       }
-      // The SSE stream will deliver done event once all members go idle
     },
 
     connectStream: () => {
@@ -416,18 +473,10 @@ export const useTeamStore = create<TeamStore>()(
 
         set((draft) => {
           draft.sessionId = sessionId
-          // Reset working state — the session being loaded is a completed
-          // (or idle) history snapshot. If session A was streaming when the
-          // user switched to session B, isTeamWorking would remain true and
-          // the "..." indicator would persist indefinitely.
           draft.isTeamWorking = false
           draft.isContinuing = false
           draft.error = null
 
-          // Clear reverted-message state on every stream. These fields are
-          // keyed by agent name, so without this reset session A's "N
-          // messages reverted" banner leaks into session B when both share
-          // a lead. The lead's value is repopulated below from history.
           Object.values(draft.agentStreams).forEach((stream) => {
             stream.revertedCount = 0
             stream.revertedMessages = []
@@ -442,49 +491,47 @@ export const useTeamStore = create<TeamStore>()(
           draft.agentNames = allNames
           const leadRevertTime = revertBoundaryTime(history.lead)
 
-          // Load lead blocks (includes user blocks from parseTeamBlocks)
           if (leadName) {
             if (!draft.agentStreams[leadName]) {
               draft.agentStreams[leadName] = createDefaultAgentStream()
             }
-            // Revoke blob URLs from old blocks before replacing them
             revokeBlobUrlsFromBlocks(draft.agentStreams[leadName].currentBlocks)
-            const leadMessages = messagesBeforeRevert(history.lead)
-            draft.agentStreams[leadName].blocks = parseTeamBlocks(leadMessages)
-            draft.agentStreams[leadName].revertedCount = revertedMessageCount(history.lead)
-            draft.agentStreams[leadName].revertedMessages = revertedMessagePreview(history.lead)
-            draft.agentStreams[leadName].currentBlocks = []
-            draft.agentStreams[leadName].currentText = ''
-            draft.agentStreams[leadName].currentThinking = ''
-            draft.agentStreams[leadName].status = 'idle'
-            const leadUsage = sumUsageFromMessages(leadMessages)
-            draft.agentStreams[leadName].usage = leadUsage
-            // Seed _completionBase so next live turn accumulates correctly
-            draft.agentStreams[leadName]._completionBase = leadUsage.completionTokens
+            const leadStream = draft.agentStreams[leadName]
+            leadStream.blocks = parseTeamBlocks(history.lead.messages)
+            leadStream._revertedSuffix = []
+            applyRevertBoundary(leadStream, leadRevertTime)
+            leadStream.currentBlocks = []
+            leadStream.currentText = ''
+            leadStream.currentThinking = ''
+            leadStream.status = 'idle'
+            const leadVisibleMsgs = messagesBeforeRevert(history.lead)
+            const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
+            leadStream.usage = leadUsage
+            leadStream._completionBase = leadUsage.completionTokens
           }
 
-          // Load member blocks
           history.members.forEach((member) => {
             const existingStatus = draft.agentStreams[member.name]?.status
             const isLiveMember = liveNames === null || liveNames.includes(member.name)
             if (!draft.agentStreams[member.name]) {
               draft.agentStreams[member.name] = createDefaultAgentStream()
             }
-            // Revoke blob URLs from old blocks before replacing them
             revokeBlobUrlsFromBlocks(draft.agentStreams[member.name].currentBlocks)
-            const memberMessages = messagesBeforeTime(member.messages, leadRevertTime)
-            draft.agentStreams[member.name].blocks = parseTeamBlocks(memberMessages)
-            draft.agentStreams[member.name].currentBlocks = []
-            draft.agentStreams[member.name].currentText = ''
-            draft.agentStreams[member.name].currentThinking = ''
-            draft.agentStreams[member.name].status =
+            const memberStream = draft.agentStreams[member.name]
+            memberStream.blocks = parseTeamBlocks(member.messages)
+            memberStream._revertedSuffix = []
+            applyRevertBoundary(memberStream, leadRevertTime)
+            memberStream.currentBlocks = []
+            memberStream.currentText = ''
+            memberStream.currentThinking = ''
+            memberStream.status =
               !isLiveMember
                 ? 'offline'
                 : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
-            const memberUsage = sumUsageFromMessages(memberMessages)
-            draft.agentStreams[member.name].usage = memberUsage
-            // Seed _completionBase so next live turn accumulates correctly
-            draft.agentStreams[member.name]._completionBase = memberUsage.completionTokens
+            const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
+            const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
+            memberStream.usage = memberUsage
+            memberStream._completionBase = memberUsage.completionTokens
           })
 
           if (!draft.activeAgent || !allNames.includes(draft.activeAgent)) {
@@ -559,8 +606,6 @@ export const useTeamStore = create<TeamStore>()(
     },
 
     _drainCacheInvalidations: () => {
-      // Snapshot then atomically clear, so an SSE event that pushes
-      // between the read and the clear isn't lost.
       const events = get().cacheInvalidations
       if (events.length === 0) return []
       set((draft) => { draft.cacheInvalidations = [] })
@@ -571,9 +616,6 @@ export const useTeamStore = create<TeamStore>()(
   }))
 )
 
-// Push a toast whenever the team-level error is set.
-// Covers all three write paths: SSE error event, sendMessage catch,
-// and connectStream onError.
 useTeamStore.subscribe((state, prev) => {
   if (state.error && state.error !== prev.error) {
     useToastStore.getState().push({ tone: 'error', title: 'Agent error', description: state.error })

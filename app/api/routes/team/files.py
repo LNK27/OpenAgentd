@@ -26,7 +26,7 @@ import uuid
 from fnmatch import fnmatchcase
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from app.api.schemas.team import (
@@ -84,12 +84,23 @@ def _guess_media_type(path: Path) -> str:
 
 
 async def _session_workspace(session_id: str) -> Path:
+    """Resolve a session's workspace root, tolerating absent DB rows.
+
+    Coding-mode sessions stash an absolute project path in
+    ``ChatSession.workspace``; normal sessions leave it ``NULL`` and fall
+    back to the per-session sandbox directory under
+    ``OPENAGENTD_WORKSPACE_DIR``. The fallback uses this module's local
+    ``workspace_dir`` reference so tests can monkey-patch it.
+    """
+    row = None
     try:
         async with async_session_factory() as db:
             row = await db.get(ChatSession, uuid.UUID(session_id))
     except Exception:
-        return workspace_dir(session_id)
-    return session_workspace_dir(session_id, row.workspace if row else None)
+        row = None
+    if row is not None and row.workspace:
+        return session_workspace_dir(session_id, row.workspace)
+    return workspace_dir(session_id)
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -131,7 +142,12 @@ async def get_workspace_media(session_id: str, file_path: str) -> FileResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid session id.")
 
+    # Workspace state is authoritative — when the session is in a reverted
+    # tail, :mod:`app.services.snapshot_service` has already restored the
+    # filesystem to the boundary's snapshot, so files that should be
+    # hidden simply do not exist on disk and ``_safe_resolve`` 404s.
     resolved = _safe_resolve(await _session_workspace(session_id), file_path)
+
     return FileResponse(
         path=str(resolved),
         media_type=_guess_media_type(resolved),
@@ -216,7 +232,13 @@ async def list_workspace_files(session_id: str) -> WorkspaceFilesResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid session id.")
 
-    return _list_workspace_files(await _session_workspace(session_id), session_id)
+    # No boundary filtering needed — snapshot_service has restored the
+    # workspace to the reverted-boundary state, so the on-disk file set
+    # already reflects what should be visible.
+    return _list_workspace_files(
+        await _session_workspace(session_id),
+        session_id,
+    )
 
 
 def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse:
@@ -296,7 +318,20 @@ async def list_coding_workspace_files(workspace: str) -> CodingWorkspaceFilesRes
 
 
 @router.get("/workspace/git-diff/view")
-async def get_coding_workspace_git_diff(workspace: str) -> dict:
+async def get_coding_workspace_git_diff(
+    workspace: str,
+    paths: list[str] | None = Query(None),
+) -> dict:
+    """Return the workspace's git diff, optionally scoped to ``paths``.
+
+    Without ``paths`` the diff covers the entire repo (``git diff -- .``) —
+    the legacy whole-repo behaviour. With ``paths`` we run
+    ``git diff -- a b c`` and filter the untracked scan to those entries
+    too, yielding the diff hunks for just those files. Per-file scoped
+    diffs are ~5–20ms vs ~100–800ms for the whole-repo path; the SSE
+    cache bridge uses them to splice live tool_end changes into the
+    cached diff without paying the full refresh cost.
+    """
     try:
         resolved = team_manager.validate_workspace(workspace)
     except ValueError as exc:
@@ -306,10 +341,29 @@ async def get_coding_workspace_git_diff(workspace: str) -> dict:
     if not (root / ".git").exists():
         return {"workspace": resolved, "is_git_repo": False, "diff": ""}
 
+    # Normalise + validate paths: drop empties, reject absolute or
+    # parent-traversal paths so the scoped call can't leak diffs from
+    # outside the workspace.
+    scoped: list[str] = []
+    if paths:
+        for raw in paths:
+            if not raw:
+                continue
+            normal = os.path.normpath(raw)
+            if normal.startswith("..") or os.path.isabs(normal):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"invalid path in scoped diff: {raw}",
+                )
+            scoped.append(normal)
+    # ``git diff -- .`` covers the whole tree; ``git diff -- a b c``
+    # restricts to those pathspecs (which can be files or directories).
+    diff_paths = scoped if scoped else ["."]
+
     try:
         result = await asyncio.to_thread(
             subprocess.run,
-            ["git", "-C", resolved, "diff", "--", "."],
+            ["git", "-C", resolved, "diff", "--", *diff_paths],
             capture_output=True,
             text=True,
             timeout=10,
@@ -326,6 +380,12 @@ async def get_coding_workspace_git_diff(workspace: str) -> dict:
         resolved, "ls-files", "--others", "--exclude-standard"
     )
     untracked = untracked_out.splitlines() if untracked_out is not None else []
+    # When scoped, only synthesise untracked diffs for paths the caller
+    # asked about — otherwise the response would carry diff hunks for
+    # files the SSE bridge has no reason to splice.
+    if scoped:
+        scoped_set = set(scoped)
+        untracked = [u for u in untracked if u in scoped_set]
     tracked_diff = str(result.stdout)
     full_diff = tracked_diff + _untracked_diff(root, untracked)
     truncated = len(full_diff) > _MAX_GIT_DIFF_CHARS

@@ -359,7 +359,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
     { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
     { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
-    { id: 'redo', label: 'Redo', description: 'Restore the next undone message' },
+    { id: 'redo', label: 'Redo', description: 'Restore all undone messages back to the live tip' },
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
     { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
     ...(commandsQ.data?.commands ?? []).map((c) => ({

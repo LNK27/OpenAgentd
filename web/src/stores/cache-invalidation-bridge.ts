@@ -1,38 +1,16 @@
-/**
- * Cache-invalidation bridge.
- *
- * The team store's SSE reducer enqueues domain events on its
- * ``cacheInvalidations`` queue rather than calling
- * ``queryClient.invalidateQueries`` directly — that keeps the store
- * free of TanStack imports and decouples streaming logic from the
- * cache layer.
- *
- * This module owns the small mapping from those domain events to
- * concrete TanStack invalidation calls.  ``routes/team.tsx`` wires a
- * Zustand subscriber that drains the queue on change and hands the
- * events to ``applyCacheInvalidations``.
- *
- * Kept as a pure function (no React, no hooks) so it can be unit
- * tested with a mock ``QueryClient`` and so the React component
- * stays a thin glue layer.
- */
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 import type { CacheInvalidation } from '@/stores/useTeamStore'
-import type { SessionPageResponse } from '@/api/types'
+import type { SessionPageResponse, WorkspaceGitDiffResponse } from '@/api/types'
+import { getCodingWorkspaceGitDiff } from '@/api/client'
 import { queryKeys } from '@/queries'
 
-/**
- * Translate domain cache-invalidation events into TanStack
- * ``invalidateQueries`` calls.  One ``invalidateQueries`` call per
- * event — TanStack's invalidation is idempotent, so duplicate events
- * (e.g. two ``schedule_task`` calls in the same turn) are cheap.
- *
- * Unknown ``event.kind`` values are a TypeScript error at compile
- * time; the exhaustive switch ensures every variant of
- * ``CacheInvalidation`` has an explicit branch.
- */
+type BridgeQueryClient = Pick<
+  QueryClient,
+  'invalidateQueries' | 'getQueryData' | 'setQueryData'
+>
+
 export function applyCacheInvalidations(
-  queryClient: Pick<QueryClient, 'invalidateQueries'>,
+  queryClient: BridgeQueryClient,
   events: readonly CacheInvalidation[],
 ): void {
   for (const event of events) {
@@ -42,6 +20,20 @@ export function applyCacheInvalidations(
         break
       case 'workspace_files':
         queryClient.invalidateQueries({ queryKey: queryKeys.team.files(event.sessionId) })
+        break
+      case 'coding_workspace':
+        queryClient.invalidateQueries({ queryKey: queryKeys.coding.files(event.workspace) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.coding.diff(event.workspace) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.coding.status(event.workspace) })
+        break
+      case 'coding_workspace_paths':
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.coding.files(event.workspace),
+        })
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.coding.status(event.workspace),
+        })
+        void patchCodingDiffForPaths(queryClient, event.workspace, event.paths)
         break
       case 'scheduler':
         queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
@@ -56,18 +48,81 @@ export function applyCacheInvalidations(
   }
 }
 
-/**
- * Patch the cached team session list when a ``title_update`` SSE event
- * arrives.  The list is an infinite query, so cached data is shaped as
- * ``InfiniteData<SessionPageResponse>`` (``{ pages, pageParams }``) — we
- * map each page's ``data`` array, not the wrapper.  An earlier version
- * typed the cache as ``SessionResponse[]`` and silently no-op'd; the
- * sidebar only refreshed on reload.
- *
- * No-ops when the matching session id is absent from every page (e.g.
- * cache was cleared between the SSE event and this patch) — TanStack
- * skips updates whose updater returns the same reference.
- */
+async function patchCodingDiffForPaths(
+  queryClient: BridgeQueryClient,
+  workspace: string,
+  paths: string[],
+): Promise<void> {
+  if (paths.length === 0) return
+  const key = queryKeys.coding.diff(workspace)
+  const cached = queryClient.getQueryData<WorkspaceGitDiffResponse>(key)
+
+  if (!cached || !cached.is_git_repo) return
+
+  let scoped: WorkspaceGitDiffResponse
+  try {
+    scoped = await getCodingWorkspaceGitDiff(workspace, paths)
+  } catch {
+    queryClient.invalidateQueries({ queryKey: key })
+    return
+  }
+
+  const merged = mergeScopedDiff(cached.diff, scoped.diff, paths)
+  queryClient.setQueryData<WorkspaceGitDiffResponse>(key, {
+    ...cached,
+    diff: merged,
+    truncated: cached.truncated || scoped.truncated,
+    untracked: nextUntracked(cached.untracked, scoped.untracked, paths),
+  })
+}
+
+const DIFF_HEADER_RE = /\ndiff --git a\/(.+?) b\/.+?(?=\ndiff --git |$)/gs
+const FIRST_DIFF_HEADER_RE = /^diff --git a\/(.+?) b\/.+?(?=\ndiff --git |$)/s
+
+export function mergeScopedDiff(
+  existingDiff: string,
+  scopedDiff: string,
+  paths: string[],
+): string {
+  if (!existingDiff) return scopedDiff
+  const pathSet = new Set(paths)
+
+  const kept: string[] = []
+
+  let cursor = 0
+  const firstMatch = FIRST_DIFF_HEADER_RE.exec(existingDiff)
+  if (firstMatch) {
+    const path = firstMatch[1]
+    if (!pathSet.has(path)) kept.push(firstMatch[0])
+    cursor = firstMatch[0].length
+  }
+
+  const rest = existingDiff.slice(cursor)
+  for (const match of rest.matchAll(DIFF_HEADER_RE)) {
+    const path = match[1]
+    if (!pathSet.has(path)) kept.push(match[0])
+  }
+
+  const keptText = kept.join('')
+  const scoped = scopedDiff.startsWith('\n') ? scopedDiff : scopedDiff
+  if (!keptText) return scoped
+  if (!scoped) return keptText
+  return scoped.startsWith('\n') || keptText.endsWith('\n')
+    ? keptText + scoped
+    : keptText + '\n' + scoped
+}
+
+function nextUntracked(
+  cached: string[] | undefined,
+  scoped: string[] | undefined,
+  paths: string[],
+): string[] | undefined {
+  if (!cached && !scoped) return undefined
+  const pathSet = new Set(paths)
+  const carry = (cached ?? []).filter((p) => !pathSet.has(p))
+  return [...carry, ...(scoped ?? [])]
+}
+
 export function patchSessionTitle(
   queryClient: Pick<QueryClient, 'setQueriesData'>,
   sessionId: string,

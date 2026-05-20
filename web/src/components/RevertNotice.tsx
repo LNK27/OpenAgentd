@@ -42,7 +42,7 @@ export function RevertNotice({ count, messages = [], onRedo }: RevertNoticeProps
             type="button"
             onClick={onRedo}
             className="group flex items-center gap-1.5 rounded px-2 py-1 transition-colors hover:text-(--color-text)"
-            title="Restore the next undone message"
+            title="Restore all undone messages and return the workspace to the live tip"
           >
             <RotateCcw size={13} className="text-(--color-text-subtle) transition-colors group-hover:text-(--color-accent)" />
             <span>/redo to restore</span>

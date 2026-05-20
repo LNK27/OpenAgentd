@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { ChevronRight, FileText, Folder, GitCompare, RefreshCw, X } from 'lucide-react'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { queryKeys } from '@/queries'
 import { formatBytes } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -280,13 +281,13 @@ export function CodingWorkspacePanel({
   const prefersReducedMotion = useReducedMotion()
   const [tab, setTab] = useState<'files' | 'diff'>(initialTab)
   const files = useQuery({
-    queryKey: ['coding-workspace-files', workspace],
+    queryKey: queryKeys.coding.files(workspace),
     queryFn: () => listCodingWorkspaceFiles(workspace),
     enabled: open,
     staleTime: 5_000,
   })
   const diff = useQuery({
-    queryKey: ['coding-workspace-diff', workspace],
+    queryKey: queryKeys.coding.diff(workspace),
     queryFn: () => getCodingWorkspaceGitDiff(workspace),
     enabled: open,
     staleTime: 5_000,

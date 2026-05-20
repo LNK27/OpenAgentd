@@ -17,7 +17,15 @@ import type { CacheInvalidation } from '@/stores/useTeamStore'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
 
 function makeMockClient() {
-  return { invalidateQueries: mock(() => Promise.resolve()) }
+  return {
+    invalidateQueries: mock(() => Promise.resolve()),
+    // ``coding_workspace_paths`` branch reads/writes the cached diff
+    // via ``get/setQueryData``; the legacy tests below don't exercise
+    // that branch so the stubs just satisfy the BridgeQueryClient
+    // type without observing behaviour.
+    getQueryData: mock(() => undefined),
+    setQueryData: mock(() => undefined),
+  }
 }
 
 describe('applyCacheInvalidations', () => {
@@ -36,6 +44,23 @@ describe('applyCacheInvalidations', () => {
     expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
     expect(client.invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.team.files('sid-123'),
+    })
+  })
+
+  it('maps `coding_workspace` event to files+diff+status keys', () => {
+    const client = makeMockClient()
+    applyCacheInvalidations(client, [
+      { kind: 'coding_workspace', workspace: '/Users/me/proj' },
+    ])
+    expect(client.invalidateQueries).toHaveBeenCalledTimes(3)
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.coding.files('/Users/me/proj'),
+    })
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.coding.diff('/Users/me/proj'),
+    })
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.coding.status('/Users/me/proj'),
     })
   })
 

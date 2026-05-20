@@ -1,0 +1,844 @@
+import { mock, describe, it, expect, beforeEach } from "bun:test"
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const mockPostTeamChat = mock(() =>
+  Promise.resolve({ status: "ok", session_id: "team-sid" })
+) as any
+const mockPostTeamCommand = mock(() =>
+  Promise.resolve({ status: "accepted", session_id: "team-sid", command: "undo" })
+) as any
+const mockTeamStream = mock((_sid: any, _cbs: any, _signal?: any) => {}) as any
+const mockTeamStatus = mock(() =>
+  Promise.resolve({
+    team: "team",
+    lead: { name: "lead", model: "gpt-4", state: "idle" },
+    members: [],
+  })
+) as any
+const mockTeamHistory = mock(() =>
+  Promise.resolve({
+    lead: {
+      id: "lead-sess",
+      agent_name: "lead",
+      title: null,
+      created_at: null,
+      updated_at: null,
+      sub_sessions: [],
+      messages: [],
+    },
+    members: [],
+    has_more: false,
+    next_cursor: null,
+  })
+) as any
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+;(mock as any).module("@/api/client", () => ({
+  postTeamChat: mockPostTeamChat,
+  postTeamCommand: mockPostTeamCommand,
+  teamStream: mockTeamStream,
+  teamStatus: mockTeamStatus,
+  teamHistory: mockTeamHistory,
+  postChat: mock(() => Promise.resolve({ session_id: "chat-sid" })) as any,
+  streamChat: mock(() => {}) as any,
+  listTeamAgents: mock(() => Promise.resolve({ agents: [] })) as any,
+  listTeamSessions: mock(() => Promise.resolve([])) as any,
+  deleteTeamSession: mock(() => Promise.resolve()) as any,
+}))
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+import { useTeamStore } from "@/stores/useTeamStore"
+import { applyRevertBoundary } from "@/stores/useTeamStore/helpers"
+import type { AgentStream } from "@/stores/useTeamStore"
+import type { ContentBlock } from "@/api/types"
+
+function block(
+  id: string,
+  type: ContentBlock["type"],
+  content: string,
+  isoTime: string,
+): ContentBlock {
+  return { id, type, content, timestamp: new Date(isoTime) }
+}
+
+function makeStream(overrides: Partial<AgentStream> = {}): AgentStream {
+  return {
+    blocks: [],
+    currentBlocks: [],
+    currentText: "",
+    currentThinking: "",
+    status: "idle",
+    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
+    _completionBase: 0,
+    _completionEstimated: 0,
+    model: null,
+    lastError: null,
+    revertedCount: 0,
+    revertedMessages: [],
+    _revertedSuffix: [],
+    ...overrides,
+  }
+}
+
+function makeMessageResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "msg-1",
+    session_id: "sess-1",
+    role: "user",
+    content: "hello",
+    reasoning_content: null,
+    tool_calls: null,
+    tool_call_id: null,
+    name: null,
+    is_summary: false,
+    is_hidden: false,
+    extra: null,
+    created_at: "2024-01-01T00:00:00Z",
+    file_message: false,
+    attachments: null,
+    ...overrides,
+  }
+}
+
+const INITIAL_STATE = {
+  agentStreams: {},
+  activeAgent: null,
+  leadName: null,
+  agentNames: [],
+  liveAgentNames: null,
+  sidebarOpen: false,
+  sessionId: null,
+  sessionTitle: null,
+  isTeamWorking: false,
+  isContinuing: false,
+  isConnected: false,
+  error: null,
+  setupRequired: null,
+  _pendingMessages: [] as import("@/stores/useTeamStore").PendingMessage[],
+  _sessionGeneration: 0,
+  hasMore: false,
+  nextCursor: null,
+  _leadRevertTime: null,
+  _workspace: null,
+  _loadingOlder: false,
+  cacheInvalidations: [],
+}
+
+beforeEach(() => {
+  useTeamStore.setState(INITIAL_STATE)
+  mockPostTeamChat.mockReset()
+  mockPostTeamCommand.mockReset()
+  mockTeamStream.mockReset()
+  mockTeamStatus.mockReset()
+  mockTeamHistory.mockReset()
+
+  mockTeamStatus.mockImplementation(() =>
+    Promise.resolve({
+      team: "team",
+      lead: { name: "lead", model: "gpt-4", state: "idle" },
+      members: [],
+    }),
+  )
+  mockTeamHistory.mockImplementation(() =>
+    Promise.resolve({
+      lead: {
+        id: "lead-sess",
+        agent_name: "lead",
+        title: null,
+        created_at: null,
+        updated_at: null,
+        sub_sessions: [],
+        messages: [],
+      },
+      members: [],
+      has_more: false,
+      next_cursor: null,
+    }),
+  )
+  mockPostTeamCommand.mockImplementation(() =>
+    Promise.resolve({ status: "accepted", session_id: "team-sid", command: "undo" }),
+  )
+  mockPostTeamChat.mockImplementation(() =>
+    Promise.resolve({ status: "ok", session_id: "team-sid" }),
+  )
+})
+
+describe("applyRevertBoundary", () => {
+  it("is a no-op on an empty stream with null boundary", () => {
+    const s = makeStream()
+    applyRevertBoundary(s, null)
+    expect(s.blocks).toEqual([])
+    expect(s._revertedSuffix).toEqual([])
+    expect(s.revertedCount).toBe(0)
+  })
+
+  it("splits blocks by timestamp — strictly-before-boundary stay visible", () => {
+    const t1 = block("b1", "user", "first", "2024-01-01T00:00:00Z")
+    const t2 = block("b2", "text", "answer one", "2024-01-01T00:00:01Z")
+    const t3 = block("b3", "user", "second", "2024-01-01T00:00:02Z")
+    const t4 = block("b4", "text", "answer two", "2024-01-01T00:00:03Z")
+    const s = makeStream({ blocks: [t1, t2, t3, t4] })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
+
+    expect(s.blocks.map((b) => b.id)).toEqual(["b1", "b2"])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["b3", "b4"])
+  })
+
+  it("treats blocks exactly at the boundary timestamp as reverted", () => {
+    const boundaryIso = "2024-01-01T00:00:02Z"
+    const same = block("b-at-boundary", "user", "boundary msg", boundaryIso)
+    const s = makeStream({ blocks: [same] })
+    applyRevertBoundary(s, new Date(boundaryIso).getTime())
+    expect(s.blocks).toEqual([])
+    expect(s._revertedSuffix).toHaveLength(1)
+  })
+
+  it("recombines blocks + suffix before splitting (idempotent across calls)", () => {
+    const t1 = block("b1", "user", "u1", "2024-01-01T00:00:00Z")
+    const t2 = block("b2", "user", "u2", "2024-01-01T00:00:02Z")
+    const t3 = block("b3", "user", "u3", "2024-01-01T00:00:04Z")
+    const s = makeStream({ blocks: [t1, t2, t3] })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
+    expect(s.blocks.map((b) => b.id)).toEqual(["b1"])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["b2", "b3"])
+
+    applyRevertBoundary(s, null)
+    expect(s.blocks.map((b) => b.id)).toEqual(["b1", "b2", "b3"])
+    expect(s._revertedSuffix).toEqual([])
+  })
+
+  it("counts user + compaction blocks toward revertedCount", () => {
+    const s = makeStream({
+      blocks: [
+        block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+        block("a1", "text", "answer", "2024-01-01T00:00:01Z"),
+        block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+        block("c1", "compaction", "summary", "2024-01-01T00:00:03Z"),
+        block("u3", "user", "third", "2024-01-01T00:00:04Z"),
+      ],
+    })
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
+    expect(s.revertedCount).toBe(3)
+  })
+
+  it("populates revertedMessages preview with content and compaction label", () => {
+    const s = makeStream({
+      blocks: [
+        block("u1", "user", "kept", "2024-01-01T00:00:00Z"),
+        block("u2", "user", "undone-1", "2024-01-01T00:00:02Z"),
+        block("c1", "compaction", "ignored body", "2024-01-01T00:00:03Z"),
+        block("u3", "user", "undone-2", "2024-01-01T00:00:04Z"),
+      ],
+    })
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
+    expect(s.revertedMessages).toEqual([
+      { role: "user", content: "undone-1" },
+      { role: "user", content: "Session compacted" },
+      { role: "user", content: "undone-2" },
+    ])
+  })
+
+  it("skips empty-content blocks from the preview", () => {
+    const s = makeStream({
+      blocks: [
+        block("u1", "user", "kept", "2024-01-01T00:00:00Z"),
+        block("u2", "user", "   ", "2024-01-01T00:00:02Z"),
+        block("u3", "user", "real", "2024-01-01T00:00:04Z"),
+      ],
+    })
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
+    expect(s.revertedMessages).toEqual([{ role: "user", content: "real" }])
+  })
+})
+
+describe("undoTeam — local boundary application", () => {
+  it("applies the new boundary locally without calling teamHistory", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [
+            block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+            block("a1", "text", "answer one", "2024-01-01T00:00:01Z"),
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+            block("a2", "text", "answer two", "2024-01-01T00:00:03Z"),
+          ],
+        }),
+      },
+    })
+
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({
+          id: "u2-id",
+          role: "user",
+          content: "second",
+          created_at: "2024-01-01T00:00:02Z",
+        }),
+      }),
+    )
+
+    await useTeamStore.getState().undoTeam()
+
+    expect(mockTeamHistory).not.toHaveBeenCalled()
+    expect(mockPostTeamCommand).toHaveBeenCalledWith("undo", "sess-1")
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "a1"])
+    expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u2", "a2"])
+    expect(useTeamStore.getState()._leadRevertTime).toBe(
+      new Date("2024-01-01T00:00:02Z").getTime(),
+    )
+  })
+
+  it("queues a workspace invalidation event for the post-undo refresh", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _workspace: "/tmp/proj",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [
+            block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({
+          created_at: "2024-01-01T00:00:02Z",
+        }),
+      }),
+    )
+
+    await useTeamStore.getState().undoTeam()
+
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "coding_workspace", workspace: "/tmp/proj" },
+    ])
+  })
+
+  it("emits a SCOPED coding_workspace_paths event when changed_paths is non-empty", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _workspace: "/tmp/proj",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [
+            block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({ created_at: "2024-01-01T00:00:02Z" }),
+        changed_paths: {
+          added: ["src/added.ts"],
+          modified: ["src/lib/util.ts"],
+          removed: ["dist/stale.txt"],
+        },
+      }),
+    )
+
+    await useTeamStore.getState().undoTeam()
+
+    const invalidations = useTeamStore.getState().cacheInvalidations
+    expect(invalidations).toHaveLength(1)
+    expect(invalidations[0]).toEqual({
+      kind: "coding_workspace_paths",
+      workspace: "/tmp/proj",
+      paths: ["src/added.ts", "src/lib/util.ts", "dist/stale.txt"],
+    })
+  })
+
+  it("skips invalidation when the server reports empty changed_paths", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _workspace: "/tmp/proj",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({ created_at: "2024-01-01T00:00:00Z" }),
+        changed_paths: { added: [], modified: [], removed: [] },
+      }),
+    )
+
+    await useTeamStore.getState().undoTeam()
+
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([])
+  })
+
+  it("accumulates suffix correctly across multiple consecutive undos", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [
+            block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+            block("a1", "text", "a1", "2024-01-01T00:00:01Z"),
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+            block("a2", "text", "a2", "2024-01-01T00:00:03Z"),
+            block("u3", "user", "third", "2024-01-01T00:00:04Z"),
+            block("a3", "text", "a3", "2024-01-01T00:00:05Z"),
+          ],
+        }),
+      },
+    })
+
+    mockPostTeamCommand.mockImplementationOnce(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({ created_at: "2024-01-01T00:00:04Z" }),
+      }),
+    )
+    await useTeamStore.getState().undoTeam()
+    let stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "a1", "u2", "a2"])
+    expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u3", "a3"])
+
+    mockPostTeamCommand.mockImplementationOnce(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({ created_at: "2024-01-01T00:00:02Z" }),
+      }),
+    )
+    await useTeamStore.getState().undoTeam()
+    stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "a1"])
+    expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u2", "a2", "u3", "a3"])
+  })
+
+  it("applies the boundary to every agent stream (lead + members)", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [
+            block("L-u1", "user", "1", "2024-01-01T00:00:00Z"),
+            block("L-u2", "user", "2", "2024-01-01T00:00:02Z"),
+          ],
+        }),
+        worker: makeStream({
+          blocks: [
+            block("W-t1", "text", "early", "2024-01-01T00:00:00Z"),
+            block("W-t2", "text", "late", "2024-01-01T00:00:03Z"),
+          ],
+        }),
+      },
+    })
+
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({ created_at: "2024-01-01T00:00:02Z" }),
+      }),
+    )
+    await useTeamStore.getState().undoTeam()
+
+    const lead = useTeamStore.getState().agentStreams.lead
+    const worker = useTeamStore.getState().agentStreams.worker
+    expect(lead.blocks.map((b) => b.id)).toEqual(["L-u1"])
+    expect(worker.blocks.map((b) => b.id)).toEqual(["W-t1"])
+    expect(worker._revertedSuffix?.map((b) => b.id)).toEqual(["W-t2"])
+  })
+})
+
+describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
+  it("loops /redo until the boundary clears, flushing the full suffix back", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+            block("a2", "text", "a2", "2024-01-01T00:00:03Z"),
+            block("u3", "user", "third", "2024-01-01T00:00:04Z"),
+            block("a3", "text", "a3", "2024-01-01T00:00:05Z"),
+          ],
+          revertedCount: 2,
+        }),
+      },
+    })
+
+    mockPostTeamCommand
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          status: "accepted",
+          session_id: "sess-1",
+          command: "redo",
+          message: makeMessageResponse({ created_at: "2024-01-01T00:00:04Z" }),
+        }),
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          status: "accepted",
+          session_id: "sess-1",
+          command: "redo",
+          message: null,
+        }),
+      )
+
+    await useTeamStore.getState().redoTeam()
+
+    expect(mockPostTeamCommand).toHaveBeenCalledTimes(2)
+    expect(mockTeamHistory).not.toHaveBeenCalled()
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual([
+      "u1",
+      "u2",
+      "a2",
+      "u3",
+      "a3",
+    ])
+    expect(stream._revertedSuffix).toEqual([])
+    expect(stream.revertedCount).toBe(0)
+    expect(useTeamStore.getState()._leadRevertTime).toBeNull()
+  })
+
+  it("exits cleanly after a single step when nothing else is reverted", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+            block("a2", "text", "a2", "2024-01-01T00:00:03Z"),
+          ],
+          revertedCount: 1,
+        }),
+      },
+    })
+
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "redo",
+        message: null,
+      }),
+    )
+
+    await useTeamStore.getState().redoTeam()
+
+    expect(mockPostTeamCommand).toHaveBeenCalledTimes(1)
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "u2", "a2"])
+    expect(stream._revertedSuffix).toEqual([])
+    expect(stream.revertedCount).toBe(0)
+    expect(useTeamStore.getState()._leadRevertTime).toBeNull()
+  })
+
+  it("merges changed_paths across iterations into a single scoped invalidation", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _workspace: "/tmp/proj",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+            block("u3", "user", "third", "2024-01-01T00:00:04Z"),
+          ],
+          revertedCount: 2,
+        }),
+      },
+    })
+
+    mockPostTeamCommand
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          status: "accepted",
+          session_id: "sess-1",
+          command: "redo",
+          message: makeMessageResponse({ created_at: "2024-01-01T00:00:04Z" }),
+          changed_paths: {
+            added: ["new-from-step-1.ts"],
+            modified: ["shared.ts"],
+            removed: [],
+          },
+        }),
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          status: "accepted",
+          session_id: "sess-1",
+          command: "redo",
+          message: null,
+          changed_paths: {
+            added: [],
+            modified: ["shared.ts", "step-2-only.ts"],
+            removed: ["deleted-by-step-2.ts"],
+          },
+        }),
+      )
+
+    await useTeamStore.getState().redoTeam()
+
+    const events = useTeamStore.getState().cacheInvalidations
+    expect(events).toHaveLength(1)
+    expect(events[0].kind).toBe("coding_workspace_paths")
+    expect(events[0]).toMatchObject({
+      kind: "coding_workspace_paths",
+      workspace: "/tmp/proj",
+    })
+    const paths = (events[0] as { paths: string[] }).paths
+    expect([...paths].sort()).toEqual([
+      "deleted-by-step-2.ts",
+      "new-from-step-1.ts",
+      "shared.ts",
+      "step-2-only.ts",
+    ])
+  })
+
+  it("falls back to broad coding_workspace when no changed_paths arrive", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _workspace: "/tmp/proj",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "redo",
+        message: null,
+      }),
+    )
+
+    await useTeamStore.getState().redoTeam()
+
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "coding_workspace", workspace: "/tmp/proj" },
+    ])
+  })
+
+  it("does not touch streams when /redo fails on the very first call", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.reject(new Error("network down")),
+    )
+
+    await useTeamStore.getState().redoTeam()
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
+    expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u2"])
+    expect(useTeamStore.getState().error).toBe("Failed to redo: network down")
+  })
+
+  it("clears local revert state when the server says there is nothing to redo", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+          revertedCount: 1,
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.reject(new Error("No undone message to redo.")),
+    )
+
+    await useTeamStore.getState().redoTeam()
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "u2"])
+    expect(stream._revertedSuffix).toEqual([])
+    expect(stream.revertedCount).toBe(0)
+    expect(useTeamStore.getState()._leadRevertTime).toBeNull()
+    expect(useTeamStore.getState().error).toBeNull()
+  })
+})
+
+describe("loadSession — parses all messages and populates _revertedSuffix", () => {
+  it("splits visible vs reverted on initial load of an already-reverted session", async () => {
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          revert: { message_id: "u2" },
+          messages: [
+            makeMessageResponse({
+              id: "u1",
+              role: "user",
+              content: "first",
+              created_at: "2024-01-01T00:00:00Z",
+            }),
+            makeMessageResponse({
+              id: "a1",
+              role: "assistant",
+              content: "answer one",
+              created_at: "2024-01-01T00:00:01Z",
+            }),
+            makeMessageResponse({
+              id: "u2",
+              role: "user",
+              content: "second",
+              created_at: "2024-01-01T00:00:02Z",
+            }),
+            makeMessageResponse({
+              id: "a2",
+              role: "assistant",
+              content: "answer two",
+              created_at: "2024-01-01T00:00:03Z",
+            }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      }),
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+    const stream = useTeamStore.getState().agentStreams.lead
+
+    expect(stream.blocks.map((b) => b.content)).toEqual(["first", "answer one"])
+    expect(stream._revertedSuffix?.map((b) => b.content)).toEqual([
+      "second",
+      "answer two",
+    ])
+    expect(stream.revertedCount).toBe(1)
+  })
+
+  it("clears _revertedSuffix when loading a non-reverted session", async () => {
+    useTeamStore.setState({
+      agentStreams: {
+        lead: makeStream({
+          _revertedSuffix: [
+            block("stale", "user", "from old session", "2023-01-01T00:00:00Z"),
+          ],
+        }),
+      },
+    })
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [
+            makeMessageResponse({
+              id: "u1",
+              role: "user",
+              content: "hi",
+              created_at: "2024-01-01T00:00:00Z",
+            }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      }),
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream._revertedSuffix).toEqual([])
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
+  })
+})
+
+describe("sendMessage — clears _revertedSuffix and boundary", () => {
+  it("drops local suffix so a stray /redo cannot resurrect deleted rows", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "kept", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "to be deleted", "2024-01-01T00:00:02Z"),
+          ],
+          revertedCount: 1,
+        }),
+      },
+    })
+
+    await useTeamStore.getState().sendMessage("new message")
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream._revertedSuffix).toEqual([])
+    expect(stream.revertedCount).toBe(0)
+    expect(useTeamStore.getState()._leadRevertTime).toBeNull()
+  })
+})

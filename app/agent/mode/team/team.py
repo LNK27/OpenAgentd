@@ -43,10 +43,13 @@ from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
 from app.agent.schemas.events import DoneEvent
 from app.agent.tools.registry import Tool
 from app.core.db import DbFactory, resolve_db_factory
+from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession, SessionMessage
 from app.services import memory_stream_store as stream_store
+from app.services import snapshot_service
 from app.services.stream_envelope import StreamEnvelope
 from app.services.chat_service import (
+    BoundaryShift,
     get_messages_for_llm,
     heal_orphaned_tool_calls,
     redo_session_messages,
@@ -119,6 +122,18 @@ class ContinuePreconditionError(Exception):
         super().__init__(reason)
         self.reason = reason
         self.status = status
+
+
+_command_locks: dict[str, asyncio.Lock] = {}
+
+
+def _command_lock(session_id: str) -> asyncio.Lock:
+    """Return the (lazily-created) per-session command lock."""
+    lock = _command_locks.get(session_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _command_locks[session_id] = lock
+    return lock
 
 
 def _is_interrupted_thinking_only_tail(messages: list) -> bool:
@@ -429,6 +444,15 @@ class AgentTeam:
                     lead_row.workspace = self.workspace
                     db.add(lead_row)
 
+                workspace_path = session_workspace_dir(str(lead_uuid), self.workspace)
+                snapshot_hash = await snapshot_service.track(
+                    str(lead_uuid), workspace_path
+                )
+                if snapshot_hash:
+                    extra_with_snapshot = dict(msg_extra or {})
+                    extra_with_snapshot["snapshot"] = snapshot_hash
+                    msg_extra = extra_with_snapshot
+
                 await save_message(db, lead_uuid, user_msg, extra=msg_extra)
 
                 for member in self.members.values():
@@ -682,8 +706,16 @@ class AgentTeam:
         )
         return session_id
 
-    async def handle_undo(self, session_id: str) -> tuple[str, SessionMessage]:
-        """Move the revert boundary to the latest visible user turn."""
+    async def handle_undo(self, session_id: str) -> tuple[str, BoundaryShift]:
+        """Move the revert boundary to the latest visible user turn.
+
+        Returns ``(session_id, shift)`` where ``shift.target`` is the
+        user message we landed on and ``shift.added/modified/removed``
+        carry the workspace paths the snapshot restore touched. The
+        HTTP layer forwards both up to the client so the React store
+        can apply the boundary locally *and* splice a scoped Coding
+        Workspace diff without a full sidebar refetch.
+        """
         if self._has_active_turn:
             raise ContinuePreconditionError("Lead is already working.")
 
@@ -692,28 +724,41 @@ class AgentTeam:
         except ValueError as exc:
             raise ContinuePreconditionError("Invalid session id.") from exc
 
-        db_factory = resolve_db_factory(self.lead.db_factory)
-        async with db_factory() as db:
-            row = await db.get(ChatSession, lead_uuid)
-            if row is None:
-                raise ContinuePreconditionError("Session not found.")
-            if row.agent_name and row.agent_name != self.lead.name:
-                raise ContinuePreconditionError(
-                    f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
-                )
-            message = await undo_session_messages(db, lead_uuid)
-            if message is None:
-                raise ContinuePreconditionError("No user message to undo.")
-            await db.commit()
-            await db.refresh(message)
+        # Serialise concurrent /undo (and /redo) on the same session —
+        # see ``_command_locks`` rationale above. The lock spans the
+        # whole DB read→commit cycle so a burst of clicks sees each
+        # other's committed boundary.
+        async with _command_lock(session_id):
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            async with db_factory() as db:
+                row = await db.get(ChatSession, lead_uuid)
+                if row is None:
+                    raise ContinuePreconditionError("Session not found.")
+                if row.agent_name and row.agent_name != self.lead.name:
+                    raise ContinuePreconditionError(
+                        f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
+                    )
+                shift = await undo_session_messages(db, lead_uuid)
+                if not shift.applied or shift.target is None:
+                    raise ContinuePreconditionError("No user message to undo.")
+                await db.commit()
+                await db.refresh(shift.target)
 
         logger.info(
             "team_undo_applied session_id={} agent={}", session_id, self.lead.name
         )
-        return session_id, message
+        return session_id, shift
 
-    async def handle_redo(self, session_id: str) -> str:
-        """Move the revert boundary forward or clear it."""
+    async def handle_redo(self, session_id: str) -> tuple[str, BoundaryShift]:
+        """Move the revert boundary forward or clear it.
+
+        Returns ``(session_id, shift)``. ``shift.target`` is the user
+        message the boundary now points at, or ``None`` when the
+        boundary was cleared back to the live tip. The path partition
+        rides along so the HTTP layer can drive scoped cache
+        invalidations on the client, skipping a full history *and*
+        sidebar refetch.
+        """
         if self._has_active_turn:
             raise ContinuePreconditionError("Lead is already working.")
 
@@ -722,24 +767,31 @@ class AgentTeam:
         except ValueError as exc:
             raise ContinuePreconditionError("Invalid session id.") from exc
 
-        db_factory = resolve_db_factory(self.lead.db_factory)
-        async with db_factory() as db:
-            row = await db.get(ChatSession, lead_uuid)
-            if row is None:
-                raise ContinuePreconditionError("Session not found.")
-            if row.agent_name and row.agent_name != self.lead.name:
-                raise ContinuePreconditionError(
-                    f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
-                )
-            changed = await redo_session_messages(db, lead_uuid)
-            if not changed:
-                raise ContinuePreconditionError("No undone message to redo.")
-            await db.commit()
+        # Same per-session serialisation as ``handle_undo`` — two quick
+        # /redo clicks must each see the other's committed boundary,
+        # otherwise both compute the same ``next_user`` and the
+        # boundary moves one step instead of two.
+        async with _command_lock(session_id):
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            async with db_factory() as db:
+                row = await db.get(ChatSession, lead_uuid)
+                if row is None:
+                    raise ContinuePreconditionError("Session not found.")
+                if row.agent_name and row.agent_name != self.lead.name:
+                    raise ContinuePreconditionError(
+                        f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
+                    )
+                shift = await redo_session_messages(db, lead_uuid)
+                if not shift.applied:
+                    raise ContinuePreconditionError("No undone message to redo.")
+                await db.commit()
+                if shift.target is not None:
+                    await db.refresh(shift.target)
 
         logger.info(
             "team_redo_applied session_id={} agent={}", session_id, self.lead.name
         )
-        return session_id
+        return session_id, shift
 
     async def _restore_or_drop_members_for_lead(self, lead_session_id: str) -> None:
         """Realign live spawned instances to child sessions of *lead_session_id*.

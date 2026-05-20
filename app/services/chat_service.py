@@ -2,6 +2,7 @@ import asyncio
 import json
 import shutil
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from uuid import UUID
@@ -19,10 +20,22 @@ from app.agent.schemas.chat import (
     HumanMessage,
     ToolMessage,
 )
-from app.core.paths import uploads_dir, workspace_dir
+from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
 from app.models.chat import ChatSession, SessionMessage
+from app.services import snapshot_service
 
-# Me build once — reused by _deserialize_messages for discriminated union parsing
+
+@dataclass(slots=True)
+class BoundaryShift:
+    """Result of moving the session's revert boundary."""
+
+    applied: bool
+    target: SessionMessage | None = None
+    added: list[str] = field(default_factory=list)
+    modified: list[str] = field(default_factory=list)
+    removed: list[str] = field(default_factory=list)
+
+
 _chat_message_adapter: TypeAdapter[ChatMessage] = TypeAdapter(ChatMessage)
 
 
@@ -399,13 +412,26 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
         raise
 
 
-async def undo_session_messages(
-    db: AsyncSession, session_id: UUID
-) -> SessionMessage | None:
+def _message_snapshot(row: SessionMessage | None) -> str | None:
+    if row is None or not row.extra:
+        return None
+    value = row.extra.get("snapshot")
+    return value if isinstance(value, str) and value else None
+
+
+def _redo_anchor(session: ChatSession | None) -> str | None:
+    value = session.revert if session else None
+    if not isinstance(value, dict):
+        return None
+    raw = value.get("snapshot")
+    return raw if isinstance(raw, str) and raw else None
+
+
+async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
     """Move the session revert boundary to the previous user message."""
     session = await db.get(ChatSession, session_id)
     if session is None:
-        return None
+        return BoundaryShift(applied=False)
     boundary = await _revert_boundary(db, session_id)
     stmt = (
         select(SessionMessage)
@@ -418,19 +444,50 @@ async def undo_session_messages(
     rows = (await db.exec(stmt)).all()
     target = next((row for row in rows if not _is_hidden_from_user(row)), None)
     if target is None:
-        return None
-    session.revert = {"message_id": str(target.id)}
+        return BoundaryShift(applied=False)
+
+    workspace = session_workspace_dir(str(session_id), session.workspace)
+    redo_anchor = _redo_anchor(session)
+    just_tracked = False
+    if redo_anchor is None:
+        redo_anchor = await snapshot_service.track(str(session_id), workspace)
+        just_tracked = redo_anchor is not None
+
+    added: list[str] = []
+    modified: list[str] = []
+    removed: list[str] = []
+    target_snapshot = _message_snapshot(target)
+    if target_snapshot:
+        result = await snapshot_service.restore(
+            str(session_id),
+            workspace,
+            target_snapshot,
+            skip_stage=just_tracked,
+        )
+        added, modified, removed = result.added, result.modified, result.removed
+
+    revert_state: dict = {"message_id": str(target.id)}
+    if redo_anchor:
+        revert_state["snapshot"] = redo_anchor
+    session.revert = revert_state
     db.add(session)
     await db.flush()
-    return target
+    return BoundaryShift(
+        applied=True,
+        target=target,
+        added=added,
+        modified=modified,
+        removed=removed,
+    )
 
 
-async def redo_session_messages(db: AsyncSession, session_id: UUID) -> bool:
+async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
     """Move the revert boundary forward, or clear it at the end."""
     session = await db.get(ChatSession, session_id)
     boundary = await _revert_boundary(db, session_id)
     if session is None or boundary is None:
-        return False
+        return BoundaryShift(applied=False)
+    redo_anchor = _redo_anchor(session)
     next_user = (
         await db.exec(
             select(SessionMessage)
@@ -441,10 +498,38 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> bool:
             .limit(1)
         )
     ).first()
-    session.revert = {"message_id": str(next_user.id)} if next_user else None
+
+    workspace = session_workspace_dir(str(session_id), session.workspace)
+    added: list[str] = []
+    modified: list[str] = []
+    removed: list[str] = []
+    if next_user is None:
+        if redo_anchor:
+            result = await snapshot_service.restore(
+                str(session_id), workspace, redo_anchor
+            )
+            added, modified, removed = result.added, result.modified, result.removed
+        session.revert = None
+    else:
+        next_snapshot = _message_snapshot(next_user)
+        if next_snapshot:
+            result = await snapshot_service.restore(
+                str(session_id), workspace, next_snapshot
+            )
+            added, modified, removed = result.added, result.modified, result.removed
+        revert_state: dict = {"message_id": str(next_user.id)}
+        if redo_anchor:
+            revert_state["snapshot"] = redo_anchor
+        session.revert = revert_state
     db.add(session)
     await db.flush()
-    return True
+    return BoundaryShift(
+        applied=True,
+        target=next_user,
+        added=added,
+        modified=modified,
+        removed=removed,
+    )
 
 
 async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:

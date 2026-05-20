@@ -200,6 +200,11 @@ class TestPostTeamCommands:
         body = resp.json()
         assert body["command"] == "undo"
         assert body["message"]["content"] == "second"
+        assert body["changed_paths"] == {
+            "added": [],
+            "modified": [],
+            "removed": [],
+        }
 
         async with _db.async_session_factory() as db:
             session = await db.get(ChatSession, sid)
@@ -257,7 +262,25 @@ class TestPostTeamCommands:
         assert first.status_code == 202
         assert second.status_code == 202
         assert redo.status_code == 202
-        assert redo.json()["command"] == "redo"
+        redo_body = redo.json()
+        assert redo_body["command"] == "redo"
+        assert redo_body["message"] is not None
+        assert redo_body["message"]["id"] == first.json()["message"]["id"]
+        assert redo_body["message"]["content"] == "second"
+        assert redo_body["changed_paths"] == {
+            "added": [],
+            "modified": [],
+            "removed": [],
+        }
+
+        cleared = client.post(
+            "/api/team/commands",
+            json={"command": "redo", "session_id": str(sid)},
+        )
+        assert cleared.status_code == 202
+        cleared_body = cleared.json()
+        assert cleared_body["command"] == "redo"
+        assert cleared_body["message"] is None
 
         async with _db.async_session_factory() as db:
             session = await db.get(ChatSession, sid)
@@ -270,9 +293,14 @@ class TestPostTeamCommands:
             ).all()
             llm_messages = await get_messages_for_llm(db, sid)
         assert session is not None
-        assert session.revert == {"message_id": first.json()["message"]["id"]}
+        assert session.revert is None
         assert [row.content for row in rows if row.exclude_from_context] == []
-        assert [msg.content for msg in llm_messages] == ["first", "first answer"]
+        assert [msg.content for msg in llm_messages] == [
+            "first",
+            "first answer",
+            "second",
+            "second answer",
+        ]
 
     @pytest.mark.asyncio
     async def test_unknown_command_rejected_by_validator(self, app_with_lead_only_team):
@@ -283,3 +311,63 @@ class TestPostTeamCommands:
             json={"command": "blow_up_session", "session_id": str(uuid.uuid7())},
         )
         assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_concurrent_redos_each_advance_boundary_one_step(
+        self, app_with_lead_only_team
+    ):
+        """Two parallel /redo calls must NOT both land on the same target."""
+        import asyncio
+
+        from httpx import ASGITransport, AsyncClient
+
+        sid = uuid.uuid7()
+        await _seed_session_and_messages(
+            sid,
+            [
+                ("user", "u1", None),
+                ("assistant", "a1", None),
+                ("user", "u2", None),
+                ("assistant", "a2", None),
+                ("user", "u3", None),
+                ("assistant", "a3", None),
+            ],
+        )
+
+        client = TestClient(app_with_lead_only_team)
+        for _ in range(3):
+            r = client.post(
+                "/api/team/commands",
+                json={"command": "undo", "session_id": str(sid)},
+            )
+            assert r.status_code == 202
+
+        transport = ASGITransport(app=app_with_lead_only_team)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            r1, r2 = await asyncio.gather(
+                ac.post(
+                    "/api/team/commands",
+                    json={"command": "redo", "session_id": str(sid)},
+                ),
+                ac.post(
+                    "/api/team/commands",
+                    json={"command": "redo", "session_id": str(sid)},
+                ),
+            )
+
+        assert r1.status_code == 202
+        assert r2.status_code == 202
+        m1 = r1.json()["message"]
+        m2 = r2.json()["message"]
+        assert m1 is not None and m2 is not None
+        assert m1["id"] != m2["id"], (
+            f"both /redo responses landed on the same boundary "
+            f"({m1['content']!r}) — concurrency race regressed"
+        )
+        assert {m1["content"], m2["content"]} == {"u2", "u3"}
+
+        async with _db.async_session_factory() as db:
+            session = await db.get(ChatSession, sid)
+        assert session is not None
+        assert session.revert is not None
+        assert session.revert["message_id"] != m1["id"] or m1["content"] == "u3"

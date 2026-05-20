@@ -200,3 +200,10 @@ class TestWorkspaceFilesListing:
         body = resp.json()
         assert body["truncated"] is True
         assert len(body["files"]) == cap
+
+    # NB: The previous mtime-based "revert boundary" filter is gone. After
+    # the move to the Git snapshot service (see app/services/snapshot_service.py),
+    # the workspace filesystem is authoritative — restoring a snapshot
+    # physically removes files added after that point, so the listing
+    # and media endpoints simply report what's on disk. The snapshot
+    # round-trip is covered by tests/services/test_snapshot_service.py.
