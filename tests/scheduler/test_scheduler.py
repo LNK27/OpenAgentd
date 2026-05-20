@@ -346,6 +346,30 @@ class TestTrigger:
         await scheduler.stop()
         assert mock_dispatch["dispatch"].called
 
+    async def test_trigger_paused_task_enables_it(
+        self, scheduler, db_factory, mock_dispatch
+    ):
+        task = _make_task(name="trigger_paused_me")
+        task.enabled = False
+        task.status = "paused"
+        await scheduler.add(task)
+
+        await scheduler.trigger(task.id)
+        for _ in range(20):
+            await asyncio.sleep(0.01)
+            if mock_dispatch["dispatch"].called:
+                break
+
+        await scheduler.stop()
+        assert mock_dispatch["dispatch"].called
+
+        async with db_factory() as session:
+            db_task = await session.get(ScheduledTask, task.id)
+            assert db_task is not None
+            assert db_task.enabled is True
+            assert db_task.status == "pending"
+            assert db_task.next_fire_at is not None
+
 
 # ---------------------------------------------------------------------------
 # _fire_task — error paths and stat updates

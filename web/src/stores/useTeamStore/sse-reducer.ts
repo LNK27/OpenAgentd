@@ -93,22 +93,40 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
       case 'thinking': {
         const agent = d.agent as string
+        const text = d.text as string
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks = appendThinking(
-            draft.agentStreams[agent].currentBlocks, d.text as string
+          const stream = draft.agentStreams[agent]
+          stream.currentBlocks = appendThinking(
+            stream.currentBlocks, text
           )
+          if (text) {
+            stream._completionEstimated = (stream._completionEstimated ?? 0) + (text.length / 4)
+            const newEstimatedVal = Math.round(stream._completionEstimated)
+            const currentTurnTokens = Math.max(stream.usage.completionTokens - stream._completionBase, newEstimatedVal)
+            stream.usage.completionTokens = stream._completionBase + currentTurnTokens
+            stream.usage.totalTokens = stream.usage.promptTokens + stream.usage.completionTokens
+          }
         })
         break
       }
 
       case 'message': {
         const agent = d.agent as string
+        const text = d.text as string
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks = appendText(
-            draft.agentStreams[agent].currentBlocks, d.text as string
+          const stream = draft.agentStreams[agent]
+          stream.currentBlocks = appendText(
+            stream.currentBlocks, text
           )
+          if (text) {
+            stream._completionEstimated = (stream._completionEstimated ?? 0) + (text.length / 4)
+            const newEstimatedVal = Math.round(stream._completionEstimated)
+            const currentTurnTokens = Math.max(stream.usage.completionTokens - stream._completionBase, newEstimatedVal)
+            stream.usage.completionTokens = stream._completionBase + currentTurnTokens
+            stream.usage.totalTokens = stream.usage.promptTokens + stream.usage.completionTokens
+          }
         })
         break
       }
@@ -260,6 +278,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           ensureAgent(draft, agent)
           if (status === 'working') {
             draft.agentStreams[agent].status = 'working'
+            draft.agentStreams[agent]._completionEstimated = 0
             draft.isTeamWorking = true
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
           } else if (status === 'idle') {
@@ -304,6 +323,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             }
             // Commit this turn's output so next turn accumulates on top
             stream._completionBase = stream.usage.completionTokens
+            stream._completionEstimated = 0
             // Preserve terminal statuses so offline panes stay out of the
             // live roster and errors stay visible until retry.
             // user retries (agent_status → working will clear it).

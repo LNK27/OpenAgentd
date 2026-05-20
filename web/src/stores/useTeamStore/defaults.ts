@@ -20,6 +20,7 @@ export const createDefaultAgentStream = (): AgentStream => ({
     cachedTokens: 0,
   },
   _completionBase: 0,
+  _completionEstimated: 0,
   model: null,
   lastError: null,
   revertedCount: 0,
