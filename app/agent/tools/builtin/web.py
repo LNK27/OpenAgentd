@@ -47,13 +47,26 @@ async def web_search(
     ] = "moderate",
 ) -> list[dict[str, Any]] | str:
     """Search the web. Returns [{title, href, body}]."""
-    try:
-        results = DDGS().text(
-            query, max_results=max_results, page=page, safesearch=safesearch
-        )
-    except Exception as e:
-        logger.debug(f"Error during web search: {str(e)}")
-        results = None
+    results = None
+    backends = ["auto", "brave", "wikipedia", "mojeek"]
+    for backend in backends:
+        try:
+            loop = asyncio.get_running_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda b=backend: DDGS().text(
+                    query,
+                    max_results=max_results,
+                    page=page,
+                    safesearch=safesearch,
+                    backend=b,
+                ),
+            )
+            if results:
+                logger.info(f"Web search succeeded with backend: {backend}")
+                break
+        except Exception as e:
+            logger.debug(f"Web search failed with backend {backend}: {str(e)}")
 
     if results:
         return results
