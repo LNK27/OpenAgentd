@@ -171,7 +171,14 @@ export function appendToolOutput(
       ((toolCallId && block.toolCallId === toolCallId) ||
         (!toolCallId && block.toolName === name && !block.toolDone))
     ) {
-      result[i] = { ...block, toolOutput: `${block.toolOutput ?? ''}${text}` }
+      let newOutput = `${block.toolOutput ?? ''}${text}`
+      if (name === 'shell' || name === 'bash') {
+        const lines = newOutput.split('\n')
+        if (lines.length > 50) {
+          newOutput = '... [truncated live output] ...\n' + lines.slice(-50).join('\n')
+        }
+      }
+      result[i] = { ...block, toolOutput: newOutput }
       return result
     }
   }

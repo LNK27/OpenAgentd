@@ -57,7 +57,7 @@ from app.agent.tools.registry import InjectedArg, Tool
 # ── Constants ────────────────────────────────────────────────────────────────
 
 _DEFAULT_TIMEOUT_SECONDS = (
-    20  # 20 s default; background mode handles long-running processes
+    60  # 60 s default; background mode handles long-running processes
 )
 _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
 _SHELL_OUTPUT_SUBDIR = ".shell_output"
@@ -285,7 +285,7 @@ async def _shell(
         int | None,
         Field(
             description=(
-                "Timeout in seconds. Defaults to 20. Increase for long builds. "
+                "Timeout in seconds. Defaults to 60. Increase for long builds. "
                 "If the command legitimately takes longer, retry with a higher value."
             )
         ),
@@ -408,6 +408,27 @@ async def _shell(
         total_bytes = 0
         aborted = False
 
+        pending_output: list[str] = []
+        pending_lock = asyncio.Lock()
+
+        async def flusher() -> None:
+            try:
+                while True:
+                    await asyncio.sleep(0.1)
+                    async with pending_lock:
+                        if pending_output:
+                            to_emit = "".join(pending_output)
+                            pending_output.clear()
+                            await _emit_tool_output(_tool_output, to_emit)
+            except asyncio.CancelledError:
+                async with pending_lock:
+                    if pending_output:
+                        to_emit = "".join(pending_output)
+                        pending_output.clear()
+                        await _emit_tool_output(_tool_output, to_emit)
+
+        flusher_task = asyncio.create_task(flusher())
+
         try:
             async with asyncio.timeout(timeout):
                 while True:
@@ -416,9 +437,9 @@ async def _shell(
                         break
                     chunks.append(chunk)
                     total_bytes += len(chunk)
-                    await _emit_tool_output(
-                        _tool_output, chunk.decode("utf-8", errors="replace")
-                    )
+                    decoded = chunk.decode("utf-8", errors="replace")
+                    async with pending_lock:
+                        pending_output.append(decoded)
 
         except asyncio.TimeoutError:
             _kill_process_group(proc, signal.SIGKILL)
@@ -428,14 +449,19 @@ async def _shell(
                     remaining = await proc.stdout.read()
                     if remaining:
                         chunks.append(remaining)
-                        await _emit_tool_output(
-                            _tool_output,
-                            remaining.decode("utf-8", errors="replace"),
-                        )
+                        decoded = remaining.decode("utf-8", errors="replace")
+                        async with pending_lock:
+                            pending_output.append(decoded)
             except (asyncio.TimeoutError, Exception):
                 pass
             await proc.wait()
             aborted = True
+        finally:
+            flusher_task.cancel()
+            try:
+                await flusher_task
+            except Exception:
+                pass
 
         # Wait for exit code
         if not aborted:

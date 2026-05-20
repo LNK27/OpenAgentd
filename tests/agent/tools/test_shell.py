@@ -683,3 +683,61 @@ class TestSandboxCommandScan:
             from app.agent.sandbox import _sandbox_ctx
 
             _sandbox_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_shell_streaming_buffering_throttling(
+        self, sandbox_workspace, monkeypatch
+    ):
+        """Verify that rapid streaming output is buffered and throttled to avoid flooding."""
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+        )
+        emitted_chunks: list[str] = []
+
+        async def capture(text: str) -> None:
+            emitted_chunks.append(text)
+
+        # Run a command that prints multiple lines with a tiny sleep to simulate streaming
+        result = await _shell(
+            command="echo 'chunk1'; sleep 0.02; echo 'chunk2'; sleep 0.02; echo 'chunk3'",
+            timeout_seconds=2,
+            _tool_output=capture,
+        )
+
+        assert "[Succeeded]" in result
+        combined = "".join(emitted_chunks)
+        assert "chunk1" in combined
+        assert "chunk2" in combined
+        assert "chunk3" in combined
+
+        # Because of the 100ms throttling interval, chunk1, chunk2, and chunk3
+        # should be grouped together or at least not emitted as 3 separate individual calls.
+        # With 0.02s sleeps, they all complete within ~50ms, so they should be grouped
+        # into at most 2 emissions (often just 1).
+        assert len(emitted_chunks) <= 2
+
+    @pytest.mark.asyncio
+    async def test_shell_streaming_immediate_flush_on_completion(
+        self, sandbox_workspace, monkeypatch
+    ):
+        """Verify that any remaining buffered output is flushed immediately when the command exits."""
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+        )
+        emitted_chunks: list[str] = []
+
+        async def capture(text: str) -> None:
+            emitted_chunks.append(text)
+
+        # Run a command that exits immediately after printing.
+        # The flusher task runs on a 100ms loop, but the command exits in <10ms.
+        # The remaining output must be flushed immediately on exit via the finally block.
+        result = await _shell(
+            command="echo 'immediate_flush'",
+            timeout_seconds=2,
+            _tool_output=capture,
+        )
+
+        assert "[Succeeded]" in result
+        assert "immediate_flush" in "".join(emitted_chunks)
+        assert len(emitted_chunks) >= 1

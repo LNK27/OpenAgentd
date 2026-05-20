@@ -31,7 +31,7 @@ All filesystem tools output paths **relative to the sandbox workspace root**. Ab
 
 | Tool | What it does |
 |------|--------------|
-| `shell` | Run a shell command inside the sandbox (20 s default timeout; supports `background=true` for long-running processes). |
+| `shell` | Run a shell command inside the sandbox (60 s default timeout; supports `background=true` for long-running processes). |
 | `bg` | Manage background processes: list, check status, read output, wait, stop. |
 
 ### Web

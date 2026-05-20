@@ -174,7 +174,7 @@ Backend returns `list[dict]` with `{title, href, body}` per result. The renderer
 
 Backend returns one of:
 - **Foreground:** `"[Succeeded]\n\n<stdout>"` or `"[Failed — exit code N]\n\n<stdout+stderr>"`
-- **Live foreground output:** optional `tool_output_delta` events append to the running tool card until `tool_end` arrives.
+- **Live foreground output:** optional `tool_output_delta` events append to the running tool card until `tool_end` arrives. To prevent UI lag, active live-streamed output is truncated to the last 50 lines. Once the process terminates, it is replaced with the full execution output (up to 300 lines).
 
 Rendering:
 - First line is parsed as the status token. `Succeeded` uses `--color-success`; `Failed …` uses `--color-error`. No boxed chrome, no icons.

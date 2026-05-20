@@ -5,6 +5,7 @@ import {
   initTool,
   addTool,
   completeTool,
+  appendToolOutput,
   startCompaction,
   appendCompactionContent,
   endCompaction,
@@ -216,6 +217,37 @@ describe("completeTool", () => {
     const result = completeTool(blocks, "web_search", "tc1", "replay");
     expect(result[0].toolResult).toBe("original"); // Me keep original, not overwrite
     expect(result).toHaveLength(1); // no duplicate added
+  });
+});
+
+// ---------------------------------------------------------------------------
+// appendToolOutput
+// ---------------------------------------------------------------------------
+
+describe("appendToolOutput", () => {
+  it("appends output to matching tool block", () => {
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "hello" },
+    ];
+    const result = appendToolOutput(blocks, "shell", "tc1", " world");
+    expect(result[0].toolOutput).toBe("hello world");
+  });
+
+  it("truncates shell tool output to last 50 lines when it gets too large", () => {
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
+    ];
+    // Generate 120 lines of output
+    const lines = Array.from({ length: 120 }, (_, i) => `line ${i}`).join("\n");
+    const result = appendToolOutput(blocks, "shell", "tc1", lines);
+
+    const output = result[0].toolOutput || "";
+    expect(output).toContain("... [truncated live output] ...");
+    const outputLines = output.split("\n");
+    // Should be 1 header line + 50 lines of output
+    expect(outputLines.length).toBe(51);
+    expect(outputLines[1]).toBe("line 70");
+    expect(outputLines[50]).toBe("line 119");
   });
 });
 
