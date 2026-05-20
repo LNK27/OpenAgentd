@@ -152,8 +152,7 @@ describe("ToolCall — web_search display", () => {
   it("shows conversational header with query", () => {
     const args = JSON.stringify({ query: "latest python release" })
     render(<ToolCall name="web_search" args={args} done={false} />)
-    // Verb stays upright; only the quoted query is plain.
-    const header = getHeader('Searching "latest python release"')
+    const header = getHeader('"latest python release"')
     expectPlainArg(header, '"latest python release"')
     expect(screen.queryByText("web_search")).toBeNull()
   })
@@ -198,7 +197,7 @@ describe("ToolCall — web_fetch display", () => {
   it("shows conversational header with domain", () => {
     const args = JSON.stringify({ url: "https://docs.python.org/3/library/asyncio.html" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
-    const header = getHeader("Reading docs.python.org")
+    const header = getHeader("docs.python.org")
     expectPlainArg(header, "docs.python.org")
     expect(screen.queryByText("web_fetch")).toBeNull()
   })
@@ -206,7 +205,7 @@ describe("ToolCall — web_fetch display", () => {
   it("strips www from domain", () => {
     const args = JSON.stringify({ url: "https://www.example.com/page" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
-    const header = getHeader("Reading example.com")
+    const header = getHeader("example.com")
     expectPlainArg(header, "example.com")
   })
 
@@ -534,11 +533,7 @@ describe("ToolCall — skill display", () => {
   it("shows conversational header with skill name", () => {
     const args = JSON.stringify({ skill_name: "web-design-guidelines" })
     render(<ToolCall name="skill" args={args} done={false} />)
-    // Skill name is plain inside "Loading skill: <name>".
-    expectPlainArg(
-      getHeader("Loading skill: web-design-guidelines"),
-      "web-design-guidelines",
-    )
+    expectPlainArg(getHeader("web-design-guidelines"), "web-design-guidelines")
     expect(screen.queryByText("skill")).toBeNull()
   })
 
@@ -554,26 +549,19 @@ describe("ToolCall — skill display", () => {
   it("shows fallback header when no skill_name", () => {
     const args = JSON.stringify({})
     render(<ToolCall name="skill" args={args} done={false} />)
-    const header = getHeader("Loading skill…")
-    // Fallback has no argument, so no <em> markup.
-    expect(header.textContent).toBe("Loading skill…")
-    expect(header.querySelector("em")).toBeNull()
+    expect(screen.getByText("Skill")).toBeTruthy()
   })
 
   it("shows fallback header when skill_name is empty string", () => {
     const args = JSON.stringify({ skill_name: "" })
     render(<ToolCall name="skill" args={args} done={false} />)
-    const header = getHeader("Loading skill…")
-    expect(header.textContent).toBe("Loading skill…")
-    expect(header.querySelector("em")).toBeNull()
+    expect(screen.getByText("Skill")).toBeTruthy()
   })
 
   it("shows fallback header when skill_name is whitespace", () => {
     const args = JSON.stringify({ skill_name: "   " })
     render(<ToolCall name="skill" args={args} done={false} />)
-    const header = getHeader("Loading skill…")
-    expect(header.textContent).toBe("Loading skill…")
-    expect(header.querySelector("em")).toBeNull()
+    expect(screen.getByText("Skill")).toBeTruthy()
   })
 
   it("is not expandable (no details to show)", () => {
@@ -609,7 +597,7 @@ describe("ToolCall — wiki_search display", () => {
     const args = JSON.stringify({ query: "deployment decisions", methods: ["text"], top_k: 5 })
     render(<ToolCall name="wiki_search" args={args} done={false} />)
 
-    expectPlainArg(getHeader('Searching wiki for "deployment decisions"'), '"deployment decisions"')
+    expectPlainArg(getHeader('"deployment decisions"'), '"deployment decisions"')
     await user.click(screen.getByRole("button"))
     expect(screen.queryByText("arguments")).toBeNull()
     expect(screen.queryByText(/"query"/)).toBeNull()
