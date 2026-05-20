@@ -280,6 +280,19 @@ class Agent(Generic[TContext]):
         last_usage: Usage | None = None
 
         while iteration < self.max_iterations:
+            # Top-of-iteration interrupt check.  Without this, an interrupt
+            # that fires between iterations (e.g. while ``after_model``
+            # hooks were running, or between tool dispatch and the next
+            # LLM call) wouldn't be observed until the next chunk arrived
+            # from the provider — which can be many seconds with models
+            # that have long thinking phases.
+            if interrupt_event is not None and interrupt_event.is_set():
+                logger.info(
+                    "agent_iteration_interrupted agent={} iteration={}",
+                    self.name,
+                    iteration,
+                )
+                break
             iteration += 1
             iter_start = time.monotonic()
             logger.info(

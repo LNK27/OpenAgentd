@@ -211,11 +211,12 @@ Primary provider (5 retries for transient failures)
 
 ## Interrupt
 
-Pass an `asyncio.Event` as `interrupt_event`. The loop checks it at three points:
+Pass an `asyncio.Event` as `interrupt_event`. The loop checks it at four points:
 
-1. **During LLM streaming** — after each chunk, breaks out of the stream.
-2. **Before tool dispatch** — if already set when tools are about to execute, skips execution entirely and returns `"Cancelled by user."` for every tool call.
-3. **During tool execution** — `_gather_or_cancel()` monitors the event while tools run in parallel. Completed tools keep their real results; still-running tools are cancelled via `asyncio.Task.cancel()` and get `"Cancelled by user."` as their result.
+1. **Top of each iteration** — observed before the next `before_model` / LLM call, so an interrupt that fires between iterations (e.g. while `after_model` hooks ran, or between tool dispatch and the next model call) breaks the loop immediately instead of letting another LLM call start.
+2. **During LLM streaming** — each chunk read is awaited concurrently with `interrupt_event.wait()` via the `_interruptible_stream` wrapper in `app/agent/agent_loop/streaming.py`. When the event wins the race, the in-flight `__anext__` task is cancelled and `aclose()` is called on the upstream generator — that cascades through the provider's `async with httpx.AsyncClient` block so the socket is closed instead of waiting on the next SSE event. A long mid-stream pause (e.g. Gemini extended-thinking) no longer hides the user's stop request.
+3. **Before tool dispatch** — if already set when tools are about to execute, skips execution entirely and returns `"Cancelled by user."` for every tool call.
+4. **During tool execution** — `_gather_or_cancel()` monitors the event while tools run in parallel. Completed tools keep their real results; still-running tools are cancelled via `asyncio.Task.cancel()` and get `"Cancelled by user."` as their result.
 
 ```python
 interrupt = asyncio.Event()

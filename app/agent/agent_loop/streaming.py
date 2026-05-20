@@ -32,9 +32,76 @@ from app.agent.schemas.chat import (
 )
 
 if TYPE_CHECKING:
+    from typing import AsyncIterator
+
     from app.agent.hooks import BaseAgentHook
     from app.agent.providers.base import LLMProviderBase
     from app.agent.state import AgentState, ModelRequest, RunContext
+
+
+async def _interruptible_stream(
+    source: AsyncIterator,
+    interrupt_event: asyncio.Event | None,
+):
+    """Yield from *source* but stop promptly when *interrupt_event* fires.
+
+    Each ``__anext__`` is awaited concurrently with ``interrupt_event.wait()``.
+    If the event wins the race the in-flight fetch is cancelled, which
+    propagates ``aclose()`` up through the provider's async generator
+    and closes the underlying HTTP stream — so a long mid-chunk pause
+    (e.g. Gemini extended-thinking) no longer hides the user's stop
+    request until the next SSE event arrives.
+
+    When ``interrupt_event`` is ``None`` this degrades to a plain
+    ``async for`` so the no-interrupt path is allocation-free.
+    """
+    if interrupt_event is None:
+        async for item in source:
+            yield item
+        return
+
+    aiter = source.__aiter__()
+    waiter = asyncio.ensure_future(interrupt_event.wait())
+    try:
+        while True:
+            if interrupt_event.is_set():
+                return
+            fetch = asyncio.ensure_future(aiter.__anext__())
+            try:
+                done, _ = await asyncio.wait(
+                    {fetch, waiter},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            except BaseException:
+                fetch.cancel()
+                raise
+            if waiter in done and fetch not in done:
+                fetch.cancel()
+                try:
+                    await fetch
+                except (asyncio.CancelledError, BaseException):
+                    pass
+                return
+            try:
+                item = fetch.result()
+            except StopAsyncIteration:
+                return
+            yield item
+    finally:
+        waiter.cancel()
+        try:
+            await waiter
+        except (asyncio.CancelledError, BaseException):
+            pass
+        # Best-effort: close the upstream generator so the provider's
+        # ``async with httpx.AsyncClient`` exits and the socket is
+        # released instead of waiting on GC.
+        aclose = getattr(source, "aclose", None)
+        if aclose is not None:
+            try:
+                await aclose()
+            except (asyncio.CancelledError, BaseException):
+                pass
 
 
 async def stream_and_assemble(
@@ -74,7 +141,7 @@ async def stream_and_assemble(
         *req.messages,
     ]
 
-    async for chunk in stream_with_retry(
+    upstream = stream_with_retry(
         primary_provider=primary_provider,
         primary_label=primary_label,
         fallback_provider=fallback_provider,
@@ -86,8 +153,11 @@ async def stream_and_assemble(
         interrupt_event=interrupt_event,
         messages=provider_messages,
         tools=tool_defs or None,
-    ):
-        # Preemptive interrupt: break out of streaming early
+    )
+    async for chunk in _interruptible_stream(upstream, interrupt_event):
+        # Preemptive interrupt: break out of streaming early.  The wrapper
+        # also races against ``interrupt_event``, so this check fires
+        # immediately even if the provider was mid-pause between chunks.
         if interrupt_event is not None and interrupt_event.is_set():
             logger.debug("agent_streaming_interrupted agent={}", agent_name)
             break
