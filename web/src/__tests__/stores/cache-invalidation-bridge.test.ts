@@ -17,7 +17,15 @@ import type { CacheInvalidation } from '@/stores/useTeamStore'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
 
 function makeMockClient() {
-  return { invalidateQueries: mock(() => Promise.resolve()) }
+  return {
+    invalidateQueries: mock(() => Promise.resolve()),
+    // ``coding_workspace_paths`` branch reads/writes the cached diff
+    // via ``get/setQueryData``; the legacy tests below don't exercise
+    // that branch so the stubs just satisfy the BridgeQueryClient
+    // type without observing behaviour.
+    getQueryData: mock(() => undefined),
+    setQueryData: mock(() => undefined),
+  }
 }
 
 describe('applyCacheInvalidations', () => {

@@ -71,6 +71,70 @@ export function touchesWiki(toolName: string, toolArgs: string | undefined): boo
   }
 }
 
+/**
+ * Tools whose touched paths can be statically derived from their args
+ * — ``write`` / ``edit`` / ``rm`` carry a single ``path`` field, and
+ * ``patch`` carries a ``patch_text`` envelope whose ``*** Add File:``,
+ * ``*** Update File:``, ``*** Delete File:`` markers each name one path.
+ *
+ * ``shell`` / ``bg`` / ``generate_image`` / ``generate_video`` are
+ * absent: shell can mutate anywhere, and the multimodal generators
+ * don't surface a deterministic output path in the args. Those tools
+ * keep emitting the broad ``coding_workspace`` event (full
+ * invalidation).
+ */
+const PATH_BEARING_TOOLS = new Set(['write', 'edit', 'rm', 'patch'])
+
+const PATCH_PATH_RE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm
+
+/**
+ * Extract the workspace-relative paths a tool_end call mutated, by
+ * reading the args we captured on tool_start. Returns ``null`` when
+ * we can't determine the path set (unknown tool, unparseable args,
+ * empty path, or wiki write). The bridge falls back to a full
+ * ``coding_workspace`` invalidation in that case.
+ *
+ * The path values returned are normalised by trimming whitespace
+ * only — server-side ``_safe_resolve`` rejects anything dodgy, so we
+ * don't need to second-guess traversal here.
+ */
+export function extractToolPaths(
+  toolName: string,
+  toolArgs: string | undefined,
+): string[] | null {
+  if (!toolArgs || !PATH_BEARING_TOOLS.has(toolName)) return null
+
+  // Live-streamed args may still be partial JSON — abort on parse
+  // failure so we fall back to the broad invalidation rather than
+  // emit a half-baked path list.
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(toolArgs)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+
+  if (toolName === 'patch') {
+    const text = (parsed as { patch_text?: unknown }).patch_text
+    if (typeof text !== 'string') return null
+    const paths: string[] = []
+    // ``matchAll`` over the global regex captures every ``*** Add /
+    // Update / Delete File: <path>`` marker in the envelope.
+    for (const match of text.matchAll(PATCH_PATH_RE)) {
+      const p = match[1]?.trim()
+      if (p) paths.push(p)
+    }
+    return paths.length > 0 ? paths : null
+  }
+
+  // write / edit / rm — single ``path`` field
+  const p = (parsed as { path?: unknown }).path
+  if (typeof p !== 'string') return null
+  const trimmed = p.trim()
+  return trimmed ? [trimmed] : null
+}
+
 // Helper to revoke blob URLs from blocks to prevent memory leaks
 export function revokeBlobUrlsFromBlocks(blocks: ContentBlock[]) {
   for (const block of blocks) {

@@ -60,6 +60,7 @@ import {
   NOTE_TOOLS,
   SCHEDULER_MUTATING_TOOLS,
   TODO_MUTATING_TOOLS,
+  extractToolPaths,
   touchesWiki,
 } from './helpers'
 import type { CacheInvalidation, TeamStore } from './types'
@@ -227,10 +228,42 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         // Shell / patch / multimodal generators always invalidate; for
         // path-typed tools (write/edit/rm) we skip when the write
         // landed in ``wiki/`` (handled above).
+        //
+        // Path scoping: ``extractToolPaths`` reads the captured
+        // ``tool_start`` args. When we can derive the set of touched
+        // files (write/edit/rm/patch in coding mode), emit the
+        // ``coding_workspace_paths`` event so the bridge can fetch a
+        // scoped git diff (~5–20ms) and splice it into the cached
+        // whole-repo diff — instead of paying the full ``git diff --
+        // .`` refresh (~100–800ms). Tools whose touched paths can't
+        // be statically derived (shell, bg, multimodal generators)
+        // fall back to the broad ``coding_workspace`` event below.
         if (FS_MUTATING_TOOLS.has(toolName) && !touchedWiki) {
           const workspace = get()._workspace
           if (workspace) {
-            events.push({ kind: 'coding_workspace', workspace })
+            const stream = get().agentStreams[agent]
+            const block = stream?.currentBlocks.find(
+              (b) =>
+                b.type === 'tool' &&
+                (toolCallId ? b.toolCallId === toolCallId : b.toolName === toolName),
+            )
+            const paths = extractToolPaths(toolName, block?.toolArgs)
+            // Drop any ``wiki/`` paths from the scoped set: ``patch``
+            // can mix workspace + wiki targets in a single envelope,
+            // and the bridge must not splice wiki paths into the
+            // coding diff cache.
+            const workspacePaths = paths?.filter(
+              (p) => !p.startsWith('wiki/') && p !== 'wiki',
+            )
+            if (workspacePaths && workspacePaths.length > 0) {
+              events.push({
+                kind: 'coding_workspace_paths',
+                workspace,
+                paths: workspacePaths,
+              })
+            } else {
+              events.push({ kind: 'coding_workspace', workspace })
+            }
           } else {
             // Guarded by sessionId so stale turns after newSession()
             // don't queue an event keyed on a mismatched session id.

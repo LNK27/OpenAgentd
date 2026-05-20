@@ -36,6 +36,16 @@ export type CacheInvalidation =
   | { kind: 'wiki' }
   | { kind: 'workspace_files'; sessionId: string }
   | { kind: 'coding_workspace'; workspace: string }
+  /**
+   * Scoped coding-workspace event for tool_end calls whose touched
+   * paths we know up-front (write/edit/rm — single path from tool
+   * args; patch — paths parsed from the patch envelope). The cache
+   * bridge fetches a scoped git diff for just these paths and
+   * splices the result into the cached whole-repo diff, sidestepping
+   * the expensive ``git diff -- .`` refetch. Files cache is still
+   * invalidated normally (cheap).
+   */
+  | { kind: 'coding_workspace_paths'; workspace: string; paths: string[] }
   | { kind: 'scheduler' }
   | { kind: 'todos'; sessionId: string }
   | { kind: 'team_agents' }

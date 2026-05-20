@@ -55,7 +55,11 @@ function resetStore(overrides: Partial<ReturnType<typeof useTeamStore.getState>>
 describe("useTeamStore — coding_workspace invalidation", () => {
   beforeEach(() => resetStore())
 
-  it("emits coding_workspace event when `write` targets workspace files in coding mode", () => {
+  it("emits SCOPED coding_workspace_paths event when `write` carries a path in coding mode", () => {
+    // Path-bearing tools (write/edit/rm/patch) carry the touched file
+    // in their args — the SSE reducer extracts it and emits the
+    // scoped event so the cache bridge can fetch a per-file diff
+    // instead of triggering a whole-repo refetch.
     resetStore({ sessionId: "sess-c1", _workspace: "/Users/me/proj" })
     primeBlock("claude", "write", "tc-1", { path: "src/app.ts", content: "..." })
     useTeamStore.getState()._handleSSEEvent("tool_end", {
@@ -65,7 +69,11 @@ describe("useTeamStore — coding_workspace invalidation", () => {
       result: "Written 42 bytes",
     })
     expect(useTeamStore.getState().cacheInvalidations).toEqual([
-      { kind: "coding_workspace", workspace: "/Users/me/proj" },
+      {
+        kind: "coding_workspace_paths",
+        workspace: "/Users/me/proj",
+        paths: ["src/app.ts"],
+      },
     ])
   })
 
@@ -83,9 +91,12 @@ describe("useTeamStore — coding_workspace invalidation", () => {
     ])
   })
 
-  it.each(["patch", "bg", "generate_image", "generate_video"] as const)(
-    "emits coding_workspace event when `%s` finishes in coding mode",
+  it.each(["bg", "generate_image", "generate_video"] as const)(
+    "emits broad coding_workspace event when `%s` finishes in coding mode (no extractable path)",
     (toolName) => {
+      // ``bg`` is shell-like (arbitrary path mutations); the
+      // multimodal generators don't surface deterministic output
+      // paths in their args. All fall back to broad invalidation.
       resetStore({ sessionId: "sess-c3", _workspace: "/tmp/proj" })
       primeBlock("claude", toolName, `tc-${toolName}`, { foo: "bar" })
       useTeamStore.getState()._handleSSEEvent("tool_end", {
@@ -99,6 +110,52 @@ describe("useTeamStore — coding_workspace invalidation", () => {
       ])
     },
   )
+
+  it("extracts paths from a `patch` envelope and emits a scoped event", () => {
+    resetStore({ sessionId: "sess-c-patch", _workspace: "/tmp/proj" })
+    const envelope = [
+      "*** Begin Patch",
+      "*** Update File: src/a.ts",
+      "@@",
+      "-foo",
+      "+bar",
+      "*** Add File: src/b.ts",
+      "+hello",
+      "*** Delete File: src/old.ts",
+      "*** End Patch",
+    ].join("\n")
+    primeBlock("claude", "patch", "tc-p", { patch_text: envelope })
+    useTeamStore.getState()._handleSSEEvent("tool_end", {
+      name: "patch",
+      agent: "claude",
+      tool_call_id: "tc-p",
+      result: "Patch applied successfully. Updated paths:\nsrc/a.ts\nsrc/b.ts\nsrc/old.ts",
+    })
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      {
+        kind: "coding_workspace_paths",
+        workspace: "/tmp/proj",
+        paths: ["src/a.ts", "src/b.ts", "src/old.ts"],
+      },
+    ])
+  })
+
+  it("falls back to broad coding_workspace when patch args are unparseable", () => {
+    // Streaming tool_start may deliver partial JSON — args never
+    // fully resolve. The reducer must NOT emit a half-baked path
+    // list; it falls back to whole-repo invalidation in that case.
+    resetStore({ sessionId: "sess-c-bad", _workspace: "/tmp/proj" })
+    primeBlock("claude", "patch", "tc-bad", { patch_text: "*** Begin Patch (incomplete" })
+    useTeamStore.getState()._handleSSEEvent("tool_end", {
+      name: "patch",
+      agent: "claude",
+      tool_call_id: "tc-bad",
+      result: "boom",
+    })
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "coding_workspace", workspace: "/tmp/proj" },
+    ])
+  })
 
   it("emits ONLY wiki (not coding_workspace) when `write` targets wiki/ in coding mode", () => {
     resetStore({ sessionId: "sess-c4", _workspace: "/tmp/proj" })
@@ -144,7 +201,7 @@ describe("useTeamStore — coding_workspace invalidation", () => {
     expect(useTeamStore.getState().cacheInvalidations).toEqual([{ kind: "wiki" }])
   })
 
-  it("queues one event per file-mutating tool_end across a burst", () => {
+  it("queues one scoped event per write across a burst (each carries its own path)", () => {
     resetStore({ sessionId: "sess-c6", _workspace: "/tmp/proj" })
     const state = useTeamStore.getState()
     for (let i = 0; i < 3; i++) {
@@ -158,9 +215,9 @@ describe("useTeamStore — coding_workspace invalidation", () => {
       })
     }
     expect(useTeamStore.getState().cacheInvalidations).toEqual([
-      { kind: "coding_workspace", workspace: "/tmp/proj" },
-      { kind: "coding_workspace", workspace: "/tmp/proj" },
-      { kind: "coding_workspace", workspace: "/tmp/proj" },
+      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["f0.txt"] },
+      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["f1.txt"] },
+      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["f2.txt"] },
     ])
   })
 })

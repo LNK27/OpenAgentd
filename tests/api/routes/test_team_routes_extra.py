@@ -412,6 +412,70 @@ class TestTeamAgentsRouteExtra:
         assert "--- /dev/null\n+++ b/test.py\n@@" in body["diff"]
         assert '+print("hello")' in body["diff"]
 
+    def test_workspace_git_diff_scoped_paths(
+        self, app_without_team, tmp_path, monkeypatch
+    ):
+        """``paths=`` scopes both the tracked diff and the untracked scan."""
+        (tmp_path / ".git").mkdir()
+        (tmp_path / "wanted.py").write_text("a", encoding="utf-8")
+        (tmp_path / "ignored.py").write_text("b", encoding="utf-8")
+
+        captured_diff_args: list[list[str]] = []
+
+        def fake_run(*args, **kwargs):
+            command = args[0]
+            # ``git diff -- <pathspecs>``
+            if "diff" in command:
+                captured_diff_args.append(command)
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            if command[3:6] == ["ls-files", "--others", "--exclude-standard"]:
+                # Both files are untracked; the route must filter to the
+                # ones the caller asked about.
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout="wanted.py\nignored.py\n",
+                    stderr="",
+                )
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("app.api.routes.team.files.subprocess.run", fake_run)
+        client = TestClient(app_without_team)
+
+        resp = client.get(
+            "/api/team/workspace/git-diff/view",
+            params={"workspace": str(tmp_path), "paths": ["wanted.py"]},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        # ``git diff`` invoked with the scoped pathspec, not ``.``
+        assert captured_diff_args, "git diff was not called"
+        diff_cmd = captured_diff_args[0]
+        assert "--" in diff_cmd
+        sep = diff_cmd.index("--")
+        assert diff_cmd[sep + 1 :] == ["wanted.py"]
+        # Untracked scan filtered to the requested path only.
+        assert body["untracked"] == ["wanted.py"]
+
+    def test_workspace_git_diff_rejects_path_traversal(
+        self, app_without_team, tmp_path, monkeypatch
+    ):
+        """``paths=../etc/passwd`` must not leak diffs outside the workspace."""
+        (tmp_path / ".git").mkdir()
+        monkeypatch.setattr(
+            "app.api.routes.team.files.subprocess.run",
+            lambda *a, **kw: SimpleNamespace(returncode=0, stdout="", stderr=""),
+        )
+        client = TestClient(app_without_team)
+
+        resp = client.get(
+            "/api/team/workspace/git-diff/view",
+            params={"workspace": str(tmp_path), "paths": ["../etc/passwd"]},
+        )
+
+        assert resp.status_code == 422
+        assert "invalid path" in resp.json()["detail"].lower()
+
     def test_workspace_status_non_repo(self, app_without_team, tmp_path):
         client = TestClient(app_without_team)
 
