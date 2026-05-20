@@ -339,12 +339,31 @@ class TaskScheduler:
         return task
 
     async def trigger(self, task_id: UUID) -> None:
-        """Fire task immediately without affecting the schedule."""
+        """Fire task immediately and ensure it is enabled."""
         async with self._db() as session:
             result = await session.exec(
                 select(ScheduledTask).where(ScheduledTask.id == task_id)
             )
             task = result.one()
+            was_disabled = not task.enabled or task.status == "paused"
+            if was_disabled:
+                task.enabled = True
+                task.status = "pending"
+                task.next_fire_at = next_fire(
+                    task.schedule_type,
+                    cron_expression=task.cron_expression,
+                    every_seconds=task.every_seconds,
+                    at_datetime=task.at_datetime,
+                    timezone=task.timezone,
+                    run_count=task.run_count,
+                )
+                session.add(task)
+                await session.commit()
+                await session.refresh(task)
+
+        if was_disabled:
+            self._start_timer(task)
+
         asyncio.create_task(self._fire_task(task))
 
     async def list_tasks(self) -> list[ScheduledTask]:
