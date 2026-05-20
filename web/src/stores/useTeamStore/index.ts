@@ -398,6 +398,10 @@ export const useTeamStore = create<TeamStore>()(
 
     loadSession: async (sessionId: string, workspace?: string | null) => {
       const gen = get()._sessionGeneration
+      set((draft) => {
+        draft.isTeamWorking = false
+        draft.isContinuing = false
+      })
       try {
         const existingLiveNames = get().liveAgentNames
         const liveNamesPromise = existingLiveNames === null
