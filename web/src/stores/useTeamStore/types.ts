@@ -57,6 +57,7 @@ export interface AgentStream {
   /** Committed completionTokens from all prior turns — SSE completion_tokens is a
    *  running total within one turn, so we accumulate across turns here. */
   _completionBase: number
+  _completionEstimated?: number
   model: string | null
   lastError: string | null
   revertedCount?: number
