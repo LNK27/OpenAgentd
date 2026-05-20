@@ -200,11 +200,6 @@ class TestPostTeamCommands:
         body = resp.json()
         assert body["command"] == "undo"
         assert body["message"]["content"] == "second"
-        # ``changed_paths`` always rides along on the response so the
-        # client can drive scoped Coding Workspace cache invalidations
-        # without a full sidebar refetch. Without a git snapshot (these
-        # tests don't track one), all three buckets are empty — but the
-        # envelope shape is part of the contract.
         assert body["changed_paths"] == {
             "added": [],
             "modified": [],
@@ -269,24 +264,15 @@ class TestPostTeamCommands:
         assert redo.status_code == 202
         redo_body = redo.json()
         assert redo_body["command"] == "redo"
-        # /redo echoes the user message the boundary now points at so
-        # the client can apply the new boundary locally without
-        # refetching history. Undo #1 moved boundary to "second" (u2);
-        # undo #2 moved it to "first" (u1). The first /redo advances
-        # back to "second" — so the response carries u2's payload.
         assert redo_body["message"] is not None
         assert redo_body["message"]["id"] == first.json()["message"]["id"]
         assert redo_body["message"]["content"] == "second"
-        # Same scoped-paths envelope as /undo — empty here because no
-        # snapshots were recorded, but the field must always exist.
         assert redo_body["changed_paths"] == {
             "added": [],
             "modified": [],
             "removed": [],
         }
 
-        # /redo a second time clears the boundary entirely — the
-        # response carries ``message: null`` to signal "live tip".
         cleared = client.post(
             "/api/team/commands",
             json={"command": "redo", "session_id": str(sid)},
@@ -307,7 +293,6 @@ class TestPostTeamCommands:
             ).all()
             llm_messages = await get_messages_for_llm(db, sid)
         assert session is not None
-        # Second /redo cleared the boundary — live tip restored.
         assert session.revert is None
         assert [row.content for row in rows if row.exclude_from_context] == []
         assert [msg.content for msg in llm_messages] == [
@@ -331,14 +316,7 @@ class TestPostTeamCommands:
     async def test_concurrent_redos_each_advance_boundary_one_step(
         self, app_with_lead_only_team
     ):
-        """Two parallel /redo calls must NOT both land on the same target.
-
-        Regression: without per-session command serialisation, both
-        handlers open separate DB sessions, read the same
-        ``revert.message_id``, compute the same ``next_user``, and
-        commit the same new boundary — net effect: the boundary moves
-        one step instead of two even though two requests were issued.
-        """
+        """Two parallel /redo calls must NOT both land on the same target."""
         import asyncio
 
         from httpx import ASGITransport, AsyncClient
@@ -356,7 +334,6 @@ class TestPostTeamCommands:
             ],
         )
 
-        # Sync /undo three times — landing the boundary at u1.
         client = TestClient(app_with_lead_only_team)
         for _ in range(3):
             r = client.post(
@@ -365,11 +342,6 @@ class TestPostTeamCommands:
             )
             assert r.status_code == 202
 
-        # Fire two /redo calls truly in parallel via httpx.AsyncClient
-        # — TestClient's .post() is synchronous so a loop of
-        # sequential calls would mask the race. ``asyncio.gather``
-        # ensures both requests enter the route handler before either
-        # commits, exercising the lock window.
         transport = ASGITransport(app=app_with_lead_only_team)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             r1, r2 = await asyncio.gather(
@@ -388,22 +360,14 @@ class TestPostTeamCommands:
         m1 = r1.json()["message"]
         m2 = r2.json()["message"]
         assert m1 is not None and m2 is not None
-        # Each /redo must echo a *different* user message; otherwise
-        # the boundary effectively moved only one step.
         assert m1["id"] != m2["id"], (
             f"both /redo responses landed on the same boundary "
             f"({m1['content']!r}) — concurrency race regressed"
         )
-        # The set of advanced-to messages must be exactly {u2, u3}.
         assert {m1["content"], m2["content"]} == {"u2", "u3"}
 
-        # Final DB state: boundary advanced two full steps.
         async with _db.async_session_factory() as db:
             session = await db.get(ChatSession, sid)
         assert session is not None
-        # Both /redo calls fired, so boundary should be at u3 (or
-        # cleared if u3 was the live tip — but u3 has a3 after it).
-        # Either way the boundary is NOT u2 (which would mean only
-        # one /redo took effect).
         assert session.revert is not None
         assert session.revert["message_id"] != m1["id"] or m1["content"] == "u3"

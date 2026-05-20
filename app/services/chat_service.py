@@ -27,31 +27,15 @@ from app.services import snapshot_service
 
 @dataclass(slots=True)
 class BoundaryShift:
-    """Result of moving the session's revert boundary (undo or redo).
+    """Result of moving the session's revert boundary."""
 
-    Carries both the conversation-level outcome (which user message we
-    landed on) and the filesystem-level outcome (which paths the
-    snapshot restore touched). The HTTP layer forwards both: ``target``
-    drives the client's local boundary slide; the path partition drives
-    scoped Coding Workspace cache invalidations.
-    """
-
-    #: ``True`` when the boundary actually moved. ``False`` means no-op
-    #: — for undo, nothing was undoable; for redo, no shift happened
-    #: (caller may surface this as a 409, but the service stays silent).
     applied: bool
-    #: User message we landed on. ``None`` when ``applied`` is False, or
-    #: when redo cleared the boundary back to the live tip.
     target: SessionMessage | None = None
-    #: Workspace paths the restore created (i.e. files brought back).
     added: list[str] = field(default_factory=list)
-    #: Workspace paths the restore overwrote.
     modified: list[str] = field(default_factory=list)
-    #: Workspace paths the restore removed.
     removed: list[str] = field(default_factory=list)
 
 
-# Me build once — reused by _deserialize_messages for discriminated union parsing
 _chat_message_adapter: TypeAdapter[ChatMessage] = TypeAdapter(ChatMessage)
 
 
@@ -444,19 +428,7 @@ def _redo_anchor(session: ChatSession | None) -> str | None:
 
 
 async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
-    """Move the session revert boundary to the previous user message.
-
-    Also rolls the workspace filesystem back to the snapshot taken when
-    the *target* user message was sent. The pre-undo workspace state is
-    preserved as a "redo anchor" snapshot on :pyattr:`ChatSession.revert`
-    so a later :func:`redo_session_messages` can restore the live tip
-    even after multiple consecutive undos.
-
-    Filesystem rollback is best-effort: when git is unavailable or the
-    target message has no recorded snapshot the conversation boundary
-    still moves but the workspace is left untouched (and the returned
-    path lists stay empty).
-    """
+    """Move the session revert boundary to the previous user message."""
     session = await db.get(ChatSession, session_id)
     if session is None:
         return BoundaryShift(applied=False)
@@ -474,16 +446,8 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     if target is None:
         return BoundaryShift(applied=False)
 
-    # ── Filesystem rollback ────────────────────────────────────────────
-    # Preserve the redo anchor across multiple undos: the *first* undo
-    # records the current (live) state; subsequent undos keep that same
-    # anchor so /redo always returns to the original live tip.
     workspace = session_workspace_dir(str(session_id), session.workspace)
     redo_anchor = _redo_anchor(session)
-    # ``just_tracked`` tells the subsequent ``restore`` that the index
-    # is already in sync with the worktree — saves a redundant
-    # ``diff-files`` + ``ls-files --others`` + ``git add`` round-trip
-    # on the same workspace (~80 ms on 30k files).
     just_tracked = False
     if redo_anchor is None:
         redo_anchor = await snapshot_service.track(str(session_id), workspace)
@@ -518,25 +482,7 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
 
 
 async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
-    """Move the revert boundary forward, or clear it at the end.
-
-    Each step restores the workspace to the snapshot of the user message
-    we are advancing *to*. When advancing past the last reverted user
-    message we drop the boundary entirely and restore the original
-    pre-undo "redo anchor" snapshot recorded by
-    :func:`undo_session_messages`, returning the workspace to its live
-    tip exactly as it stood before any /undo was issued.
-
-    The returned :class:`BoundaryShift`:
-
-    - ``applied=False`` → boundary did not move (nothing to redo).
-    - ``applied=True, target=msg`` → advanced to user message ``msg``.
-    - ``applied=True, target=None`` → cleared the boundary back to the
-      live tip.
-
-    Path lists describe what the workspace restore actually changed and
-    drive scoped Coding Workspace cache invalidations on the client.
-    """
+    """Move the revert boundary forward, or clear it at the end."""
     session = await db.get(ChatSession, session_id)
     boundary = await _revert_boundary(db, session_id)
     if session is None or boundary is None:
@@ -558,7 +504,6 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     modified: list[str] = []
     removed: list[str] = []
     if next_user is None:
-        # No more reverted user messages — return to the live tip.
         if redo_anchor:
             result = await snapshot_service.restore(
                 str(session_id), workspace, redo_anchor

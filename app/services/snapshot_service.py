@@ -1,30 +1,4 @@
-"""Out-of-tree Git-based workspace snapshots for session undo/redo.
-
-Direct port of opencode's ``packages/opencode/src/snapshot/index.ts`` design,
-adapted to Python/openagentd. Key properties mirror the original:
-
-- **Out-of-tree git directory** — ``GIT_DIR`` lives in
-  ``{OPENAGENTD_STATE_DIR}/snapshot/{session_id}/`` while ``GIT_WORK_TREE``
-  points at the actual session workspace. The workspace itself stays free
-  of any ``.git`` pollution, and the snapshot repo can coexist with an
-  unrelated user-level git repo in coding mode.
-- **Tree hashes, not commits** — ``track()`` returns the output of
-  ``git write-tree``. There are no commits, refs, or branches; snapshots
-  are dangling trees referenced only by hash. ``git gc --prune`` cleans
-  them up after expiry.
-- **Bulldozer restore** — ``restore(hash)`` runs ``read-tree`` + ``checkout-index
-  -a -f``, replacing every tracked file in the workspace with the snapshot's
-  version. Untracked files are left alone (we don't delete user-uploaded
-  files we never recorded).
-- **Per-session async lock** — concurrent track/restore on the same session
-  are serialised via :class:`asyncio.Lock` to avoid corrupting the snapshot
-  index.
-
-Failures degrade gracefully. If the ``git`` binary is missing, or any git
-invocation returns non-zero, the service logs a warning and returns ``None``.
-Callers must treat snapshot operations as best-effort — undo/redo still
-moves the conversation boundary; only the filesystem rollback is lost.
-"""
+"""Out-of-tree Git-based workspace snapshots for session undo/redo."""
 
 from __future__ import annotations
 
@@ -41,26 +15,11 @@ from app.core.config import settings
 
 @dataclass(slots=True)
 class RestoreResult:
-    """Outcome of a :func:`restore` call.
-
-    Carries the exact A/M/D path partition diff-index produced so the
-    higher layers (HTTP route, frontend cache bridge) can drive scoped
-    refreshes — file lists, git diffs — without a whole-repo refetch.
-
-    On failure (``ok=False``) the path lists are empty.
-    """
+    """Outcome of a :func:`restore` call."""
 
     ok: bool
-    #: Paths present in the snapshot but absent from the live index —
-    #: i.e. files the restore *created* in the worktree. From the
-    #: user's perspective these are files that were deleted by the
-    #: agent and have just been brought back.
     added: list[str] = field(default_factory=list)
-    #: Paths present in both, differing — the restore *overwrote* them.
     modified: list[str] = field(default_factory=list)
-    #: Paths present in the live index but absent from the snapshot —
-    #: the restore *removed* them. From the user's perspective these
-    #: are files the agent created during the now-undone turn.
     removed: list[str] = field(default_factory=list)
 
     @property
@@ -69,16 +28,8 @@ class RestoreResult:
         return [*self.added, *self.modified, *self.removed]
 
 
-# Files >2 MiB are not tracked (matches opencode's 2 * 1024 * 1024 ceiling).
-# This keeps the snapshot repo small and skips large binary outputs that
-# would balloon checkout times.
 _MAX_FILE_SIZE = 2 * 1024 * 1024
 
-# Core git config flags that must accompany every invocation. They make
-# behaviour deterministic across platforms (no CRLF translation, full
-# long-path / symlink support, no fsmonitor coupling to the user repo)
-# and avoid contending with an unrelated host-side git for ``index.lock``
-# via ``--no-optional-locks``.
 _CORE_FLAGS: tuple[str, ...] = (
     "--no-optional-locks",
     "-c",
@@ -93,7 +44,6 @@ _CORE_FLAGS: tuple[str, ...] = (
     "core.quotepath=false",
 )
 
-# One asyncio.Lock per session_id keeps concurrent track/restore safe.
 _locks: dict[str, asyncio.Lock] = {}
 
 
@@ -170,15 +120,11 @@ async def _init_repo(gitdir: Path, worktree: Path) -> bool:
         )
         return False
 
-    # Match opencode's config — autocrlf off, symlinks/longpaths/fsmonitor sane.
     for key, value in (
         ("core.autocrlf", "false"),
         ("core.longpaths", "true"),
         ("core.symlinks", "true"),
         ("core.fsmonitor", "false"),
-        # The snapshot repo has no user identity; provide a stable one so any
-        # future ``git commit`` (we don't issue any today, but be defensive)
-        # does not prompt or fail.
         ("user.email", "snapshot@openagentd.local"),
         ("user.name", "openagentd-snapshot"),
     ):
@@ -189,14 +135,7 @@ async def _init_repo(gitdir: Path, worktree: Path) -> bool:
 
 
 async def _list_candidate_paths(gitdir: Path, worktree: Path) -> list[str]:
-    """Return ``worktree``-relative paths to stage: modified + untracked.
-
-    Mirrors opencode's ``add()`` helper. Hidden dotfiles and gitignored
-    paths are filtered by ``--exclude-standard`` plus our own size cap.
-    The two ``git`` invocations run concurrently because they read from
-    disjoint sources (work-tree stat cache vs untracked walk) and the
-    ``--no-optional-locks`` flag avoids ``index.lock`` contention.
-    """
+    """Return ``worktree``-relative paths to stage: modified + untracked."""
     args = _gitdir_args(gitdir, worktree)
 
     tracked_task = _git(
@@ -237,10 +176,6 @@ async def _list_candidate_paths(gitdir: Path, worktree: Path) -> list[str]:
         if path in seen:
             continue
         seen.add(path)
-        # Skip oversized files. Already-tracked oversize files keep
-        # flowing in via ``diff-files``; we only screen new untracked
-        # paths so a freshly-introduced 100 MB blob never enters the
-        # repo.
         if path in untracked_set:
             try:
                 size = (worktree / path).stat().st_size
@@ -291,10 +226,6 @@ async def track(session_id: str, workspace: Path) -> str | None:
         if not await _init_repo(gitdir, workspace):
             return None
 
-        # When the working tree hasn't changed since the last track,
-        # ``_list_candidate_paths`` returns an empty list and we skip
-        # ``git add`` entirely — write-tree on the existing index gives
-        # the same hash. Saves one subprocess per quiescent track.
         paths = await _list_candidate_paths(gitdir, workspace)
         if paths:
             await _stage(gitdir, workspace, paths)
@@ -330,27 +261,7 @@ async def restore(
     *,
     skip_stage: bool = False,
 ) -> RestoreResult:
-    """Restore the workspace to the given snapshot tree hash.
-
-    Replaces every tracked file in the worktree with its version in
-    ``snapshot``. Untracked files (i.e. files that were never recorded
-    in any snapshot) are left intact.
-
-    When ``skip_stage`` is True, the caller asserts that the snapshot
-    index is already in sync with the live worktree — typically because
-    a :func:`track` call just completed and no writes have happened
-    since. This skips the ``diff-files`` + ``ls-files --others`` +
-    ``git add`` round-trip that otherwise dominates restore latency on
-    large workspaces (~80 ms saved on 30k files). The caller pays the
-    cost of getting this wrong: a stale index produces an incorrect
-    A/M/D set and the wrong files get restored.
-
-    Returns a :class:`RestoreResult` whose ``ok`` flag indicates
-    success. On success the ``added`` / ``modified`` / ``removed``
-    fields carry the exact path partition diff-index produced, so
-    callers can drive scoped cache invalidations downstream. On
-    failure all path lists are empty.
-    """
+    """Restore the workspace to the given snapshot tree hash."""
     if not is_available():
         return RestoreResult(ok=False)
     if not snapshot:
@@ -358,7 +269,6 @@ async def restore(
 
     gitdir = snapshot_dir(session_id)
     if not (gitdir / "HEAD").exists():
-        # No snapshot repo for this session — nothing to restore against.
         logger.warning(
             "snapshot_restore_no_repo session_id={} hash={}", session_id, snapshot
         )
@@ -366,36 +276,11 @@ async def restore(
 
     workspace.mkdir(parents=True, exist_ok=True)
     async with _lock(session_id):
-        # ── Stage the live state ──────────────────────────────────
-        # Bring the index in sync with the worktree so the
-        # ``diff-index --cached`` below sees current state on the
-        # left. Without this it would diff against whatever the
-        # index held from the previous track — wrong delta.
-        # ``skip_stage`` is set by callers that just completed a
-        # :func:`track` (e.g. /undo's redo-anchor capture) and know
-        # the index already reflects the worktree.
         if not skip_stage:
             live_paths = await _list_candidate_paths(gitdir, workspace)
             if live_paths:
                 await _stage(gitdir, workspace, live_paths)
 
-        # ── Single diff-index call → A/M/D partition ──────────────
-        # ``diff-index --cached --name-status <snapshot>`` compares
-        # the *index* (= current live state, post-stage) against the
-        # target snapshot tree directly — no separate ``write-tree``
-        # needed. Output is one ``X\0path\0`` pair per changed entry:
-        #   A   present in snapshot, absent from index → create
-        #   M   present in both, differing → overwrite
-        #   D   absent from snapshot, present in index → delete
-        # On a 30k-file workspace this eliminates the previous
-        # ``write-tree`` (O(N), ~80 ms) and the ``ls-files`` +
-        # ``ls-tree`` set-difference (also O(N) each).
-        # ``-R`` reverses the diff so the snapshot is treated as the
-        # "new" side and the index as the "old" side. Without it, A
-        # would mean "added to index since snapshot" (= extras) and D
-        # would mean "removed from index since snapshot" (= need to
-        # restore). With -R, A = needs restore, D = extras — matching
-        # the convention of the parsing loop below.
         diff_code, diff_out, _ = await _git(
             *_CORE_FLAGS,
             *_gitdir_args(gitdir, workspace),
@@ -410,10 +295,6 @@ async def restore(
             cwd=workspace,
         )
         if diff_code != 0:
-            # ``diff-index`` is the source of truth for what needs to
-            # change. If it fails we have no safe partition to act on
-            # — surfacing the failure is better than a hidden
-            # whole-tree checkout that quietly papers over the bug.
             logger.warning(
                 "snapshot_diff_index_failed session_id={} hash={}",
                 session_id,
@@ -421,13 +302,6 @@ async def restore(
             )
             return RestoreResult(ok=False)
 
-        # A and M are kept *separate* (not merged into a single
-        # ``to_checkout`` list) so the return value can carry the full
-        # partition up to the HTTP route. Type-changes are extremely
-        # rare; we bucket them with M for restore purposes since
-        # checkout-index will rewrite the blob either way.
-        # ``-z --name-status`` output format: ``X\0path\0X\0path\0...``
-        # where ``X`` is one of A / M / D / T (type-change).
         added: list[str] = []
         modified: list[str] = []
         to_delete: list[str] = []
@@ -448,25 +322,7 @@ async def restore(
                 to_delete.append(path)
         to_checkout: list[str] = [*added, *modified]
 
-        # ── Materialise only the changed paths ────────────────────
-        # We need the snapshot tree's blobs available to ``checkout-index``,
-        # which only ever reads from an index. The naive approach is
-        # ``read-tree <snapshot>`` (loads into the main index) + then
-        # ``checkout-index`` — but ``read-tree`` REPLACES the main index
-        # with a bare tree, wiping every entry's stat-cache. The next
-        # ``track``'s ``diff-files`` then has to re-hash every file
-        # (no fast path), turning the *following* /undo into a 600 ms
-        # whole-workspace re-stage on 5 000 files (6 s on 30 000).
-        #
-        # Fix: load the snapshot tree into a TEMP index instead via
-        # ``GIT_INDEX_FILE``. The main index stays untouched — its
-        # stat-cache for unchanged paths remains valid — and the next
-        # ``track``'s ``diff-files`` is back to its O(changed) cost.
         if to_checkout:
-            # Per-call index file; pid+hash makes the name unique so
-            # two concurrent restores on different sessions never
-            # collide. Lives inside the snapshot dir which is cleaned
-            # at session end.
             temp_index = gitdir / f"restore-{os.getpid()}-{snapshot[:8]}.idx"
             temp_env = {"GIT_INDEX_FILE": str(temp_index)}
             try:
@@ -514,8 +370,6 @@ async def restore(
                 except FileNotFoundError:
                     pass
 
-        # ``to_delete`` was computed from the diff; the file removal is
-        # cheap (per-path unlink) so we don't gather it in parallel.
         _delete_extras(workspace, set(to_delete))
 
         logger.debug(
@@ -543,7 +397,6 @@ def _delete_extras(workspace: Path, extras: set[str]) -> None:
             logger.debug("snapshot_extra_unlink_failed path={} error={}", target, exc)
     if not extras:
         return
-    # Drop now-empty directories, deepest first.
     for dirpath, _, _ in sorted(
         ((Path(dp), dn, fn) for dp, dn, fn in os.walk(workspace, topdown=False)),
         key=lambda item: len(item[0].parts),

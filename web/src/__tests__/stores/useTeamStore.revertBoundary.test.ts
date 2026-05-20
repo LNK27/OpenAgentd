@@ -1,25 +1,4 @@
-/**
- * Optimization 1 — local revert-boundary application.
- *
- * Verifies that ``undoTeam`` / ``redoTeam`` move the revert boundary
- * locally by sliding finalized blocks between ``blocks`` and
- * ``_revertedSuffix`` — without firing a follow-up history GET via
- * ``loadSession``. This is the dominant /undo + /redo latency win
- * (~150–500ms saved per call).
- *
- * Also covers ``applyRevertBoundary`` invariants directly, and the
- * ``loadSession`` change that parses ALL messages (not just the
- * pre-boundary slice) so an already-reverted session can /redo
- * locally without a refetch.
- */
-
 import { mock, describe, it, expect, beforeEach } from "bun:test"
-
-// Inter-file isolation note: ``mock.module("@/api/client", …)``
-// below would leak into other test files if Bun ran them in the
-// same worker process. We rely on ``bun test --parallel`` to spawn
-// a fresh worker per file — see the same note in
-// ``useTeamStore.async.test.ts``.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const mockPostTeamChat = mock(() =>
@@ -73,8 +52,6 @@ import { useTeamStore } from "@/stores/useTeamStore"
 import { applyRevertBoundary } from "@/stores/useTeamStore/helpers"
 import type { AgentStream } from "@/stores/useTeamStore"
 import type { ContentBlock } from "@/api/types"
-
-// ── Test fixtures ─────────────────────────────────────────────────────────────
 
 function block(
   id: string,
@@ -156,10 +133,6 @@ beforeEach(() => {
   mockTeamStatus.mockReset()
   mockTeamHistory.mockReset()
 
-  // After ``mockReset()`` the mocks return ``undefined`` — calling
-  // ``.then()`` on undefined in ``loadSession`` would throw. Restore
-  // sensible promise-returning defaults so per-test mocks only need to
-  // override the call(s) they actually care about.
   mockTeamStatus.mockImplementation(() =>
     Promise.resolve({
       team: "team",
@@ -191,8 +164,6 @@ beforeEach(() => {
   )
 })
 
-// ── applyRevertBoundary helper ────────────────────────────────────────────────
-
 describe("applyRevertBoundary", () => {
   it("is a no-op on an empty stream with null boundary", () => {
     const s = makeStream()
@@ -211,14 +182,11 @@ describe("applyRevertBoundary", () => {
 
     applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
 
-    // Boundary points at t3 — t3 itself is the first reverted block.
     expect(s.blocks.map((b) => b.id)).toEqual(["b1", "b2"])
     expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["b3", "b4"])
   })
 
   it("treats blocks exactly at the boundary timestamp as reverted", () => {
-    // ``revertBoundaryTime`` semantics: ``msg.created_at >= boundary``
-    // is reverted; only strictly-before is visible.
     const boundaryIso = "2024-01-01T00:00:02Z"
     const same = block("b-at-boundary", "user", "boundary msg", boundaryIso)
     const s = makeStream({ blocks: [same] })
@@ -228,20 +196,15 @@ describe("applyRevertBoundary", () => {
   })
 
   it("recombines blocks + suffix before splitting (idempotent across calls)", () => {
-    // First undo populates suffix; a second call with a *later*
-    // boundary moves some blocks back. Verifies the helper restores
-    // from ``_revertedSuffix`` rather than truncating destructively.
     const t1 = block("b1", "user", "u1", "2024-01-01T00:00:00Z")
     const t2 = block("b2", "user", "u2", "2024-01-01T00:00:02Z")
     const t3 = block("b3", "user", "u3", "2024-01-01T00:00:04Z")
     const s = makeStream({ blocks: [t1, t2, t3] })
 
-    // Undo to b2 → b2, b3 in suffix
     applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
     expect(s.blocks.map((b) => b.id)).toEqual(["b1"])
     expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["b2", "b3"])
 
-    // Redo back to live tip (null) → everything restored
     applyRevertBoundary(s, null)
     expect(s.blocks.map((b) => b.id)).toEqual(["b1", "b2", "b3"])
     expect(s._revertedSuffix).toEqual([])
@@ -258,7 +221,6 @@ describe("applyRevertBoundary", () => {
       ],
     })
     applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
-    // u2 + compaction + u3 = 3 reverted "messages"
     expect(s.revertedCount).toBe(3)
   })
 
@@ -291,8 +253,6 @@ describe("applyRevertBoundary", () => {
     expect(s.revertedMessages).toEqual([{ role: "user", content: "real" }])
   })
 })
-
-// ── undoTeam ──────────────────────────────────────────────────────────────────
 
 describe("undoTeam — local boundary application", () => {
   it("applies the new boundary locally without calling teamHistory", async () => {
@@ -327,7 +287,6 @@ describe("undoTeam — local boundary application", () => {
 
     await useTeamStore.getState().undoTeam()
 
-    // Critical: no history refetch. This is the perf win.
     expect(mockTeamHistory).not.toHaveBeenCalled()
     expect(mockPostTeamCommand).toHaveBeenCalledWith("undo", "sess-1")
 
@@ -366,9 +325,6 @@ describe("undoTeam — local boundary application", () => {
 
     await useTeamStore.getState().undoTeam()
 
-    // No ``changed_paths`` in the response → broad invalidation. This
-    // is the conservative fallback used when the server hasn't
-    // recorded a snapshot (e.g. git unavailable).
     expect(useTeamStore.getState().cacheInvalidations).toEqual([
       { kind: "coding_workspace", workspace: "/tmp/proj" },
     ])
@@ -404,9 +360,6 @@ describe("undoTeam — local boundary application", () => {
 
     await useTeamStore.getState().undoTeam()
 
-    // Bridge should receive a scoped event listing every touched path.
-    // The deduplicated union drives a per-path git-diff splice
-    // instead of a full repo refetch.
     const invalidations = useTeamStore.getState().cacheInvalidations
     expect(invalidations).toHaveLength(1)
     expect(invalidations[0]).toEqual({
@@ -439,9 +392,6 @@ describe("undoTeam — local boundary application", () => {
 
     await useTeamStore.getState().undoTeam()
 
-    // Empty path partition means the snapshot restore had no
-    // filesystem effect — skip the invalidation so we don't trigger
-    // a needless 30k-file git-diff refetch.
     expect(useTeamStore.getState().cacheInvalidations).toEqual([])
   })
 
@@ -463,7 +413,6 @@ describe("undoTeam — local boundary application", () => {
       },
     })
 
-    // First undo → boundary at u3
     mockPostTeamCommand.mockImplementationOnce(() =>
       Promise.resolve({
         status: "accepted",
@@ -477,7 +426,6 @@ describe("undoTeam — local boundary application", () => {
     expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "a1", "u2", "a2"])
     expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u3", "a3"])
 
-    // Second undo → boundary at u2 — suffix now holds 4 blocks
     mockPostTeamCommand.mockImplementationOnce(() =>
       Promise.resolve({
         status: "accepted",
@@ -530,12 +478,8 @@ describe("undoTeam — local boundary application", () => {
   })
 })
 
-// ── redoTeam ──────────────────────────────────────────────────────────────────
-
 describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
   it("loops /redo until the boundary clears, flushing the full suffix back", async () => {
-    // Two user turns undone (u2, u3). One ``/redo`` user-action must
-    // restore BOTH — this is the "Restore" button semantics.
     useTeamStore.setState({
       sessionId: "sess-1",
       leadName: "lead",
@@ -554,9 +498,6 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
       },
     })
 
-    // Server-side sequence:
-    //   1st call → boundary moves to u3 (a2 + u2 visible again)
-    //   2nd call → boundary cleared (a3 + u3 visible, message: null)
     mockPostTeamCommand
       .mockImplementationOnce(() =>
         Promise.resolve({
@@ -571,7 +512,7 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
           status: "accepted",
           session_id: "sess-1",
           command: "redo",
-          message: null, // boundary cleared — back to live tip
+          message: null,
         }),
       )
 
@@ -615,7 +556,7 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
         status: "accepted",
         session_id: "sess-1",
         command: "redo",
-        message: null, // boundary cleared on the first call
+        message: null,
       }),
     )
 
@@ -647,9 +588,6 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
       },
     })
 
-    // Each step touches different files; the bridge must see ONE
-    // event covering every path from the whole burst — not two
-    // events that would each trigger a refetch.
     mockPostTeamCommand
       .mockImplementationOnce(() =>
         Promise.resolve({
@@ -687,8 +625,6 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
       kind: "coding_workspace_paths",
       workspace: "/tmp/proj",
     })
-    // Sorted for stable comparison — order isn't part of the
-    // contract; the Set in redoTeam deduplicates.
     const paths = (events[0] as { paths: string[] }).paths
     expect([...paths].sort()).toEqual([
       "deleted-by-step-2.ts",
@@ -719,7 +655,6 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
         session_id: "sess-1",
         command: "redo",
         message: null,
-        // changed_paths absent → server didn't snapshot (git off?)
       }),
     )
 
@@ -785,13 +720,8 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
   })
 })
 
-// ── loadSession populates _revertedSuffix on reverted sessions ────────────────
-
 describe("loadSession — parses all messages and populates _revertedSuffix", () => {
   it("splits visible vs reverted on initial load of an already-reverted session", async () => {
-    // Session loaded with revert pointing at u2 — post-boundary
-    // messages must end up in ``_revertedSuffix`` so /redo works
-    // locally without a refetch.
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
         lead: {
@@ -838,20 +768,15 @@ describe("loadSession — parses all messages and populates _revertedSuffix", ()
     await useTeamStore.getState().loadSession("sess-1")
     const stream = useTeamStore.getState().agentStreams.lead
 
-    // Pre-boundary u1 + a1 visible, post-boundary u2 + a2 in suffix.
-    // (Assistant blocks get auto-generated ids via ``generateBlockId``,
-    // so assert against ``content`` for those.)
     expect(stream.blocks.map((b) => b.content)).toEqual(["first", "answer one"])
     expect(stream._revertedSuffix?.map((b) => b.content)).toEqual([
       "second",
       "answer two",
     ])
-    expect(stream.revertedCount).toBe(1) // one reverted user message
+    expect(stream.revertedCount).toBe(1)
   })
 
   it("clears _revertedSuffix when loading a non-reverted session", async () => {
-    // Seed a stream with leftover suffix from a prior session — load
-    // must wipe it so we don't carry stale state across sessions.
     useTeamStore.setState({
       agentStreams: {
         lead: makeStream({
@@ -892,13 +817,8 @@ describe("loadSession — parses all messages and populates _revertedSuffix", ()
   })
 })
 
-// ── sendMessage clears the suffix ─────────────────────────────────────────────
-
 describe("sendMessage — clears _revertedSuffix and boundary", () => {
   it("drops local suffix so a stray /redo cannot resurrect deleted rows", async () => {
-    // After /undo the backend has the user-visible state; a new
-    // ``sendMessage`` causes ``cleanup_reverted_tail`` to delete those
-    // rows. The client suffix is therefore stale and must be cleared.
     useTeamStore.setState({
       sessionId: "sess-1",
       leadName: "lead",

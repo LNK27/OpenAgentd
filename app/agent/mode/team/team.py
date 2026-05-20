@@ -124,21 +124,6 @@ class ContinuePreconditionError(Exception):
         self.status = status
 
 
-# ── Per-session command lock ──────────────────────────────────────────
-# Serialises /undo + /redo against themselves and each other on the
-# same session id. Without this, two quick clicks (or a stuck Cmd-Z)
-# would race on the read→commit window in ``handle_undo`` /
-# ``handle_redo``: both fork separate DB sessions, both read the same
-# ``ChatSession.revert.message_id`` boundary, both compute the *same*
-# next user message, then both commit ``revert={next.id}`` — net
-# effect: the boundary moves one step instead of two. The
-# snapshot-service file lock doesn't help because it kicks in after
-# the DB rows have already been read.
-#
-# Keyed by ``session_id`` so unrelated sessions stay concurrent. Locks
-# live for the process lifetime; sessions are cheap and we'd rather
-# leak a few asyncio.Lock objects than pay synchronisation cost on
-# every command.
 _command_locks: dict[str, asyncio.Lock] = {}
 
 
@@ -459,11 +444,6 @@ class AgentTeam:
                     lead_row.workspace = self.workspace
                     db.add(lead_row)
 
-                # Snapshot the workspace state *as the user pressed send*.
-                # Stored on the user message's ``extra["snapshot"]`` so
-                # later /undo can rewind the filesystem to exactly here.
-                # Best-effort: ``None`` when git is unavailable or the
-                # workspace doesn't exist yet (fresh session).
                 workspace_path = session_workspace_dir(str(lead_uuid), self.workspace)
                 snapshot_hash = await snapshot_service.track(
                     str(lead_uuid), workspace_path

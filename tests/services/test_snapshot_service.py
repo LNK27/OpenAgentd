@@ -1,9 +1,4 @@
-"""Unit tests for :mod:`app.services.snapshot_service`.
-
-Exercises the out-of-tree Git snapshot lifecycle end-to-end against a real
-``git`` binary in a temporary directory. Skipped automatically when git is
-not on PATH so the suite still runs in minimal environments.
-"""
+"""Unit tests for :mod:`app.services.snapshot_service`."""
 
 from __future__ import annotations
 
@@ -45,7 +40,6 @@ async def test_track_returns_tree_hash(state_dir: Path, workspace: Path) -> None
     snapshot = await snapshot_service.track("sess-1", workspace)
 
     assert snapshot is not None
-    # SHA-1 tree hash → 40 hex chars.
     assert len(snapshot) == 40
     assert snapshot_service.snapshot_dir("sess-1").exists()
 
@@ -54,8 +48,6 @@ async def test_track_returns_tree_hash(state_dir: Path, workspace: Path) -> None
 async def test_track_empty_workspace_returns_hash(
     state_dir: Path, workspace: Path
 ) -> None:
-    # ``git write-tree`` against an empty index returns the well-known
-    # empty-tree hash. We accept it as a valid baseline snapshot.
     snapshot = await snapshot_service.track("sess-empty", workspace)
     assert snapshot is not None
     assert len(snapshot) == 40
@@ -77,16 +69,12 @@ async def test_restore_replaces_modified_file(state_dir: Path, workspace: Path) 
     baseline = await snapshot_service.track("sess-mod", workspace)
     assert baseline is not None
 
-    # Simulate an assistant turn that modifies the file.
     file.write_text("v2-changed-by-tool")
-    await snapshot_service.track("sess-mod", workspace)  # commit v2 to index
+    await snapshot_service.track("sess-mod", workspace)
 
-    # Restore baseline.
     result = await snapshot_service.restore("sess-mod", workspace, baseline)
     assert result.ok is True
     assert file.read_text() == "v1"
-    # The restore reverts a modification, so the file should appear in
-    # ``modified`` — not in ``added`` or ``removed``.
     assert "config.txt" in result.modified
     assert result.added == []
     assert result.removed == []
@@ -100,10 +88,8 @@ async def test_restore_deletes_files_added_after_snapshot(
     baseline = await snapshot_service.track("sess-add", workspace)
     assert baseline is not None
 
-    # Simulate an assistant turn that adds a new file.
     new_file = workspace / "new_artifact.md"
     new_file.write_text("agent produced this")
-    # Track to bring it under the index before restoring back.
     await snapshot_service.track("sess-add", workspace)
 
     result = await snapshot_service.restore("sess-add", workspace, baseline)
@@ -112,8 +98,6 @@ async def test_restore_deletes_files_added_after_snapshot(
         "Newly-added file must be removed when restoring to a snapshot that predates it"
     )
     assert (workspace / "keep.txt").exists()
-    # The new artifact only existed in the post-snapshot index, so it
-    # must be reported as removed by the restore.
     assert "new_artifact.md" in result.removed
     assert "new_artifact.md" not in result.added
     assert "new_artifact.md" not in result.modified
@@ -128,15 +112,12 @@ async def test_restore_brings_back_deleted_file(
     baseline = await snapshot_service.track("sess-del", workspace)
     assert baseline is not None
 
-    # Simulate agent deleting the file.
     target.unlink()
 
     result = await snapshot_service.restore("sess-del", workspace, baseline)
     assert result.ok is True
     assert target.exists()
     assert target.read_text() == "important"
-    # The file existed in the snapshot but not in the live index, so
-    # the restore created it — report it as added.
     assert "deleted_by_agent.txt" in result.added
     assert result.modified == []
     assert result.removed == []
@@ -146,7 +127,6 @@ async def test_restore_brings_back_deleted_file(
 async def test_restore_no_repo_returns_false(state_dir: Path, workspace: Path) -> None:
     result = await snapshot_service.restore("sess-unknown", workspace, "0" * 40)
     assert result.ok is False
-    # Failed restores carry no path partition — callers must check ``ok``.
     assert result.added == []
     assert result.modified == []
     assert result.removed == []
@@ -170,17 +150,14 @@ async def test_undo_redo_round_trip(state_dir: Path, workspace: Path) -> None:
     snap_v1 = await snapshot_service.track("rt", workspace)
     assert snap_v1 is not None
 
-    # Assistant turn writes v2.
     file.write_text("v2")
-    snap_live = await snapshot_service.track("rt", workspace)  # redo anchor
+    snap_live = await snapshot_service.track("rt", workspace)
     assert snap_live is not None
 
-    # /undo → restore v1.
     result = await snapshot_service.restore("rt", workspace, snap_v1)
     assert result.ok is True
     assert file.read_text() == "v1"
 
-    # /redo → restore live.
     result = await snapshot_service.restore("rt", workspace, snap_live)
     assert result.ok is True
     assert file.read_text() == "v2"
@@ -190,23 +167,7 @@ async def test_undo_redo_round_trip(state_dir: Path, workspace: Path) -> None:
 async def test_restore_preserves_main_index_stat_cache(
     state_dir: Path, workspace: Path
 ) -> None:
-    """After ``restore``, the *next* ``track`` must remain O(changed paths).
-
-    Regression guard for the slow-/undo bug fixed by routing
-    ``read-tree`` + ``checkout-index`` through a temp index file
-    (``GIT_INDEX_FILE=...``) instead of the main one. The old code
-    invoked ``read-tree`` against the main index, wiping every entry's
-    stat-cache. The *next* ``track``'s ``diff-files`` then couldn't
-    use its fast path and re-hashed every file in the worktree —
-    turning a "/undo of 1 file" into a whole-workspace re-stage
-    (~600 ms on 5 000 files; 6 s on 30 000).
-
-    Test shape: track a 10-file workspace twice (so we have a snapshot
-    to restore against), restore back to the first snapshot, then ask
-    the snapshot service for the candidate paths the *next* track
-    would stage. We expect zero — the worktree exactly matches the
-    main index, which restore left alone.
-    """
+    """After ``restore``, the next ``track`` must remain O(changed paths)."""
     for i in range(10):
         (workspace / f"f{i}.txt").write_text(f"v1-{i}")
     snap_a = await snapshot_service.track("stat-cache", workspace)
@@ -217,7 +178,6 @@ async def test_restore_preserves_main_index_stat_cache(
     assert snap_b is not None
     assert snap_b != snap_a
 
-    # Restore to snap_a — only f0.txt actually changes on disk.
     result = await snapshot_service.restore("stat-cache", workspace, snap_a)
     assert result.ok is True
     assert (workspace / "f0.txt").read_text() == "v1-0"
@@ -225,13 +185,6 @@ async def test_restore_preserves_main_index_stat_cache(
     assert result.added == []
     assert result.removed == []
 
-    # The smoking-gun assertion: the next track's candidate walk sees
-    # ONLY the file that actually changed on disk (``f0.txt``) — not
-    # all 10. Before the temp-index fix this returned every entry in
-    # the index because ``read-tree`` wiped the stat-cache for all of
-    # them, forcing ``diff-files`` to re-hash the whole worktree. The
-    # cost-equivalence is O(restored paths) ↔ O(workspace size), so
-    # the difference is "10× slower on 5 k files, 50× slower on 30 k".
     gitdir = snapshot_service.snapshot_dir("stat-cache")
     candidates = await snapshot_service._list_candidate_paths(gitdir, workspace)
     assert candidates == ["f0.txt"], (
@@ -265,12 +218,9 @@ async def test_track_skips_oversized_untracked_files(
     snapshot = await snapshot_service.track("sess-big", workspace)
     assert snapshot is not None
 
-    # Mutate then restore — small.txt should round-trip; big stays
-    # oversized so it remains untracked across the restore.
     small.write_text("changed")
     big.write_bytes(b"y" * (2 * 1024 * 1024 + 1))
 
     await snapshot_service.restore("sess-big", workspace, snapshot)
     assert small.read_text() == "ok"
-    # The oversized file was never staged, so restore leaves it alone.
     assert big.exists()

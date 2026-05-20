@@ -281,10 +281,6 @@ async def team_command(
         except ContinuePreconditionError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_undo session_id={}", sid)
-        # ``shift.target`` is non-None whenever undo succeeded — the
-        # ``handle_undo`` precondition guarantees it. The path partition
-        # (added/modified/removed) drives scoped Coding Workspace
-        # invalidations on the client without a full sidebar refetch.
         assert shift.target is not None
         return {
             "status": "accepted",
@@ -300,11 +296,6 @@ async def team_command(
         except ContinuePreconditionError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_redo session_id={}", sid)
-        # ``shift.target`` is the user message the boundary now points
-        # at, or ``None`` when we cleared the boundary back to the live
-        # tip. The client uses the timestamp to apply the new boundary
-        # locally instead of refetching history — see
-        # ``useTeamStore.redoTeam``.
         return {
             "status": "accepted",
             "session_id": sid,
