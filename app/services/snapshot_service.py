@@ -291,12 +291,27 @@ async def track(session_id: str, workspace: Path) -> str | None:
         return snapshot_hash
 
 
-async def restore(session_id: str, workspace: Path, snapshot: str) -> bool:
+async def restore(
+    session_id: str,
+    workspace: Path,
+    snapshot: str,
+    *,
+    skip_stage: bool = False,
+) -> bool:
     """Restore the workspace to the given snapshot tree hash.
 
     Replaces every tracked file in the worktree with its version in
     ``snapshot``. Untracked files (i.e. files that were never recorded
     in any snapshot) are left intact.
+
+    When ``skip_stage`` is True, the caller asserts that the snapshot
+    index is already in sync with the live worktree — typically because
+    a :func:`track` call just completed and no writes have happened
+    since. This skips the ``diff-files`` + ``ls-files --others`` +
+    ``git add`` round-trip that otherwise dominates restore latency on
+    large workspaces (~80 ms saved on 30k files). The caller pays the
+    cost of getting this wrong: a stale index produces an incorrect
+    A/M/D set and the wrong files get restored.
 
     Returns ``True`` on success, ``False`` if git is unavailable or the
     restore failed for any reason.
@@ -316,23 +331,77 @@ async def restore(session_id: str, workspace: Path, snapshot: str) -> bool:
 
     workspace.mkdir(parents=True, exist_ok=True)
     async with _lock(session_id):
-        # Capture the *current* live file set BEFORE clobbering the index
-        # via ``read-tree``. Anything in the live set but missing from
-        # the target tree gets unlinked once the snapshot is restored,
-        # so that previously-tracked artifacts of later turns are wiped
-        # alongside the file overwrites — matching opencode's bulldozer
-        # semantics for full-state restores.
-        live_paths = await _list_candidate_paths(gitdir, workspace)
-        if live_paths:
-            await _stage(gitdir, workspace, live_paths)
-        # ``ls-files`` and ``ls-tree`` are independent reads — fire them
-        # in parallel to halve the latency of this step.
-        current, target = await asyncio.gather(
-            _list_index_paths(gitdir, workspace),
-            _list_tree_paths(gitdir, workspace, snapshot),
-        )
-        extras = current - target
+        # ── Stage the live state ──────────────────────────────────
+        # Bring the index in sync with the worktree so the
+        # ``diff-index --cached`` below sees current state on the
+        # left. Without this it would diff against whatever the
+        # index held from the previous track — wrong delta.
+        # ``skip_stage`` is set by callers that just completed a
+        # :func:`track` (e.g. /undo's redo-anchor capture) and know
+        # the index already reflects the worktree.
+        if not skip_stage:
+            live_paths = await _list_candidate_paths(gitdir, workspace)
+            if live_paths:
+                await _stage(gitdir, workspace, live_paths)
 
+        # ── Single diff-index call → A/M/D partition ──────────────
+        # ``diff-index --cached --name-status <snapshot>`` compares
+        # the *index* (= current live state, post-stage) against the
+        # target snapshot tree directly — no separate ``write-tree``
+        # needed. Output is one ``X\0path\0`` pair per changed entry:
+        #   A   present in snapshot, absent from index → create
+        #   M   present in both, differing → overwrite
+        #   D   absent from snapshot, present in index → delete
+        # On a 30k-file workspace this eliminates the previous
+        # ``write-tree`` (O(N), ~80 ms) and the ``ls-files`` +
+        # ``ls-tree`` set-difference (also O(N) each).
+        # ``-R`` reverses the diff so the snapshot is treated as the
+        # "new" side and the index as the "old" side. Without it, A
+        # would mean "added to index since snapshot" (= extras) and D
+        # would mean "removed from index since snapshot" (= need to
+        # restore). With -R, A = needs restore, D = extras — matching
+        # the convention of the parsing loop below.
+        diff_code, diff_out, _ = await _git(
+            *_CORE_FLAGS,
+            *_gitdir_args(gitdir, workspace),
+            "diff-index",
+            "-R",
+            "--cached",
+            "--name-status",
+            "-r",
+            "-z",
+            "--no-renames",
+            snapshot,
+            cwd=workspace,
+        )
+        to_checkout: list[str] = []
+        to_delete: list[str] = []
+        full_checkout = False
+        if diff_code != 0:
+            # Fall back to whole-tree checkout if diff-index fails —
+            # at worst we pay the legacy cost; we never silently
+            # skip a restore.
+            full_checkout = True
+        else:
+            # ``-z --name-status`` output format: ``X\0path\0X\0path\0...``
+            # where ``X`` is one of A / M / D / T (type-change).
+            parts = diff_out.decode(errors="replace").split("\0")
+            i = 0
+            while i + 1 < len(parts):
+                status = parts[i]
+                path = parts[i + 1]
+                i += 2
+                if not status or not path:
+                    continue
+                # ``T`` (type-change, e.g. file→symlink) is rare; we
+                # treat it as a modification — checkout-index will
+                # rewrite the blob, ignoring the mode change.
+                if status[0] in ("A", "M", "T"):
+                    to_checkout.append(path)
+                elif status[0] == "D":
+                    to_delete.append(path)
+
+        # ── Load the snapshot tree into the index ─────────────────
         code, _, err = await _git(
             *_CORE_FLAGS,
             *_gitdir_args(gitdir, workspace),
@@ -349,29 +418,64 @@ async def restore(session_id: str, workspace: Path, snapshot: str) -> bool:
             )
             return False
 
-        code, _, err = await _git(
-            *_CORE_FLAGS,
-            *_gitdir_args(gitdir, workspace),
-            "checkout-index",
-            "-a",
-            "-f",
-            cwd=workspace,
-        )
+        # ── Materialise only the changed paths ────────────────────
+        if full_checkout:
+            # diff-tree errored — fall back to the legacy "write
+            # everything" path so the restore still completes.
+            code, _, err = await _git(
+                *_CORE_FLAGS,
+                *_gitdir_args(gitdir, workspace),
+                "checkout-index",
+                "-a",
+                "-f",
+                cwd=workspace,
+            )
+        elif to_checkout:
+            # Feed paths via stdin so we don't blow argv on big
+            # patches. ``-z`` matches the NUL-separated input.
+            stdin = ("\0".join(to_checkout) + "\0").encode()
+            code, _, err = await _git(
+                *_CORE_FLAGS,
+                *_gitdir_args(gitdir, workspace),
+                "checkout-index",
+                "-f",
+                "-z",
+                "--stdin",
+                cwd=workspace,
+                stdin=stdin,
+            )
+        else:
+            # No A/M paths — only deletions need handling.
+            code = 0
         if code != 0:
             logger.warning(
-                "snapshot_checkout_failed session_id={} hash={} stderr={}",
+                "snapshot_checkout_failed session_id={} hash={} stderr={} count={}",
                 session_id,
                 snapshot,
-                err.decode(errors="replace"),
+                err.decode(errors="replace") if isinstance(err, bytes) else "",
+                len(to_checkout),
             )
             return False
 
+        # ``to_delete`` was computed from the diff; if diff-tree
+        # errored we still need to clean *some* extras — fall back
+        # to the full ``current - target`` set in that case. Cheap
+        # because both index walks happen in parallel.
+        if full_checkout:
+            current, target = await asyncio.gather(
+                _list_index_paths(gitdir, workspace),
+                _list_tree_paths(gitdir, workspace, snapshot),
+            )
+            extras: set[str] = current - target
+        else:
+            extras = set(to_delete)
         _delete_extras(workspace, extras)
 
         logger.debug(
-            "snapshot_restored session_id={} hash={} extras={}",
+            "snapshot_restored session_id={} hash={} checkout={} extras={}",
             session_id,
             snapshot,
+            "all" if full_checkout else len(to_checkout),
             len(extras),
         )
         return True

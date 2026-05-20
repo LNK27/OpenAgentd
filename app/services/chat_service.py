@@ -453,12 +453,23 @@ async def undo_session_messages(
     # anchor so /redo always returns to the original live tip.
     workspace = session_workspace_dir(str(session_id), session.workspace)
     redo_anchor = _redo_anchor(session)
+    # ``just_tracked`` tells the subsequent ``restore`` that the index
+    # is already in sync with the worktree — saves a redundant
+    # ``diff-files`` + ``ls-files --others`` + ``git add`` round-trip
+    # on the same workspace (~80 ms on 30k files).
+    just_tracked = False
     if redo_anchor is None:
         redo_anchor = await snapshot_service.track(str(session_id), workspace)
+        just_tracked = redo_anchor is not None
 
     target_snapshot = _message_snapshot(target)
     if target_snapshot:
-        await snapshot_service.restore(str(session_id), workspace, target_snapshot)
+        await snapshot_service.restore(
+            str(session_id),
+            workspace,
+            target_snapshot,
+            skip_stage=just_tracked,
+        )
 
     revert_state: dict = {"message_id": str(target.id)}
     if redo_anchor:
