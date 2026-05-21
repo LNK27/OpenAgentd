@@ -24,6 +24,7 @@ Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are
 
 | Prefix | Auth | Notes |
 |--------|------|-------|
+| `anthropic` | `ANTHROPIC_API_KEY` (+ optional `ANTHROPIC_BASE_URL`) | Built-in Anthropic Messages API support. OAuth Claude Pro/Max access remains plugin-based. |
 | `googlegenai` | `GOOGLE_API_KEY` | Google Gemini Developer API. |
 | `vertexai` | `VERTEXAI_API_KEY` *or* ADC + `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` | Vertex AI (express or normal mode). |
 | `zai` | `ZAI_API_KEY` | ZAI / GLM. |
@@ -78,6 +79,12 @@ Standard Gemini APIs. `_sanitize_schema()` strips JSON-Schema fields Gemini does
 Chat Completions by default. Setting any non-`none` `thinking_level` automatically routes through the **Responses API** (`/v1/responses`) because Chat Completions doesn't accept `reasoning_effort` alongside function tools. Override via `model_kwargs.responses_api: true/false`.
 
 When routed to `/v1/responses`, `temperature` and `top_p` are silently ignored (the API doesn't accept them); `max_tokens` maps to `max_output_tokens`.
+
+### `anthropic`
+
+Uses Anthropic's Messages API at `https://api.anthropic.com/v1/messages`. API-key support is built in and configured with `ANTHROPIC_API_KEY`; set `ANTHROPIC_BASE_URL` only for compatible gateways. Claude Pro/Max OAuth flows stay out of core and should be implemented as provider plugins such as `anthropic-oauth`.
+
+`thinking_level` maps to Anthropic `thinking` controls on supported Claude models. Sampling fields are omitted for newer Claude 4.5+ families that reject legacy sampling parameters.
 
 ### `codex`
 

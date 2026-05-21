@@ -54,6 +54,35 @@ class ProviderEntry(TypedDict, total=False):
 
 _CATALOG: list[ProviderEntry] = [
     {
+        "id": "anthropic",
+        "label": "Anthropic Claude",
+        "description": "Claude API via Anthropic Messages.",
+        "kind": "api_key",
+        "env_var": "ANTHROPIC_API_KEY",
+        "credentials": [
+            {
+                "name": "ANTHROPIC_API_KEY",
+                "label": "Anthropic API key",
+                "secret": True,
+                "required": True,
+                "placeholder": "sk-ant-...",
+            },
+            {
+                "name": "ANTHROPIC_BASE_URL",
+                "label": "Base URL",
+                "secret": False,
+                "required": False,
+                "placeholder": "https://api.anthropic.com",
+            },
+        ],
+        "fallback_models": [
+            "claude-opus-4-7",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5",
+        ],
+        "docs_url": "https://console.anthropic.com/settings/keys",
+    },
+    {
         "id": "googlegenai",
         "label": "Google Gemini",
         "description": "Google AI Studio — free tier available.",

@@ -7,6 +7,7 @@ import httpx
 from loguru import logger
 
 from app.agent.providers.catalog import ProviderEntry
+from app.agent.providers.openai.compatible import OPENAI_COMPATIBLE_PROVIDER_SPECS
 from app.core.config import settings
 
 TIMEOUT_S = 3.0
@@ -112,6 +113,29 @@ async def _google_genai_models(overrides: Mapping[str, str] | None) -> list[str]
     return sorted(models)
 
 
+async def _anthropic_models(overrides: Mapping[str, str] | None) -> list[str]:
+    api_key = _resolve(overrides, "ANTHROPIC_API_KEY")
+    if not api_key:
+        return []
+    base_url = _resolve(overrides, "ANTHROPIC_BASE_URL", settings.ANTHROPIC_BASE_URL)
+    async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
+        response = await client.get(
+            f"{base_url.rstrip('/')}/v1/models",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+            },
+        )
+        response.raise_for_status()
+    data = response.json()
+    items = data.get("data", []) if isinstance(data, dict) else []
+    return sorted(
+        str(item["id"])
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    )
+
+
 async def _copilot_models() -> list[str]:
     from app.agent.providers.copilot.oauth import CopilotOAuth
 
@@ -212,17 +236,15 @@ async def discover_provider_models(
                     base_url="https://api.openai.com/v1",
                     api_key=_resolve(overrides, "OPENAI_API_KEY"),
                 )
-            case "openrouter":
+            case _ if provider_id in OPENAI_COMPATIBLE_PROVIDER_SPECS:
+                spec = OPENAI_COMPATIBLE_PROVIDER_SPECS[provider_id]
+                base_url = spec.base_url
+                if spec.base_url_env_var:
+                    base_url = _resolve(overrides, spec.base_url_env_var, spec.base_url)
                 models = await _openai_compatible_models(
                     provider_id=provider_id,
-                    base_url="https://openrouter.ai/api/v1",
-                    api_key=_resolve(overrides, "OPENROUTER_API_KEY"),
-                )
-            case "nvidia":
-                models = await _openai_compatible_models(
-                    provider_id=provider_id,
-                    base_url="https://integrate.api.nvidia.com/v1",
-                    api_key=_resolve(overrides, "NVIDIA_API_KEY"),
+                    base_url=base_url,
+                    api_key=_resolve(overrides, spec.env_var) or spec.default_api_key,
                 )
             case "zai":
                 models = await _openai_compatible_models(
@@ -230,44 +252,10 @@ async def discover_provider_models(
                     base_url="https://api.z.ai/api/paas/v4",
                     api_key=_resolve(overrides, "ZAI_API_KEY"),
                 )
-            case "xai":
-                models = await _openai_compatible_models(
-                    provider_id=provider_id,
-                    base_url="https://api.x.ai/v1",
-                    api_key=_resolve(overrides, "XAI_API_KEY"),
-                )
-            case "deepseek":
-                models = await _openai_compatible_models(
-                    provider_id=provider_id,
-                    base_url="https://api.deepseek.com/v1",
-                    api_key=_resolve(overrides, "DEEPSEEK_API_KEY"),
-                )
-            case "router9":
-                models = await _openai_compatible_models(
-                    provider_id=provider_id,
-                    base_url=_resolve(
-                        overrides, "ROUTER9_BASE_URL", settings.ROUTER9_BASE_URL
-                    ),
-                    api_key=_resolve(overrides, "ROUTER9_API_KEY"),
-                )
-            case "cliproxy":
-                models = await _openai_compatible_models(
-                    provider_id=provider_id,
-                    base_url=_resolve(
-                        overrides, "CLIPROXY_BASE_URL", settings.CLIPROXY_BASE_URL
-                    ),
-                    api_key=_resolve(overrides, "CLIPROXY_API_KEY"),
-                )
-            case "ollama":
-                models = await _openai_compatible_models(
-                    provider_id=provider_id,
-                    base_url=_resolve(
-                        overrides, "OLLAMA_BASE_URL", settings.OLLAMA_BASE_URL
-                    ),
-                    api_key=_resolve(overrides, "OLLAMA_API_KEY") or "ollama",
-                )
             case "googlegenai":
                 models = await _google_genai_models(overrides)
+            case "anthropic":
+                models = await _anthropic_models(overrides)
             case "copilot":
                 models = await _copilot_models()
             case "codex":

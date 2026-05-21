@@ -2,4 +2,6 @@
 
 from .openai import OpenAIProvider
 
-__all__ = ["OpenAIProvider"]
+OpenAICompatibleProvider = OpenAIProvider
+
+__all__ = ["OpenAICompatibleProvider", "OpenAIProvider"]

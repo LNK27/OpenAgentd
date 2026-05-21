@@ -1,4 +1,12 @@
-from .googlegenai import GoogleGenAIProvider
+from .googlegenai import GeminiProviderBase, GoogleGenAIProvider
 from .schemas import GeminiChatRequest, GeminiChatResponse
 
-__all__ = ["GoogleGenAIProvider", "GeminiChatRequest", "GeminiChatResponse"]
+GeminiCompatibleProvider = GeminiProviderBase
+
+__all__ = [
+    "GeminiChatRequest",
+    "GeminiChatResponse",
+    "GeminiCompatibleProvider",
+    "GeminiProviderBase",
+    "GoogleGenAIProvider",
+]

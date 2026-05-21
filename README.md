@@ -59,7 +59,7 @@
 
 **See exactly what the agent is doing.** Built-in OTel dashboard — token usage, latency, trace waterfall. No third-party SaaS, all local.
 
-**Pick your model, no lock-in.** 14 providers — Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config.
+**Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config.
 
 ---
 
@@ -140,6 +140,7 @@ Switch models with a single line in your agent's `.md` config file. Every provid
 
 | Provider | Format | Auth |
 |---|---|---|
+| Anthropic Claude | `anthropic:claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
 | Google Gemini | `googlegenai:gemini-3.1-flash` | `GOOGLE_API_KEY` |
 | Google Vertex AI | `vertexai:gemini-3-flash-preview` | `VERTEXAI_API_KEY` or GCP creds |
 | OpenAI | `openai:gpt-5.5` | `OPENAI_API_KEY` |

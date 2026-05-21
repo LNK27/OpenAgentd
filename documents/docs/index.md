@@ -9,7 +9,7 @@ updated: 2026-05-16
 
 On-machine AI assistant. FastAPI backend, React web UI, runs locally.
 
-Connects to LLM providers (Gemini, Vertex AI, OpenAI, OpenRouter, Copilot OAuth, Codex OAuth, xAI, DeepSeek, Bedrock, NVIDIA NIM, local proxies, Ollama), maintains persistent sessions, supports multimodal input, streams over SSE, and coordinates multi-agent teams.
+Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Copilot OAuth, Codex OAuth, xAI, DeepSeek, Bedrock, NVIDIA NIM, local proxies, Ollama), maintains persistent sessions, supports multimodal input, streams over SSE, and coordinates multi-agent teams.
 
 **Quick start.** [`install.md`](./install.md) → `openagentd init` → `openagentd`. Web UI at `http://localhost:4082`.
 
