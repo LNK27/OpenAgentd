@@ -653,7 +653,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                   onClick: handleWorkspaceFiles,
                   title: codingPanel === null ? 'Workspace files and git diff' : 'Close files and diff',
                   ariaLabel: 'Workspace files and git diff',
-                  className: 'mr-2',
                 } : undefined
               : {
                   Icon: FolderOpen,
@@ -661,13 +660,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                   disabled: !sessionIdState,
                   title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
                   ariaLabel: 'Workspace files',
-                  className: 'mr-2',
                 }}
             agentsAction={{
               Icon: SlidersHorizontal,
               onClick: toggleAgentCapabilities,
               title: 'Session model settings (Ctrl+A)',
               ariaLabel: 'Session model settings',
+              className: agentCapabilitiesOpen ? 'mr-2 bg-(--bg-key) text-(--color-text)' : 'mr-2',
             }}
           />
           </div>

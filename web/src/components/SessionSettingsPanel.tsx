@@ -27,6 +27,7 @@ import {
   Sparkles,
   Plug,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries'
 import type {
@@ -360,7 +361,9 @@ function SessionModelSettings({
   const [draftModel, setDraftModel] = useState(sessionModel ?? defaultModel ?? '')
   const [draftThinkingLevel, setDraftThinkingLevel] = useState(sessionThinkingLevel ?? '')
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
+  const [thinkingPickerOpen, setThinkingPickerOpen] = useState(false)
   const [activeModelIndex, setActiveModelIndex] = useState(0)
+  const [activeThinkingIndex, setActiveThinkingIndex] = useState(0)
   const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
   const visibleModelOptions = useMemo(() => {
     const q = draftModel.trim()
@@ -379,18 +382,25 @@ function SessionModelSettings({
     trimmedDraftModel === '' ||
     trimmedDraftModel === defaultModel ||
     validModelIds.has(trimmedDraftModel)
-  const pickerOptions = useMemo(
-    () => [
-      { id: defaultModel ?? '', label: defaultModel ?? 'Default' },
-      ...visibleModelOptions.map((model) => ({ id: model.id, label: model.id })),
-    ],
-    [defaultModel, visibleModelOptions],
-  )
+  const pickerOptions = useMemo(() => {
+    const options = [{ id: defaultModel ?? '', label: defaultModel ?? 'Default' }]
+    for (const model of visibleModelOptions) {
+      if (model.id !== defaultModel) options.push({ id: model.id, label: model.id })
+    }
+    return options
+  }, [defaultModel, visibleModelOptions])
 
   const selectModel = (modelId: string) => {
     setDraftModel(modelId)
     setModelPickerOpen(false)
   }
+
+  const selectThinkingLevel = (level: string) => {
+    setDraftThinkingLevel(level)
+    setThinkingPickerOpen(false)
+  }
+
+  const selectedThinkingLabel = THINKING_LEVELS.find((level) => level.value === draftThinkingLevel)?.label ?? 'Default'
 
   return (
     <section className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-5 py-4">
@@ -402,29 +412,30 @@ function SessionModelSettings({
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             disabled={!dirty}
             onClick={() => {
               setDraftModel(savedModel)
               setDraftThinkingLevel(savedThinkingLevel)
               setModelPickerOpen(false)
             }}
-            className="rounded-md border border-(--color-border) px-3 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             disabled={!dirty || !modelValid}
             onClick={() => {
               onChange(trimmedDraftModel && trimmedDraftModel !== defaultModel ? trimmedDraftModel : null, draftThinkingLevel || null)
               setModelPickerOpen(false)
             }}
-            className="rounded-md bg-(--color-accent) px-3 py-1.5 text-xs font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
           >
             Save
-          </button>
+          </Button>
         </div>
       </div>
       <div className="flex flex-wrap gap-3">
@@ -494,16 +505,54 @@ function SessionModelSettings({
         </label>
         <label className="text-xs text-(--color-text-muted)">
           <span className="mb-1 block font-medium text-(--color-text-2)">Thinking</span>
-          <select
-            value={draftThinkingLevel}
-            onChange={(e) => setDraftThinkingLevel(e.target.value)}
-            className="w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text) outline-none transition-colors hover:border-(--color-border-strong) focus:border-(--color-accent)"
+          <div className="relative w-44 max-w-full">
+          <button
+            type="button"
+            onClick={() => setThinkingPickerOpen((open) => !open)}
+            onBlur={() => window.setTimeout(() => setThinkingPickerOpen(false), 120)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setThinkingPickerOpen(true)
+                setActiveThinkingIndex((index) => Math.min(index + 1, THINKING_LEVELS.length - 1))
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setThinkingPickerOpen(true)
+                setActiveThinkingIndex((index) => Math.max(index - 1, 0))
+              } else if (e.key === 'Enter' && thinkingPickerOpen) {
+                e.preventDefault()
+                selectThinkingLevel(THINKING_LEVELS[activeThinkingIndex]?.value ?? '')
+              } else if (e.key === 'Escape') {
+                setThinkingPickerOpen(false)
+              }
+            }}
+            className="flex w-full items-center justify-between gap-2 rounded-md border border-(--color-border) bg-(--bg-card) px-3 py-2 text-left text-xs text-(--color-text) outline-none transition-colors hover:border-(--color-border-strong) focus:border-(--color-accent)"
             aria-label="Thinking level"
+            aria-haspopup="listbox"
+            aria-expanded={thinkingPickerOpen}
           >
-            {THINKING_LEVELS.map((level) => (
-              <option key={level.value} value={level.value}>{level.label}</option>
-            ))}
-          </select>
+            <span>{selectedThinkingLabel}</span>
+            <ChevronDown size={13} aria-hidden="true" className={`shrink-0 text-(--color-text-muted) transition-transform ${thinkingPickerOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {thinkingPickerOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-md border border-(--color-border-strong) bg-(--bg-page) p-1 shadow-[0_8px_24px_rgba(26,23,20,0.16)]" role="listbox">
+              {THINKING_LEVELS.map((level, index) => (
+                <button
+                  type="button"
+                  key={level.value}
+                  role="option"
+                  aria-selected={level.value === draftThinkingLevel}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setActiveThinkingIndex(index)}
+                  onClick={() => selectThinkingLevel(level.value)}
+                  className={`block w-full rounded-sm px-2 py-1.5 text-left text-xs text-(--color-text) ${index === activeThinkingIndex ? 'bg-(--bg-hover)' : 'hover:bg-(--bg-hover)'}`}
+                >
+                  {level.label}
+                </button>
+              ))}
+            </div>
+          )}
+          </div>
         </label>
       </div>
     </section>
