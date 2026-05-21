@@ -445,15 +445,15 @@ class SummarizationHook(BaseAgentHook):
 
         # Embed to_summarise as text inside a single HumanMessage to avoid
         # role-alternation violations (ZAI/OpenAI reject system → assistant
-        # at position 0). Tool message content is replaced with a stub —
-        # raw shell output / file contents / JSON blobs are noise for
-        # summarisation; the tool name alone is enough signal.
+        # at position 0). ToolMessage content has already been made
+        # context-safe by tool-specific truncation and ToolResultOffloadHook;
+        # keep it so the summary can preserve important command/read results.
         has_prior_summary = any(m.is_summary for m in to_summarise)
 
         def _render(m) -> str:
             if isinstance(m, ToolMessage):
                 name = f"/{m.name}" if m.name else ""
-                return f"[tool{name}]: [tool result omitted]"
+                return f"[tool{name}]: {m.content or 'No result'}"
             return f"[{m.role}]: {m.content or ''}"
 
         convo_text = "\n\n".join(_render(m) for m in to_summarise)

@@ -841,6 +841,7 @@ class TeamMemberBase(abc.ABC):
         }
         if force_compaction:
             run_metadata["force_summarization"] = True
+            run_metadata["stop_after_before_model"] = True
         if self._team.workspace:
             run_metadata["team_workspace"] = self._team.workspace
         config = RunConfig(session_id=self.session_id, metadata=run_metadata)

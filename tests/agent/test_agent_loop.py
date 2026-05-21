@@ -183,6 +183,44 @@ async def test_before_model_hook_returns_updated_request():
     assert captured_prompts[0] == "modified by hook"
 
 
+async def test_stop_after_before_model_skips_provider_call():
+    """Control commands can persist before_model changes without an LLM call."""
+
+    class StopAfterBeforeModelHook(BaseAgentHook):
+        async def before_model(
+            self,
+            ctx: RunContext,
+            state: AgentState,
+            request: ModelRequest | None = None,
+        ) -> ModelRequest | None:
+            state.messages.append(HumanMessage(content="compacted summary"))
+            return (
+                request.override(messages=tuple(state.messages_for_llm))
+                if request
+                else None
+            )
+
+    mock_provider = MagicMock()
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="You are helpful.",
+        hooks=[StopAfterBeforeModelHook()],
+    )
+
+    config = RunConfig(
+        session_id="s-compact",
+        run_id="r-compact",
+        metadata={"stop_after_before_model": True},
+    )
+    messages = await agent.run(
+        [AssistantMessage(content="previous answer")], config=config
+    )
+
+    mock_provider.stream.assert_not_called()
+    assert [m.content for m in messages] == ["previous answer", "compacted summary"]
+
+
 # ---------------------------------------------------------------------------
 # Lines 276, 278, 280: usage dict optional fields (cache, thoughts, tool_use)
 # ---------------------------------------------------------------------------

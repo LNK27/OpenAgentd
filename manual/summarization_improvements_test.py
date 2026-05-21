@@ -4,8 +4,8 @@ No server required. Runs in-process with a mock LLM provider and
 InMemoryCheckpointer so you can see exactly what the summariser LLM receives.
 
 Tests:
-  1. P2 — tool result stubbing: ToolMessage content replaced with
-     '[tool/name]: [tool result omitted]' in the summariser input.
+  1. P2 — tool result context: ToolMessage content reaches the summariser
+     with the tool name, after normal tool truncation/offload has run.
   2. P5 — merge vs fresh request: when a prior summary is being compressed,
      the merge instruction is sent; otherwise the fresh summarise instruction.
   3. P6 — minimum-delta guard: summarisation skipped when fewer than
@@ -77,10 +77,10 @@ def _check(label: str, condition: bool, detail: str = "") -> bool:
     return condition
 
 
-# ── P2: tool result stubbing ──────────────────────────────────────────────────
+# ── P2: tool result context ───────────────────────────────────────────────────
 
 async def test_p2_tool_result_stubbing() -> bool:
-    print("\n[P2] Tool result stubbing")
+    print("\n[P2] Tool result context")
     all_pass = True
 
     hook, captured = _hook(keep_last_assistants=0)
@@ -103,8 +103,8 @@ async def test_p2_tool_result_stubbing() -> bool:
     blob = " ".join(captured)
 
     ok1 = _check(
-        "raw tool output not sent to summariser",
-        "SECRET_OUTPUT_12345" not in blob,
+        "tool output sent to summariser",
+        "SECRET_OUTPUT_12345" in blob,
         f"blob snippet: {blob[:120]}",
     )
     ok2 = _check(
@@ -113,8 +113,8 @@ async def test_p2_tool_result_stubbing() -> bool:
         f"blob snippet: {blob[:120]}",
     )
     ok3 = _check(
-        "stub marker present",
-        "[tool result omitted]" in blob,
+        "old omitted marker absent",
+        "[tool result omitted]" not in blob,
         f"blob snippet: {blob[:120]}",
     )
 
@@ -130,8 +130,8 @@ async def test_p2_tool_result_stubbing() -> bool:
     blob2 = " ".join(captured2)
 
     ok4 = _check(
-        "nameless tool renders as '[tool]: [tool result omitted]'",
-        "[tool]:" in blob2 and "[tool result omitted]" in blob2,
+        "nameless tool renders with output",
+        "[tool]: raw output no name" in blob2,
         f"blob: {blob2[:120]}",
     )
     ok5 = _check(
@@ -227,8 +227,6 @@ async def test_p6_min_delta_guard() -> bool:
         "first summarisation fires regardless",
         len(captured) > 0,
     )
-    msgs_after_first = len(state.messages)
-
     # Immediately after — only 1 new message added, below threshold of 4
     captured.clear()
     state.messages.append(HumanMessage(content="one more"))
@@ -261,7 +259,6 @@ async def test_p6_min_delta_guard() -> bool:
         usage=UsageInfo(last_prompt_tokens=9999),
     )
     await hook_zero.before_model(ctx, state_zero)
-    initial_count = len(captured_zero)
     captured_zero.clear()
     state_zero.messages.append(HumanMessage(content="y"))
     state_zero.usage.last_prompt_tokens = 9999
