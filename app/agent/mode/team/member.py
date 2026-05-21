@@ -63,6 +63,7 @@ from app.services.chat_service import get_messages_for_llm, save_message
 if TYPE_CHECKING:
     from app.agent.mode.team.mailbox import TeamMailbox
     from app.agent.mode.team.team import AgentTeam
+    from app.agent.providers.base import LLMProviderBase
 
 
 # -- Protocol prompt blocks (shared by build_protocol) -------------------------
@@ -751,8 +752,31 @@ class TeamMemberBase(abc.ABC):
                 history = await get_messages_for_llm(db, session_uuid)
             except Exception:
                 history = []
+            session_row = await db.get(ChatSession, session_uuid)
 
         run_messages = history
+        runtime_provider: LLMProviderBase | None = None
+        runtime_model = None
+        session_model = session_row.model if session_row is not None else None
+        session_thinking_level = (
+            session_row.thinking_level if session_row is not None else None
+        )
+        effective_model = session_model or (
+            self.agent.model_id if session_thinking_level else None
+        )
+        if (
+            self._role_label == "lead"
+            and effective_model
+            and self._team._provider_factory is not None
+        ):
+            model_kwargs: dict[str, object] = {}
+            if session_thinking_level:
+                model_kwargs["thinking_level"] = session_thinking_level
+            runtime_provider = self._team._provider_factory(
+                effective_model,
+                model_kwargs=model_kwargs,
+            )
+            runtime_model = effective_model
 
         # Build hooks — StreamPublisherHook writes to shared team stream
         lead_session_id = self._team.lead.session_id
@@ -772,7 +796,7 @@ class TeamMemberBase(abc.ABC):
         # OTel hook — child span under lead's trace
         otel_hook = OpenTelemetryHook(
             agent_name=self.name,
-            model_id=self.agent.model_id,
+            model_id=runtime_model or self.agent.model_id,
             lead_session_id=lead_session_id,
         )
 
@@ -871,6 +895,8 @@ class TeamMemberBase(abc.ABC):
                 injected_tools=injected,
                 interrupt_event=self._cancel_event,
                 checkpointer=checkpointer,
+                llm_provider=runtime_provider,
+                model_id=runtime_model,
             )
         finally:
             reset_role(role_token)

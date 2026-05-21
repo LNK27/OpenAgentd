@@ -3,7 +3,7 @@
  *
  * Owns:
  *   - View-mode state (``agent`` / ``split``).
- *   - Side panels (``Sidebar``, ``WorkspaceFilesPanel``, ``AgentCapabilities``,
+ *   - Side panels (``Sidebar``, ``WorkspaceFilesPanel``, ``SessionSettingsPanel``,
  *     todos popover, command palette).
  *   - The header (token totals, view toggle, panel toggles, agent tabs).
  *   - Mount-time SSE connect + session restore (carefully sequenced so
@@ -23,7 +23,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { Link, useNavigate } from '@tanstack/react-router'
-import { AgentCapabilities } from '../AgentCapabilities'
+import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { AgentView } from '../AgentView'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
@@ -45,7 +45,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, Check, ChevronDown, FolderOpen, FolderCode, Home, Menu, X } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, FolderOpen, FolderCode, Home, Menu, SlidersHorizontal, X } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
@@ -124,6 +124,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const newSession     = useTeamStore((s) => s.newSession)
   const cycleActiveAgent = useTeamStore((s) => s.cycleActiveAgent)
   const setActiveAgent   = useTeamStore((s) => s.setActiveAgent)
+  const setSessionModelSettings = useTeamStore((s) => s.setSessionModelSettings)
   const setupRequired = useTeamStore((s) => s.setupRequired)
   const dismissSetupRequired = useTeamStore((s) => s.dismissSetupRequired)
 
@@ -137,6 +138,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const isContinuing   = useTeamStore((s) => s.isContinuing)
   const sessionIdState = useTeamStore((s) => s.sessionId)
   const sessionTitle   = useTeamStore((s) => s.sessionTitle)
+  const sessionModel   = useTeamStore((s) => s.sessionModel)
+  const sessionThinkingLevel = useTeamStore((s) => s.sessionThinkingLevel)
   const leadName       = useTeamStore((s) => s.leadName)
 
   // Utility modal state lives in useUIStore so only one can be open at a time.
@@ -171,6 +174,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const { data: teamAgentsData, isLoading: teamAgentsLoading } = useTeamAgentsQuery(agentWorkspace, hasCodingWorkspace)
   const leadCapabilities: AgentCapabilitiesType | undefined = teamAgentsData?.agents
     ?.find((a) => a.is_lead)?.capabilities
+  const selectedModel = sessionModel ?? ''
+  const selectedThinkingLevel = sessionThinkingLevel ?? ''
 
   // Voice input — enabled flag from /api/speech/config.
   const { data: speechConfig } = useSpeechConfigQuery()
@@ -658,6 +663,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
                   ariaLabel: 'Workspace files',
                   className: 'mr-2',
                 }}
+            agentsAction={{
+              Icon: SlidersHorizontal,
+              onClick: toggleAgentCapabilities,
+              title: 'Session model settings (Ctrl+A)',
+              ariaLabel: 'Session model settings',
+            }}
           />
           </div>
       </header>
@@ -792,7 +803,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           boundsRef={mainColumnRef}
           onSubmit={async (content, files) => {
             const expanded = await expandUserCommand(content)
-            sendMessage(expanded, files, { mode, workspace })
+            sendMessage(expanded, files, {
+              mode,
+              workspace,
+              model: selectedModel || null,
+              thinkingLevel: selectedThinkingLevel || null,
+            })
           }}
           onStop={() => useTeamStore.getState().stopTeam()}
           onSlashCommand={handleSlashCommand}
@@ -831,11 +847,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         )}
       </div>
 
-      <AgentCapabilities
+      <SessionSettingsPanel
         open={agentCapabilitiesOpen}
         agentNames={agentNames}
-        agentStreams={agentStreams}
         workspace={agentWorkspace}
+        sessionModel={sessionModel}
+        sessionThinkingLevel={sessionThinkingLevel}
+        onSessionModelSettingsChange={setSessionModelSettings}
         onClose={closeAgentCapabilities}
       />
       <WorkspaceFilesPanel

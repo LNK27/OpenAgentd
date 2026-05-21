@@ -38,6 +38,10 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
     }))
 }
 
+function effectiveLeadModel(state: TeamStore, leadName: string | null, requestedModel?: string | null): string | null {
+  return requestedModel ?? state.sessionModel ?? (leadName ? state.agentStreams[leadName]?.model : null) ?? null
+}
+
 export type {
   AgentStream,
   CacheInvalidation,
@@ -95,6 +99,8 @@ export const useTeamStore = create<TeamStore>()(
     sidebarOpen: false,
     sessionId: null,
     sessionTitle: null,
+    sessionModel: null,
+    sessionThinkingLevel: null,
     isTeamWorking: false,
     isContinuing: false,
     isConnected: false,
@@ -116,6 +122,8 @@ export const useTeamStore = create<TeamStore>()(
         const leadName = state.leadName ?? state.agentNames[0] ?? null
         state.sessionId = null
         state.sessionTitle = null
+        state.sessionModel = null
+        state.sessionThinkingLevel = null
         state.isTeamWorking = false
         state.isContinuing = false
         state.isConnected = false
@@ -155,7 +163,7 @@ export const useTeamStore = create<TeamStore>()(
       })
     },
 
-    sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null }) => {
+    sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null }) => {
       const { leadName, agentStreams } = get()
       const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
@@ -174,12 +182,16 @@ export const useTeamStore = create<TeamStore>()(
             files,
             options?.mode ?? 'normal',
             options?.workspace ?? null,
+            options?.model ?? get().sessionModel,
+            options?.thinkingLevel ?? get().sessionThinkingLevel,
           )
           if (result.status === 'queued' && !result.message_id) {
             throw new Error('Backend did not return a queued message id')
           }
           set((draft) => {
             draft.sessionId = result.session_id
+            draft.sessionModel = options?.model ?? get().sessionModel
+            draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
             draft._pendingMessages.push({
               id: result.message_id ?? '',
               sessionId: result.session_id,
@@ -216,12 +228,18 @@ export const useTeamStore = create<TeamStore>()(
           stream.revertedMessages = []
         })
         if (leadName && draft.agentStreams[leadName]) {
+          const effectiveModel = effectiveLeadModel(draft, leadName, options?.model)
+          const effectiveThinkingLevel = options?.thinkingLevel ?? draft.sessionThinkingLevel
           draft.agentStreams[leadName].currentBlocks.push({
             id: `user-${Date.now()}`,
             type: 'user',
             content,
             timestamp: new Date(),
             attachments: optimisticAttachments,
+            extra: {
+              ...(effectiveModel ? { model: effectiveModel } : {}),
+              ...(effectiveThinkingLevel ? { thinking_level: effectiveThinkingLevel } : {}),
+            },
           })
         }
       })
@@ -234,9 +252,13 @@ export const useTeamStore = create<TeamStore>()(
           files,
           options?.mode ?? 'normal',
           options?.workspace ?? null,
+          options?.model ?? get().sessionModel,
+          options?.thinkingLevel ?? get().sessionThinkingLevel,
         )
         set((draft) => {
           draft.sessionId = result.session_id
+          draft.sessionModel = options?.model ?? get().sessionModel
+          draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
           draft._pendingMessages.forEach((msg) => {
             if (msg.sessionId === null || msg.sessionId === undefined) msg.sessionId = result.session_id
           })
@@ -251,6 +273,13 @@ export const useTeamStore = create<TeamStore>()(
           draft.isTeamWorking = false
         })
       }
+    },
+
+    setSessionModelSettings: (model: string | null, thinkingLevel: string | null) => {
+      set((draft) => {
+        draft.sessionModel = model
+        draft.sessionThinkingLevel = thinkingLevel
+      })
     },
 
     continueTeam: async () => {
@@ -536,6 +565,8 @@ export const useTeamStore = create<TeamStore>()(
 
         set((draft) => {
           draft.sessionId = sessionId
+          draft.sessionModel = history.lead.model ?? null
+          draft.sessionThinkingLevel = history.lead.thinking_level ?? null
           draft.isTeamWorking = false
           draft.isContinuing = false
           draft.error = null

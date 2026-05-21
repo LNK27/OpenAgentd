@@ -63,10 +63,16 @@ interface AgentViewProps {
 const USER_COLLAPSE_LINES = 10
 const USER_COLLAPSE_CHARS = 700
 
-function UserBubble({ content, timestamp, attachments, onRevert }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void }) {
+function shortModelName(modelId: string | null | undefined): string | null {
+  if (!modelId) return null
+  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
+}
+
+function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const modelName = shortModelName(modelId)
 
   const handleCopy = async () => {
     try {
@@ -148,9 +154,14 @@ function UserBubble({ content, timestamp, attachments, onRevert }: { content: st
          </div>
 
          {/* Copy button + timestamp row */}
-         {timestamp && (
-           <div className={`flex items-center gap-1.5 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
-              {onRevert && (
+          {(timestamp || modelName) && (
+            <div className={`flex items-center gap-1.5 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+              {modelName && (
+                <span className="mr-1 font-mono text-[11px] text-(--color-text-subtle)" title={modelId ?? undefined}>
+                  {modelName}
+                </span>
+              )}
+               {onRevert && (
                 <button
                   onClick={onRevert}
                   className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
@@ -172,15 +183,17 @@ function UserBubble({ content, timestamp, attachments, onRevert }: { content: st
                  <Copy size={11} />
                )}
              </button>
-             <span
-               className="text-xs text-(--color-text-subtle)"
-               aria-hidden={!showTime}
-               title={formatTime(timestamp)}
-             >
-               {formatTime(timestamp)}
-             </span>
-           </div>
-         )}
+              {timestamp && (
+                <span
+                  className="text-xs text-(--color-text-subtle)"
+                  aria-hidden={!showTime}
+                  title={formatTime(timestamp)}
+                >
+                  {formatTime(timestamp)}
+                </span>
+              )}
+            </div>
+          )}
       </div>
     </div>
   )
@@ -195,7 +208,8 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
       if (fromAgent && fromAgent !== 'user') {
         return <InboxBubble content={block.content} fromAgent={fromAgent} />
       }
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} />
+      const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -331,7 +345,6 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     pendingRestoreRef.current = false
     el.scrollTop = el.scrollHeight - prevScrollHeightRef.current
     prevScrollHeightRef.current = null
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocks.length])
 
   // Me single scroll effect — block count or last block text changed
@@ -381,9 +394,9 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                        block={item.block}
                        isStreaming={false}
                         isLast={item.index === allBlocks.length - 1}
-                        sessionId={sessionId}
-                        onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
-                      />
+                         sessionId={sessionId}
+                         onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                        />
                    )
                  }
                  // Me only the trailing turn (no user block after) can be "live"

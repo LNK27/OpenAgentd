@@ -178,6 +178,8 @@ class Agent(Generic[TContext]):
         injected_tools: list[Tool] | None = None,
         interrupt_event: asyncio.Event | None = None,
         checkpointer: Checkpointer | None = None,
+        llm_provider: LLMProviderBase | None = None,
+        model_id: str | None = None,
         **kwargs,
     ) -> list[ChatMessage]:
         """Runs the agent loop for a single turn.
@@ -205,6 +207,8 @@ class Agent(Generic[TContext]):
         self.run_config = config
         plugin_hooks = await self._load_plugin_hooks(role)
         combined_hooks = list(self.hooks) + list(hooks or []) + plugin_hooks
+        active_provider = llm_provider or self.llm_provider
+        active_model_id = model_id or self.model_id
 
         # Build run-local tool lookup: constructor tools + injected_tools.
         # Never mutate self._tools so concurrent runs are safe.
@@ -340,8 +344,8 @@ class Agent(Generic[TContext]):
                     hooks=combined_hooks,
                     interrupt_event=interrupt_event,
                     tool_defs=tool_defs,
-                    primary_provider=self.llm_provider,
-                    primary_label=self.model_id or "primary",
+                    primary_provider=active_provider,
+                    primary_label=active_model_id or "primary",
                     fallback_provider=self.fallback_provider,
                     fallback_label=self.fallback_model_id or "fallback",
                     agent_name=self.name,

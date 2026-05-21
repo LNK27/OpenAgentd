@@ -519,6 +519,32 @@ async def test_queued_user_messages_are_hidden_until_popped(session):
     assert [msg.content for msg in visible] == ["current response", "next"]
 
 
+async def test_queued_user_message_preserves_model_metadata_when_popped(session):
+    chat_session = await create_chat_session(session, "Queue")
+    queued = await save_queued_user_message(
+        session,
+        chat_session.id,
+        "next",
+        extra={"model": "openai:gpt-5.5", "thinking_level": "high"},
+    )
+    await session.commit()
+
+    assert queued.extra is not None
+    assert queued.extra["model"] == "openai:gpt-5.5"
+    assert queued.extra["thinking_level"] == "high"
+    assert queued.extra["queue_status"] == "queued"
+
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    await session.commit()
+
+    assert [row.id for row in popped] == [queued.id]
+    assert popped[0].extra is not None
+    assert popped[0].extra["model"] == "openai:gpt-5.5"
+    assert popped[0].extra["thinking_level"] == "high"
+    assert popped[0].extra["queued_at"] == queued.extra["queued_at"]
+    assert "queue_status" not in popped[0].extra
+
+
 async def test_popped_queued_user_messages_keep_queue_order_after_response(session):
     chat_session = await create_chat_session(session, "Queue")
     first = await save_queued_user_message(session, chat_session.id, "first")

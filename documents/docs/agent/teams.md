@@ -421,6 +421,8 @@ Called from every agent's `_run_activation` finally block — fires at most once
 
 There is no longer a ``session_type`` column. Top-level sessions (team leads, scheduled-task sessions) are identified by `parent_session_id IS NULL`; team-member sessions are children of their lead via the FK.
 
+Lead sessions may carry per-session `model` and `thinking_level` overrides. Each user `session_messages.extra` also stores the effective model used for that turn so history shows the original model even after settings change.
+
 `GET /api/team/{session_id}/history` queries sub-sessions by `parent_session_id` — not live team state. Works correctly for historical sessions, including orphaned members.
 
 ---

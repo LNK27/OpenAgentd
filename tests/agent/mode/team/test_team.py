@@ -7,6 +7,12 @@ import uuid
 from contextlib import suppress
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from app.models.chat import ChatSession, SessionMessage
+
 
 class TestAgentTeamConstruction:
     """Test AgentTeam initialization."""
@@ -185,6 +191,93 @@ class TestAgentTeamUserMessage:
 
         await asyncio.sleep(0.1)
         await team.stop()
+
+    async def test_handle_user_message_persists_session_model_settings_and_turn_metadata(
+        self, basic_team
+    ):
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        db_factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        team = basic_team
+        team.lead.db_factory = db_factory
+        team.mailbox.send = AsyncMock()
+        session_id = str(uuid.uuid7())
+
+        try:
+            await team.handle_user_message(
+                "Use the stronger model",
+                session_id=session_id,
+                model="openai:gpt-5.5",
+                model_provided=True,
+                thinking_level="high",
+                thinking_level_provided=True,
+            )
+
+            async with db_factory() as db:
+                session_row = await db.get(ChatSession, uuid.UUID(session_id))
+                assert session_row is not None
+                assert session_row.model == "openai:gpt-5.5"
+                assert session_row.thinking_level == "high"
+                messages = (await db.exec(select(SessionMessage))).all()
+                user_rows = [row for row in messages if row.role == "user"]
+                assert len(user_rows) == 1
+                assert user_rows[0].extra is not None
+                assert user_rows[0].extra["model"] == "openai:gpt-5.5"
+                assert user_rows[0].extra["thinking_level"] == "high"
+        finally:
+            await engine.dispose()
+
+    async def test_handle_user_message_reset_clears_session_override_but_stamps_default_model(
+        self, basic_team
+    ):
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        db_factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        team = basic_team
+        team.lead.db_factory = db_factory
+        team.mailbox.send = AsyncMock()
+        session_uuid = uuid.uuid7()
+
+        async with db_factory() as db:
+            db.add(
+                ChatSession(
+                    id=session_uuid,
+                    agent_name="lead",
+                    model="openai:gpt-5.5",
+                    thinking_level="high",
+                )
+            )
+            await db.commit()
+
+        try:
+            await team.handle_user_message(
+                "Reset to default",
+                session_id=str(session_uuid),
+                model=None,
+                model_provided=True,
+                thinking_level=None,
+                thinking_level_provided=True,
+            )
+
+            async with db_factory() as db:
+                session_row = await db.get(ChatSession, session_uuid)
+                assert session_row is not None
+                assert session_row.model is None
+                assert session_row.thinking_level is None
+                messages = (await db.exec(select(SessionMessage))).all()
+                user_rows = [row for row in messages if row.role == "user"]
+                assert len(user_rows) == 1
+                assert user_rows[0].extra is not None
+                assert user_rows[0].extra["model"] == team.lead.agent.model_id
+                assert "thinking_level" not in user_rows[0].extra
+        finally:
+            await engine.dispose()
 
 
 class TestAgentTeamDoneDetection:

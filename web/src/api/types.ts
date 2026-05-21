@@ -134,6 +134,8 @@ export interface SessionResponse {
   scheduled_task_name?: string | null
   mode?: string
   workspace?: string | null
+  model?: string | null
+  thinking_level?: string | null
 }
 
 export interface SessionDetailResponse extends SessionResponse {

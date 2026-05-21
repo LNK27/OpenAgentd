@@ -435,6 +435,10 @@ class AgentTeam:
         attachment_metas: list[dict] | None = None,
         mode: str | None = None,
         workspace: str | None = None,
+        model: str | None = None,
+        model_provided: bool = False,
+        thinking_level: str | None = None,
+        thinking_level_provided: bool = False,
     ) -> str:
         """Deliver a user message to the team lead. Returns the session_id.
 
@@ -510,10 +514,22 @@ class AgentTeam:
                 await heal_orphaned_tool_calls(db, lead_uuid)
 
                 lead_row = await db.get(ChatSession, lead_uuid)
+                effective_model = model if model_provided else None
+                effective_thinking_level = (
+                    thinking_level if thinking_level_provided else None
+                )
                 if lead_row is not None:
                     lead_row.mode = self.mode
                     lead_row.workspace = self.workspace
+                    if model_provided:
+                        lead_row.model = model
+                    if thinking_level_provided:
+                        lead_row.thinking_level = thinking_level
+                    effective_model = lead_row.model or self.lead.agent.model_id
+                    effective_thinking_level = lead_row.thinking_level
                     db.add(lead_row)
+                else:
+                    effective_model = model or self.lead.agent.model_id
 
                 if attachment_metas:
                     parts = build_parts_from_metas(content, attachment_metas)
@@ -531,6 +547,12 @@ class AgentTeam:
                     extra_with_snapshot = dict(msg_extra or {})
                     extra_with_snapshot["snapshot"] = snapshot_hash
                     msg_extra = extra_with_snapshot
+
+                extra_with_model = dict(msg_extra or {})
+                extra_with_model["model"] = effective_model
+                if effective_thinking_level:
+                    extra_with_model["thinking_level"] = effective_thinking_level
+                msg_extra = extra_with_model
 
                 await save_message(db, lead_uuid, user_msg, extra=msg_extra)
 

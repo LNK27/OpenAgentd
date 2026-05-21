@@ -36,7 +36,8 @@ export function useRegistryQuery() {
   return useQuery({
     queryKey: queryKeys.agentFiles.registry(),
     queryFn: getRegistry,
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   })
 }
 

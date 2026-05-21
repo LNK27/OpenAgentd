@@ -37,6 +37,50 @@ describe('postTeamChat', () => {
     expect(form.get('workspace')).toBe('/repo/app')
   })
 
+  it('omits model settings when they are undefined', async () => {
+    let body: BodyInit | null | undefined
+    globalThis.fetch = mock((_url, init) => {
+      body = (init as RequestInit | undefined)?.body
+      return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
+    }) as typeof fetch
+
+    await postTeamChat('hello')
+
+    const form = body as FormData
+    expect(form.has('model')).toBe(false)
+    expect(form.has('thinking_level')).toBe(false)
+  })
+
+  it('sends empty form fields for explicit model setting resets', async () => {
+    let body: BodyInit | null | undefined
+    globalThis.fetch = mock((_url, init) => {
+      body = (init as RequestInit | undefined)?.body
+      return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
+    }) as typeof fetch
+
+    await postTeamChat('hello', 'sid', false, undefined, 'normal', null, null, null)
+
+    const form = body as FormData
+    expect(form.has('model')).toBe(true)
+    expect(form.get('model')).toBe('')
+    expect(form.has('thinking_level')).toBe(true)
+    expect(form.get('thinking_level')).toBe('')
+  })
+
+  it('sends selected model settings exactly when provided', async () => {
+    let body: BodyInit | null | undefined
+    globalThis.fetch = mock((_url, init) => {
+      body = (init as RequestInit | undefined)?.body
+      return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
+    }) as typeof fetch
+
+    await postTeamChat('hello', 'sid', false, undefined, 'normal', null, 'openai:gpt-5.5', 'high')
+
+    const form = body as FormData
+    expect(form.get('model')).toBe('openai:gpt-5.5')
+    expect(form.get('thinking_level')).toBe('high')
+  })
+
   it('deletes queued messages by session and message id', async () => {
     let url: string | URL | Request | undefined
     let method: string | undefined

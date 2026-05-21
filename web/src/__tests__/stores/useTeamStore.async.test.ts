@@ -388,6 +388,19 @@ describe("sendMessage", () => {
     expect(leadBlocks[0].content).toBe("hello team")
   })
 
+  it("stamps optimistic user blocks with the lead default model", async () => {
+    useTeamStore.setState({
+      leadName: "lead",
+      sessionModel: null,
+      agentStreams: { lead: makeStream({ model: "openai:gpt-5.5" }) },
+    })
+
+    await useTeamStore.getState().sendMessage("hello team")
+
+    const leadBlocks = useTeamStore.getState().agentStreams["lead"].currentBlocks
+    expect(leadBlocks[0].extra?.model).toBe("openai:gpt-5.5")
+  })
+
   it("sets isTeamWorking=true before the POST resolves", async () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
 

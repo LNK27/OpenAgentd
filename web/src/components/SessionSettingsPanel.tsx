@@ -1,10 +1,8 @@
 /**
- * AgentCapabilities — right-side drawer showing per-agent details.
+ * Session settings — modal for current-session model controls and lead-agent context.
  *
- * Shape: slide-in drawer from the right (mirror of MemoryPanel).
- * When 2+ agents are available, a switcher row at the top lets the user
- * pick one; the body shows a single agent at a time. When there is only
- * one agent, the switcher is hidden.
+ * Shape: centered modal with current-session controls first, followed by
+ * read-only lead-agent skills, capabilities, and tools.
  *
  * Visual language:
  *   - No avatars/robot icons. Each agent identified by status dot + name.
@@ -15,6 +13,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import fuzzysort from 'fuzzysort'
 import {
   X,
   Wrench,
@@ -29,43 +28,20 @@ import {
   Plug,
 } from 'lucide-react'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
+import { useRegistryQuery } from '@/queries'
 import type {
   AgentInfo,
   AgentCapabilities as AgentCapabilitiesType,
   TeamAgentInfo,
-  TeamBlueprintInfo,
 } from '@/api/types'
-import type { AgentStream } from '@/stores/useTeamStore'
 
-// ── Status dot ────────────────────────────────────────────────────────────────
-
-function StatusDot({ status }: { status?: string }) {
-  const cls =
-    status === 'working'
-      ? 'bg-(--color-accent) shadow-[0_0_5px_var(--color-accent)] animate-pulse'
-      : status === 'error'
-        ? 'bg-(--color-error)'
-        : status === 'offline'
-          ? 'bg-(--color-text-subtle) opacity-50'
-        : 'bg-(--color-success)'
-  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${cls}`} aria-hidden />
-}
-
-// ── Role pill ─────────────────────────────────────────────────────────────────
-
-function RolePill({ isLead }: { isLead: boolean }) {
-  return (
-    <span
-      className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
-        isLead
-          ? 'bg-(--bg-key) text-(--color-accent)'
-          : 'bg-(--bg-key) text-(--color-text-muted)'
-      }`}
-    >
-      {isLead ? 'Lead' : 'Member'}
-    </span>
-  )
-}
+const THINKING_LEVELS = [
+  { value: '', label: 'Default' },
+  { value: 'none', label: 'None' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+]
 
 // ── Capability chips (enabled only) ──────────────────────────────────────────
 
@@ -287,7 +263,7 @@ function Tools({
   if (tools.length === 0 && mcpServers.length === 0) return null
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col border-t border-(--color-border)">
+    <section className="border-t border-(--color-border)">
       <div className="flex shrink-0 items-center gap-2 px-5 pt-4 pb-2">
         <h3 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
           Tools
@@ -313,7 +289,7 @@ function Tools({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto pb-5">
+      <div className="pb-5">
         {filteredTools.length === 0 && query.trim() ? (
           <p className="px-5 pt-2 text-xs italic text-(--color-text-muted)">
             No tools match “{query}”.
@@ -369,114 +345,195 @@ function Skills({ skills }: { skills: AgentInfo['skills'] }) {
   )
 }
 
-// ── Switcher ──────────────────────────────────────────────────────────────────
-
-type DetailItem =
-  | { kind: 'agent'; name: string; agent: TeamAgentInfo }
-  | { kind: 'blueprint'; name: string; blueprint: TeamBlueprintInfo }
-
-function DetailSwitcher({
-  items,
-  selectedKey,
-  streams,
-  onSelect,
+function SessionModelSettings({
+  defaultModel,
+  sessionModel,
+  sessionThinkingLevel,
+  onChange,
 }: {
-  items: DetailItem[]
-  selectedKey: string
-  streams: Record<string, AgentStream>
-  onSelect: (key: string) => void
+  defaultModel: string | null
+  sessionModel: string | null
+  sessionThinkingLevel: string | null
+  onChange: (model: string | null, thinkingLevel: string | null) => void
 }) {
-  return (
-    <div className="shrink-0 border-b border-(--color-border) bg-(--bg-key) px-3 py-2">
-      <div className="flex flex-wrap items-center gap-1">
-        {items.map((item) => {
-          const key = `${item.kind}:${item.name}`
-          const active = key === selectedKey
-          const stream = item.kind === 'agent' ? streams[item.name] : undefined
-          return (
-            <button
-              key={key}
-              onClick={() => onSelect(key)}
-              className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
-                active
-                  ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)'
-                  : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)'
-              }`}
-              aria-pressed={active}
-            >
-              {item.kind === 'agent' ? (
-                <StatusDot status={stream?.status} />
-              ) : (
-                <Plug size={11} className="text-(--color-text-muted)" aria-hidden />
-              )}
-              <span className={`font-medium ${item.kind === 'agent' ? 'text-(--color-accent)' : ''}`}>
-                {item.name}
-              </span>
-              {item.kind === 'blueprint' && (
-                <span
-                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                    item.blueprint.live_instances.length > 0
-                      ? 'bg-(--bg-card) text-(--color-accent)'
-                      : 'bg-(--bg-card) text-(--color-text-muted)'
-                  }`}
-                  title={item.blueprint.live_instances.join(', ') || 'No live instances'}
-                >
-                  {item.blueprint.live_instances.length > 0
-                    ? `${item.blueprint.live_instances.length} live`
-                    : 'idle'}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-    </div>
+  const registry = useRegistryQuery()
+  const [draftModel, setDraftModel] = useState(sessionModel ?? defaultModel ?? '')
+  const [draftThinkingLevel, setDraftThinkingLevel] = useState(sessionThinkingLevel ?? '')
+  const [modelPickerOpen, setModelPickerOpen] = useState(false)
+  const [activeModelIndex, setActiveModelIndex] = useState(0)
+  const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
+  const visibleModelOptions = useMemo(() => {
+    const q = draftModel.trim()
+    if (!q) return modelOptions.slice(0, 40)
+    return fuzzysort.go(q, modelOptions, { key: 'id', limit: 40 }).map((result) => result.obj)
+  }, [modelOptions, draftModel])
+  const savedModel = sessionModel ?? defaultModel ?? ''
+  const savedThinkingLevel = sessionThinkingLevel ?? ''
+  const dirty = draftModel !== savedModel || draftThinkingLevel !== savedThinkingLevel
+  const trimmedDraftModel = draftModel.trim()
+  const validModelIds = useMemo(
+    () => new Set(modelOptions.map((model) => model.id)),
+    [modelOptions],
   )
-}
+  const modelValid =
+    trimmedDraftModel === '' ||
+    trimmedDraftModel === defaultModel ||
+    validModelIds.has(trimmedDraftModel)
+  const pickerOptions = useMemo(
+    () => [
+      { id: defaultModel ?? '', label: defaultModel ?? 'Default' },
+      ...visibleModelOptions.map((model) => ({ id: model.id, label: model.id })),
+    ],
+    [defaultModel, visibleModelOptions],
+  )
 
-function BlueprintDetails({ blueprint }: { blueprint: TeamBlueprintInfo }) {
+  const selectModel = (modelId: string) => {
+    setDraftModel(modelId)
+    setModelPickerOpen(false)
+  }
+
   return (
-    <>
-      <section className="shrink-0 px-5 py-4">
-        <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
-          About
-        </h3>
-        <p className="text-sm leading-relaxed text-(--color-text-2)">
-          {blueprint.description?.trim() || (
-            <span className="italic text-(--color-text-muted)">No description.</span>
+    <section className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-5 py-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-(--color-text)">Current session</h3>
+          <p className="mt-0.5 text-xs text-(--color-text-muted)">
+            Saved changes apply to the lead agent on the next message in this chat session.
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            disabled={!dirty}
+            onClick={() => {
+              setDraftModel(savedModel)
+              setDraftThinkingLevel(savedThinkingLevel)
+              setModelPickerOpen(false)
+            }}
+            className="rounded-md border border-(--color-border) px-3 py-1.5 text-xs text-(--color-text-muted) transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!dirty || !modelValid}
+            onClick={() => {
+              onChange(trimmedDraftModel && trimmedDraftModel !== defaultModel ? trimmedDraftModel : null, draftThinkingLevel || null)
+              setModelPickerOpen(false)
+            }}
+            className="rounded-md bg-(--color-accent) px-3 py-1.5 text-xs font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <label className="w-80 max-w-full text-xs text-(--color-text-muted)">
+          <span className="mb-1 block font-medium text-(--color-text-2)">Model</span>
+          <div className="relative">
+              <input
+                value={draftModel}
+                onChange={(e) => {
+                  setDraftModel(e.target.value)
+                  setModelPickerOpen(true)
+                  setActiveModelIndex(0)
+                }}
+                className="w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3 py-2 font-mono text-xs text-(--color-text) outline-none transition-colors hover:border-(--color-border-strong) focus:border-(--color-accent)"
+                aria-label="Search session model"
+                role="combobox"
+                aria-expanded={modelPickerOpen}
+                aria-invalid={!modelValid}
+                onFocus={() => setModelPickerOpen(true)}
+                onBlur={() => window.setTimeout(() => setModelPickerOpen(false), 120)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setModelPickerOpen(true)
+                    setActiveModelIndex((index) => Math.min(index + 1, pickerOptions.length - 1))
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setActiveModelIndex((index) => Math.max(index - 1, 0))
+                  } else if (e.key === 'Enter' && modelPickerOpen) {
+                    e.preventDefault()
+                    const option = pickerOptions[activeModelIndex]
+                    if (option) selectModel(option.id)
+                  } else if (e.key === 'Escape') {
+                    setModelPickerOpen(false)
+                  }
+                }}
+              />
+            {modelPickerOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-[min(34rem,calc(90vw-3rem))] rounded-md border border-(--color-border-strong) bg-(--bg-page) p-1 shadow-[0_8px_24px_rgba(26,23,20,0.16)]">
+                <div className="max-h-64 overflow-auto">
+                {pickerOptions.map((model, index) => (
+                  <button
+                    type="button"
+                    key={`${index}:${model.id}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setActiveModelIndex(index)}
+                    onClick={() => selectModel(model.id)}
+                    className={`block w-full rounded-sm px-2 py-1.5 text-left font-mono text-xs text-(--color-text) ${index === activeModelIndex ? 'bg-(--bg-hover)' : 'hover:bg-(--bg-hover)'}`}
+                  >
+                    {model.label}
+                  </button>
+                ))}
+                </div>
+              </div>
+            )}
+          </div>
+          {!modelValid && (
+            <span className="mt-1 block text-[11px] text-(--color-error)">
+              Choose a model from the list.
+            </span>
           )}
-        </p>
-      </section>
-
-      <Skills skills={blueprint.skills} />
-
-      {blueprint.capabilities && <Capabilities caps={blueprint.capabilities} tools={blueprint.tools} />}
-
-      <Tools tools={blueprint.tools} mcpServers={blueprint.mcp_servers ?? []} />
-    </>
+          {modelValid && !trimmedDraftModel && defaultModel && (
+            <span className="mt-1 block text-[11px] text-(--color-text-muted)">
+              Using default: {defaultModel}
+            </span>
+          )}
+        </label>
+        <label className="text-xs text-(--color-text-muted)">
+          <span className="mb-1 block font-medium text-(--color-text-2)">Thinking</span>
+          <select
+            value={draftThinkingLevel}
+            onChange={(e) => setDraftThinkingLevel(e.target.value)}
+            className="w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text) outline-none transition-colors hover:border-(--color-border-strong) focus:border-(--color-accent)"
+            aria-label="Thinking level"
+          >
+            {THINKING_LEVELS.map((level) => (
+              <option key={level.value} value={level.value}>{level.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </section>
   )
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-interface AgentCapabilitiesProps {
+interface SessionSettingsPanelProps {
   /** Controls drawer visibility. Parent keeps the component mounted so
    *  framer-motion can play both the enter and exit animations. */
   open: boolean
   /** For team mode: ordered agent names (lead first). Empty = single-agent. */
   agentNames?: string[]
-  agentStreams?: Record<string, AgentStream>
   workspace?: string | null
+  sessionModel?: string | null
+  sessionThinkingLevel?: string | null
+  onSessionModelSettingsChange?: (model: string | null, thinkingLevel: string | null) => void
   onClose: () => void
 }
 
-export function AgentCapabilities({
+export function SessionSettingsPanel({
   open,
   agentNames = [],
-  agentStreams = {},
   workspace = null,
+  sessionModel = null,
+  sessionThinkingLevel = null,
+  onSessionModelSettingsChange,
   onClose,
-}: AgentCapabilitiesProps) {
+}: SessionSettingsPanelProps) {
   const { data, isLoading, refetch } = useTeamAgentsQuery(workspace)
 
   // Refresh on open
@@ -496,7 +553,6 @@ export function AgentCapabilities({
   }, [open, onClose])
 
   const allAgents: TeamAgentInfo[] = data?.agents ?? []
-  const blueprints = useMemo(() => data?.blueprints ?? [], [data?.blueprints])
   const byName = new Map(allAgents.map((a) => [a.name, a]))
 
   // Resolve which agents to show. Prefer the caller's ordering; fall back to
@@ -511,35 +567,6 @@ export function AgentCapabilities({
   const leadFromApi = allAgents.find((a) => a.is_lead)
   const leadName = display.length > 1 ? (leadFromApi?.name ?? display[0]?.name ?? null) : null
   const leadAgent = (leadName ? byName.get(leadName) : null) ?? display[0]
-  const detailItems: DetailItem[] = useMemo(
-    () => [
-      ...(leadAgent ? [{ kind: 'agent' as const, name: leadAgent.name, agent: leadAgent }] : []),
-      ...blueprints.map((blueprint) => ({
-        kind: 'blueprint' as const,
-        name: blueprint.name,
-        blueprint,
-      })),
-    ],
-    [blueprints, leadAgent]
-  )
-
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
-
-  // Keep the selection in sync with the available details. Default to the lead
-  // agent when present so the modal opens on the primary team member.
-  useEffect(() => {
-    if (detailItems.length === 0) {
-      setSelectedKey(null)
-      return
-    }
-    if (!selectedKey || !detailItems.some((item) => `${item.kind}:${item.name}` === selectedKey)) {
-      setSelectedKey(`${detailItems[0].kind}:${detailItems[0].name}`)
-    }
-  }, [detailItems, selectedKey])
-
-  const selected = selectedKey
-    ? detailItems.find((item) => `${item.kind}:${item.name}` === selectedKey) ?? detailItems[0]
-    : detailItems[0]
 
   return (
     <AnimatePresence>
@@ -561,44 +588,25 @@ export function AgentCapabilities({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed left-1/2 top-1/2 z-50 flex h-[min(90vh,860px)] w-[min(90vw,960px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl"
+            className="fixed left-1/2 top-1/2 z-50 flex h-[min(90vh,860px)] w-[min(90vw,960px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) shadow-2xl"
             role="dialog"
             aria-modal="true"
-            aria-label="Agent details"
+            aria-label="Session settings"
           >
         {/* Header */}
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-(--color-border) px-5 py-4">
-          {isLoading || !selected ? (
+          {isLoading || !leadAgent ? (
             <div className="h-6 w-48 animate-pulse rounded bg-(--bg-key)" />
           ) : (
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                {selected.kind === 'agent' ? (
-                  <StatusDot status={agentStreams[selected.name]?.status} />
-                ) : (
-                  <Plug size={13} className="text-(--color-text-muted)" aria-hidden />
-                )}
                 <h2 className="truncate text-base font-semibold text-(--color-text)">
-                  {selected.name}
+                  Session settings
                 </h2>
-                {selected.kind === 'agent' ? (
-                  <RolePill isLead={leadName === selected.name} />
-                ) : (
-                  <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-(--color-text-muted) ring-1 ring-(--color-border-strong)">
-                    Blueprint
-                  </span>
-                )}
               </div>
-              {selected.kind === 'agent' && selected.agent.model && (
-                <p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">
-                  {selected.agent.model}
-                </p>
-              )}
-              {selected.kind === 'blueprint' && selected.blueprint.model && (
-                <p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">
-                  {selected.blueprint.model}
-                </p>
-              )}
+              <p className="mt-1 truncate text-xs text-(--color-text-muted)">
+                Edit the current session, then review available capabilities below.
+              </p>
             </div>
           )}
           <button
@@ -611,18 +619,9 @@ export function AgentCapabilities({
           </button>
         </header>
 
-        {detailItems.length > 1 && selectedKey && (
-          <DetailSwitcher
-            items={detailItems}
-            selectedKey={selectedKey}
-            streams={agentStreams}
-            onSelect={setSelectedKey}
-          />
-        )}
-
         {/* Body */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {isLoading || !selected ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {isLoading || !leadAgent ? (
             <div className="flex-1 space-y-3 p-5">
               <div className="h-16 animate-pulse rounded-xl bg-(--bg-key)" />
               <div className="h-24 animate-pulse rounded-xl bg-(--bg-key)" />
@@ -630,30 +629,32 @@ export function AgentCapabilities({
             </div>
           ) : (
             <>
-              {selected.kind === 'agent' ? (
-                <>
-                  <section className="shrink-0 px-5 py-4">
-                    <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
-                      About
-                    </h3>
-                    <p className="text-sm leading-relaxed text-(--color-text-2)">
-                      {selected.agent.description?.trim() || (
-                        <span className="italic text-(--color-text-muted)">No description.</span>
-                      )}
-                    </p>
-                  </section>
-
-                  <Skills skills={selected.agent.skills} />
-
-                  {selected.agent.capabilities && (
-                    <Capabilities caps={selected.agent.capabilities} tools={selected.agent.tools} />
-                  )}
-
-                  <Tools tools={selected.agent.tools} mcpServers={selected.agent.mcp_servers ?? []} />
-                </>
-              ) : (
-                <BlueprintDetails blueprint={selected.blueprint} />
+              {onSessionModelSettingsChange && (
+                <SessionModelSettings
+                  defaultModel={leadAgent.model}
+                  sessionModel={sessionModel}
+                  sessionThinkingLevel={sessionThinkingLevel}
+                  onChange={onSessionModelSettingsChange}
+                />
               )}
+              <section className="shrink-0 px-5 py-4">
+                <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+                  Lead agent
+                </h3>
+                <p className="text-sm leading-relaxed text-(--color-text-2)">
+                  {leadAgent.description?.trim() || (
+                    <span className="italic text-(--color-text-muted)">No description.</span>
+                  )}
+                </p>
+              </section>
+
+              <Skills skills={leadAgent.skills} />
+
+              {leadAgent.capabilities && (
+                <Capabilities caps={leadAgent.capabilities} tools={leadAgent.tools} />
+              )}
+
+              <Tools tools={leadAgent.tools} mcpServers={leadAgent.mcp_servers ?? []} />
             </>
           )}
         </div>

@@ -358,6 +358,10 @@ async def dispatch_user_message(
     attachments: list[RawAttachment] | None = None,
     mode: str = "normal",
     workspace: str | None = None,
+    model: str | None = None,
+    model_provided: bool = False,
+    thinking_level: str | None = None,
+    thinking_level_provided: bool = False,
 ) -> tuple[str, int]:
     """Send a user message through the team.
 
@@ -388,6 +392,10 @@ async def dispatch_user_message(
         attachment_metas=metas if metas else None,
         mode=mode,
         workspace=workspace,
+        model=model,
+        model_provided=model_provided or model is not None,
+        thinking_level=thinking_level,
+        thinking_level_provided=thinking_level_provided or thinking_level is not None,
     )
     logger.info(
         "agent_service_dispatched session_id={} attachments={}",

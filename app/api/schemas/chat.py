@@ -35,6 +35,10 @@ class ChatForm(BaseModel):
     workspace: str | None = Field(
         None, description="Workspace directory for coding mode."
     )
+    model: str | None = Field(None, description="Per-session lead model override.")
+    thinking_level: str | None = Field(
+        None, description="Per-session lead thinking level override."
+    )
 
     @classmethod
     def as_form(
@@ -44,6 +48,8 @@ class ChatForm(BaseModel):
         interrupt: bool = Form(False),
         mode: str = Form("normal"),
         workspace: str | None = Form(None),
+        model: str | None = Form(None),
+        thinking_level: str | None = Form(None),
     ) -> "ChatForm":
         try:
             return cls(
@@ -52,6 +58,8 @@ class ChatForm(BaseModel):
                 interrupt=interrupt,
                 mode=mode,
                 workspace=workspace,
+                model=model,
+                thinking_level=thinking_level,
             )
         except ValidationError as exc:
             raise HTTPException(
@@ -72,4 +80,22 @@ class ChatForm(BaseModel):
             raise ValueError("mode must be 'normal' or 'coding'.")
         if self.mode == "coding" and not self.workspace:
             raise ValueError("workspace is required when mode='coding'.")
+        if (
+            self.model is not None
+            and self.model.strip()
+            and ":" not in self.model.strip()
+        ):
+            raise ValueError("model must use 'provider:model' format.")
+        if (
+            self.thinking_level is not None
+            and self.thinking_level.strip()
+            and self.thinking_level.strip()
+            not in {
+                "none",
+                "low",
+                "medium",
+                "high",
+            }
+        ):
+            raise ValueError("thinking_level must be one of: none, low, medium, high.")
         return self

@@ -46,6 +46,8 @@ export interface TeamStoreState {
   sidebarOpen: boolean
   sessionId: string | null
   sessionTitle: string | null
+  sessionModel: string | null
+  sessionThinkingLevel: string | null
   isTeamWorking: boolean
   isContinuing: boolean
   isConnected: boolean
@@ -62,7 +64,8 @@ export interface TeamStoreState {
 }
 
 export interface TeamStoreActions {
-  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null }) => Promise<void>
+  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null }) => Promise<void>
+  setSessionModelSettings: (model: string | null, thinkingLevel: string | null) => void
   continueTeam: () => Promise<void>
   compactTeam: () => Promise<void>
   undoTeam: () => Promise<TeamCommandResponse | undefined>

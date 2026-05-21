@@ -204,13 +204,14 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
       // Me normalise DB extra: support both old (from_agents: string[]) and new (from_agent: string) formats
       const rawExtra = msg.extra as { routing?: { from_agent?: string; from_agents?: string[] }; from_agent?: string; from_agents?: string[] } | null
       const fromAgent = rawExtra?.from_agent ?? rawExtra?.routing?.from_agent ?? rawExtra?.from_agents?.[0] ?? rawExtra?.routing?.from_agents?.[0]
-      const extra = fromAgent ? { from_agent: fromAgent } : (msg.extra ?? undefined)
+      const extra = { ...(msg.extra ?? {}) }
+      if (fromAgent) extra.from_agent = fromAgent
       const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
       result.push({
         id: msg.id,
         type: 'user',
         content: msg.content || '',
-        extra,
+        extra: Object.keys(extra).length > 0 ? extra : undefined,
         timestamp,
         attachments: msg.attachments ?? undefined,
       })
