@@ -17,6 +17,8 @@ export interface TopbarActionProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   Icon: LucideIcon
   label?: string
+  /** Optional compact text rendered after the icon (for counters). */
+  badge?: string
   /** Show a colored dot to signal an active/in-progress state. */
   indicator?: boolean
   indicatorClassName?: string
@@ -29,6 +31,7 @@ export const TopbarAction = forwardRef<HTMLButtonElement, TopbarActionProps>(
     {
       Icon,
       label,
+      badge,
       indicator,
       indicatorClassName,
       hideLabelOnMobile = true,
@@ -50,6 +53,9 @@ export const TopbarAction = forwardRef<HTMLButtonElement, TopbarActionProps>(
         <Icon size={13} aria-hidden="true" />
         {label && (
           <span className={cn(hideLabelOnMobile && 'hidden md:inline')}>{label}</span>
+        )}
+        {badge && (
+          <span className="font-mono text-[10px] text-(--color-text-muted)">{badge}</span>
         )}
         {indicator && (
           <span

@@ -96,6 +96,7 @@ export function TodosPopover({
 }: TodosPopoverProps) {
   const completedCount = todos.filter((t) => t.status === 'completed').length
   const hasInProgress = todos.some((t) => t.status === 'in_progress')
+  const progressLabel = todos.length > 0 ? `${completedCount}/${todos.length}` : undefined
   const todosByStatus = STATUS_COLUMNS.map((status) => ({
     status,
     todos: todos.filter((todo) => todo.status === status),
@@ -112,6 +113,7 @@ export function TodosPopover({
         render={
           <TopbarAction
             Icon={ListTodo}
+            badge={progressLabel}
             indicator={hasInProgress}
             title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
             aria-label="Task list"
