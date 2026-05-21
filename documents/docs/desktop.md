@@ -98,6 +98,8 @@ The **View → Reload** action (`⌘/Ctrl+R`) calls `window.location.reload()` o
 
 Clicking the tray icon opens the tray menu (showing live status first) rather than summoning the main window. The window is summoned explicitly via the "Show OpenAgentd" entry. This matches macOS menu-bar app conventions where the icon is a status surface rather than a launcher.
 
+When the application is already running in the background, clicking the Dock icon or launching the app again (e.g., via Spotlight) triggers a `RunEvent::Reopen` event, which automatically unminimizes, shows, and focuses the main window.
+
 Closing the main window hides it to the tray instead of stopping the backend. Selecting **Quit OpenAgentd** from the app menu or tray marks the app as quitting, exits Tauri, and lets the existing shutdown path terminate the Python sidecar cleanly.
 
 The tray status starts at `Status: Starting`, changes to `Status: Running` once the backend is healthy, and changes to `Status: Error` if sidecar startup fails. In dev mode it reports `Status: Running (dev)`.

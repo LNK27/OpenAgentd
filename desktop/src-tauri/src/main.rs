@@ -903,6 +903,9 @@ fn main() {
                     }
                 }
             }
+            RunEvent::Reopen { has_visible_windows: _, .. } => {
+                show_main_window(app);
+            }
             RunEvent::ExitRequested { .. } => {
                 let state: tauri::State<'_, AppState> = app.state();
                 let sidecar = state.sidecar.clone();
