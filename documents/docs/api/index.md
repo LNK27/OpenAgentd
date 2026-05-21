@@ -346,7 +346,6 @@ Returns 409 (`{"detail": "..."}`) when continuation is not meaningful:
 - **Session belongs to '<name>', not '<lead>'.** — ownership guard.
 - **Session has no messages to continue from.** — empty session.
 - **Last message is not an assistant message — nothing to continue. Send a new message instead.** — last visible row is a user/tool message.
-- **Last assistant message has no content — nothing to continue.** — e.g. interrupted before any content tokens arrived; resubmit the original turn.
 - **Cannot continue while <lead> is working — wait for the turn to finish.** — concurrent `/continue` requests; the working-state guard is atomic inside `activate_for_continuation`.
 
 ### `command: "compact"`

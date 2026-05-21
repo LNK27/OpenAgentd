@@ -603,9 +603,10 @@ class AgentTeam:
 
         * Session must exist and belong to the lead.
         * Lead must not already be working.
-        * Last visible message must be an :class:`AssistantMessage` with
-          non-empty content and no pending ``tool_calls`` (continuing a
-          half-emitted tool call is unsafe — partial JSON args).
+        * Last visible message must be an :class:`AssistantMessage` or a
+          linked :class:`ToolMessage`. Assistant messages with pending
+          ``tool_calls`` are rejected because continuing a half-emitted tool
+          call is unsafe — partial JSON args.
 
         Returns the session_id.  Caller subscribes to
         ``GET /team/stream/{session_id}`` for the SSE feed.
@@ -667,10 +668,6 @@ class AgentTeam:
             if last.tool_calls:
                 raise ContinuePreconditionError(
                     "Last assistant message is mid tool call — cannot safely continue."
-                )
-            if not (last.content and last.content.strip()):
-                raise ContinuePreconditionError(
-                    "Last assistant message has no content — nothing to continue."
                 )
 
         # Preconditions satisfied — now realign the lead onto this session.
