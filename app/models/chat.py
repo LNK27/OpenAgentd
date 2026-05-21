@@ -93,6 +93,8 @@ class ChatSession(SQLModel, table=True):
         sa_column=Column(sa.String(20), nullable=False, server_default="normal"),
     )
     workspace: str | None = Field(default=None)
+    model: str | None = Field(default=None, max_length=255)
+    thinking_level: str | None = Field(default=None, max_length=50)
     revert: dict | None = Field(
         default=None,
         sa_column=Column(

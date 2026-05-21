@@ -22,6 +22,7 @@ from app.api.routes.team._helpers import (
     _read_upload_as_attachment,
     _require_team,
 )
+from app.api.routes.agents import is_registered_model_id
 from app.api.schemas.sessions import (
     SessionDetailResponse,
     SessionPageResponse,
@@ -124,6 +125,7 @@ def _changed_paths_payload(shift: BoundaryShift) -> dict:
 
 @router.post("/chat", status_code=202)
 async def team_chat(
+    request: Request,
     db: DbSession,
     body: ChatFormDep,
     files: list[UploadFile] = File(default=[]),
@@ -146,6 +148,13 @@ async def team_chat(
     interrupt = body.interrupt
     mode = body.mode
     workspace = body.workspace
+    raw_form = await request.form()
+    model_provided = "model" in raw_form
+    thinking_level_provided = "thinking_level" in raw_form
+    model = body.model.strip() if body.model else None
+    thinking_level = body.thinking_level.strip() if body.thinking_level else None
+    if model and not await is_registered_model_id(model):
+        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
     existing: ChatSession | None = None
     session_uuid: UUID | None = None
 
@@ -222,7 +231,30 @@ async def team_chat(
                 detail="Cannot queue messages with attachments while the agent is working.",
             )
         async with db.begin():
-            queued = await save_queued_user_message(db, session_uuid, message)
+            queued_extra: dict[str, object] = {}
+            effective_model = model or team_obj.lead.agent.model_id
+            if effective_model:
+                queued_extra["model"] = effective_model
+            if thinking_level:
+                queued_extra["thinking_level"] = thinking_level
+            existing_row = await db.get(ChatSession, session_uuid)
+            if existing_row is not None:
+                if model_provided:
+                    existing_row.model = model
+                if thinking_level_provided:
+                    existing_row.thinking_level = thinking_level
+                effective_model = existing_row.model or team_obj.lead.agent.model_id
+                if effective_model:
+                    queued_extra["model"] = effective_model
+                if existing_row.thinking_level:
+                    queued_extra["thinking_level"] = existing_row.thinking_level
+                db.add(existing_row)
+            queued = await save_queued_user_message(
+                db,
+                session_uuid,
+                message,
+                extra=queued_extra,
+            )
         logger.info(
             "team_chat_queued session_id={} message_id={}",
             session_id,
@@ -244,6 +276,10 @@ async def team_chat(
             attachments=attachments,
             mode=mode,
             workspace=workspace,
+            model=model,
+            model_provided=model_provided,
+            thinking_level=thinking_level,
+            thinking_level_provided=thinking_level_provided,
         )
     except AttachmentError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc

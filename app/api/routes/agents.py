@@ -319,6 +319,27 @@ async def _discover_configured_registry_models() -> list[tuple[str, str]]:
     return out
 
 
+async def is_registered_model_id(model_id: str) -> bool:
+    """Return whether *model_id* is currently selectable from the registry."""
+    if ":" not in model_id:
+        return False
+    provider, model = model_id.split(":", 1)
+    if not provider or not model:
+        return False
+
+    from app.api.routes.settings import _provider_is_configured
+
+    for entry in all_providers():
+        if entry["id"] != provider or not _provider_is_configured(entry):
+            continue
+        fallback = filter_agent_model_ids(list(entry.get("fallback_models", [])))
+        if model in fallback:
+            return True
+        discovered = await _discover_configured_registry_models()
+        return any(p == provider and m == model for p, m in discovered)
+    return False
+
+
 @router.get("/{name}")
 @router.get("/{name:path}")
 async def get_agent(name: str) -> AgentDetail:
