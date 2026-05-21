@@ -86,6 +86,9 @@ async def generate_and_save_title(
                 HumanMessage(content=user_text),
             ]
 
+            # Best-effort: try ``thinking_level="none"`` for the cheap path,
+            # fall back to the agent's configured level if the provider
+            # rejects it (e.g. Codex requires a ``reasoning`` field).
             t0 = time.monotonic()
             try:
                 async with asyncio.timeout(_TITLE_TIMEOUT):
@@ -100,14 +103,36 @@ async def generate_and_save_title(
                 span.set_attribute("error.type", "TimeoutError")
                 span.set_status(StatusCode.ERROR, "timeout")
                 return
-            except Exception as e:
-                logger.warning(
-                    "title_generation_llm_error session_id={}", session_id_str
+            except Exception as first_exc:
+                logger.info(
+                    "title_generation_retry_without_thinking_override "
+                    "session_id={} first_error={}",
+                    session_id_str,
+                    first_exc,
                 )
-                logger.warning("LLM error details: {}", e)
-                span.set_attribute("error.type", type(e).__name__)
-                span.set_status(StatusCode.ERROR, str(e))
-                return
+                span.set_attribute("title_generation.retried", True)
+                try:
+                    async with asyncio.timeout(_TITLE_TIMEOUT):
+                        result = await provider.chat(
+                            messages,
+                            max_tokens=20,
+                            temperature=0.2,
+                        )
+                except TimeoutError:
+                    logger.warning(
+                        "title_generation_timeout session_id={}", session_id_str
+                    )
+                    span.set_attribute("error.type", "TimeoutError")
+                    span.set_status(StatusCode.ERROR, "timeout")
+                    return
+                except Exception as retry_exc:
+                    logger.warning(
+                        "title_generation_llm_error session_id={}", session_id_str
+                    )
+                    logger.warning("LLM error details: {}", retry_exc)
+                    span.set_attribute("error.type", type(retry_exc).__name__)
+                    span.set_status(StatusCode.ERROR, str(retry_exc))
+                    return
             finally:
                 span.set_attribute(
                     "title_generation.llm_duration_s", round(time.monotonic() - t0, 3)

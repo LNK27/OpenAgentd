@@ -567,19 +567,15 @@ async def test_max_token_length_zero_disables_limit():
 
 
 # ---------------------------------------------------------------------------
-# thinking_level — always forced to "none" on the summariser call
+# thinking_level — inherited from the agent's primary configuration
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_summariser_call_always_passes_thinking_level_none():
-    """Summarisation never benefits from reasoning — the hook must override
-    the agent's primary ``thinking_level`` with ``"none"`` on every call so
-    reasoning tokens are not spent (cost + latency + streaming behaviour).
-
-    The per-call kwarg wins over constructor ``model_kwargs`` thanks to
-    ``LLMProviderBase._merged_kwargs`` — see ``app/agent/providers/base.py``.
-    """
+async def test_summariser_call_does_not_override_thinking_level():
+    """Summarisation must not force ``thinking_level="none"`` — Codex rejects
+    requests with no ``reasoning`` field, so the agent's configured level
+    must flow through unchanged."""
     provider = MagicMock()
 
     async def _stream(*_, **__):
@@ -612,7 +608,7 @@ async def test_summariser_call_always_passes_thinking_level_none():
 
     provider.stream.assert_called_once()
     call_kwargs = provider.stream.call_args[1]
-    assert call_kwargs.get("thinking_level") == "none"
+    assert "thinking_level" not in call_kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -636,9 +632,8 @@ def test_is_base_agent_hook(mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_tool_message_content_replaced_with_stub(mock_provider):
-    """ToolMessage content is replaced with '[tool/name]: [tool result omitted]'
-    in the text sent to the summariser LLM; the tool name is preserved."""
+async def test_tool_message_content_kept_for_compaction(mock_provider):
+    """ToolMessage content is sent to the summariser with the tool name."""
     hook = SummarizationHook(
         llm_provider=mock_provider,
         summary_prompt="test summary prompt",
@@ -678,17 +673,16 @@ async def test_tool_message_content_replaced_with_stub(mock_provider):
     assert human_msgs, "Expected at least one HumanMessage in summariser input"
     convo_blob = " ".join(m.content or "" for m in human_msgs)
 
-    # Raw tool output must not appear.
-    assert "lots of output" not in convo_blob
-    assert '{"exit_code"' not in convo_blob
-    # Tool name and stub marker must appear.
+    # Tool name and output context must appear.
     assert "[tool/shell]" in convo_blob
-    assert "[tool result omitted]" in convo_blob
+    assert "lots of output" in convo_blob
+    assert '{"exit_code"' in convo_blob
+    assert "[tool result omitted]" not in convo_blob
 
 
 @pytest.mark.asyncio
 async def test_tool_message_without_name_uses_generic_stub(mock_provider):
-    """A ToolMessage with no name renders as '[tool]: [tool result omitted]'."""
+    """A ToolMessage with no name renders as '[tool]: <output>'."""
     hook = SummarizationHook(
         llm_provider=mock_provider,
         summary_prompt="test summary prompt",
@@ -720,9 +714,8 @@ async def test_tool_message_without_name_uses_generic_stub(mock_provider):
     human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
     convo_blob = " ".join(m.content or "" for m in human_msgs)
 
-    assert "raw output" not in convo_blob
-    assert "[tool]:" in convo_blob
-    assert "[tool result omitted]" in convo_blob
+    assert "[tool]: raw output" in convo_blob
+    assert "[tool result omitted]" not in convo_blob
 
 
 @pytest.mark.asyncio

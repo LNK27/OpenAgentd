@@ -2,8 +2,8 @@ import type { ContentBlock, AgentUsage, TeamCommandResponse } from '@/api/types'
 
 export interface PendingMessage {
   id: string
+  sessionId?: string | null
   content: string
-  files?: File[]
 }
 
 export type CacheInvalidation =

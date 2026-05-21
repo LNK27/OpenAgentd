@@ -408,8 +408,10 @@ Each tool is exposed to the LLM as `mcp_<server>_<tool>` (the convention `MCPToo
 
 | Tool | What it does |
 |------|-------------|
-| `skill` | Load a skill's full instructions from `{SKILLS_DIR}/{name}/SKILL.md` |
+| `skill` | Load a skill's full instructions from the highest-precedence matching skill root |
 | `discover_skills` | List available skills with descriptions (internal — not exposed to LLM) |
+
+Skills use the directory format `skills/{name}/SKILL.md` with YAML frontmatter (`name`, `description`) and a Markdown body. Discovery walks roots in precedence order: `{cwd}/.openagentd/skills`, `{cwd}/.opencode/skills`, `{SKILLS_DIR}`, `~/.config/opencode/skills`, then bundled read-only OpenAgentd skills; the first matching skill name wins.
 
 The loader expands four placeholders in both the description (used in the agent's system prompt) and the body returned to the LLM, so installer skills can reference concrete absolute paths without hard-coding them: `{OPENAGENTD_CONFIG_DIR}`, `{AGENTS_DIR}`, `{SKILLS_DIR}`, `{SKILL_DIR}` (the calling skill's own directory). Other `{...}` content is left untouched.
 

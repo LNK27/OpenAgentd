@@ -239,6 +239,31 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         break
       }
 
+      case 'queued_turn_start': {
+        const agent = d.agent as string
+        const messageIds = Array.isArray(d.message_ids) ? new Set(d.message_ids as string[]) : null
+        set((draft) => {
+          ensureAgent(draft, agent)
+          if (agent !== draft.leadName || !draft.sessionId) return
+          const queued = draft._pendingMessages.filter((msg) => {
+            if (msg.sessionId !== draft.sessionId) return false
+            return messageIds === null || messageIds.has(msg.id)
+          })
+          if (queued.length === 0) return
+          draft.agentStreams[agent].currentBlocks.push(
+            ...queued.map((msg) => ({
+              id: msg.id,
+              type: 'user' as const,
+              content: msg.content,
+              timestamp: new Date(),
+            })),
+          )
+          const queuedIds = new Set(queued.map((msg) => msg.id))
+          draft._pendingMessages = draft._pendingMessages.filter((msg) => !queuedIds.has(msg.id))
+        })
+        break
+      }
+
       case 'agent_status': {
         const agent = d.agent as string
         const status = d.status as string
@@ -291,12 +316,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             }
           })
         })
-        const pending = get()._pendingMessages
-        if (pending.length > 0) {
-          const [next, ...rest] = pending
-          set((draft) => { draft._pendingMessages = rest })
-          void get().sendMessage(next.content, next.files)
-        }
         break
       }
 

@@ -144,27 +144,51 @@ merge either way.
 
 ## LLM call
 
+Best-effort: the cheap path is tried first; on any first-attempt exception
+the call is retried once without the `thinking_level` override.
+
 ```python
-provider.chat(
-    messages=[
-        SystemMessage(content=system_prompt),   # from config file body
-        HumanMessage(content=user_text),        # capped at 500 chars
-    ],
-    max_tokens=20,
-    temperature=0.2,
-    thinking_level="none",
-)
+# First attempt — cheap path.
+try:
+    provider.chat(
+        messages=[
+            SystemMessage(content=system_prompt),   # from config file body
+            HumanMessage(content=user_text),        # capped at 500 chars
+        ],
+        max_tokens=20,
+        temperature=0.2,
+        thinking_level="none",
+    )
+# Codex (and any future provider that rejects missing ``reasoning``) →
+# retry once with the agent's configured ``thinking_level`` flowing through.
+except TimeoutError:
+    ...
+except Exception:
+    provider.chat(
+        messages=...,
+        max_tokens=20,
+        temperature=0.2,
+        # no thinking_level — inherited from provider's model_kwargs
+    )
 ```
 
 `max_tokens=20` is sufficient — the ≤50 character output cap is at most
-~12–13 tokens. `thinking_level="none"` explicitly disables extended thinking
-on providers that support it (e.g. ZAI, Gemini), overriding any
-`thinking_level` set in the agent's `model_kwargs` — no reasoning tokens are
-spent on a title.
+~12–13 tokens. The cheap path uses `thinking_level="none"` to skip
+reasoning on providers that accept it (OpenAI API-key, ZAI, Gemini, …) —
+saving cost and latency on a throwaway call. The Codex
+`chatgpt.com/backend-api/codex` endpoint rejects requests with no
+`reasoning` field (`ResponsesHandler.customize_thinking` omits it whenever
+the level is `"none"`/`"off"`), so the retry path drops the override and
+lets the provider's constructor `model_kwargs` supply the agent's
+configured level. The retry sets the `title_generation.retried` span
+attribute for observability.
 
-Timeout: 15 seconds (inside `title_service`, separate from the hook wait).
-On timeout or any exception, logs at `warning` and returns — fallback title
-stays.
+Timeout: 15 seconds (inside `title_service`, separate from the hook wait)
+applies to **each** attempt independently. On first-attempt timeout the
+function returns immediately — no retry — since a slow provider on the
+cheap path is unlikely to be faster on the more expensive retry path. On
+retry timeout or any retry exception, logs at `warning` and returns —
+fallback title stays.
 
 ---
 
@@ -230,6 +254,7 @@ context — the span appears as a root span with `parent_id=null`.
 | `title_generation.llm_duration_s` | elapsed seconds for the `provider.chat()` call |
 | `title_generation.title_length` | char length of the cleaned title (only on success) |
 | `title_generation.skipped` | reason if title was not saved (`"empty_response"`, `"session_not_found"`) |
+| `title_generation.retried` | `True` when the first attempt raised and the call was retried without the `thinking_level` override (e.g. Codex compat) |
 | `error.type` | `"TimeoutError"` on timeout, exception class name on LLM error |
 
 Inspect with:
@@ -261,7 +286,8 @@ All title generation logic is covered by unit and integration tests in
 - Provider errors and timeouts → silent return
 - Empty/None/whitespace responses → DB unchanged
 - Session not found → no event pushed
-- Correct LLM parameters (`max_tokens=20`, `temperature=0.2`, `thinking_level="none"`)
+- Correct cheap-path LLM parameters (`max_tokens=20`, `temperature=0.2`, `thinking_level="none"`)
+- Retry-without-override when the first attempt raises (Codex compat)
 - Event payload structure validation
 
 **Hook tests (`TitleGenerationHook`):**

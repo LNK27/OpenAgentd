@@ -2,9 +2,13 @@ import { describe, it, expect, afterEach, mock } from "bun:test"
 import { render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentView } from "@/components/AgentView"
+import { useTeamStore } from "@/stores/useTeamStore"
 import type { ContentBlock } from "@/api/types"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  useTeamStore.setState({ sessionId: null, _pendingMessages: [] })
+})
 
 // Mock lucide-react icons to avoid SVG issues in Happy DOM
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
@@ -41,6 +45,26 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
 // ── tests ────────────────────────────────────────────────────────────────────
 
 describe("AgentView — AssistantFooter", () => {
+  it("renders queued messages below the streaming assistant turn", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      _pendingMessages: [
+        { id: "q1", sessionId: "session-a", content: "queued after response" },
+      ],
+    })
+
+    renderStream({
+      blocks: [makeUserBlock("u1", "start")],
+      currentBlocks: [makeTextBlock("a1", "streaming response")],
+      isWorking: true,
+    })
+
+    const response = screen.getByText("streaming response")
+    const queued = screen.getByText("queued after response")
+    expect(response.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Cancel queued message" })).toBeTruthy()
+  })
+
   describe("footer visibility", () => {
     it("does not render footer when isWorking=true even with text blocks", () => {
       const { container } = renderStream({

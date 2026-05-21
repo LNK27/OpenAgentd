@@ -444,10 +444,46 @@ class TestGenerateAndSaveTitle:
             assert isinstance(messages[1], HumanMessage)
             assert messages[1].content == "test message"
 
-            # Check kwargs
             assert kwargs["max_tokens"] == 20
             assert kwargs["temperature"] == 0.2
             assert kwargs["thinking_level"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_retries_without_thinking_override_on_failure(
+        self, engine, session, mock_provider
+    ):
+        """First attempt fails (e.g. Codex rejects missing ``reasoning``) →
+        retry once without the ``thinking_level="none"`` override."""
+        chat_session = ChatSession(title="")
+        session.add(chat_session)
+        await session.commit()
+
+        mock_provider.chat.side_effect = [
+            Exception("Codex 400: missing 'reasoning'"),
+            MagicMock(content="Recovered Title"),
+        ]
+
+        db_factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        with patch("app.services.title_service.stream_store.push_event"):
+            await generate_and_save_title(
+                session_id=chat_session.id,
+                user_message="hi",
+                provider=mock_provider,
+                db_factory=db_factory,
+                system_prompt="test title prompt",
+            )
+
+        assert mock_provider.chat.await_count == 2
+        first_kwargs = mock_provider.chat.call_args_list[0].kwargs
+        second_kwargs = mock_provider.chat.call_args_list[1].kwargs
+        assert first_kwargs.get("thinking_level") == "none"
+        assert "thinking_level" not in second_kwargs
+
+        await session.refresh(chat_session)
+        assert chat_session.title == "Recovered Title"
 
     @pytest.mark.asyncio
     async def test_event_payload_structure(self, engine, session, mock_provider):

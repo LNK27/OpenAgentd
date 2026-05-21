@@ -2,7 +2,7 @@
 title: Workspace Files Panel
 description: Right-side drawer for browsing, previewing, and downloading agent-generated files with live invalidation.
 status: stable
-updated: 2026-05-16
+updated: 2026-05-21
 ---
 
 # Workspace Files panel
@@ -22,7 +22,7 @@ The panel is the UI for `GET /api/team/{session_id}/files` — see
 the endpoint contract. File **listings** come from `/files`; file **bytes**
 are fetched on demand from the media proxy (`/media/{path}`).
 
-Normal sessions list the per-session workspace. `/coding` uses **Files & Diff** for the selected project: a recursive tree plus current git diff. New folders require a trust confirmation before opening, and `/coding` restores the last opened workspace from local browser storage. The coding session list shows a small running indicator on the active session while that turn is streaming. Dot entries, common generated directories, and root `.gitignore` matches are hidden in both views. Large git diffs are capped and marked as truncated.
+Normal sessions list the per-session workspace. `/coding` uses **Files & Diff** for the selected project: a recursive tree plus current git diff. New folders require a trust confirmation before opening, and `/coding` restores the last active workspace from local browser storage, including workspaces resolved from coding session restores. The coding session list shows a small running indicator on the active session while that turn is streaming. Dot entries, common generated directories, and root `.gitignore` matches are hidden in both views. Large git diffs are capped and marked as truncated.
 
 In coding mode, the chat empty state replaces the default mascot with a `WorkspaceInfoCard` (`web/src/components/WorkspaceInfoCard.tsx`) showing workspace name + path, current git branch, dirty counts, and last commit. Backed by `GET /api/team/workspace/status`; refetched on every new-chat open (component re-mount).
 

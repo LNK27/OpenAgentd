@@ -313,8 +313,27 @@ def _visible_messages_stmt(session_id: UUID, boundary: datetime | None = None):
     )
 
 
+def _history_messages_stmt(session_id: UUID, boundary: datetime | None = None):
+    stmt = select(SessionMessage).where(col(SessionMessage.session_id) == session_id)
+    if boundary is not None:
+        stmt = _before_boundary(stmt, boundary)
+    return stmt.order_by(col(SessionMessage.created_at).asc())
+
+
+def _is_history_visible(row: SessionMessage) -> bool:
+    if not row.exclude_from_context:
+        return True
+    return bool(row.extra and row.extra.get("queue_status") == "queued")
+
+
 def _is_hidden_from_user(row: SessionMessage) -> bool:
     return bool(row.extra and row.extra.get("hidden_from_user"))
+
+
+def _is_undo_target(row: SessionMessage) -> bool:
+    if _is_hidden_from_user(row):
+        return False
+    return row.is_summary or not row.exclude_from_context
 
 
 async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
@@ -330,9 +349,8 @@ async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
     logger.debug("loading_messages session_id={}", session_id)
     try:
         boundary = await _boundary_created_at(db, session_id)
-        db_messages = (
-            await db.exec(_visible_messages_stmt(session_id, boundary))
-        ).all()
+        rows = (await db.exec(_history_messages_stmt(session_id, boundary))).all()
+        db_messages = [row for row in rows if _is_history_visible(row)]
         logger.debug(
             "messages_fetched session_id={} count={}", session_id, len(db_messages)
         )
@@ -371,6 +389,7 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
             select(SessionMessage)
             .where(col(SessionMessage.session_id) == session_id)
             .where(col(SessionMessage.is_summary))
+            .where(~col(SessionMessage.exclude_from_context))
         )
         summary_stmt = (
             _before_boundary(summary_stmt, boundary)
@@ -443,7 +462,7 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     if boundary is not None:
         stmt = stmt.where(col(SessionMessage.created_at) < boundary.created_at)
     rows = (await db.exec(stmt)).all()
-    target = next((row for row in rows if not _is_hidden_from_user(row)), None)
+    target = next((row for row in rows if _is_undo_target(row)), None)
     if target is None:
         return BoundaryShift(applied=False)
 
@@ -546,16 +565,117 @@ async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
             .where(col(SessionMessage.created_at) >= boundary.created_at)
         )
     ).all()
+    cleaned = 0
     for row in rows:
+        if row.extra and row.extra.get("queue_status") == "queued":
+            continue
         extra = dict(row.extra or {})
         extra["hidden_from_user"] = True
         row.extra = extra
         row.exclude_from_context = True
         db.add(row)
+        cleaned += 1
+    if boundary.is_summary:
+        previous_summaries = (
+            await db.exec(
+                select(SessionMessage)
+                .where(col(SessionMessage.session_id) == session_id)
+                .where(col(SessionMessage.is_summary))
+                .where(col(SessionMessage.created_at) < boundary.created_at)
+                .order_by(col(SessionMessage.created_at).desc())
+            )
+        ).all()
+        previous_summary = next(
+            (row for row in previous_summaries if not _is_hidden_from_user(row)), None
+        )
+        if previous_summary is not None:
+            previous_summary.exclude_from_context = False
+            db.add(previous_summary)
+        restored = (
+            await db.exec(
+                select(SessionMessage)
+                .where(col(SessionMessage.session_id) == session_id)
+                .where(col(SessionMessage.created_at) < boundary.created_at)
+                .where(~col(SessionMessage.is_summary))
+                .where(col(SessionMessage.exclude_from_context))
+            )
+        ).all()
+        for row in restored:
+            if _is_hidden_from_user(row):
+                continue
+            if (
+                previous_summary is not None
+                and row.created_at <= previous_summary.created_at
+            ):
+                continue
+            row.exclude_from_context = False
+            db.add(row)
     session.revert = None
     db.add(session)
     await db.flush()
-    return len(rows)
+    return cleaned
+
+
+async def save_queued_user_message(
+    db: AsyncSession,
+    session_id: UUID,
+    content: str,
+) -> SessionMessage:
+    queued_at = datetime.now(timezone.utc).isoformat()
+    return await save_message(
+        db,
+        session_id,
+        HumanMessage(content=content),
+        is_hidden=True,
+        extra={"queue_status": "queued", "queued_at": queued_at},
+    )
+
+
+async def pop_queued_user_messages(
+    db: AsyncSession,
+    session_id: UUID,
+) -> list[SessionMessage]:
+    rows = await db.exec(
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == session_id)
+        .where(col(SessionMessage.role) == "user")
+        .where(col(SessionMessage.exclude_from_context))
+        .where(col(SessionMessage.extra)["queue_status"].as_string() == "queued")
+        .order_by(col(SessionMessage.created_at).asc())
+    )
+    queued = list(rows.all())
+    activated_at = datetime.now(timezone.utc)
+    for i, row in enumerate(queued):
+        extra = dict(row.extra or {})
+        extra.pop("queue_status", None)
+        row.extra = extra or None
+        row.exclude_from_context = False
+        row.created_at = activated_at + timedelta(microseconds=i)
+        db.add(row)
+    await db.flush()
+    return queued
+
+
+async def cancel_queued_user_message(
+    db: AsyncSession,
+    session_id: UUID,
+    message_id: UUID,
+) -> bool:
+    row = await db.get(SessionMessage, message_id)
+    if (
+        row is None
+        or row.session_id != session_id
+        or not row.extra
+        or row.extra.get("queue_status") != "queued"
+    ):
+        return False
+    extra = dict(row.extra)
+    extra["queue_status"] = "cancelled"
+    row.extra = extra
+    row.exclude_from_context = True
+    db.add(row)
+    await db.flush()
+    return True
 
 
 async def exclude_messages_before_summary(

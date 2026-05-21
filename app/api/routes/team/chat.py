@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import AsyncGenerator, Literal
 from uuid import UUID
+from uuid import uuid7
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from loguru import logger
@@ -36,10 +37,12 @@ from app.services import (
 from app.services.agent_service import AttachmentError, RawAttachment
 from app.services.chat_service import (
     BoundaryShift,
+    cancel_queued_user_message,
     cleanup_reverted_tail,
     delete_session,
     get_team_history,
     list_sessions_page,
+    save_queued_user_message,
 )
 
 router = APIRouter()
@@ -121,7 +124,6 @@ def _changed_paths_payload(shift: BoundaryShift) -> dict:
 
 @router.post("/chat", status_code=202)
 async def team_chat(
-    team: TeamDep,
     db: DbSession,
     body: ChatFormDep,
     files: list[UploadFile] = File(default=[]),
@@ -169,26 +171,35 @@ async def team_chat(
                 )
         mode = "coding"
         workspace = persisted_workspace
+        assert session_id is not None
         try:
-            team_obj = await team_manager.get_or_start_coding_team(workspace)
+            team_obj = await team_manager.get_or_start_coding_team(
+                workspace, session_id
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     elif mode == "coding":
+        if session_id is None:
+            session_id = str(uuid7())
         assert workspace is not None
         workspace = _validate_workspace_or_422(workspace)
         try:
-            team_obj = await team_manager.get_or_start_coding_team(workspace)
+            team_obj = await team_manager.get_or_start_coding_team(
+                workspace, session_id
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:
-        team_obj = _require_team(team)
+        if session_id is None:
+            session_id = str(uuid7())
+        team_obj = await team_manager.get_or_start_team_for_session(session_id)
+        team_obj = _require_team(team_obj)
 
     # ── Interrupt (mutually exclusive with message) ─────────────────────────
     if interrupt:
         await agent_service.interrupt_team(team_obj, session_id)
         return {"status": "interrupted", "session_id": session_id}
 
-    # At this point message is guaranteed non-None by ChatForm validator
     assert message is not None
 
     if session_uuid is not None:
@@ -203,6 +214,27 @@ async def team_chat(
         raw = await _read_upload_as_attachment(file)
         if raw is not None:
             attachments.append(raw)
+
+    if session_uuid is not None and team_obj.lead.state == "working":
+        if attachments:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot queue messages with attachments while the agent is working.",
+            )
+        async with db.begin():
+            queued = await save_queued_user_message(db, session_uuid, message)
+        logger.info(
+            "team_chat_queued session_id={} message_id={}",
+            session_id,
+            queued.id,
+        )
+        if team_obj.lead.state != "working":
+            await team_obj._activate_queued_user_messages(session_id)
+        return {
+            "status": "queued",
+            "session_id": session_id,
+            "message_id": str(queued.id),
+        }
 
     try:
         sid, n_attachments = await agent_service.dispatch_user_message(
@@ -224,6 +256,18 @@ async def team_chat(
     return {"status": "accepted", "session_id": sid}
 
 
+@router.delete("/sessions/{session_id}/queued-messages/{message_id}", status_code=204)
+async def cancel_queued_message(
+    db: DbSession,
+    session_id: UUID,
+    message_id: UUID,
+) -> None:
+    async with db.begin():
+        cancelled = await cancel_queued_user_message(db, session_id, message_id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Queued message not found.")
+
+
 class CommandRequest(BaseModel):
     """Request body for ``POST /team/commands``."""
 
@@ -233,7 +277,6 @@ class CommandRequest(BaseModel):
 
 @router.post("/commands", status_code=202)
 async def team_command(
-    team: TeamDep,
     body: CommandRequest,
 ) -> dict:
     """Run a slash-command on a session — no new user message persisted.
@@ -257,7 +300,8 @@ async def team_command(
     be continued (no assistant message, last message has unfinished tool
     calls, lead is already working, etc.).
     """
-    team_obj = _require_team(team)
+    team_obj = await team_manager.get_or_start_team_for_session(body.session_id)
+    team_obj = _require_team(team_obj)
 
     if body.command == "continue":
         try:
@@ -370,7 +414,9 @@ async def list_team_agents(
     """
     if workspace:
         try:
-            team_obj = await team_manager.get_or_start_coding_team(workspace)
+            team_obj = await team_manager.get_or_start_coding_team(
+                workspace, "__agents__"
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:
@@ -519,7 +565,9 @@ async def team_history(
         raise HTTPException(status_code=404, detail="Lead session not found.")
     if history.lead_session.mode == "coding" and history.lead_session.workspace:
         try:
-            await team_manager.get_or_start_coding_team(history.lead_session.workspace)
+            await team_manager.get_or_start_coding_team(
+                history.lead_session.workspace, str(history.lead_session.id)
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:

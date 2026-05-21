@@ -183,6 +183,44 @@ async def test_before_model_hook_returns_updated_request():
     assert captured_prompts[0] == "modified by hook"
 
 
+async def test_stop_after_before_model_skips_provider_call():
+    """Control commands can persist before_model changes without an LLM call."""
+
+    class StopAfterBeforeModelHook(BaseAgentHook):
+        async def before_model(
+            self,
+            ctx: RunContext,
+            state: AgentState,
+            request: ModelRequest | None = None,
+        ) -> ModelRequest | None:
+            state.messages.append(HumanMessage(content="compacted summary"))
+            return (
+                request.override(messages=tuple(state.messages_for_llm))
+                if request
+                else None
+            )
+
+    mock_provider = MagicMock()
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="You are helpful.",
+        hooks=[StopAfterBeforeModelHook()],
+    )
+
+    config = RunConfig(
+        session_id="s-compact",
+        run_id="r-compact",
+        metadata={"stop_after_before_model": True},
+    )
+    messages = await agent.run(
+        [AssistantMessage(content="previous answer")], config=config
+    )
+
+    mock_provider.stream.assert_not_called()
+    assert [m.content for m in messages] == ["previous answer", "compacted summary"]
+
+
 # ---------------------------------------------------------------------------
 # Lines 276, 278, 280: usage dict optional fields (cache, thoughts, tool_use)
 # ---------------------------------------------------------------------------
@@ -444,6 +482,111 @@ async def test_tool_result_content_derived_from_text_blocks():
     assert tool_msg.content == "First part Second part"
 
 
+# ---------------------------------------------------------------------------
+# Partial tool calls (mid-arguments interrupt) are filtered before assembly
+# ---------------------------------------------------------------------------
+
+
+async def test_partial_tool_call_with_invalid_json_is_dropped():
+    """Truncated JSON ``arguments`` → tool call dropped before the
+    ``AssistantMessage`` is built."""
+    captured_tool_calls: list = []
+
+    class CapturingHook(BaseAgentHook):
+        async def after_model(self, ctx, state, assistant_message):
+            captured_tool_calls.append(assistant_message.tool_calls)
+
+    truncated = '{"file_path": "/tmp/a.py", "old_string": "def foo'
+
+    async def _gen():
+        yield _tool_chunk(0, "fc_xyz", "Edit", truncated)
+        yield _finish_chunk()
+
+    mock_provider = MagicMock()
+    mock_provider.stream.return_value = _gen()
+
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="You are helpful.",
+        hooks=[CapturingHook()],
+    )
+
+    config = RunConfig(session_id="s_partial", run_id="r_partial")
+    await agent.run([HumanMessage(content="edit a file")], config=config)
+
+    assert captured_tool_calls, "after_model hook never fired"
+    assert captured_tool_calls[0] is None
+
+
+async def test_partial_tool_call_with_empty_name_is_dropped():
+    """Stream interrupted before OpenAI Responses ``function_call_arguments.done``
+    fires → tool name stays empty → entry dropped."""
+    captured_tool_calls: list = []
+
+    class CapturingHook(BaseAgentHook):
+        async def after_model(self, ctx, state, assistant_message):
+            captured_tool_calls.append(assistant_message.tool_calls)
+
+    async def _gen():
+        yield _tool_chunk(0, "fc_xyz", None, '{"ok": true}')
+        yield _finish_chunk()
+
+    mock_provider = MagicMock()
+    mock_provider.stream.return_value = _gen()
+
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="You are helpful.",
+        hooks=[CapturingHook()],
+    )
+
+    config = RunConfig(session_id="s_empty_name", run_id="r_empty_name")
+    await agent.run([HumanMessage(content="hi")], config=config)
+
+    assert captured_tool_calls, "after_model hook never fired"
+    assert captured_tool_calls[0] is None
+
+
+async def test_complete_tool_call_with_empty_args_is_kept():
+    """Empty ``arguments`` string is a legitimate no-arg call — must not be
+    filtered out."""
+    captured_tool_calls: list = []
+
+    class CapturingHook(BaseAgentHook):
+        async def after_model(self, ctx, state, assistant_message):
+            if assistant_message.tool_calls:
+                captured_tool_calls.extend(assistant_message.tool_calls)
+
+    async def noop():
+        """No-arg tool."""
+        return "ok"
+
+    async def _gen():
+        yield _tool_chunk(0, "fc_xyz", "noop", "")
+        yield _finish_chunk()
+
+    mock_provider = MagicMock()
+    mock_provider.stream.return_value = _gen()
+
+    from app.agent.tools.registry import Tool
+
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="You are helpful.",
+        tools=[Tool(noop)],
+        hooks=[CapturingHook()],
+    )
+
+    config = RunConfig(session_id="s_empty_args", run_id="r_empty_args")
+    await agent.run([HumanMessage(content="run noop")], config=config)
+
+    assert len(captured_tool_calls) == 1
+    assert captured_tool_calls[0].function.name == "noop"
+
+
 async def test_plain_string_tool_result_has_no_parts():
     """When a tool returns a plain str, ToolMessage.parts is NOT set (None)."""
     captured_messages: list = []
@@ -486,3 +629,87 @@ async def test_plain_string_tool_result_has_no_parts():
     # Parts should be None for plain string result
     assert tool_msg.parts is None
     assert tool_msg.content == "Plain text result"
+
+
+# ---------------------------------------------------------------------------
+# Adjacent HumanMessage merge — see streaming._merge_consecutive_user_messages.
+# ---------------------------------------------------------------------------
+
+
+def test_merge_consecutive_user_messages_joins_text_pairs():
+    from app.agent.agent_loop.streaming import _merge_consecutive_user_messages
+    from app.agent.schemas.chat import HumanMessage, SystemMessage
+
+    out = _merge_consecutive_user_messages(
+        [
+            SystemMessage(content="sys"),
+            HumanMessage(content="first"),
+            HumanMessage(content="second"),
+        ]
+    )
+    assert len(out) == 2
+    assert isinstance(out[0], SystemMessage)
+    assert isinstance(out[1], HumanMessage)
+    assert out[1].content == "first\n\nsecond"
+
+
+def test_merge_consecutive_user_messages_does_not_cross_other_roles():
+    from app.agent.agent_loop.streaming import _merge_consecutive_user_messages
+    from app.agent.schemas.chat import AssistantMessage, HumanMessage
+
+    out = _merge_consecutive_user_messages(
+        [
+            HumanMessage(content="A"),
+            AssistantMessage(content="ack"),
+            HumanMessage(content="B"),
+        ]
+    )
+    assert len(out) == 3
+    assert out[0].content == "A"
+    assert out[2].content == "B"
+
+
+def test_merge_consecutive_user_messages_preserves_multimodal_neighbours():
+    from app.agent.agent_loop.streaming import _merge_consecutive_user_messages
+    from app.agent.schemas.chat import HumanMessage, TextBlock
+
+    out = _merge_consecutive_user_messages(
+        [
+            HumanMessage(content="A"),
+            HumanMessage(content="B", parts=[TextBlock(text="B")]),
+        ]
+    )
+    assert len(out) == 2
+
+
+async def test_stream_and_assemble_merges_consecutive_user_messages():
+    """provider.stream() must receive a single merged user message."""
+    captured_kwargs: dict = {}
+
+    async def _gen():
+        yield _text_chunk("ok", finish="stop")
+        yield _usage_chunk()
+
+    def _capture(**kwargs):
+        captured_kwargs.update(kwargs)
+        return _gen()
+
+    mock_provider = MagicMock()
+    mock_provider.stream.side_effect = _capture
+
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="sys",
+    )
+
+    await agent.run(
+        [HumanMessage(content="first"), HumanMessage(content="second")],
+        config=RunConfig(session_id="s_merge", run_id="r_merge"),
+    )
+
+    sent = captured_kwargs["messages"]
+    assert len(sent) == 2  # SystemMessage + one merged HumanMessage
+    user_msgs = [m for m in sent if isinstance(m, HumanMessage)]
+    assert len(user_msgs) == 1
+    assert user_msgs[0].content == "first\n\nsecond"

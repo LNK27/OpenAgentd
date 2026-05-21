@@ -321,6 +321,14 @@ class Agent(Generic[TContext]):
             # Me sync after before_model — persists summarization changes
             await self._sync(checkpointer, ctx, state)
 
+            if state.metadata.get("stop_after_before_model") is True:
+                logger.info(
+                    "agent_iteration_done agent={} iteration={} action=before_model_only",
+                    self.name,
+                    iteration,
+                )
+                break
+
             # Build wrap_model_call chain and invoke it
             iter_usage_holder: list[Usage | None] = [None]
 

@@ -295,13 +295,13 @@ def cmd_init(_args: argparse.Namespace) -> None:  # noqa: C901
     else:
         print(f"  {_green('✓')}  Config updated at {env_file}")
 
-    # ── 5. Install seed agents + skills ──────────────────────────────────────
+    # ── 5. Install seed agents + config ──────────────────────────────────────
     # Seed install is "fill in the gaps" only — files already on disk are
     # kept untouched. Once the user has a populated config, those files are
     # theirs (think shell rc files, not a managed package). Updates ship by
     # users browsing the repo and copying what they want.
     print()
-    print(f"  {_dim('…')}  Installing default agents and skills")
+    print(f"  {_dim('…')}  Installing default agents and config")
     try:
         result = install_seed(config_dir, provider_model=full_model)
     except SeedDownloadError as exc:
@@ -328,7 +328,7 @@ def cmd_init(_args: argparse.Namespace) -> None:  # noqa: C901
                 f"{_dim(f'(source: {result.source})')}"
             )
         else:
-            print(f"  {_dim('ℹ')}  Existing agents/skills kept untouched")
+            print(f"  {_dim('ℹ')}  Existing agents/config kept untouched")
 
     # ── Done ─────────────────────────────────────────────────────────────────
     print()

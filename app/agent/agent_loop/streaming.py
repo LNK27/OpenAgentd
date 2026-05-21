@@ -26,6 +26,7 @@ from app.agent.agent_loop.retry import stream_with_retry
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
+    HumanMessage,
     SystemMessage,
     ToolCall,
     Usage,
@@ -104,6 +105,41 @@ async def _interruptible_stream(
                 pass
 
 
+def _merge_consecutive_user_messages(
+    messages: list[ChatMessage],
+) -> list[ChatMessage]:
+    """Join adjacent plain-text :class:`HumanMessage` rows with ``\\n\\n``.
+
+    Some providers (notably OpenAI gpt-5.5) treat the latest user message
+    as superseding earlier ones, dropping prior instructions. Merging at
+    the wire preserves additive intent ("Stop + I forgot to add ...")
+    while the DB keeps the rows separate.
+
+    Multimodal pairs (either side has ``.parts``) stay separate to
+    preserve attachment ordering.
+    """
+    if not messages:
+        return messages
+    merged: list[ChatMessage] = []
+    for m in messages:
+        prev = merged[-1] if merged else None
+        can_merge = (
+            isinstance(m, HumanMessage)
+            and not m.parts
+            and isinstance(prev, HumanMessage)
+            and not prev.parts
+        )
+        if can_merge:
+            assert isinstance(prev, HumanMessage)
+            merged[-1] = HumanMessage(
+                content=f"{prev.content or ''}\n\n{m.content or ''}".strip(),
+                extra=prev.extra,
+            )
+        else:
+            merged.append(m)
+    return merged
+
+
 async def stream_and_assemble(
     *,
     req: ModelRequest,
@@ -135,11 +171,11 @@ async def stream_and_assemble(
     tool_calls_buffer: dict[int, dict] = {}
     last_usage: Usage | None = None
 
-    # Prepend SystemMessage from the (possibly hook-modified) prompt.
-    provider_messages: list[ChatMessage] = [
-        SystemMessage(content=req.system_prompt),
-        *req.messages,
-    ]
+    # Prepend system prompt and merge any [user, user] adjacency for the
+    # wire — DB keeps adjacent user rows verbatim.
+    provider_messages: list[ChatMessage] = _merge_consecutive_user_messages(
+        [SystemMessage(content=req.system_prompt), *req.messages]
+    )
 
     upstream = stream_with_retry(
         primary_provider=primary_provider,
@@ -245,9 +281,35 @@ async def stream_and_assemble(
                                 or ""
                             ) + tc.function.thought_signature
 
-    tc_list: list[ToolCall] = [
-        ToolCall(**tool_calls_buffer[i]) for i in sorted(tool_calls_buffer)
-    ]
+    # Drop tool calls left half-formed by a mid-stream interrupt: missing
+    # name (OpenAI Responses only emits it on the final ``done`` event) or
+    # invalid JSON args. Empty ``arguments`` is a valid no-arg call.
+    tc_list: list[ToolCall] = []
+    for i in sorted(tool_calls_buffer):
+        buf = tool_calls_buffer[i]
+        fn_name = buf["function"]["name"]
+        fn_args = buf["function"]["arguments"]
+        if not fn_name:
+            logger.warning(
+                "drop_partial_tool_call_no_name agent={} idx={} args_prefix={!r}",
+                agent_name,
+                i,
+                fn_args[:80],
+            )
+            continue
+        if fn_args:
+            try:
+                json.loads(fn_args)
+            except (json.JSONDecodeError, ValueError):
+                logger.warning(
+                    "drop_partial_tool_call_bad_json agent={} idx={} name={} args_prefix={!r}",
+                    agent_name,
+                    i,
+                    fn_name,
+                    fn_args[:80],
+                )
+                continue
+        tc_list.append(ToolCall(**buf))
     # Me attach usage to `extra` immediately so `wrap_model_call` hooks
     # (e.g. OtelHook) can read it from the returned message inside the
     # chain.  The run loop re-asserts the same mapping — that

@@ -8,7 +8,12 @@ from dotenv import dotenv_values
 from loguru import logger
 
 from app.agent.providers.plugin_api import ProviderPlugin
-from app.core.config import settings
+
+
+def _settings():
+    from app.core.config import settings
+
+    return settings
 
 
 class ProviderCredentialStore:
@@ -17,7 +22,7 @@ class ProviderCredentialStore:
     ) -> None:
         self.provider_id = provider_id
         self.overrides = overrides or {}
-        self._env_file = Path(settings.OPENAGENTD_CONFIG_DIR) / ".env"
+        self._env_file = Path(_settings().OPENAGENTD_CONFIG_DIR) / ".env"
         self._env_values: dict[str, str] | None = None
 
     def _saved_env(self) -> dict[str, str]:
@@ -34,7 +39,9 @@ class ProviderCredentialStore:
     def token_path(self, filename: str) -> str:
         safe = filename.replace("/", "_")
         root = (
-            Path(settings.OPENAGENTD_CACHE_DIR) / "provider-plugins" / self.provider_id
+            Path(_settings().OPENAGENTD_CACHE_DIR)
+            / "provider-plugins"
+            / self.provider_id
         )
         root.mkdir(parents=True, exist_ok=True)
         return str(root / safe)
@@ -68,7 +75,7 @@ def provider_plugins() -> dict[str, ProviderPlugin]:
         return dict(_PLUGIN_CACHE)
 
     loaded: dict[str, ProviderPlugin] = {}
-    for directory in settings.plugin_dirs():
+    for directory in _settings().plugin_dirs():
         if not directory.is_dir():
             continue
         for path in sorted(directory.glob("*.py")):

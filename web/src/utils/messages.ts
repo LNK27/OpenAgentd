@@ -178,6 +178,8 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
   const pendingToolBlocks: Map<string, ContentBlock> = new Map()
 
   for (const msg of sortMessages(msgs)) {
+    if (msg.extra?.queue_status === 'queued') continue
+
     // Summaries surface as inline "Session compacted" dividers rather than
     // being hidden — preserves the visual marker across page reloads.
     if (msg.is_summary) {

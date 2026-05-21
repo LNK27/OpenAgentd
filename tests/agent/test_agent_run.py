@@ -316,7 +316,9 @@ async def test_agent_run_tool_execution_error():
 
 
 async def test_agent_run_invalid_json_args():
-    """Invalid JSON in tool arguments is handled: args fall back to empty dict."""
+    """Tool calls with invalid JSON ``arguments`` are dropped by
+    ``stream_and_assemble`` before the ``AssistantMessage`` is built — they
+    never reach the tool executor or downstream provider converters."""
 
     def add(a: int, b: int) -> int:
         """Adds two numbers."""
@@ -333,9 +335,11 @@ async def test_agent_run_invalid_json_args():
     msgs = await agent.run([HumanMessage(content="add")])
 
     tool_msgs = [m for m in msgs if isinstance(m, ToolMessage)]
-    assert len(tool_msgs) == 1
-    # Missing required args → validation error surfaced as Error
-    assert "Error:" in (tool_msgs[0].content or "")
+    assert tool_msgs == []
+
+    last = last_assistant(msgs)
+    assert last is not None
+    assert last.tool_calls is None
 
 
 async def test_agent_run_max_iterations():

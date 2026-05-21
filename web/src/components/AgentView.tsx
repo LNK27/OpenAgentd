@@ -28,6 +28,7 @@ import { StreamingCursor } from './motion'
 import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
+import { PendingMessageQueue } from './PendingMessageQueue'
 import { partitionTurns } from '@/utils/turns'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -430,10 +431,12 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '300ms' }} />
-             </div>
-           )}
+              </div>
+            )}
 
-           {isError && lastError && (
+            <PendingMessageQueue />
+
+            {isError && lastError && (
              <div className="mt-3 rounded-lg border border-(--color-error) bg-(--color-error-subtle) px-3 py-2">
                <p className="text-xs text-(--color-error)">{lastError}</p>
              </div>

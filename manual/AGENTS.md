@@ -21,6 +21,8 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `team_spawn.py` | Drive a turn that exercises `team_manage` spawn/dismiss; snapshots `/team/agents`, streams per-agent content, prints spawn/dismiss and lifecycle timelines | `--message TEXT`, `--session ID`, `--wait N`, `--out FILE`, `--no-color`, `--no-history` |
 | `team_roster_lifecycle.py` | Verify fresh sessions do not carry member rosters and stop moves running members to `offline` | `--base URL`, `--wait N` |
 | `continue_smoketest.py` | End-to-end test of `/continue`: send long prompt, wait, interrupt, inspect truncated assistant row, dispatch `/continue`, stream resumption inline, print final history | `--wait-before-stop N`, `--wait N`, `--base URL` |
+| `stop_mid_stream.py` | Drive the user-stop matrix (early / text / tool phases, with and without `/undo`) and check phase-agnostic invariants on the persisted history + follow-up SSE. Exits non-zero on any invariant failure | `--only NAME`, `--skip-undo`, `--base URL` |
+| `stop_additive.py` | Verify the Stop + additional-message ("I forgot to add ...") additive semantic — send msg_A, Stop, send msg_B, assert the final assistant reply incorporates both. Exits non-zero if either word is missing | `--wait N`, `--base URL` |
 
 ```bash
 # New team turn
@@ -53,6 +55,15 @@ uv run python -m manual.team_roster_lifecycle
 # End-to-end /continue smoke test: send → stop → /continue → stream → history
 uv run python -m manual.continue_smoketest
 uv run python -m manual.continue_smoketest --wait-before-stop 5     # later stop
+
+# Stop-mid-stream matrix (early/text/tool × undo/no-undo) with invariant checks
+uv run python -m manual.stop_mid_stream
+uv run python -m manual.stop_mid_stream --only tool                 # just the tool-call case
+uv run python -m manual.stop_mid_stream --skip-undo                 # skip the /undo half
+
+# Stop + additional-message ("I forgot to add ...") additive contract check
+uv run python -m manual.stop_additive                               # default 0.3s wait → forces [user, user] adjacency
+uv run python -m manual.stop_additive --wait 1.5                    # mid-stream interrupt
 ```
 
 ---
@@ -197,7 +208,6 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 | `try_providers/try_googlegenai.py` | Test Google GenAI (Gemini) provider | `--model`, `--level`, `--tools`, `--real-tools` |
 | `try_providers/try_vertexai.py` | Test Vertex AI provider | `--model`, `--level`, `--tools`, `--real-tools` |
 | `try_providers/try_zai.py` | Test ZAI provider | `--model`, `--level`, `--tools`, `--real-tools` |
-| `try_providers/try_geminicli.py` | Test GeminiCLI provider (OAuth, no API key) | `--model`, `--level`, `--tools`, `--real-tools` |
 | `try_providers/try_ollama.py` | Test Ollama provider (local daemon; cloud via `-cloud` suffix after `ollama signin`) | `--model`, `--tools`, `--real-tools`, `--no-stream`, `--simple` |
 
 ```bash
@@ -208,7 +218,6 @@ uv run python -m manual.try_providers.try_googlegenai --model gemini-3.1-flash-l
 uv run python -m manual.try_providers.try_googlegenai --real-tools
 uv run python -m manual.try_providers.try_vertexai --simple
 uv run python -m manual.try_providers.try_zai --simple
-uv run python -m manual.try_providers.try_geminicli --simple
 uv run python -m manual.try_providers.try_ollama --simple
 uv run python -m manual.try_providers.try_ollama --model kimi-k2.6-cloud --simple
 ```

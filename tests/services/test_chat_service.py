@@ -14,12 +14,17 @@ from app.agent.schemas.chat import (
     ToolMessage,
 )
 from app.services.chat_service import (
+    cancel_queued_user_message,
     cleanup_reverted_tail,
     create_chat_session,
     get_messages,
     get_messages_for_llm,
     heal_orphaned_tool_calls,
     hide_messages_before_summary,
+    redo_session_messages,
+    pop_queued_user_messages,
+    save_queued_user_message,
+    undo_session_messages,
     save_message,
 )
 
@@ -131,6 +136,329 @@ async def test_save_message_with_hidden_flag(session):
     assert saved.is_summary is False
 
 
+@pytest.mark.asyncio
+async def test_cleanup_reverted_summary_restores_compacted_context(session):
+    chat_session = await create_chat_session(session)
+
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    u2 = await save_message(session, chat_session.id, HumanMessage(content="u2"))
+    a2 = await save_message(session, chat_session.id, AssistantMessage(content="a2"))
+    summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary"),
+        is_summary=True,
+    )
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="after summary")
+    )
+
+    for row in (u1, a1, u2, a2):
+        row.exclude_from_context = True
+        session.add(row)
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == summary.id
+    await session.commit()
+
+    await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == ["u1", "a1", "u2", "a2"]
+
+    refreshed_summary = await session.get(SessionMessage, summary.id)
+    assert refreshed_summary is not None
+    assert refreshed_summary.exclude_from_context is True
+    assert (
+        refreshed_summary.extra
+        and refreshed_summary.extra.get("hidden_from_user") is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reverted_summary_restores_only_to_previous_summary(session):
+    chat_session = await create_chat_session(session)
+
+    old_user = await save_message(
+        session, chat_session.id, HumanMessage(content="old u")
+    )
+    old_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="old a")
+    )
+    first_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 1"),
+        is_summary=True,
+    )
+    mid_user = await save_message(
+        session, chat_session.id, HumanMessage(content="mid u")
+    )
+    mid_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="mid a")
+    )
+    second_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 2"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after s2"))
+
+    for row in (old_user, old_assistant, first_summary, mid_user, mid_assistant):
+        row.exclude_from_context = True
+        session.add(row)
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == second_summary.id
+    await session.commit()
+
+    await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == ["summary 1", "mid u", "mid a"]
+
+    refreshed_old_user = await session.get(SessionMessage, old_user.id)
+    refreshed_old_assistant = await session.get(SessionMessage, old_assistant.id)
+    assert refreshed_old_user is not None
+    assert refreshed_old_assistant is not None
+    assert refreshed_old_user.exclude_from_context is True
+    assert refreshed_old_assistant.exclude_from_context is True
+
+
+@pytest.mark.asyncio
+async def test_redo_reapplies_second_summary_without_restoring_old_context(session):
+    chat_session = await create_chat_session(session)
+
+    old_user = await save_message(
+        session, chat_session.id, HumanMessage(content="old u")
+    )
+    old_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="old a")
+    )
+    first_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 1"),
+        is_summary=True,
+    )
+    mid_user = await save_message(
+        session, chat_session.id, HumanMessage(content="mid u")
+    )
+    mid_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="mid a")
+    )
+    second_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 2"),
+        is_summary=True,
+    )
+    after_summary = await save_message(
+        session, chat_session.id, AssistantMessage(content="after s2")
+    )
+
+    for row in (old_user, old_assistant, first_summary, mid_user, mid_assistant):
+        row.exclude_from_context = True
+        session.add(row)
+    await session.commit()
+
+    undo_shift = await undo_session_messages(session, chat_session.id)
+    assert undo_shift.applied is True
+    assert undo_shift.target and undo_shift.target.id == second_summary.id
+    await session.commit()
+
+    redo_shift = await redo_session_messages(session, chat_session.id)
+    assert redo_shift.applied is True
+    assert redo_shift.target is None
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == ["summary 2", "after s2"]
+
+    for row in (old_user, old_assistant, first_summary, mid_user, mid_assistant):
+        refreshed = await session.get(SessionMessage, row.id)
+        assert refreshed is not None
+        assert refreshed.exclude_from_context is True
+    refreshed_second_summary = await session.get(SessionMessage, second_summary.id)
+    refreshed_after_summary = await session.get(SessionMessage, after_summary.id)
+    assert refreshed_second_summary is not None
+    assert refreshed_after_summary is not None
+    assert refreshed_second_summary.exclude_from_context is False
+    assert refreshed_after_summary.exclude_from_context is False
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reverted_middle_summary_restores_previous_summary_window(
+    session,
+):
+    chat_session = await create_chat_session(session)
+
+    old_user = await save_message(
+        session, chat_session.id, HumanMessage(content="old u")
+    )
+    old_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="old a")
+    )
+    first_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 1"),
+        is_summary=True,
+    )
+    first_window_user = await save_message(
+        session, chat_session.id, HumanMessage(content="s1 window u")
+    )
+    first_window_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="s1 window a")
+    )
+    second_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 2"),
+        is_summary=True,
+    )
+    second_window_user = await save_message(
+        session, chat_session.id, HumanMessage(content="s2 window u")
+    )
+    second_window_assistant = await save_message(
+        session, chat_session.id, AssistantMessage(content="s2 window a")
+    )
+    third_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 3"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after s3"))
+
+    for row in (
+        old_user,
+        old_assistant,
+        first_summary,
+        first_window_user,
+        first_window_assistant,
+        second_summary,
+        second_window_user,
+        second_window_assistant,
+    ):
+        row.exclude_from_context = True
+        session.add(row)
+    await session.commit()
+
+    first_undo = await undo_session_messages(session, chat_session.id)
+    assert first_undo.applied is True
+    assert first_undo.target and first_undo.target.id == third_summary.id
+    await session.commit()
+
+    second_undo = await undo_session_messages(session, chat_session.id)
+    assert second_undo.applied is True
+    assert second_undo.target and second_undo.target.id == second_summary.id
+    await session.commit()
+
+    await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == [
+        "summary 1",
+        "s1 window u",
+        "s1 window a",
+    ]
+
+    for row in (old_user, old_assistant):
+        refreshed = await session.get(SessionMessage, row.id)
+        assert refreshed is not None
+        assert refreshed.exclude_from_context is True
+    for row in (
+        second_summary,
+        second_window_user,
+        second_window_assistant,
+        third_summary,
+    ):
+        refreshed = await session.get(SessionMessage, row.id)
+        assert refreshed is not None
+        assert refreshed.exclude_from_context is True
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reverted_branched_summary_does_not_restore_old_branch(session):
+    chat_session = await create_chat_session(session)
+
+    first_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary 1"),
+        is_summary=True,
+    )
+    first_window = await save_message(
+        session, chat_session.id, HumanMessage(content="s1 window")
+    )
+
+    old_branch_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="old branch summary"),
+        is_summary=True,
+    )
+    old_branch_message = await save_message(
+        session, chat_session.id, HumanMessage(content="old branch message")
+    )
+    for row in (old_branch_summary, old_branch_message):
+        row.exclude_from_context = True
+        row.extra = {"hidden_from_user": True}
+        session.add(row)
+
+    new_second_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="new summary 2"),
+        is_summary=True,
+    )
+    new_second_window = await save_message(
+        session, chat_session.id, HumanMessage(content="new s2 window")
+    )
+    new_third_summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="new summary 3"),
+        is_summary=True,
+    )
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="after new s3")
+    )
+
+    for row in (first_summary, first_window, new_second_summary, new_second_window):
+        row.exclude_from_context = True
+        session.add(row)
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == new_third_summary.id
+    await session.commit()
+
+    await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in visible] == ["new summary 2", "new s2 window"]
+
+    refreshed_old_summary = await session.get(SessionMessage, old_branch_summary.id)
+    refreshed_old_message = await session.get(SessionMessage, old_branch_message.id)
+    assert refreshed_old_summary is not None
+    assert refreshed_old_message is not None
+    assert refreshed_old_summary.exclude_from_context is True
+    assert refreshed_old_message.exclude_from_context is True
+
+
 # ── get_messages excludes hidden ──────────────────────────────────────────────
 
 
@@ -166,6 +494,81 @@ async def test_get_messages_excludes_hidden_from_user_extra(session):
 
     llm_messages = await get_messages_for_llm(session, chat_session.id)
     assert [m.content for m in llm_messages] == ["visible", "hidden from user"]
+
+
+async def test_queued_user_messages_are_hidden_until_popped(session):
+    chat_session = await create_chat_session(session, "Queue")
+    queued = await save_queued_user_message(session, chat_session.id, "next")
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="current response")
+    )
+    await session.commit()
+
+    visible = await get_messages(session, chat_session.id)
+    assert [msg.content for msg in visible] == ["next", "current response"]
+    assert visible[0].extra and visible[0].extra["queue_status"] == "queued"
+    assert isinstance(visible[0].extra.get("queued_at"), str)
+
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    await session.commit()
+
+    assert [row.id for row in popped] == [queued.id]
+    assert popped[0].exclude_from_context is False
+    assert popped[0].extra and isinstance(popped[0].extra.get("queued_at"), str)
+    visible = await get_messages(session, chat_session.id)
+    assert [msg.content for msg in visible] == ["current response", "next"]
+
+
+async def test_popped_queued_user_messages_keep_queue_order_after_response(session):
+    chat_session = await create_chat_session(session, "Queue")
+    first = await save_queued_user_message(session, chat_session.id, "first")
+    second = await save_queued_user_message(session, chat_session.id, "second")
+    await save_message(session, chat_session.id, AssistantMessage(content="response"))
+    await session.commit()
+
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages(session, chat_session.id)
+    assert [row.id for row in popped] == [first.id, second.id]
+    assert [msg.content for msg in visible] == ["response", "first", "second"]
+
+
+async def test_cancel_queued_user_message_skips_pop(session):
+    chat_session = await create_chat_session(session, "Queue")
+    queued = await save_queued_user_message(session, chat_session.id, "skip")
+    await session.commit()
+
+    cancelled = await cancel_queued_user_message(session, chat_session.id, queued.id)
+    await session.commit()
+
+    assert cancelled is True
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    assert popped == []
+
+
+async def test_cleanup_reverted_tail_preserves_queued_messages(session):
+    chat_session = await create_chat_session(session, "Queue")
+    await save_message(session, chat_session.id, HumanMessage(content="first"))
+    await save_message(session, chat_session.id, AssistantMessage(content="response"))
+    queued = await save_queued_user_message(session, chat_session.id, "queued")
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    await session.commit()
+
+    cleaned = await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    refreshed = await session.get(SessionMessage, queued.id)
+    assert cleaned == 2
+    assert refreshed is not None
+    assert refreshed.extra and refreshed.extra["queue_status"] == "queued"
+    assert isinstance(refreshed.extra.get("queued_at"), str)
+    assert refreshed.exclude_from_context is True
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    assert [row.id for row in popped] == [queued.id]
 
 
 @pytest.mark.asyncio

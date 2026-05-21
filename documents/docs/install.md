@@ -199,7 +199,7 @@ Run the setup wizard once:
 openagentd init
 ```
 
-`init` asks for a provider, model, API key when needed, and installs the default agent team and skills. Existing files are never overwritten, so re-running `init` is safe.
+`init` asks for a provider, model, API key when needed, and installs the default agent team and editable config. Existing files are never overwritten, so re-running `init` is safe.
 
 Config is written to `~/.config/openagentd/` (XDG standard). The desktop app and CLI share this same config directory. The database and logs go to `~/.local/share/openagentd/` and `~/.local/state/openagentd/`.
 
@@ -241,7 +241,7 @@ openagentd/
 │   └── services/           # Business logic, stream store, memory, dream
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── tests/                  # pytest test suite
-├── seed/                   # Default config copied on first init (agents, skills, mcp.json)
+├── seed/                   # Default config copied on first init (agents, mcp.json)
 └── documents/              # All documentation
 ```
 

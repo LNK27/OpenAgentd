@@ -51,10 +51,10 @@ describe('buildFrontmatter', () => {
       name: 'a',
       role: 'member',
       tools: ['date', 'read'],
-      skills: ['web-research'],
+      skills: ['example-skill'],
     })
     expect(out).toContain('tools:\n  - date\n  - read')
-    expect(out).toContain('skills:\n  - web-research')
+    expect(out).toContain('skills:\n  - example-skill')
   })
 
   it('sorts tools and skills alphabetically — order is not semantic', () => {
@@ -62,11 +62,11 @@ describe('buildFrontmatter', () => {
       name: 'a',
       role: 'member',
       tools: ['shell', 'date', 'read'],
-      skills: ['web-research', 'lightpanda'],
+      skills: ['example-skill', 'lightpanda'],
     })
     // Sorted alphabetically regardless of input order.
     expect(out).toContain('tools:\n  - date\n  - read\n  - shell')
-    expect(out).toContain('skills:\n  - lightpanda\n  - web-research')
+    expect(out).toContain('skills:\n  - example-skill\n  - lightpanda')
   })
 
   it('produces identical output for reordered input', () => {

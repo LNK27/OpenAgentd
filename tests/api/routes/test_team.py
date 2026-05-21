@@ -66,13 +66,20 @@ def test_team():
 
 
 @pytest.fixture
-def app_with_team(test_team):
+def app_with_team(test_team, monkeypatch):
     """Create FastAPI app with team attached."""
     from app.api.app import create_app
     from app.services.team_manager import set_team
 
     app = create_app()
     set_team(test_team)
+
+    async def get_session_team(_session_id: str):
+        return test_team
+
+    monkeypatch.setattr(
+        "app.services.team_manager.get_or_start_team_for_session", get_session_team
+    )
     yield app
     set_team(None)
 
@@ -170,6 +177,30 @@ class TestTeamChatRoute:
         assert response.status_code == 202
         test_team.handle_user_message.assert_awaited_once()
         assert test_team.handle_user_message.call_args.kwargs["content"] == "Hello team"
+
+    def test_team_chat_activates_queue_if_lead_goes_idle_after_save(
+        self, app_with_team, test_team
+    ):
+        session_id = str(uuid.uuid7())
+        test_team.lead.state = "working"
+        test_team._activate_queued_user_messages = AsyncMock(return_value=True)
+
+        async def save_queue(_db, _session_id, _message):
+            test_team.lead.state = "idle"
+            queued = AsyncMock()
+            queued.id = uuid.uuid7()
+            return queued
+
+        client = TestClient(app_with_team)
+        with patch("app.api.routes.team.chat.save_queued_user_message", save_queue):
+            response = client.post(
+                "/api/team/chat",
+                data={"message": "queued", "session_id": session_id},
+            )
+
+        assert response.status_code == 202
+        assert response.json()["status"] == "queued"
+        test_team._activate_queued_user_messages.assert_awaited_once_with(session_id)
 
     def test_team_chat_message_validation_empty_raises(self, app_with_team):
         client = TestClient(app_with_team)

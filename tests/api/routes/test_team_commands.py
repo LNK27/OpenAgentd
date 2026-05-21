@@ -9,6 +9,8 @@ the HTTP shape: response codes, response body, and that
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
+
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
@@ -45,11 +47,17 @@ async def app_with_lead_only_team():
     app = create_app()
     app.state.test_team = team
     set_team(team)
-    try:
-        yield app
-    finally:
-        set_team(None)
-        await team.stop()
+    get_session_team = AsyncMock(return_value=team)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "app.services.team_manager.get_or_start_team_for_session",
+            get_session_team,
+        )
+        try:
+            yield app
+        finally:
+            set_team(None)
+            await team.stop()
 
 
 async def _seed_session_and_messages(

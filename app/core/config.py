@@ -71,6 +71,8 @@ def _default_dirs(app_env: str) -> dict[str, Path]:
 class Settings(BaseSettings):
     ZAI_API_KEY: SecretStr | None = None
     GOOGLE_API_KEY: SecretStr | None = None
+    ANTHROPIC_API_KEY: SecretStr | None = None
+    ANTHROPIC_BASE_URL: str = "https://api.anthropic.com"
     OPENAI_API_KEY: SecretStr | None = None
     OPENROUTER_API_KEY: SecretStr | None = None
     NVIDIA_API_KEY: SecretStr | None = None

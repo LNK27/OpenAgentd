@@ -84,6 +84,7 @@ export function applyRevertBoundary(
   boundaryTime: number | null,
   options: {
     includeCurrent?: boolean
+    boundaryId?: string | null
     boundaryContent?: string | null
   } = {},
 ): void {
@@ -108,7 +109,20 @@ export function applyRevertBoundary(
     }
   }
 
-  if (options.boundaryContent) {
+  if (options.boundaryId) {
+    const idx = all.findIndex((block) => block.id === options.boundaryId)
+    if (idx >= 0) {
+      splitIdx = idx
+    } else if (options.boundaryContent) {
+      for (let i = all.length - 1; i >= 0; i--) {
+        const block = all[i]
+        if (block.type === 'user' && block.content === options.boundaryContent) {
+          splitIdx = Math.min(splitIdx, i)
+          break
+        }
+      }
+    }
+  } else if (options.boundaryContent) {
     for (let i = all.length - 1; i >= 0; i--) {
       const block = all[i]
       if (block.type === 'user' && block.content === options.boundaryContent) {

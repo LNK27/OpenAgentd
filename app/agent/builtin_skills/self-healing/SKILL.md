@@ -5,7 +5,7 @@ description: >-
   tune thinking/temperature, add tools/skills, change the image-generation
   provider/model, or install a new skill. Use when the user says things like
   "upgrade yourself", "switch your model to X", "use Gemini for images",
-  "add the web-research skill to yourself", "make yourself faster/smarter".
+  "add the plugin-installer skill to yourself", "make yourself faster/smarter".
 ---
 
 # Self-Healing Skill
@@ -22,7 +22,7 @@ under `{OPENAGENTD_CONFIG_DIR}/`. No code changes, no restarts. Agent
 |--------|------|-----------------|
 | Agent model / params | `{OPENAGENTD_CONFIG_DIR}/agents/{name}.md` frontmatter | "switch to gpt-5", "use Claude", "lower temperature", "turn on high thinking", "add a fallback model" |
 | Agent tools | same file, `tools:` list | "give yourself shell access", "let yourself browse the web" |
-| Agent skills | same file, `skills:` list | "enable the web-research skill for yourself" |
+| Agent skills | same file, `skills:` list | "enable the plugin-installer skill for yourself" |
 | Agent MCP tools | same file, `mcp:` list (bulk) or `tools:` list (selective) | "let yourself use the filesystem MCP", "remove the github MCP from yourself" — see "MCP tools on agents" below |
 | Image / video generation | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | "generate images with Gemini instead", "switch to Veo for video", "make images higher quality", "use 1080p video" |
 | New skills | `{OPENAGENTD_CONFIG_DIR}/skills/{name}/SKILL.md` | "install a skill for reviewing pull requests" — **delegate to `skill-installer`** |

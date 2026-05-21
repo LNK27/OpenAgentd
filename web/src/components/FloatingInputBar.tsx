@@ -2,10 +2,8 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
 import { InputBar, type FileRef, type InputBarHandle, type SlashCommand } from './InputBar'
-import { PendingMessageQueue } from './PendingMessageQueue'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useTeamStore } from '@/stores/useTeamStore'
 import type { AgentCapabilities } from '@/api/types'
 
 // ── Storage ──────────────────────────────────────────────────────────────────
@@ -124,7 +122,6 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     // and keep only the stop/restore affordances visible. Mobile keeps the
     // full bar — the soft keyboard already dictates its own focus/blur
     // cadence and a collapse there would fight system behavior.
-    const queuedCount = useTeamStore((s) => s._pendingMessages.length)
     // Start collapsed — the slim action strip is the
     // resting state. The user summons the full pill explicitly via
     // click, focus, Ctrl/⌘+I, or by attaching a file. This matches
@@ -216,15 +213,13 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     }, [isMobile, expand])
 
     // External signals that should keep the bar expanded regardless of
-    // focus state. ``queuedCount`` comes from the store; ``disabled``
-    // covers the "waiting for response" pause; ``hasContent`` covers
+    // focus state. ``disabled`` covers the "waiting for response" pause; ``hasContent`` covers
     // text/attachments held inside InputBar so
     // dropping a file via the slim strip's attach button immediately
     // re-expands the bar. Derived (not stored) so we don't cascade
     // renders inside an effect.
     const forceExpanded =
       inputProps.disabled === true ||
-      queuedCount > 0 ||
       (inputProps.revertedCount ?? 0) > 0 ||
       hasContent
 
@@ -308,7 +303,6 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         // border-t separates from chat content; pb-safe clears the home indicator
         <div className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl">
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
-          <PendingMessageQueue inputRef={innerRef} />
           <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} />
         </div>
       )
@@ -330,7 +324,6 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         style={{ touchAction: 'none' }}
       >
         <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
-        <PendingMessageQueue inputRef={innerRef} />
         <InputBar
           ref={setInputRefs}
           floating

@@ -81,7 +81,7 @@ C4Component
         Component(tool_registry, "Tool Registry", "app/agent/tools/registry.py", "Manages available tools and JSON Schema metadata via @tool decorator.")
         Component(builtin_tools, "Builtin Tools", "app/agent/tools/builtin/", "filesystem (read, write, edit, ls, grep, glob, rm), shell (shell, bg), web (web_search, web_fetch), date, skill, wiki_search, note, todo, schedule.")
         Component(permission, "Permission Service", "app/agent/permission.py", "Rule/Ruleset wildcard matching. AutoAllowPermissionService auto-allows; PermissionService blocks on asyncio.Future until user replies.")
-        Component(provider, "LLM Provider", "app/agent/providers/", "GoogleGenAIProvider, VertexAIProvider, ZAIProvider, OpenAIProvider, OpenRouter, NVIDIA, xAI, DeepSeek, Bedrock, Copilot, Codex, GeminiCLI, Ollama — all implement LLMProviderBase. factory.py:build_provider dispatches a 'provider:model' string.")
+        Component(provider, "LLM Provider", "app/agent/providers/", "Protocol-compatible provider families: OpenAI-compatible, Gemini-compatible, Anthropic-compatible, plus Bedrock Converse and OAuth/subscription specializations. All implement LLMProviderBase. factory.py:build_provider dispatches a 'provider:model' string.")
         Component(plugins, "Plugins", "app/agent/plugins/", "User-authored .py drop-ins loaded from settings.OPENAGENTD_PLUGINS_DIRS. Loader resolves @plugin functions and Plugin(BaseAgentHook) classes per (agent, role).")
         Component(chat_service, "Chat Service", "app/services/chat_service.py", "Sessions, messages, team-history aggregation, heal_orphaned_tool_calls.")
         Component(models, "Models", "app/models/", "SQLModel schemas: ChatSession, SessionMessage, ScheduledTask, etc.")
@@ -125,7 +125,7 @@ The state blob holds **only unpersisted live content**. After `checkpointer.sync
 
 ### Turn Lifecycle
 
-1. **`init_turn(session_id)`** — called synchronously in POST handler before spawning the background task. Creates `_TurnState`, sets `is_streaming=True`. Eliminates producer/consumer race condition.
+1. **`init_turn(session_id)`** — called synchronously in POST handler before spawning the background task. Creates `_TurnState`, sets `is_streaming=True`. Queued follow-up turns may call `init_turn(..., keep_subscribers=True)` to reset replay state without disconnecting the current SSE subscriber.
 2. **`push_event(session_id, envelope: StreamEnvelope)`** — called for every SSE event. The envelope is a typed Pydantic wrapper `{event: str, data: dict}` (see `app/services/stream_envelope.py`). Updates state blob and fans out `envelope.to_wire()` to all subscriber queues.
 3. **`attach(session_id)`** — called by `GET /api/team/{session_id}/stream`. Subscribe-before-read two-phase protocol:
    - If `is_streaming=False` → return immediately (DB is authoritative).
@@ -160,6 +160,7 @@ All events flow server→client. Schemas live in `app/agent/schemas/events.py`; 
 | `usage` | `StreamPublisherHook` after each model call + `after_agent` turn total | `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `thoughts_tokens` |
 | `inbox` | `TeamInboxHook.before_model` | `agent`, `text`, `from_agent` — peer message injected into LLM context |
 | `agent_status` | `AgentTeam` activation/done | `agent`, `status` (`idle`\|`working`\|`offline`\|`error`) — team only |
+| `queued_turn_start` | `AgentTeam` queued-message drain | `agent`, `message_ids` — marks queued user bubbles as active for the next turn |
 | `rate_limit` | `StreamPublisherHook.on_rate_limit` | `retry_after`, `attempt`, `max_attempts` |
 | `permission_asked` | `StreamPublisherHook` (permission system) | `request_id`, `session_id`, `tool`, `patterns` |
 | `title_update` | `TitleGenerationHook` after first turn | `session_id`, `title` |

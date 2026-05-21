@@ -186,6 +186,7 @@ export type SSEEventType =
   | 'rate_limit'
   | 'error'
   | 'agent_status'
+  | 'queued_turn_start'
   | 'inbox'
   | 'title_update'
   | 'summarization_start'

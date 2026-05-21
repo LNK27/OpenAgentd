@@ -29,7 +29,7 @@ For local frontend + backend development with hot-reload, use `make dev` (from t
 openagentd init           # interactive setup (~/.config/openagentd/)
 ```
 
-Interactive first-time setup wizard. Prompts for provider, model, and API key, then installs the default agent team and skills. Re-running `init` is safe — existing files are never overwritten.
+Interactive first-time setup wizard. Prompts for provider, model, and API key, then installs the default agent team and editable config. Re-running `init` is safe — existing files are never overwritten.
 
 See [Install — First run](install.md#first-run) for a full walkthrough.
 

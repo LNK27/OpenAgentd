@@ -17,10 +17,11 @@ Usage::
 from __future__ import annotations
 
 import os
-from typing import Protocol
+from typing import Protocol, cast
 
 from pydantic import SecretStr
 
+from app.agent.providers.anthropic import AnthropicProvider
 from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.bedrock import BedrockProvider
 from app.agent.providers.codex import CodexProvider
@@ -29,6 +30,7 @@ from app.agent.providers.deepseek import DeepSeekProvider
 from app.agent.providers.googlegenai import GoogleGenAIProvider
 from app.agent.providers.ollama import OllamaProvider
 from app.agent.providers.openai import OpenAIProvider
+from app.agent.providers.openai.compatible import OPENAI_COMPATIBLE_PROVIDER_SPECS
 from app.agent.providers.unconfigured import UnconfiguredProviderError
 from app.agent.providers.vertexai import VertexAIProvider
 from app.agent.providers.xai import XAIProvider
@@ -36,6 +38,7 @@ from app.agent.providers.zai import ZAIProvider
 
 # Sorted for stable error output. Keep in sync with the ``match`` below.
 SUPPORTED_PROVIDERS: tuple[str, ...] = (
+    "anthropic",
     "bedrock",
     "cliproxy",
     "codex",
@@ -131,46 +134,54 @@ def build_provider(
                 model=model,
                 model_kwargs=kwargs,
             )
-        case "openrouter":
+        case _ if name in OPENAI_COMPATIBLE_PROVIDER_SPECS:
+            spec = OPENAI_COMPATIBLE_PROVIDER_SPECS[name]
+            configured_key = getattr(s, spec.env_var, None)
+            api_key = configured_key
+            if not spec.default_api_key:
+                api_key = require_api_key(configured_key, spec.env_var, spec.label)
+            typed_api_key = cast(str | SecretStr | None, api_key)
+            base_url = spec.base_url
+            if spec.base_url_env_var:
+                base_url = (
+                    os.getenv(spec.base_url_env_var)
+                    or getattr(s, spec.base_url_env_var, "")
+                    or spec.base_url
+                )
+            if name == "deepseek":
+                return DeepSeekProvider(
+                    api_key=cast(str, typed_api_key),
+                    model=model,
+                    model_kwargs=kwargs,
+                )
+            if name == "xai":
+                return XAIProvider(
+                    api_key=cast(str, typed_api_key),
+                    model=model,
+                    model_kwargs=kwargs,
+                )
+            if name == "ollama":
+                return OllamaProvider(
+                    api_key=typed_api_key,
+                    model=model,
+                    base_url=base_url,
+                    model_kwargs=kwargs,
+                )
             return OpenAIProvider(
-                api_key=require_api_key(
-                    s.OPENROUTER_API_KEY, "OPENROUTER_API_KEY", "OpenRouter"
-                ),
+                api_key=cast(str | SecretStr, typed_api_key),
                 model=model,
-                base_url="https://openrouter.ai/api/v1",
+                base_url=base_url,
                 model_kwargs=kwargs,
             )
-        case "nvidia":
-            return OpenAIProvider(
-                api_key=require_api_key(s.NVIDIA_API_KEY, "NVIDIA_API_KEY", "NVIDIA"),
-                model=model,
-                base_url="https://integrate.api.nvidia.com/v1",
-                model_kwargs=kwargs,
-            )
-        case "router9":
-            # 9Router (https://github.com/decolua/9router) — local OpenAI-compatible
-            # proxy. Default port 20128; override with ROUTER9_BASE_URL.
-            return OpenAIProvider(
+        case "anthropic":
+            return AnthropicProvider(
                 api_key=require_api_key(
-                    s.ROUTER9_API_KEY, "ROUTER9_API_KEY", "9Router"
+                    s.ANTHROPIC_API_KEY, "ANTHROPIC_API_KEY", "Anthropic"
                 ),
                 model=model,
-                base_url=os.getenv("ROUTER9_BASE_URL")
-                or s.ROUTER9_BASE_URL
-                or "http://localhost:20128/v1",
-                model_kwargs=kwargs,
-            )
-        case "cliproxy":
-            # CLIProxyAPI — wraps Gemini CLI / Codex / Claude Code as
-            # OpenAI-compatible. Default port 8317; override with CLIPROXY_BASE_URL.
-            return OpenAIProvider(
-                api_key=require_api_key(
-                    s.CLIPROXY_API_KEY, "CLIPROXY_API_KEY", "CLIProxyAPI"
-                ),
-                model=model,
-                base_url=os.getenv("CLIPROXY_BASE_URL")
-                or s.CLIPROXY_BASE_URL
-                or "http://localhost:8317/v1",
+                base_url=os.getenv("ANTHROPIC_BASE_URL")
+                or s.ANTHROPIC_BASE_URL
+                or "https://api.anthropic.com",
                 model_kwargs=kwargs,
             )
         case "googlegenai":
@@ -195,34 +206,6 @@ def build_provider(
         case "codex":
             # codex uses OAuth tokens — no API key.
             return CodexProvider(model=model, model_kwargs=kwargs)
-        case "xai":
-            return XAIProvider(
-                api_key=require_api_key(s.XAI_API_KEY, "XAI_API_KEY", "xAI"),
-                model=model,
-                model_kwargs=kwargs,
-            )
-        case "deepseek":
-            return DeepSeekProvider(
-                api_key=require_api_key(
-                    s.DEEPSEEK_API_KEY, "DEEPSEEK_API_KEY", "DeepSeek"
-                ),
-                model=model,
-                model_kwargs=kwargs,
-            )
-        case "ollama":
-            # Local Ollama daemon. The daemon ignores auth; OllamaProvider
-            # supplies the OpenAI SDK's required placeholder header.
-            # Override OLLAMA_BASE_URL when the daemon runs on another
-            # host/port. Cloud models are reachable through the same daemon
-            # with the "-cloud" suffix once the user has run "ollama signin".
-            return OllamaProvider(
-                api_key=s.OLLAMA_API_KEY,
-                model=model,
-                base_url=os.getenv("OLLAMA_BASE_URL")
-                or s.OLLAMA_BASE_URL
-                or "http://localhost:11434/v1",
-                model_kwargs=kwargs,
-            )
         case "zai":
             return ZAIProvider(
                 api_key=require_api_key(s.ZAI_API_KEY, "ZAI_API_KEY", "ZAI"),

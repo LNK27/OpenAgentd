@@ -445,15 +445,15 @@ class SummarizationHook(BaseAgentHook):
 
         # Embed to_summarise as text inside a single HumanMessage to avoid
         # role-alternation violations (ZAI/OpenAI reject system → assistant
-        # at position 0). Tool message content is replaced with a stub —
-        # raw shell output / file contents / JSON blobs are noise for
-        # summarisation; the tool name alone is enough signal.
+        # at position 0). ToolMessage content has already been made
+        # context-safe by tool-specific truncation and ToolResultOffloadHook;
+        # keep it so the summary can preserve important command/read results.
         has_prior_summary = any(m.is_summary for m in to_summarise)
 
         def _render(m) -> str:
             if isinstance(m, ToolMessage):
                 name = f"/{m.name}" if m.name else ""
-                return f"[tool{name}]: [tool result omitted]"
+                return f"[tool{name}]: {m.content or 'No result'}"
             return f"[{m.role}]: {m.content or ''}"
 
         convo_text = "\n\n".join(_render(m) for m in to_summarise)
@@ -628,13 +628,9 @@ class SummarizationHook(BaseAgentHook):
         to publish ``summarization_content`` SSE events while the LLM is
         still generating.
         """
-        # Summarisation never benefits from reasoning — the prompt asks for a
-        # direct, fact-preserving compression of the conversation. Reasoning
-        # tokens here add latency and cost without improving output quality.
-        # Force ``thinking_level="none"`` on the summariser call regardless of
-        # the agent's own ``thinking_level`` (the per-call kwarg wins over
-        # constructor ``model_kwargs`` via ``LLMProviderBase._merged_kwargs``).
-        kwargs: dict = {"thinking_level": "none"}
+        # Inherit the agent's ``thinking_level`` — forcing ``"none"`` here
+        # breaks Codex, whose endpoint rejects requests with no ``reasoning``.
+        kwargs: dict = {}
         if self._max_token_length > 0:
             kwargs["max_tokens"] = self._max_token_length
 

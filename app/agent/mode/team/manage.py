@@ -228,7 +228,7 @@ def make_team_configure_tool(team: "AgentTeam") -> Tool:
             Field(
                 description=(
                     "Capability name. For 'skill' use the skill id (e.g. "
-                    "'web-research'); for 'tool' use a built-in tool name "
+                    "'mcp-installer'); for 'tool' use a built-in tool name "
                     "(e.g. 'web_search'); for 'mcp' use a configured MCP "
                     "server name (e.g. 'shadcn'). Required for 'add' and "
                     "'remove', ignored by 'list'."

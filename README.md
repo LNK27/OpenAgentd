@@ -59,7 +59,7 @@
 
 **See exactly what the agent is doing.** Built-in OTel dashboard — token usage, latency, trace waterfall. No third-party SaaS, all local.
 
-**Pick your model, no lock-in.** 14 providers — Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config.
+**Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config.
 
 ---
 
@@ -140,6 +140,7 @@ Switch models with a single line in your agent's `.md` config file. Every provid
 
 | Provider | Format | Auth |
 |---|---|---|
+| Anthropic Claude | `anthropic:claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
 | Google Gemini | `googlegenai:gemini-3.1-flash` | `GOOGLE_API_KEY` |
 | Google Vertex AI | `vertexai:gemini-3-flash-preview` | `VERTEXAI_API_KEY` or GCP creds |
 | OpenAI | `openai:gpt-5.5` | `OPENAI_API_KEY` |
@@ -209,8 +210,6 @@ tools:
   - web_fetch
   - read
   - note
-skills:
-  - web-research
 mcp:
   - context7
 ---
@@ -282,7 +281,7 @@ No external collector required. All data stays on your machine.
 
 Skills are `.md` files that inject domain-specific instructions into an agent's context on demand. They ship separately from agent configs, so one skill can be reused by any agent.
 
-Included skills:
+Builtin operational skills:
 
 | Skill | Purpose |
 |---|---|
@@ -290,7 +289,6 @@ Included skills:
 | `mcp-installer` | Install new MCP servers from the UI or by description |
 | `skill-installer` | Install new skills from a URL or from scratch |
 | `plugin-installer` | Install agent plugins |
-| `web-research` | Structured web research methodology with source citation |
 
 Add your own by dropping a `SKILL.md` file into `{config_dir}/skills/{name}/` or via the `/settings/skills` UI.
 
@@ -339,7 +337,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | [LLM providers](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/providers.md) | Every registered prefix, OAuth flows, capability YAML |
 | [Agent files](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/agents.md) | `.md` frontmatter schema, validation, editing workflow |
 | [Built-in tools](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/tools.md) | Filesystem, shell, web, multimodal, memory |
-| [Skills](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/skills.md) | `SKILL.md` format, seeded skill catalog |
+| [Skills](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/skills.md) | `SKILL.md` format, builtin skill catalog |
 | [Sandbox & permissions](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/sandbox.md) | Denylist paths, user `sandbox.yaml`, permission services |
 | [Comparison](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent |
 | [Troubleshooting](https://github.com/lthoangg/openagentd/blob/main/documents/docs/troubleshooting.md) | Common install and runtime issues |
