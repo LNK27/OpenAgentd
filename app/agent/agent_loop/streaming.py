@@ -245,9 +245,35 @@ async def stream_and_assemble(
                                 or ""
                             ) + tc.function.thought_signature
 
-    tc_list: list[ToolCall] = [
-        ToolCall(**tool_calls_buffer[i]) for i in sorted(tool_calls_buffer)
-    ]
+    # Drop tool calls left half-formed by a mid-stream interrupt: missing
+    # name (OpenAI Responses only emits it on the final ``done`` event) or
+    # invalid JSON args. Empty ``arguments`` is a valid no-arg call.
+    tc_list: list[ToolCall] = []
+    for i in sorted(tool_calls_buffer):
+        buf = tool_calls_buffer[i]
+        fn_name = buf["function"]["name"]
+        fn_args = buf["function"]["arguments"]
+        if not fn_name:
+            logger.warning(
+                "drop_partial_tool_call_no_name agent={} idx={} args_prefix={!r}",
+                agent_name,
+                i,
+                fn_args[:80],
+            )
+            continue
+        if fn_args:
+            try:
+                json.loads(fn_args)
+            except (json.JSONDecodeError, ValueError):
+                logger.warning(
+                    "drop_partial_tool_call_bad_json agent={} idx={} name={} args_prefix={!r}",
+                    agent_name,
+                    i,
+                    fn_name,
+                    fn_args[:80],
+                )
+                continue
+        tc_list.append(ToolCall(**buf))
     # Me attach usage to `extra` immediately so `wrap_model_call` hooks
     # (e.g. OtelHook) can read it from the returned message inside the
     # chain.  The run loop re-asserts the same mapping — that

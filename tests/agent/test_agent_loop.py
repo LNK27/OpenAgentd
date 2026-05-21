@@ -444,6 +444,111 @@ async def test_tool_result_content_derived_from_text_blocks():
     assert tool_msg.content == "First part Second part"
 
 
+# ---------------------------------------------------------------------------
+# Partial tool calls (mid-arguments interrupt) are filtered before assembly
+# ---------------------------------------------------------------------------
+
+
+async def test_partial_tool_call_with_invalid_json_is_dropped():
+    """Truncated JSON ``arguments`` → tool call dropped before the
+    ``AssistantMessage`` is built."""
+    captured_tool_calls: list = []
+
+    class CapturingHook(BaseAgentHook):
+        async def after_model(self, ctx, state, assistant_message):
+            captured_tool_calls.append(assistant_message.tool_calls)
+
+    truncated = '{"file_path": "/tmp/a.py", "old_string": "def foo'
+
+    async def _gen():
+        yield _tool_chunk(0, "fc_xyz", "Edit", truncated)
+        yield _finish_chunk()
+
+    mock_provider = MagicMock()
+    mock_provider.stream.return_value = _gen()
+
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="You are helpful.",
+        hooks=[CapturingHook()],
+    )
+
+    config = RunConfig(session_id="s_partial", run_id="r_partial")
+    await agent.run([HumanMessage(content="edit a file")], config=config)
+
+    assert captured_tool_calls, "after_model hook never fired"
+    assert captured_tool_calls[0] is None
+
+
+async def test_partial_tool_call_with_empty_name_is_dropped():
+    """Stream interrupted before OpenAI Responses ``function_call_arguments.done``
+    fires → tool name stays empty → entry dropped."""
+    captured_tool_calls: list = []
+
+    class CapturingHook(BaseAgentHook):
+        async def after_model(self, ctx, state, assistant_message):
+            captured_tool_calls.append(assistant_message.tool_calls)
+
+    async def _gen():
+        yield _tool_chunk(0, "fc_xyz", None, '{"ok": true}')
+        yield _finish_chunk()
+
+    mock_provider = MagicMock()
+    mock_provider.stream.return_value = _gen()
+
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="You are helpful.",
+        hooks=[CapturingHook()],
+    )
+
+    config = RunConfig(session_id="s_empty_name", run_id="r_empty_name")
+    await agent.run([HumanMessage(content="hi")], config=config)
+
+    assert captured_tool_calls, "after_model hook never fired"
+    assert captured_tool_calls[0] is None
+
+
+async def test_complete_tool_call_with_empty_args_is_kept():
+    """Empty ``arguments`` string is a legitimate no-arg call — must not be
+    filtered out."""
+    captured_tool_calls: list = []
+
+    class CapturingHook(BaseAgentHook):
+        async def after_model(self, ctx, state, assistant_message):
+            if assistant_message.tool_calls:
+                captured_tool_calls.extend(assistant_message.tool_calls)
+
+    async def noop():
+        """No-arg tool."""
+        return "ok"
+
+    async def _gen():
+        yield _tool_chunk(0, "fc_xyz", "noop", "")
+        yield _finish_chunk()
+
+    mock_provider = MagicMock()
+    mock_provider.stream.return_value = _gen()
+
+    from app.agent.tools.registry import Tool
+
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="You are helpful.",
+        tools=[Tool(noop)],
+        hooks=[CapturingHook()],
+    )
+
+    config = RunConfig(session_id="s_empty_args", run_id="r_empty_args")
+    await agent.run([HumanMessage(content="run noop")], config=config)
+
+    assert len(captured_tool_calls) == 1
+    assert captured_tool_calls[0].function.name == "noop"
+
+
 async def test_plain_string_tool_result_has_no_parts():
     """When a tool returns a plain str, ToolMessage.parts is NOT set (None)."""
     captured_messages: list = []
