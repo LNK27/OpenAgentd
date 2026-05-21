@@ -317,6 +317,12 @@ def _is_hidden_from_user(row: SessionMessage) -> bool:
     return bool(row.extra and row.extra.get("hidden_from_user"))
 
 
+def _is_undo_target(row: SessionMessage) -> bool:
+    if _is_hidden_from_user(row):
+        return False
+    return row.is_summary or not row.exclude_from_context
+
+
 async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
     """Retrieves all *visible* ChatMessages for a session.
 
@@ -371,6 +377,7 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
             select(SessionMessage)
             .where(col(SessionMessage.session_id) == session_id)
             .where(col(SessionMessage.is_summary))
+            .where(~col(SessionMessage.exclude_from_context))
         )
         summary_stmt = (
             _before_boundary(summary_stmt, boundary)
@@ -443,7 +450,7 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     if boundary is not None:
         stmt = stmt.where(col(SessionMessage.created_at) < boundary.created_at)
     rows = (await db.exec(stmt)).all()
-    target = next((row for row in rows if not _is_hidden_from_user(row)), None)
+    target = next((row for row in rows if _is_undo_target(row)), None)
     if target is None:
         return BoundaryShift(applied=False)
 
@@ -552,6 +559,41 @@ async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
         row.extra = extra
         row.exclude_from_context = True
         db.add(row)
+    if boundary.is_summary:
+        previous_summaries = (
+            await db.exec(
+                select(SessionMessage)
+                .where(col(SessionMessage.session_id) == session_id)
+                .where(col(SessionMessage.is_summary))
+                .where(col(SessionMessage.created_at) < boundary.created_at)
+                .order_by(col(SessionMessage.created_at).desc())
+            )
+        ).all()
+        previous_summary = next(
+            (row for row in previous_summaries if not _is_hidden_from_user(row)), None
+        )
+        if previous_summary is not None:
+            previous_summary.exclude_from_context = False
+            db.add(previous_summary)
+        restored = (
+            await db.exec(
+                select(SessionMessage)
+                .where(col(SessionMessage.session_id) == session_id)
+                .where(col(SessionMessage.created_at) < boundary.created_at)
+                .where(~col(SessionMessage.is_summary))
+                .where(col(SessionMessage.exclude_from_context))
+            )
+        ).all()
+        for row in restored:
+            if _is_hidden_from_user(row):
+                continue
+            if (
+                previous_summary is not None
+                and row.created_at <= previous_summary.created_at
+            ):
+                continue
+            row.exclude_from_context = False
+            db.add(row)
     session.revert = None
     db.add(session)
     await db.flush()
