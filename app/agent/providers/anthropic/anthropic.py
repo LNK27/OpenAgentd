@@ -38,13 +38,20 @@ def _resolve_secret(value: str | SecretStr) -> str:
     return value.get_secret_value() if isinstance(value, SecretStr) else value
 
 
-def _headers(api_key: str, extra: dict[str, str] | None = None) -> dict[str, str]:
-    return {
-        "x-api-key": api_key,
+def _headers(
+    api_key: str,
+    extra: dict[str, str] | None = None,
+    *,
+    use_api_key_header: bool = True,
+) -> dict[str, str]:
+    headers = {
         "anthropic-version": ANTHROPIC_API_VERSION,
         "content-type": "application/json",
         **(extra or {}),
     }
+    if use_api_key_header:
+        headers["x-api-key"] = api_key
+    return headers
 
 
 def _split_messages(
@@ -169,6 +176,8 @@ class AnthropicProvider(LLMProviderBase):
         model: str,
         base_url: str = ANTHROPIC_API_BASE,
         headers: dict[str, str] | None = None,
+        use_api_key_header: bool = True,
+        beta: bool = False,
         temperature: float | None = None,
         top_p: float | None = None,
         max_tokens: int | None = None,
@@ -186,7 +195,10 @@ class AnthropicProvider(LLMProviderBase):
         self.api_key = resolved_key
         self.model = model
         self.base_url = base_url.rstrip("/")
-        self.headers = _headers(resolved_key, headers)
+        self.headers = _headers(
+            resolved_key, headers, use_api_key_header=use_api_key_header
+        )
+        self._messages_path = "/v1/messages?beta=true" if beta else "/v1/messages"
 
     def _payload(
         self,
@@ -221,7 +233,7 @@ class AnthropicProvider(LLMProviderBase):
         merged = self._merged_kwargs(**kwargs)
         async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(
-                f"{self.base_url}/v1/messages",
+                f"{self.base_url}{self._messages_path}",
                 headers=self.headers,
                 json=self._payload(messages, tools, merged),
             )
@@ -274,7 +286,7 @@ class AnthropicProvider(LLMProviderBase):
         async with httpx.AsyncClient(timeout=120) as client:
             async with client.stream(
                 "POST",
-                f"{self.base_url}/v1/messages",
+                f"{self.base_url}{self._messages_path}",
                 headers=self.headers,
                 json=payload,
             ) as response:
