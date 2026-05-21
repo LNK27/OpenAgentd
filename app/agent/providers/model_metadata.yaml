@@ -10,6 +10,8 @@
 #
 # limits.context_length: provider reported max input/context tokens.
 # limits.max_completion_tokens: provider/model maximum generated tokens.
+# thinking.levels: supported reasoning controls for agent frontmatter
+# (`thinking_level`). Omitted means unknown or unsupported.
 
 # ── OpenAI ──────────────────────────────────────────────────────────────────
 # "openai:gpt-image-2": limits unavailable in checked registry
@@ -36,8 +38,10 @@
   limits: { context_length: 1050000, max_completion_tokens: 128000 }
 "openai:gpt-5":
   limits: { context_length: 272000, max_completion_tokens: 128000 }
+  thinking: { levels: [minimal, low, medium, high] }
 "openai:gpt-5-mini":
   limits: { context_length: 272000, max_completion_tokens: 128000 }
+  thinking: { levels: [minimal, low, medium, high] }
 "openai:gpt-4.1":
   limits: { context_length: 1047576, max_completion_tokens: 32768 }
 # ── Codex (ChatGPT subscription) ────────────────────────────────────────────
@@ -60,6 +64,7 @@
   limits: { context_length: 1048576, max_completion_tokens: 65535 }
 "googlegenai:gemini-3.1-pro-preview":
   limits: { context_length: 1048576, max_completion_tokens: 65536 }
+  thinking: { levels: [low, medium, high] }
 "googlegenai:gemini-3-flash-preview":
   limits: { context_length: 1048576, max_completion_tokens: 65535 }
 "googlegenai:gemini-3.1-flash-lite-preview":
@@ -140,6 +145,7 @@
 # ── AWS Bedrock ─────────────────────────────────────────────────────────────
 "bedrock:anthropic.claude-opus-4-7":
   limits: { context_length: 1000000, max_completion_tokens: 128000 }
+  thinking: { levels: [minimal, low, medium, high, xhigh, max] }
 "bedrock:global.anthropic.claude-opus-4-7":
   limits: { context_length: 1000000, max_completion_tokens: 128000 }
 "bedrock:anthropic.claude-opus-4-6-v1":

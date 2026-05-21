@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from app.agent.providers.model_metadata import get_model_limits, get_model_metadata
+from app.agent.providers.model_metadata import (
+    get_model_limits,
+    get_model_metadata,
+    get_model_thinking_levels,
+)
 
 
 def test_get_model_limits_returns_known_limits() -> None:
@@ -21,3 +25,16 @@ def test_get_model_limits_unknown_model_returns_none_limits() -> None:
 
     assert limits.context_length is None
     assert limits.max_completion_tokens is None
+
+
+def test_get_model_thinking_levels_returns_known_levels() -> None:
+    assert get_model_thinking_levels("openai:gpt-5") == (
+        "minimal",
+        "low",
+        "medium",
+        "high",
+    )
+
+
+def test_get_model_thinking_levels_unknown_model_returns_empty_tuple() -> None:
+    assert get_model_thinking_levels("unknown:model") == ()
