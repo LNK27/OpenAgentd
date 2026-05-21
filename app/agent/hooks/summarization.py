@@ -137,6 +137,9 @@ Output exactly the Markdown structure shown inside <template> and keep the secti
 
 Rules:
 - Keep every section, even when empty.
+- Start your response with exactly `## Goal`.
+- Synthesize the history into the template; do not copy, replay, or lightly reformat the transcript.
+- Do not output raw role/tool prefixes such as `[user]:`, `[assistant]:`, `[tool/shell]:`, or `[main ...]`.
 - Use terse bullets, not prose paragraphs.
 - Preserve exact file paths, commands, error strings, and identifiers when known.
 - Do not mention the summary process or that context was compacted."""
@@ -165,7 +168,8 @@ def keep_last_for_mode(mode: str | None) -> int:
 
 
 _SUMMARISE_REQUEST = (
-    "Please summarise the conversation below according to your instructions."
+    "Please summarise the conversation below according to your instructions. "
+    "Return only the requested summary, not the raw transcript."
 )
 
 # Merge wording borrowed from opencode's compaction.ts — explicitly tells

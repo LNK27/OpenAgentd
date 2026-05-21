@@ -350,7 +350,7 @@ Returns 409 (`{"detail": "..."}`) when continuation is not meaningful:
 
 ### `command: "compact"`
 
-Run a normal lead turn that forces the existing summarizer before the next model call. This streams the same `summarization_*` events as automatic compaction, creates a summary row, excludes compacted rows from future LLM context, and does not add a visible user message.
+Run a lead turn that forces the existing summarizer before the next model call. For coding sessions, the command resolves the persisted session workspace and dispatches to the coding team so compaction uses the coding-mode structured summary prompt. This streams the same `summarization_*` events as automatic compaction, creates a summary row, excludes compacted rows from future LLM context, and does not add a visible user message.
 
 Returns 202 with `{"status": "accepted", "session_id": "...", "command": "compact"}`. Subscribe to `GET /api/team/{session_id}/stream` for the SSE feed.
 

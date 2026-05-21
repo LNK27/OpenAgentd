@@ -278,6 +278,7 @@ class CommandRequest(BaseModel):
 @router.post("/commands", status_code=202)
 async def team_command(
     body: CommandRequest,
+    db: DbSession,
 ) -> dict:
     """Run a slash-command on a session — no new user message persisted.
 
@@ -302,6 +303,21 @@ async def team_command(
     """
     team_obj = await team_manager.get_or_start_team_for_session(body.session_id)
     team_obj = _require_team(team_obj)
+
+    if body.command == "compact":
+        try:
+            session_uuid = UUID(body.session_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid session id.") from exc
+        async with db.begin():
+            existing = await db.get(ChatSession, session_uuid)
+        if existing and existing.mode == "coding" and existing.workspace:
+            try:
+                team_obj = await team_manager.get_or_start_coding_team(
+                    _validate_workspace_or_422(existing.workspace), body.session_id
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if body.command == "continue":
         try:

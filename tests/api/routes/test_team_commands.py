@@ -166,6 +166,7 @@ class TestPostTeamCommands:
         self, app_with_lead_only_team, monkeypatch
     ):
         sid = uuid.uuid7()
+        await _seed_session_and_messages(sid, [("user", "hello", None)])
         team = app_with_lead_only_team.state.test_team
 
         async def fake_compact(session_id: str) -> str:
@@ -184,6 +185,72 @@ class TestPostTeamCommands:
         assert body["status"] == "accepted"
         assert body["session_id"] == str(sid)
         assert body["command"] == "compact"
+
+    @pytest.mark.asyncio
+    async def test_compact_uses_coding_team_for_coding_session(
+        self, app_with_lead_only_team, monkeypatch, tmp_path
+    ):
+        sid = uuid.uuid7()
+        workspace = str(tmp_path)
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                db.add(
+                    ChatSession(
+                        id=sid,
+                        agent_name="lead",
+                        mode="coding",
+                        workspace=workspace,
+                    )
+                )
+                db.add(SessionMessage(session_id=sid, role="user", content="hello"))
+
+        default_team = app_with_lead_only_team.state.test_team
+        coding_team = AgentTeam(
+            lead=TeamLead(
+                Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead"),
+                db_factory=_db.async_session_factory,
+            ),
+            members={},
+            mode="coding",
+            workspace=workspace,
+        )
+        await coding_team.start()
+        called: dict[str, object] = {}
+
+        async def fake_get_or_start_coding_team(requested_workspace, session_id):
+            called["workspace"] = requested_workspace
+            called["session_id"] = session_id
+            return coding_team
+
+        async def default_compact(session_id: str) -> str:
+            raise AssertionError("default team must not handle coding compaction")
+
+        async def coding_compact(session_id: str) -> str:
+            called["compact_session_id"] = session_id
+            return session_id
+
+        monkeypatch.setattr(default_team, "handle_compact", default_compact)
+        monkeypatch.setattr(coding_team, "handle_compact", coding_compact)
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.team_manager.get_or_start_coding_team",
+            fake_get_or_start_coding_team,
+        )
+
+        try:
+            client = TestClient(app_with_lead_only_team)
+            resp = client.post(
+                "/api/team/commands",
+                json={"command": "compact", "session_id": str(sid)},
+            )
+        finally:
+            await coding_team.stop()
+
+        assert resp.status_code == 202
+        assert called == {
+            "workspace": workspace,
+            "session_id": str(sid),
+            "compact_session_id": str(sid),
+        }
 
     @pytest.mark.asyncio
     async def test_undo_hides_latest_user_turn(self, app_with_lead_only_team):
