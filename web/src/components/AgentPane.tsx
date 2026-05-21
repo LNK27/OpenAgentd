@@ -44,10 +44,16 @@ function isDirectUserBlock(block: ContentBlock): boolean {
   return block.type === 'user' && !block.extra?.from_agent
 }
 
-function UserBubble({ content, timestamp, attachments, onRevert }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void }) {
+function shortModelName(modelId: string | null | undefined): string | null {
+  if (!modelId) return null
+  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
+}
+
+function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const modelName = shortModelName(modelId)
 
   const handleCopy = async () => {
     try {
@@ -129,8 +135,13 @@ function UserBubble({ content, timestamp, attachments, onRevert }: { content: st
          </div>
 
          {/* Copy button + timestamp row (compact) */}
-         {timestamp && (
-           <div className={`flex items-center gap-1 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+          {(timestamp || modelName) && (
+            <div className={`flex items-center gap-1 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+              {modelName && (
+                <span className="mr-1 font-mono text-[10px] text-(--color-text-subtle)" title={modelId ?? undefined}>
+                  {modelName}
+                </span>
+              )}
               {onRevert && (
                 <button
                   onClick={onRevert}
@@ -153,13 +164,15 @@ function UserBubble({ content, timestamp, attachments, onRevert }: { content: st
                  <Copy size={10} />
                )}
              </button>
-             <span
-               className="text-xs text-(--color-text-subtle)"
-               aria-hidden={!showTime}
-               title={formatTime(timestamp)}
-             >
-               {formatTime(timestamp)}
-             </span>
+              {timestamp && (
+                <span
+                  className="text-xs text-(--color-text-subtle)"
+                  aria-hidden={!showTime}
+                  title={formatTime(timestamp)}
+                >
+                  {formatTime(timestamp)}
+                </span>
+              )}
            </div>
          )}
        </div>
@@ -175,7 +188,8 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
       if (fromAgent && fromAgent !== 'user') {
         return <InboxBubble content={block.content} fromAgent={fromAgent} compact />
       }
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} />
+      const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -367,9 +381,9 @@ export function AgentPane({
                          block={item.block}
                          isStreaming={false}
                           isLast={item.index === allBlocks.length - 1}
-                          sessionId={sessionId}
-                          onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
-                        />
+                           sessionId={sessionId}
+                           onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                          />
                      )
                    }
                    // Me only the trailing turn (no user block after) can be "live"

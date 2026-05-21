@@ -48,6 +48,8 @@ export async function postTeamChat(
   files?: File[],
   mode = 'normal',
   workspace?: string | null,
+  model?: string | null,
+  thinkingLevel?: string | null,
 ): Promise<{ status: string; session_id: string; message_id?: string }> {
   const formData = new FormData()
   if (message) {
@@ -64,6 +66,12 @@ export async function postTeamChat(
   }
   if (workspace) {
     formData.append('workspace', workspace)
+  }
+  if (model !== undefined) {
+    formData.append('model', model ?? '')
+  }
+  if (thinkingLevel !== undefined) {
+    formData.append('thinking_level', thinkingLevel ?? '')
   }
   if (files && files.length > 0) {
     for (const file of files) {
