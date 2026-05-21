@@ -764,6 +764,64 @@ def test_list_provider_models_returns_discovered_models(
     assert body["models"] == ["model-a", "model-b"]
 
 
+def test_list_provider_models_filters_non_agent_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _mixed_models(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return [
+            "gemini-3.5-flash",
+            "davinci-002",
+            "gpt-audio-mini",
+            "veo-3.1-generate-preview",
+            "imagen-4",
+            "lyria-002",
+            "nano-banana",
+            "sora-2",
+            "gemini-3.1-flash-image-preview",
+            "text-embedding-3-small",
+        ]
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _mixed_models
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/googlegenai/models",
+        json={"api_key": "fake"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "provider"
+    assert body["models"] == ["gemini-3.5-flash"]
+
+
+def test_list_provider_models_filters_fallback_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return []
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _empty
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/vertexai/models",
+        json={"api_key": "fake"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "fallback"
+    assert "imagen-4" not in body["models"]
+    assert "gemini-3.5-flash" in body["models"]
+
+
 def test_list_provider_models_does_not_mutate_os_environ(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

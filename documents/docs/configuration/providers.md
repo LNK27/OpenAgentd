@@ -39,7 +39,7 @@ Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are
 | `cliproxy` | `CLIPROXY_API_KEY` (+ optional `CLIPROXY_BASE_URL`) | Local [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) proxy. |
 | `ollama` | `OLLAMA_API_KEY` (optional; daemon ignores auth) | Local [Ollama](https://docs.ollama.com/api/openai) at `http://localhost:11434/v1`. |
 
-The model id after the prefix is passed **verbatim** to the upstream — OpenAgentd does not maintain a model catalog. Use the upstream's `/v1/models` endpoint or dashboard for the live list.
+The model id after the prefix is passed **verbatim** to the upstream. The Settings model picker filters provider listings to agent-usable text-chat models, so generation-only models such as `veo-*`, `imagen-*`, image-preview, embeddings, and TTS models are hidden.
 
 ## Provider plugins
 

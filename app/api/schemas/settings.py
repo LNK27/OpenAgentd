@@ -72,7 +72,7 @@ class ProviderModelsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     provider: str
-    # Just model IDs. We deliberately don't ship per-model capability
+    # Just agent-usable text-chat model IDs. We deliberately don't ship per-model capability
     # flags here: the prefix-based resolver is too coarse for a
     # per-model UI badge ("text-embedding-3-small" would show vision
     # because `openai:` is vision-true), and a curated registry would be
