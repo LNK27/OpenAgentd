@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from contextlib import suppress
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
@@ -153,7 +154,9 @@ class TestAgentTeamUserMessage:
 
         assert team._has_active_turn
 
-        await asyncio.sleep(0.1)
+        if team.lead._active_task is not None:
+            with suppress(RuntimeError):
+                await team.lead._active_task
         await team.stop()
 
     async def test_handle_user_message_returns_session_id(self, basic_team):
@@ -274,8 +277,7 @@ class TestAgentTeamDoneDetection:
     ):
         team = basic_team
         queued = [MagicMock(id=uuid.uuid7(), content="queued")]
-        team.mailbox.register(team.lead.name)
-        team.mailbox._on_message = None
+        team.mailbox.send = AsyncMock()
 
         with patch(
             "app.agent.mode.team.team.pop_queued_user_messages",
@@ -292,6 +294,7 @@ class TestAgentTeamDoneDetection:
             if c.args[1].event == "queued_turn_start"
         )
         assert event.data["message_ids"] == [str(queued[0].id)]
+        team.mailbox.send.assert_awaited_once()
 
 
 class TestAgentTeamToolInjection:
