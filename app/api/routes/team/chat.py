@@ -171,15 +171,22 @@ async def team_chat(
                 )
         mode = "coding"
         workspace = persisted_workspace
+        assert session_id is not None
         try:
-            team_obj = await team_manager.get_or_start_coding_team(workspace)
+            team_obj = await team_manager.get_or_start_coding_team(
+                workspace, session_id
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     elif mode == "coding":
+        if session_id is None:
+            session_id = str(uuid7())
         assert workspace is not None
         workspace = _validate_workspace_or_422(workspace)
         try:
-            team_obj = await team_manager.get_or_start_coding_team(workspace)
+            team_obj = await team_manager.get_or_start_coding_team(
+                workspace, session_id
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:
@@ -407,7 +414,9 @@ async def list_team_agents(
     """
     if workspace:
         try:
-            team_obj = await team_manager.get_or_start_coding_team(workspace)
+            team_obj = await team_manager.get_or_start_coding_team(
+                workspace, "__agents__"
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:
@@ -556,7 +565,9 @@ async def team_history(
         raise HTTPException(status_code=404, detail="Lead session not found.")
     if history.lead_session.mode == "coding" and history.lead_session.workspace:
         try:
-            await team_manager.get_or_start_coding_team(history.lead_session.workspace)
+            await team_manager.get_or_start_coding_team(
+                history.lead_session.workspace, str(history.lead_session.id)
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:

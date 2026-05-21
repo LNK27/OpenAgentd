@@ -163,7 +163,7 @@ class TestTeamAgentsRouteExtra:
     def test_agents_workspace_returns_coding_team(
         self, app_without_team, test_team, monkeypatch
     ):
-        async def fake_get_or_start_coding_team(workspace: str):
+        async def fake_get_or_start_coding_team(workspace: str, session_id: str):
             test_team.mode = "coding"
             test_team.workspace = workspace
             return test_team
@@ -184,7 +184,7 @@ class TestTeamAgentsRouteExtra:
     def test_agents_workspace_validation_error_returns_422(
         self, app_without_team, monkeypatch
     ):
-        async def fake_get_or_start_coding_team(workspace: str):
+        async def fake_get_or_start_coding_team(workspace: str, session_id: str):
             raise ValueError("bad workspace")
 
         monkeypatch.setattr(
@@ -279,7 +279,9 @@ class TestTeamAgentsRouteExtra:
         )
         test_team.handle_user_message = AsyncMock(return_value=str(session_id))
 
-        async def fake_get_or_start_coding_team(requested_workspace: str):
+        async def fake_get_or_start_coding_team(
+            requested_workspace: str, requested_session_id: str
+        ):
             test_team.mode = "coding"
             test_team.workspace = requested_workspace
             return test_team

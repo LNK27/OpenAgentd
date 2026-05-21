@@ -90,8 +90,8 @@ _team: "AgentTeam | None" = None
 _team_last_used: float = 0.0
 _session_teams: dict[str, "AgentTeam"] = {}
 _session_team_last_used: dict[str, float] = {}
-_coding_teams: dict[str, "AgentTeam"] = {}
-_coding_team_last_used: dict[str, float] = {}
+_coding_teams: dict[tuple[str, str], "AgentTeam"] = {}
+_coding_team_last_used: dict[tuple[str, str], float] = {}
 _DEFAULT_TEAM_IDLE_SECONDS = 60 * 60
 _CODING_TEAM_IDLE_SECONDS = 30 * 60
 _lock = asyncio.Lock()
@@ -163,31 +163,43 @@ def _pop_idle_session_teams_locked(now: float) -> list[tuple[str, "AgentTeam"]]:
     return popped
 
 
-def _pop_idle_coding_teams_locked(now: float) -> list[tuple[str, "AgentTeam"]]:
+def _pop_idle_coding_teams_locked(
+    now: float,
+) -> list[tuple[tuple[str, str], "AgentTeam"]]:
     expired = [
-        workspace
-        for workspace, last_used in _coding_team_last_used.items()
+        key
+        for key, last_used in _coding_team_last_used.items()
         if now - last_used > _CODING_TEAM_IDLE_SECONDS
-        and (team := _coding_teams.get(workspace)) is not None
+        and (team := _coding_teams.get(key)) is not None
         and _coding_team_is_idle(team)
     ]
-    popped: list[tuple[str, "AgentTeam"]] = []
-    for workspace in expired:
-        team = _coding_teams.pop(workspace, None)
-        _coding_team_last_used.pop(workspace, None)
+    popped: list[tuple[tuple[str, str], "AgentTeam"]] = []
+    for key in expired:
+        team = _coding_teams.pop(key, None)
+        _coding_team_last_used.pop(key, None)
         if team is not None:
-            popped.append((workspace, team))
+            popped.append((key, team))
     return popped
 
 
-async def _stop_coding_teams(teams: list[tuple[str, "AgentTeam"]]) -> None:
-    for workspace, team in teams:
+async def _stop_coding_teams(
+    teams: list[tuple[tuple[str, str], "AgentTeam"]],
+) -> None:
+    for (workspace, session_id), team in teams:
         try:
             await team.stop()
         except Exception:
-            logger.exception("coding_team_idle_stop_error workspace={}", workspace)
+            logger.exception(
+                "coding_team_idle_stop_error workspace={} session_id={}",
+                workspace,
+                session_id,
+            )
         else:
-            logger.info("coding_team_idle_stopped workspace={}", workspace)
+            logger.info(
+                "coding_team_idle_stopped workspace={} session_id={}",
+                workspace,
+                session_id,
+            )
 
 
 async def _stop_session_teams(teams: list[tuple[str, "AgentTeam"]]) -> None:
@@ -207,7 +219,17 @@ def current_team() -> "AgentTeam | None":
 def current_team_for_workspace(workspace: str | None) -> "AgentTeam | None":
     if not workspace:
         return _team
-    return _coding_teams.get(str(_resolve_workspace(workspace)))
+    key_workspace = str(_resolve_workspace(workspace))
+    for (stored_workspace, _session_id), team in _coding_teams.items():
+        if stored_workspace == key_workspace:
+            return team
+    return None
+
+
+def current_coding_team_for_session(
+    workspace: str, session_id: str
+) -> "AgentTeam | None":
+    return _coding_teams.get((str(_resolve_workspace(workspace)), session_id))
 
 
 def current_team_for_session(session_id: str) -> "AgentTeam | None":
@@ -360,19 +382,22 @@ async def stop() -> None:
                 )
         _session_teams.clear()
         _session_team_last_used.clear()
-        for workspace, team in list(_coding_teams.items()):
+        for (workspace, session_id), team in list(_coding_teams.items()):
             try:
                 await team.stop()
             except Exception:
                 logger.exception(
-                    "coding_team_manager_stop_error workspace={}", workspace
+                    "coding_team_manager_stop_error workspace={} session_id={}",
+                    workspace,
+                    session_id,
                 )
         _coding_teams.clear()
         _coding_team_last_used.clear()
 
 
-async def get_or_start_coding_team(workspace: str) -> "AgentTeam":
-    key = validate_workspace(workspace)
+async def get_or_start_coding_team(workspace: str, session_id: str) -> "AgentTeam":
+    resolved_workspace = validate_workspace(workspace)
+    key = (resolved_workspace, session_id)
     async with _lock:
         now = time.monotonic()
         expired = _pop_idle_coding_teams_locked(now)
@@ -382,7 +407,9 @@ async def get_or_start_coding_team(workspace: str) -> "AgentTeam":
             team = existing
         else:
             agents_dir = _resolve_coding_agents_dir()
-            team = load_team_from_dir(agents_dir, mode="coding", workspace=key)
+            team = load_team_from_dir(
+                agents_dir, mode="coding", workspace=resolved_workspace
+            )
             if team is None:
                 raise ValueError(
                     f"No coding agents found in '{agents_dir}'. "
@@ -391,7 +418,12 @@ async def get_or_start_coding_team(workspace: str) -> "AgentTeam":
             await team.start()
             _coding_teams[key] = team
             _coding_team_last_used[key] = now
-            logger.info("coding_team_started workspace={} lead={}", key, team.lead.name)
+            logger.info(
+                "coding_team_started workspace={} session_id={} lead={}",
+                resolved_workspace,
+                session_id,
+                team.lead.name,
+            )
 
     await _stop_coding_teams(expired)
     return team

@@ -475,7 +475,9 @@ class TaskScheduler:
                     raise NoTeamConfigured(
                         "Task has mode='coding' but no workspace configured."
                     )
-                team = await team_manager.get_or_start_coding_team(task.workspace)
+                team = await team_manager.get_or_start_coding_team(
+                    task.workspace, f"scheduler:{task.id}"
+                )
             else:
                 team = await team_manager.get_or_start_team()
                 if team is None:

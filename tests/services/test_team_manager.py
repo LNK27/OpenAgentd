@@ -236,7 +236,7 @@ async def test_stop_clears_coding_teams_without_normal_team(tmp_path, monkeypatc
         lambda *args, **kwargs: fake_team,
     )
 
-    await team_manager.get_or_start_coding_team(str(workspace))
+    await team_manager.get_or_start_coding_team(str(workspace), "session-a")
     await team_manager.stop()
 
     fake_team.stop.assert_awaited_once()
@@ -372,12 +372,40 @@ async def test_get_or_start_coding_team_uses_agents_dir_coding_agents(
 
     monkeypatch.setattr("app.services.team_manager.load_team_from_dir", fake_load)
 
-    result = await team_manager.get_or_start_coding_team(str(workspace))
+    result = await team_manager.get_or_start_coding_team(str(workspace), "session-a")
 
     assert result is fake_team
     assert seen["path"] == agents_dir / "coding"
     assert seen["mode"] == "coding"
     assert seen["workspace"] == str(workspace.resolve())
+
+
+@pytest.mark.asyncio
+async def test_get_or_start_coding_team_isolated_by_session(tmp_path, monkeypatch):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    first_team = _make_team("coding-a")
+    second_team = _make_team("coding-b")
+    teams = iter([first_team, second_team])
+    monkeypatch.setattr(
+        "app.services.team_manager.load_team_from_dir",
+        lambda *args, **kwargs: next(teams),
+    )
+
+    first = await team_manager.get_or_start_coding_team(str(workspace), "session-a")
+    second = await team_manager.get_or_start_coding_team(str(workspace), "session-b")
+
+    assert first is first_team
+    assert second is second_team
+    assert first is not second
+    assert (
+        team_manager.current_coding_team_for_session(str(workspace), "session-a")
+        is first_team
+    )
+    assert (
+        team_manager.current_coding_team_for_session(str(workspace), "session-b")
+        is second_team
+    )
 
 
 # ── refresh_blueprints() ──────────────────────────────────────────────────────
