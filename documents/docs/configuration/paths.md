@@ -60,7 +60,12 @@ Dev-mode paths shown below — substitute the production columns from the table 
 │   └── notes/                                 # agent notes
 ├── workspace/                             # OPENAGENTD_WORKSPACE_DIR
 │   └── {lead_session_id}/                     # per-team agent workspace
-│       └── uploads/<uuid>.<ext>               # user uploads (reachable as `uploads/<filename>`)
+│       ├── uploads/<uuid>.<ext>               # user uploads (reachable as `uploads/<filename>`)
+│       └── .openagentd/sessions/{session_id}/ # agent-generated session metadata
+│           ├── .todos.json                    # todo_manage store
+│           └── .tool_results/
+│               ├── shell/*.txt                # large shell output spills
+│               └── {agent}/*.txt              # large tool-result offloads
 ├── config/                                # OPENAGENTD_CONFIG_DIR
 │   ├── .env                                   # secrets (gitignored)
 │   ├── agents/*.md                            # per-agent config
@@ -97,7 +102,33 @@ Backend code never constructs session paths inline. Two pure helpers return the 
 | `workspace_dir(sid)` | `{OPENAGENTD_WORKSPACE_DIR}/{sid}` | Agent workspace root. File bytes served at `GET /api/team/{sid}/media/{path}`; flat recursive listing at `GET /api/team/{sid}/files`. |
 | `uploads_dir(sid)` | `{workspace_dir(sid)}/uploads` | User uploads (flat, UUID names). Served at `GET /api/team/{sid}/uploads/{filename}`. Lives **inside** the session workspace so filesystem tools can pass uploads to workspace-bound tools as `uploads/<filename>`. |
 
-Coding sessions use the selected project directory as the sandbox workspace. Upload storage remains under `OPENAGENTD_WORKSPACE_DIR`. `DELETE /api/team/sessions/{id}` purges the whole workspace, uploads included.
+Session-scoped agent artifacts are centralized in `app/agent/artifacts.py` and live below `{workspace}/.openagentd/sessions/{session_id}/`:
+
+| Artifact | Path | Cleanup |
+|----------|------|---------|
+| Todos | `.todos.json` | Deleted with the session metadata directory. |
+| Shell output spills | `.tool_results/shell/*.txt` | Deleted with the session metadata directory or artifact cleanup. |
+| Tool-result offloads | `.tool_results/{agent}/*.txt` | Deleted with the session metadata directory or artifact cleanup. |
+
+Coding sessions use the selected project directory as the sandbox workspace. Upload storage remains under `OPENAGENTD_WORKSPACE_DIR`. `DELETE /api/team/sessions/{id}` purges normal session workspaces. For coding sessions it keeps the project directory but removes that session's metadata directory at `{project}/.openagentd/sessions/{session_id}/`.
+
+## Generated artifact cleanup
+
+`openagentd cleanup` performs a dry run by default:
+
+```bash
+openagentd cleanup                    # list artifacts older than 14 days
+openagentd cleanup --older-than-days 7
+openagentd cleanup --apply            # delete the listed artifacts
+```
+
+Cleanup targets generated, regeneratable artifacts only:
+
+- orphaned normal session workspaces under `OPENAGENTD_WORKSPACE_DIR`;
+- orphaned coding metadata directories under `{project}/.openagentd/sessions/` for known coding workspaces;
+- old state logs, telemetry files, and OTEL files.
+
+It intentionally does not delete `OPENAGENTD_DATA_DIR`, `OPENAGENTD_CONFIG_DIR`, `OPENAGENTD_WIKI_DIR`, or credential/cache files.
 
 ## Docker
 

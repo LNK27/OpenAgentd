@@ -7,8 +7,7 @@ Covers:
   no new user row is persisted, and the new assistant row carries
   ``extra["is_continuation"] = True``.
 * Precondition failures — empty session, last message is a user message,
-  last assistant message has unfinished ``tool_calls``, last assistant
-  message has empty content.
+  last assistant message has unfinished ``tool_calls``.
 * Lead-busy guard — ``state == "working"`` rejects continuation.
 
 These tests exercise the **real** DB via the in-memory engine wired up in
@@ -350,15 +349,21 @@ class TestHandleContinuePreconditions:
         assert "not linked" in exc_info.value.reason.lower()
 
     @pytest.mark.asyncio
-    async def test_rejects_when_last_assistant_has_empty_content(self, lead_only_team):
+    async def test_allows_when_last_assistant_has_empty_content(
+        self, lead_only_team, monkeypatch
+    ):
         sid = uuid.uuid7()
         await _seed_session(sid)
         await _seed_message(sid, role="user", content="hi")
         await _seed_message(sid, role="assistant", content="   ")
-        with pytest.raises(ContinuePreconditionError) as exc_info:
-            await lead_only_team.handle_continue(str(sid))
-        assert exc_info.value.status == 409
-        assert "no content" in exc_info.value.reason.lower()
+
+        monkeypatch.setattr(
+            lead_only_team.lead, "activate_for_continuation", lambda: None
+        )
+
+        returned = await lead_only_team.handle_continue(str(sid))
+
+        assert returned == str(sid)
 
     @pytest.mark.asyncio
     async def test_rejects_when_lead_is_working(self, lead_only_team):

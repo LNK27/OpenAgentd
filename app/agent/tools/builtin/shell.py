@@ -27,7 +27,7 @@ Or when truncated::
 
     [Succeeded]
 
-    ...output truncated (full output saved to .openagentd/sessions/<sid>/.shell_output/<id>.txt)
+    ...output truncated (full output saved to .openagentd/sessions/<sid>/.tool_results/shell/<id>.txt)
 
     <first N/2 lines>
     ...output truncated...
@@ -50,6 +50,7 @@ from typing import Annotated, Literal
 from loguru import logger
 from pydantic import Field
 
+from app.agent.artifacts import shell_output_dir
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin import shell_runtime as _shell_mod
 from app.agent.tools.registry import InjectedArg, Tool
@@ -60,7 +61,6 @@ _DEFAULT_TIMEOUT_SECONDS = (
     60  # 60 s default; background mode handles long-running processes
 )
 _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
-_SHELL_OUTPUT_SUBDIR = ".shell_output"
 
 # Maximum lines and bytes to include inline in the result
 _OUTPUT_MAX_LINES = 300
@@ -212,7 +212,7 @@ def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
 
 def _spill_output(content: str, workspace: Path, call_id: str) -> Path:
     """Write *content* to the current sandbox shell output directory."""
-    spill_dir = get_sandbox().metadata_path(_SHELL_OUTPUT_SUBDIR)
+    spill_dir = shell_output_dir()
     spill_dir.mkdir(parents=True, exist_ok=True)
     dest = spill_dir / f"{call_id}.txt"
     dest.write_text(content, encoding="utf-8")
@@ -309,7 +309,7 @@ async def _shell(
     Uses the user's preferred POSIX shell (``$SHELL`` → zsh → bash → sh).
     Supports ``&&``, ``||``, pipes, ``$VAR``, subshells.
     Large output is streamed: the first and last output lines are returned inline;
-    the full output is saved to ``.openagentd/sessions/<sid>/.shell_output/`` in the workspace.
+    the full output is saved to ``.openagentd/sessions/<sid>/.tool_results/shell/`` in the workspace.
     Set ``background=true`` for long-running processes.
     """
     sandbox = get_sandbox()

@@ -135,6 +135,31 @@ describe("parseTeamBlocks", () => {
     expect(blocks[0].content).toBe("continued answer");
   });
 
+  it("merges continuation text into the previous assistant text block", () => {
+    const msgs = [
+      makeMsg({ role: "assistant", content: "The quick" }),
+      makeMsg({ role: "assistant", content: " brown fox", extra: { is_continuation: true } }),
+    ];
+
+    const blocks = parseTeamBlocks(msgs);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("text");
+    expect(blocks[0].content).toBe("The quick brown fox");
+  });
+
+  it("adds one space when merging continuation text without boundary whitespace", () => {
+    const msgs = [
+      makeMsg({ role: "assistant", content: "The quick" }),
+      makeMsg({ role: "assistant", content: "brown fox", extra: { is_continuation: true } }),
+    ];
+
+    const blocks = parseTeamBlocks(msgs);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].content).toBe("The quick brown fox");
+  });
+
   it("renders summary messages as compaction divider blocks (legacy prefix stripped)", () => {
     const msgs = [makeMsg({
       is_summary: true,

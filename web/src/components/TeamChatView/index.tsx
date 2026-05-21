@@ -319,6 +319,20 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     return () => window.removeEventListener('focus-chat-input', handler)
   }, [focusInput])
 
+  // Restore a queued message's text into the composer (fired by the
+  // X button on PendingMessageQueue). Overwrites any current draft —
+  // matches the /undo restore semantics above.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ content?: string }>).detail
+      const content = detail?.content ?? ''
+      inputRef.current?.setValue(content)
+      inputRef.current?.focus()
+    }
+    window.addEventListener('queue:restore-draft', handler)
+    return () => window.removeEventListener('queue:restore-draft', handler)
+  }, [])
+
   // Push the active session/workspace label to the desktop tray. The
   // command is a no-op outside Tauri so this is safe to fire from the
   // web build too.

@@ -62,7 +62,7 @@ describe("AgentView — AssistantFooter", () => {
     const response = screen.getByText("streaming response")
     const queued = screen.getByText("queued after response")
     expect(response.compareDocumentPosition(queued) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Cancel queued message" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Edit queued message" })).toBeTruthy()
   })
 
   describe("footer visibility", () => {

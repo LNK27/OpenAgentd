@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.agent.state import AgentState, RunContext, UsageInfo
-from app.agent.hooks.summarization import SummarizationHook
+from app.agent.hooks.summarization import CODING_SUMMARY_PROMPT, SummarizationHook
 from app.agent.schemas.chat import (
     AssistantMessage,
     FunctionCall,
@@ -1148,6 +1148,20 @@ async def test_before_model_returns_none_when_no_summarisation(mock_provider):
     result = await hook.before_model(ctx, state, request)
 
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Coding summary output quality guards
+# ---------------------------------------------------------------------------
+
+
+def test_coding_prompt_rejects_raw_transcript_output():
+    assert "Start your response with exactly `## Goal`" in CODING_SUMMARY_PROMPT
+    assert (
+        "do not copy, replay, or lightly reformat the transcript"
+        in CODING_SUMMARY_PROMPT
+    )
+    assert "[assistant]:" in CODING_SUMMARY_PROMPT
 
 
 # ---------------------------------------------------------------------------

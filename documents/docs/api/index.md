@@ -346,12 +346,11 @@ Returns 409 (`{"detail": "..."}`) when continuation is not meaningful:
 - **Session belongs to '<name>', not '<lead>'.** — ownership guard.
 - **Session has no messages to continue from.** — empty session.
 - **Last message is not an assistant message — nothing to continue. Send a new message instead.** — last visible row is a user/tool message.
-- **Last assistant message has no content — nothing to continue.** — e.g. interrupted before any content tokens arrived; resubmit the original turn.
 - **Cannot continue while <lead> is working — wait for the turn to finish.** — concurrent `/continue` requests; the working-state guard is atomic inside `activate_for_continuation`.
 
 ### `command: "compact"`
 
-Run a normal lead turn that forces the existing summarizer before the next model call. This streams the same `summarization_*` events as automatic compaction, creates a summary row, excludes compacted rows from future LLM context, and does not add a visible user message.
+Run a lead turn that forces the existing summarizer before the next model call. For coding sessions, the command resolves the persisted session workspace and dispatches to the coding team so compaction uses the coding-mode structured summary prompt. This streams the same `summarization_*` events as automatic compaction, creates a summary row, excludes compacted rows from future LLM context, and does not add a visible user message.
 
 Returns 202 with `{"status": "accepted", "session_id": "...", "command": "compact"}`. Subscribe to `GET /api/team/{session_id}/stream` for the SSE feed.
 
@@ -366,6 +365,12 @@ Returns 409 (`{"detail": "..."}`) when compaction cannot run:
 Move the session revert boundary to the latest visible user message and restore that turn's workspace snapshot. Messages at or after that boundary remain in history for redo, but future LLM context and the web UI render only messages before the boundary. The response includes the reverted user message so the client can place it back into the composer for editing. Clients should apply the boundary to any in-flight local stream blocks as well as persisted blocks, because a stopped turn can leave optimistic user/tool blocks in memory before the final reload arrives.
 
 Returns 202 with `{"status": "accepted", "session_id": "...", "command": "undo", "message": {...}, "changed_paths": [...]}`. `changed_paths` is omitted when scoped workspace refresh is unavailable.
+
+Returns 409 (`{"detail": "..."}`) when the boundary cannot be moved:
+- **Lead is already working.** — the lead has an in-flight turn.
+- **Agent '<name>' is still working. Stop it before /undo.** — a member is streaming (lead may be idle). Reverting mid-stream would orphan the in-flight assistant tokens on the client; `/stop` first.
+- **Session not found.** / **Session belongs to '<name>', not '<lead>'.** — ownership guards.
+- **No user message to undo.** — already at the earliest user turn.
 
 ### `command: "redo"`
 

@@ -90,9 +90,9 @@ def test_metadata_path_falls_back_to_workspace_metadata_without_session_id(tmp_p
         denied_patterns=[],
     )
 
-    result = sandbox.metadata_path(".shell_output")
+    result = sandbox.metadata_path(".tool_results")
 
-    assert result == tmp_path / "ws" / ".openagentd" / ".shell_output"
+    assert result == tmp_path / "ws" / ".openagentd" / ".tool_results"
 
 
 def test_path_inside_denied_root_rejected(tmp_path):

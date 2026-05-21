@@ -348,6 +348,33 @@ class AgentTeam:
                 logger.warning("team_emit_done_failed error={}", exc)
             logger.info("team_turn_done session_id={}", session_id)
 
+    async def _try_activate_queued_after_lead_turn(self) -> None:
+        """Wake the lead with queued user messages as soon as its loop ends.
+
+        Team ``done`` still waits for all members to finish. This only shortens
+        the handoff from the persisted queue into the lead mailbox when the lead
+        has completed its own activation but delegated members are still busy.
+        """
+        if not self._has_active_turn:
+            return
+        if self.lead.state not in ("idle", "error"):
+            return
+
+        if not self.mailbox.inbox_empty(self.lead.name):
+            return
+
+        if await self._activate_queued_user_messages(self.lead.session_id):
+            self._has_active_turn = True
+
+        # If sending to the mailbox did not spawn a new lead activation because
+        # the lead was still marked working by its finally block, start it after
+        # returning to idle.
+        if (
+            not self.mailbox.inbox_empty(self.lead.name)
+            and self.lead.state != "working"
+        ):
+            self.lead._maybe_activate()
+
     async def _activate_queued_user_messages(self, session_id: str) -> bool:
         try:
             session_uuid = UUID(session_id)
@@ -576,9 +603,10 @@ class AgentTeam:
 
         * Session must exist and belong to the lead.
         * Lead must not already be working.
-        * Last visible message must be an :class:`AssistantMessage` with
-          non-empty content and no pending ``tool_calls`` (continuing a
-          half-emitted tool call is unsafe — partial JSON args).
+        * Last visible message must be an :class:`AssistantMessage` or a
+          linked :class:`ToolMessage`. Assistant messages with pending
+          ``tool_calls`` are rejected because continuing a half-emitted tool
+          call is unsafe — partial JSON args.
 
         Returns the session_id.  Caller subscribes to
         ``GET /team/stream/{session_id}`` for the SSE feed.
@@ -640,10 +668,6 @@ class AgentTeam:
             if last.tool_calls:
                 raise ContinuePreconditionError(
                     "Last assistant message is mid tool call — cannot safely continue."
-                )
-            if not (last.content and last.content.strip()):
-                raise ContinuePreconditionError(
-                    "Last assistant message has no content — nothing to continue."
                 )
 
         # Preconditions satisfied — now realign the lead onto this session.
@@ -770,6 +794,18 @@ class AgentTeam:
         """
         if self._has_active_turn:
             raise ContinuePreconditionError("Lead is already working.")
+        # A member can still be streaming even when the lead is idle
+        # (e.g. delegated turn). Reverting the boundary mid-stream
+        # orphans the in-flight assistant tokens on the client, so
+        # require the team to be fully quiescent first.
+        busy = next(
+            (m for m in self.all_members if m.state == "working"),
+            None,
+        )
+        if busy is not None:
+            raise ContinuePreconditionError(
+                f"Agent '{busy.name}' is still working. Stop it before /undo."
+            )
 
         try:
             lead_uuid = UUID(session_id)

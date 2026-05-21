@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 
 from app.cli.commands.auth import cmd_auth
+from app.cli.commands.cleanup import cmd_cleanup
 from app.cli.commands.doctor import cmd_doctor
 from app.cli.commands.init import cmd_init
 from app.cli.commands.logs import cmd_logs
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  openagentd status         # check if running\n"
             "  openagentd logs           # tail the server log\n"
             "  openagentd doctor         # check system health\n"
+            "  openagentd cleanup        # dry-run generated artifact cleanup\n"
             "  openagentd upgrade        # upgrade to the latest version\n"
         ),
     )
@@ -153,6 +155,31 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("doctor", help="Check system health and report issues").set_defaults(
         func=cmd_doctor
     )
+
+    # ── cleanup ───────────────────────────────────────────────────────────────
+    p_cleanup = sub.add_parser(
+        "cleanup",
+        help="Dry-run cleanup for generated artifacts",
+    )
+    p_cleanup.add_argument(
+        "--older-than-days",
+        type=int,
+        default=14,
+        help="Only delete artifacts older than this many days (default: 14)",
+    )
+    p_cleanup.add_argument(
+        "--apply",
+        action="store_false",
+        dest="dry_run",
+        help="Delete the listed artifacts instead of only printing them",
+    )
+    p_cleanup.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Maximum candidate paths to print (default: 50)",
+    )
+    p_cleanup.set_defaults(func=cmd_cleanup, dry_run=True)
 
     # ── update / upgrade ──────────────────────────────────────────────────────
     for _alias in ("update", "upgrade"):

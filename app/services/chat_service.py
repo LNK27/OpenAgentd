@@ -2,6 +2,7 @@ import asyncio
 import json
 import shutil
 from collections.abc import Sequence
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
@@ -20,6 +21,7 @@ from app.agent.schemas.chat import (
     HumanMessage,
     ToolMessage,
 )
+from app.agent.artifacts import workspace_session_artifact_dir
 from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
 from app.models.chat import ChatSession, SessionMessage
 from app.services import snapshot_service
@@ -835,11 +837,14 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
         ``True`` if the session existed and was deleted, ``False`` if not found.
     """
     delete_workspace = False
+    coding_workspace: Path | None = None
     async with db.begin():
         session = await db.get(ChatSession, session_id)
         if not session:
             return False
         delete_workspace = session.workspace is None
+        if session.workspace:
+            coding_workspace = Path(session.workspace).resolve()
         messages = (
             await db.exec(
                 select(SessionMessage).where(
@@ -861,6 +866,12 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
     if delete_workspace and workspace.exists():
         await asyncio.to_thread(shutil.rmtree, workspace, ignore_errors=True)
         logger.info("workspace_dir_deleted session_id={}", session_id)
+
+    if coding_workspace is not None:
+        metadata = workspace_session_artifact_dir(coding_workspace, sid_str)
+        if metadata.exists():
+            await asyncio.to_thread(shutil.rmtree, metadata, ignore_errors=True)
+            logger.info("coding_session_metadata_deleted session_id={}", session_id)
 
     logger.info("session_deleted session_id={}", session_id)
     return True

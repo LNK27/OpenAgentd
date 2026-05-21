@@ -9,7 +9,15 @@ export function PendingMessageQueue() {
 
   if (messages.length === 0) return null
 
-  const handleRemove = (id: string) => {
+  const handleRemove = (id: string, content: string) => {
+    // Move the queued text back into the composer so the user can edit
+    // or resend it instead of losing what they typed. Mirrors the
+    // restore-on-/undo flow in TeamChatView. The CustomEvent matches
+    // the existing `focus-chat-input` pattern and decouples this
+    // component from the chat view's inputRef.
+    window.dispatchEvent(
+      new CustomEvent('queue:restore-draft', { detail: { content } }),
+    )
     removePendingMessage(id)
   }
 
@@ -23,9 +31,9 @@ export function PendingMessageQueue() {
                 <p className="break-words whitespace-pre-wrap">{msg.content}</p>
               </div>
               <button
-                onClick={() => handleRemove(msg.id)}
-                aria-label="Cancel queued message"
-                title="Cancel queued message"
+                onClick={() => handleRemove(msg.id, msg.content)}
+                aria-label="Edit queued message"
+                title="Edit queued message"
                 className="mt-1 rounded-full p-1 text-(--color-text-muted) opacity-70 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100"
               >
                 <X size={13} />

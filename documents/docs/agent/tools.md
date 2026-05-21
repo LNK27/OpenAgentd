@@ -183,7 +183,7 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 
 Foreground shell output is read incrementally while the command runs and emits live `tool_output_delta` SSE events for connected clients. To prevent UI lag and reduce Server-Sent Events (SSE) frequency, rapid shell output tokens are buffered and grouped into **100ms chunks** before being flushed.
 
-The final tool result is still returned only when the command exits or times out. Large output is saved under `.openagentd/sessions/<session_id>/.shell_output/` and the tool returns a readable relative path plus the last 200 lines inline. A `<shell_metadata>` advisory block is appended on timeout.
+The final tool result is still returned only when the command exits or times out. Large output is saved under `.openagentd/sessions/<session_id>/.tool_results/shell/` and the tool returns a readable relative path plus the last 200 lines inline. A `<shell_metadata>` advisory block is appended on timeout.
 
 To keep the DOM lightweight and prevent UI lag during active live-streaming, the frontend limits the active live-streamed shell output to the **50 most recent lines** (truncating older lines). Once the process terminates, it is replaced with the full execution output (up to 300 lines).
 
@@ -226,7 +226,7 @@ All subprocesses are started with `start_new_session=True`, which places them in
 
 Shell commands are gated by the **permission system** (`app/agent/permission.py`) before execution. By default `AutoAllowPermissionService` is active — it fires `permission_asked` SSE events and auto-approves. A blocking `PermissionService` with user-defined `Rule`/`Ruleset` (wildcard, last-match-wins) can be wired in when a frontend approval UI is ready. The old denylist (`sudo`, `rm -rf`, etc.) has been removed in favour of this rule-based approach.
 
-Path containment for file tools is enforced by `SandboxConfig.validate_path` — see [Filesystem](#filesystem-builtinfilesystem). The `shell` tool also performs a best-effort command path scan via `SandboxConfig.check_command`. The default shell timeout is 60s; large output spills to the session-scoped `.openagentd/sessions/<session_id>/.shell_output/` directory.
+Path containment for file tools is enforced by `SandboxConfig.validate_path` — see [Filesystem](#filesystem-builtinfilesystem). The `shell` tool also performs a best-effort command path scan via `SandboxConfig.check_command`. The default shell timeout is 60s; large output spills to the session-scoped `.openagentd/sessions/<session_id>/.tool_results/shell/` directory.
 
 ### Date (`builtin/date.py`)
 

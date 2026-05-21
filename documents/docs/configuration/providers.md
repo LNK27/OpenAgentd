@@ -7,7 +7,7 @@ updated: 2026-05-21
 
 # LLM Providers
 
-**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/catalog.py`, `app/agent/providers/plugin_registry.py`, `app/api/routes/settings.py`, `app/agent/providers/capabilities.py`
+**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/catalog.py`, `app/agent/providers/plugin_registry.py`, `app/api/routes/settings.py`, `app/agent/providers/capabilities.py`, `app/agent/providers/model_metadata.py`
 
 A model is selected by setting `model: <prefix>:<model-id>` in an agent's `.md` frontmatter. The prefix selects the provider; the rest is passed verbatim to that provider's API.
 
@@ -67,6 +67,18 @@ Each model's input/output capabilities (vision, document text, audio, video, etc
 2. Global default → text-only.
 
 There are no per-model overrides and no name-substring heuristics. Edge cases (e.g. attaching an image to a text-only model under a vision prefix, or vice versa) surface as a provider-side error on first use. See `documents/techdebts/model-capabilities-registry.md` for the long-term direction.
+
+## Model metadata
+
+Non-modality model metadata lives in `app/agent/providers/model_metadata.yaml` and is resolved through `model_metadata.py`. It currently tracks token limits and advertised `thinking_level` values:
+
+```yaml
+"openai:gpt-5":
+  limits: { context_length: 272000, max_completion_tokens: 128000 }
+  thinking: { levels: [minimal, low, medium, high] }
+```
+
+`thinking.levels` is descriptive metadata for callers such as settings UIs or validation layers. Runtime provider behavior still treats `thinking_level: none`/`off` as disable/default even when `none` is not listed for a model.
 
 ## Provider notes
 
