@@ -567,19 +567,15 @@ async def test_max_token_length_zero_disables_limit():
 
 
 # ---------------------------------------------------------------------------
-# thinking_level — always forced to "none" on the summariser call
+# thinking_level — inherited from the agent's primary configuration
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_summariser_call_always_passes_thinking_level_none():
-    """Summarisation never benefits from reasoning — the hook must override
-    the agent's primary ``thinking_level`` with ``"none"`` on every call so
-    reasoning tokens are not spent (cost + latency + streaming behaviour).
-
-    The per-call kwarg wins over constructor ``model_kwargs`` thanks to
-    ``LLMProviderBase._merged_kwargs`` — see ``app/agent/providers/base.py``.
-    """
+async def test_summariser_call_does_not_override_thinking_level():
+    """Summarisation must not force ``thinking_level="none"`` — Codex rejects
+    requests with no ``reasoning`` field, so the agent's configured level
+    must flow through unchanged."""
     provider = MagicMock()
 
     async def _stream(*_, **__):
@@ -612,7 +608,7 @@ async def test_summariser_call_always_passes_thinking_level_none():
 
     provider.stream.assert_called_once()
     call_kwargs = provider.stream.call_args[1]
-    assert call_kwargs.get("thinking_level") == "none"
+    assert "thinking_level" not in call_kwargs
 
 
 # ---------------------------------------------------------------------------

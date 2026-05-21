@@ -628,13 +628,9 @@ class SummarizationHook(BaseAgentHook):
         to publish ``summarization_content`` SSE events while the LLM is
         still generating.
         """
-        # Summarisation never benefits from reasoning — the prompt asks for a
-        # direct, fact-preserving compression of the conversation. Reasoning
-        # tokens here add latency and cost without improving output quality.
-        # Force ``thinking_level="none"`` on the summariser call regardless of
-        # the agent's own ``thinking_level`` (the per-call kwarg wins over
-        # constructor ``model_kwargs`` via ``LLMProviderBase._merged_kwargs``).
-        kwargs: dict = {"thinking_level": "none"}
+        # Inherit the agent's ``thinking_level`` — forcing ``"none"`` here
+        # breaks Codex, whose endpoint rejects requests with no ``reasoning``.
+        kwargs: dict = {}
         if self._max_token_length > 0:
             kwargs["max_tokens"] = self._max_token_length
 

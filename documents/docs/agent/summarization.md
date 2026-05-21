@@ -25,7 +25,7 @@ updated: 2026-05-19
 | **Tool result stubbing** | `ToolMessage` content is replaced with `[tool/name]: [tool result omitted]` in the summariser input. Raw shell output, file contents, and JSON blobs are noise for summarisation; the tool name is sufficient. |
 | **Merge vs. fresh summary** | When the window being summarised contains a prior summary (`is_summary=True`), the hook sends a merge instruction (`_MERGE_REQUEST`) instead of the default request. The summariser is told explicitly to fold old and new content together. |
 | **LLM exception** | Calls an LLM to generate the summary text — the only I/O this hook performs. |
-| **No reasoning** | The hook always passes ``thinking_level="none"`` to the provider on every summariser call, even if the agent's primary model has ``thinking_level`` set to ``low``/``medium``/``high``. Reasoning adds latency and cost without improving compression quality; for OpenAI's reasoning models it also buffers the entire output behind the reasoning phase, defeating delta streaming. |
+| **Inherits ``thinking_level``** | The hook does NOT override ``thinking_level`` on the summariser call — the agent's primary level flows through unchanged. Forcing ``"none"`` here was the original design (reasoning adds latency and cost without improving compression quality), but it broke the Codex provider: ``chatgpt.com/backend-api/codex`` rejects requests with no ``reasoning`` field, which ``ResponsesHandler.customize_thinking`` omits whenever the level is ``"none"``/``"off"``. Compaction now respects whatever the agent is configured with — seed agents already pin a low effort (``thinking_level: low``) which is the right floor. |
 
 ---
 
