@@ -622,6 +622,9 @@ class TeamMemberBase(abc.ABC):
                 )
                 self._maybe_activate()
 
+            if self is self._team.lead:
+                await self._team._try_activate_queued_after_lead_turn()
+
             await self._team._try_emit_done()
 
     # ------------------------------------------------------------------

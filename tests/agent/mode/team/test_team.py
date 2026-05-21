@@ -296,6 +296,93 @@ class TestAgentTeamDoneDetection:
         assert event.data["message_ids"] == [str(queued[0].id)]
         team.mailbox.send.assert_awaited_once()
 
+    async def test_activates_queued_messages_after_lead_done_before_members_idle(
+        self, basic_team
+    ):
+        """Lead-idle queue handoff must not wait for delegated members."""
+        team = basic_team
+        team._has_active_turn = True
+        team.lead.session_id = str(uuid.uuid7())
+        team.lead.state = "idle"
+        team.members["member_a"].state = "working"
+        team.members["member_b"].state = "idle"
+        team._activate_queued_user_messages = AsyncMock(return_value=True)
+
+        await team._try_activate_queued_after_lead_turn()
+
+        team._activate_queued_user_messages.assert_awaited_once_with(
+            team.lead.session_id
+        )
+        assert team._has_active_turn is True
+
+    async def test_does_not_activate_queue_before_lead_turn_is_done(self, basic_team):
+        """Queued rows stay persisted while the lead is still inside its loop."""
+        team = basic_team
+        team._has_active_turn = True
+        team.lead.session_id = str(uuid.uuid7())
+        team.lead.state = "working"
+        team._activate_queued_user_messages = AsyncMock(return_value=True)
+
+        await team._try_activate_queued_after_lead_turn()
+
+        team._activate_queued_user_messages.assert_not_awaited()
+
+    async def test_does_not_activate_queue_without_active_turn(self, basic_team):
+        """No queued handoff should happen after cancellation/done reset the turn."""
+        team = basic_team
+        team._has_active_turn = False
+        team.lead.session_id = str(uuid.uuid7())
+        team.lead.state = "idle"
+        team._activate_queued_user_messages = AsyncMock(return_value=True)
+
+        await team._try_activate_queued_after_lead_turn()
+
+        team._activate_queued_user_messages.assert_not_awaited()
+
+    async def test_does_not_pop_persisted_queue_when_lead_inbox_already_has_work(
+        self, basic_team
+    ):
+        """Avoid merging persisted queued messages into an already-pending lead turn."""
+        team = basic_team
+        await team.start()
+        team._has_active_turn = True
+        team.lead.session_id = str(uuid.uuid7())
+        team.lead.state = "idle"
+        team._activate_queued_user_messages = AsyncMock(return_value=True)
+
+        await team.mailbox.send(
+            to=team.lead.name,
+            message=MagicMock(from_agent="member_a", to_agent=team.lead.name),
+        )
+        team.lead.state = "idle"  # isolate the inbox guard from activation state
+
+        await team._try_activate_queued_after_lead_turn()
+
+        team._activate_queued_user_messages.assert_not_awaited()
+        await team.stop()
+
+    async def test_reactivates_lead_if_queued_send_left_inbox_pending(self, basic_team):
+        """If send happened while lead was still working, wake it once idle."""
+        team = basic_team
+        await team.start()
+        team._has_active_turn = True
+        team.lead.session_id = str(uuid.uuid7())
+        team.lead.state = "idle"
+        team.lead._maybe_activate = MagicMock()
+
+        async def activate(_session_id: str) -> bool:
+            await team.mailbox._inboxes[team.lead.name].put(
+                MagicMock(from_agent="user", to_agent=team.lead.name)
+            )
+            return True
+
+        team._activate_queued_user_messages = AsyncMock(side_effect=activate)
+
+        await team._try_activate_queued_after_lead_turn()
+
+        team.lead._maybe_activate.assert_called_once_with()
+        await team.stop()
+
 
 class TestAgentTeamToolInjection:
     """Test get_injected_tools() — tool injection per agent role (peer model)."""
