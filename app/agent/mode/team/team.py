@@ -363,6 +363,18 @@ class AgentTeam:
             logger.warning("team_init_queued_turn_failed error={}", exc)
             return False
 
+        message_ids = [str(row.id) for row in queued]
+        await stream_store.push_event(
+            session_id,
+            StreamEnvelope.from_parts(
+                "queued_turn_start",
+                {
+                    "type": "queued_turn_start",
+                    "agent": self.lead.name,
+                    "message_ids": message_ids,
+                },
+            ),
+        )
         self._has_active_turn = True
         for row in queued:
             msg = Message(
@@ -375,7 +387,7 @@ class AgentTeam:
             "team_queued_messages_activated session_id={} count={} message_ids={}",
             session_id,
             len(queued),
-            [str(row.id) for row in queued],
+            message_ids,
         )
         return True
 

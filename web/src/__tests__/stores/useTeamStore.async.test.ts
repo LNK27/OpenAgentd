@@ -608,7 +608,7 @@ describe("sendMessage: queue behaviour", () => {
       ],
     })
 
-    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "working" })
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead" })
 
     const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks
     expect(blocks.map((block) => block.content)).toEqual(["first queued", "second queued"])
@@ -627,7 +627,7 @@ describe("sendMessage: queue behaviour", () => {
       ],
     })
 
-    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "working" })
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead" })
 
     expect(useTeamStore.getState()._pendingMessages).toEqual([
       { id: "pm-a", sessionId: "session-a", content: "belongs to A" },
@@ -648,13 +648,59 @@ describe("sendMessage: queue behaviour", () => {
       ],
     })
 
-    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "working" })
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead" })
 
     expect(useTeamStore.getState()._pendingMessages).toEqual([
       { id: "pm-b1", sessionId: "session-b", content: "only B" },
     ])
     expect(useTeamStore.getState().agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
       "first A",
+      "second A",
+    ])
+  })
+
+  it("does not move queued messages on replayed lead working status", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-1", sessionId: "session-a", content: "queued" },
+      ],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "working" })
+    useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "streaming" })
+
+    expect(useTeamStore.getState()._pendingMessages).toEqual([
+      { id: "pm-1", sessionId: "session-a", content: "queued" },
+    ])
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
+      "streaming",
+    ])
+  })
+
+  it("moves only queued ids named by queued_turn_start", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "working" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-a1", sessionId: "session-a", content: "first A" },
+        { id: "pm-a2", sessionId: "session-a", content: "second A" },
+      ],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead", message_ids: ["pm-a2"] })
+
+    expect(useTeamStore.getState()._pendingMessages).toEqual([
+      { id: "pm-a1", sessionId: "session-a", content: "first A" },
+    ])
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
       "second A",
     ])
   })

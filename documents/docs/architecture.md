@@ -160,6 +160,7 @@ All events flow server→client. Schemas live in `app/agent/schemas/events.py`; 
 | `usage` | `StreamPublisherHook` after each model call + `after_agent` turn total | `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `thoughts_tokens` |
 | `inbox` | `TeamInboxHook.before_model` | `agent`, `text`, `from_agent` — peer message injected into LLM context |
 | `agent_status` | `AgentTeam` activation/done | `agent`, `status` (`idle`\|`working`\|`offline`\|`error`) — team only |
+| `queued_turn_start` | `AgentTeam` queued-message drain | `agent`, `message_ids` — marks queued user bubbles as active for the next turn |
 | `rate_limit` | `StreamPublisherHook.on_rate_limit` | `retry_after`, `attempt`, `max_attempts` |
 | `permission_asked` | `StreamPublisherHook` (permission system) | `request_id`, `session_id`, `tool`, `patterns` |
 | `title_update` | `TitleGenerationHook` after first turn | `session_id`, `title` |

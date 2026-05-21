@@ -33,7 +33,7 @@ Attachments are not queued while the lead is working. The UI asks the user to wa
 | Step | What happens |
 |------|-------------|
 | User submits text while lead is busy | `POST /api/team/chat` stores a hidden `SessionMessage` with `extra.queue_status="queued"` and returns its `message_id` |
-| Current turn finishes | Backend pops queued rows in order, keeps the same SSE connection alive, and activates the lead with each queued message as a separate user message |
+| Current turn finishes | Backend emits `queued_turn_start`, pops queued rows in order, keeps the same SSE connection alive, and activates the lead with each queued message as a separate user message |
 | User reloads or switches sessions | Session history includes queued rows; the frontend rehydrates `_pendingMessages` for the active session |
 | User clicks × on a queued item | Frontend removes it and calls `DELETE /api/team/sessions/{session_id}/queued-messages/{message_id}` |
 | `newSession()` called | Queue cleared |

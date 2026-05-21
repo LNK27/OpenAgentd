@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 class TestAgentTeamConstruction:
@@ -268,6 +268,30 @@ class TestAgentTeamDoneDetection:
 
         await team._try_emit_done()
         assert team._has_active_turn is False
+
+    async def test_activate_queued_messages_emits_queued_turn_start(
+        self, basic_team, mock_stream_store
+    ):
+        team = basic_team
+        queued = [MagicMock(id=uuid.uuid7(), content="queued")]
+        team.mailbox.register(team.lead.name)
+        team.mailbox._on_message = None
+
+        with patch(
+            "app.agent.mode.team.team.pop_queued_user_messages",
+            new=AsyncMock(return_value=queued),
+        ):
+            activated = await team._activate_queued_user_messages(str(uuid.uuid7()))
+
+        assert activated is True
+        events = [c.args[1].event for c in mock_stream_store.call_args_list]
+        assert "queued_turn_start" in events
+        event = next(
+            c.args[1]
+            for c in mock_stream_store.call_args_list
+            if c.args[1].event == "queued_turn_start"
+        )
+        assert event.data["message_ids"] == [str(queued[0].id)]
 
 
 class TestAgentTeamToolInjection:
