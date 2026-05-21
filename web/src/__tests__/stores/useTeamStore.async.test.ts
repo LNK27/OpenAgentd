@@ -504,14 +504,18 @@ describe("sendMessage with files", () => {
 describe("sendMessage: queue behaviour", () => {
   it("queues message without calling API when lead is working", async () => {
     useTeamStore.setState({
+      sessionId: "session-a",
       leadName: "lead",
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
-    await useTeamStore.getState().sendMessage("queued message")
+    await useTeamStore.getState().sendMessage("queued message", undefined, { mode: "coding", workspace: "/repo/a" })
     expect(mockPostTeamChat).not.toHaveBeenCalled()
     const pending = useTeamStore.getState()._pendingMessages
     expect(pending).toHaveLength(1)
+    expect(pending[0].sessionId).toBe("session-a")
     expect(pending[0].content).toBe("queued message")
+    expect(pending[0].mode).toBe("coding")
+    expect(pending[0].workspace).toBe("/repo/a")
   })
 
   it("does NOT queue when only members are working (lead is idle)", async () => {
@@ -553,6 +557,7 @@ describe("sendMessage: queue behaviour", () => {
 
   it("drains one queued message per 'done' event (no concatenation)", async () => {
     useTeamStore.setState({
+      sessionId: "session-a",
       leadName: "lead",
       agentStreams: {
         lead: makeStream({
@@ -561,17 +566,68 @@ describe("sendMessage: queue behaviour", () => {
         }),
       },
       _pendingMessages: [
-        { id: "pm-1", content: "first queued" },
-        { id: "pm-2", content: "second queued" },
+        { id: "pm-1", sessionId: "session-a", content: "first queued", mode: "coding", workspace: "/repo/a" },
+        { id: "pm-2", sessionId: "session-a", content: "second queued", mode: "coding", workspace: "/repo/a" },
       ],
     })
     useTeamStore.getState()._handleSSEEvent("done", {})
     await new Promise((r) => setTimeout(r, 0))
     expect(mockPostTeamChat).toHaveBeenCalledTimes(1)
     expect(mockPostTeamChat.mock.calls[0][0]).toBe("first queued")
+    expect(mockPostTeamChat.mock.calls[0][4]).toBe("coding")
+    expect(mockPostTeamChat.mock.calls[0][5]).toBe("/repo/a")
     const remaining = useTeamStore.getState()._pendingMessages
     expect(remaining).toHaveLength(1)
     expect(remaining[0].content).toBe("second queued")
+  })
+
+  it("does not drain queued messages for a different active session", async () => {
+    useTeamStore.setState({
+      sessionId: "session-b",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "working" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-a", sessionId: "session-a", content: "belongs to A" },
+      ],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("done", {})
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(mockPostTeamChat).not.toHaveBeenCalled()
+    expect(useTeamStore.getState()._pendingMessages).toEqual([
+      { id: "pm-a", sessionId: "session-a", content: "belongs to A" },
+    ])
+  })
+
+  it("assigns queued messages from a new session to the returned session id", async () => {
+    let resolvePost: (value: { status: string; session_id: string }) => void = () => {}
+    mockPostTeamChat.mockImplementationOnce(() => new Promise((resolve) => {
+      resolvePost = resolve
+    }))
+    useTeamStore.setState({
+      sessionId: null,
+      leadName: "lead",
+      agentStreams: { lead: makeStream() },
+    })
+
+    const firstSend = useTeamStore.getState().sendMessage("start")
+    await Promise.resolve()
+    useTeamStore.setState((state) => {
+      state.agentStreams.lead.status = "working"
+    })
+    await useTeamStore.getState().sendMessage("queued before session id")
+
+    expect(useTeamStore.getState()._pendingMessages).toEqual([
+      { id: expect.any(String), sessionId: null, content: "queued before session id", files: undefined, mode: undefined, workspace: undefined },
+    ])
+
+    resolvePost({ status: "ok", session_id: "session-a" })
+    await firstSend
+
+    expect(useTeamStore.getState()._pendingMessages[0].sessionId).toBe("session-a")
   })
 
   it("removePendingMessage removes message by id", () => {

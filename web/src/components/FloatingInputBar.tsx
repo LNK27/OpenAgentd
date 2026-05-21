@@ -124,7 +124,9 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     // and keep only the stop/restore affordances visible. Mobile keeps the
     // full bar — the soft keyboard already dictates its own focus/blur
     // cadence and a collapse there would fight system behavior.
-    const queuedCount = useTeamStore((s) => s._pendingMessages.length)
+    const allQueuedMessages = useTeamStore((s) => s._pendingMessages)
+    const sessionId = useTeamStore((s) => s.sessionId)
+    const queuedCount = allQueuedMessages.filter((msg) => (msg.sessionId ?? null) === sessionId).length
     // Start collapsed — the slim action strip is the
     // resting state. The user summons the full pill explicitly via
     // click, focus, Ctrl/⌘+I, or by attaching a file. This matches

@@ -292,10 +292,15 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           })
         })
         const pending = get()._pendingMessages
-        if (pending.length > 0) {
-          const [next, ...rest] = pending
-          set((draft) => { draft._pendingMessages = rest })
-          void get().sendMessage(next.content, next.files)
+        const sessionId = get().sessionId
+        const nextIndex = pending.findIndex((msg) => (msg.sessionId ?? null) === sessionId)
+        if (nextIndex >= 0) {
+          const next = pending[nextIndex]
+          set((draft) => { draft._pendingMessages.splice(nextIndex, 1) })
+          void get().sendMessage(next.content, next.files, {
+            mode: next.mode,
+            workspace: next.workspace,
+          })
         }
         break
       }

@@ -157,9 +157,10 @@ describe('FloatingInputBar', () => {
   it('shows queued message details above the queue banner only after expanding', async () => {
     const user = userEvent.setup()
     useTeamStore.setState({
+      sessionId: 'session-a',
       _pendingMessages: [
-        { id: 'pm-1', content: 'first queued message' },
-        { id: 'pm-2', content: 'second queued message' },
+        { id: 'pm-1', sessionId: 'session-a', content: 'first queued message' },
+        { id: 'pm-2', sessionId: 'session-a', content: 'second queued message' },
       ],
     })
 

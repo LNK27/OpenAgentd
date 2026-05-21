@@ -2,7 +2,7 @@
 title: Chat Input & Message Queue
 description: How the frontend queues messages while the lead is working and drains them after each turn.
 status: stable
-updated: 2026-05-14
+updated: 2026-05-21
 ---
 
 # Chat Input & Message Queue
@@ -30,12 +30,12 @@ Only the **lead's** status matters. Members running background sub-tasks do not 
 
 | Step | What happens |
 |------|-------------|
-| User submits while lead is busy | Message pushed to `_pendingMessages` (no API call, no optimistic block) |
-| SSE `done` event fires | The first pending message is popped and sent as its own turn (`POST /api/team/chat`); the rest stay queued for the next `done` |
+| User submits while lead is busy | Message pushed to `_pendingMessages` with the active `sessionId`, `mode`, and `workspace` (no API call, no optimistic block) |
+| SSE `done` event fires | The first pending message for that same session is popped and sent as its own turn (`POST /api/team/chat`); the rest stay queued for the next `done` |
 | User clicks × on a queued item | Removed from store; text restored to the input bar |
 | `newSession()` called | Queue cleared |
 
-The drain happens in `sse-reducer.ts` inside the `done` case — after flushing `currentBlocks`, one pending message is consumed per `done` event. Two queued messages ("then say hi" + "also summarise") become two sequential turns with their own user bubbles and assistant replies — never concatenated.
+The drain happens in `sse-reducer.ts` inside the `done` case — after flushing `currentBlocks`, one pending message for the active session is consumed per `done` event. Two queued messages ("then say hi" + "also summarise") become two sequential turns with their own user bubbles and assistant replies — never concatenated. Queues are session-scoped so switching from session A to session B does not display or send A's queued messages under B.
 
 ---
 
@@ -44,8 +44,11 @@ The drain happens in `sse-reducer.ts` inside the `done` case — after flushing 
 ```ts
 interface PendingMessage {
   id: string      // stable id (pm-<timestamp>), used as React key and for removal
+  sessionId?: string | null
   content: string
   files?: File[]
+  mode?: string
+  workspace?: string | null
 }
 ```
 

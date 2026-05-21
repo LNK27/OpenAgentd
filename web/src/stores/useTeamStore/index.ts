@@ -151,7 +151,14 @@ export const useTeamStore = create<TeamStore>()(
 
       if (leadWorking) {
         set((draft) => {
-          draft._pendingMessages.push({ id: `pm-${Date.now()}`, content, files })
+          draft._pendingMessages.push({
+            id: `pm-${Date.now()}`,
+            sessionId: get().sessionId,
+            content,
+            files,
+            mode: options?.mode,
+            workspace: options?.workspace,
+          })
           draft.error = null
         })
         return
@@ -199,6 +206,9 @@ export const useTeamStore = create<TeamStore>()(
         )
         set((draft) => {
           draft.sessionId = result.session_id
+          draft._pendingMessages.forEach((msg) => {
+            if (msg.sessionId === null || msg.sessionId === undefined) msg.sessionId = result.session_id
+          })
           if (options?.workspace) {
             draft._workspace = options.workspace
           }

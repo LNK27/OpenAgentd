@@ -11,7 +11,9 @@ interface PendingMessageQueueProps {
 }
 
 export function PendingMessageQueue({ inputRef }: PendingMessageQueueProps) {
-  const messages = useTeamStore((s) => s._pendingMessages)
+  const allMessages = useTeamStore((s) => s._pendingMessages)
+  const sessionId = useTeamStore((s) => s.sessionId)
+  const messages = allMessages.filter((msg) => (msg.sessionId ?? null) === sessionId)
   const removePendingMessage = useTeamStore((s) => s.removePendingMessage)
   const [expanded, setExpanded] = useState(false)
 
