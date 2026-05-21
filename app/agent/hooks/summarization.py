@@ -44,6 +44,7 @@ from opentelemetry.trace import SpanKind, StatusCode
 
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase
+from app.agent.providers.model_metadata import get_model_limits
 from app.agent.schemas.chat import (
     AssistantMessage,
     HumanMessage,
@@ -76,6 +77,8 @@ if TYPE_CHECKING:
 #   benefit from a single authoritative "state of the world" record over
 #   partially-summarised history.
 DEFAULT_PROMPT_TOKEN_THRESHOLD = 100000
+MAX_PROMPT_TOKEN_THRESHOLD = 150000
+PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO = 0.75
 DEFAULT_KEEP_LAST_ASSISTANTS = 3
 CODING_KEEP_LAST_ASSISTANTS = 0
 DEFAULT_MAX_TOKEN_LENGTH = 30000
@@ -233,10 +236,22 @@ def _collect_preserved_ids(messages: list) -> set[int]:
     return preserved
 
 
+def prompt_token_threshold_for_model(model_id: str | None) -> int:
+    """Return summarisation threshold: min(150k, 75% model context)."""
+    context_length = get_model_limits(model_id).context_length
+    if context_length is None:
+        return DEFAULT_PROMPT_TOKEN_THRESHOLD
+    return min(
+        MAX_PROMPT_TOKEN_THRESHOLD,
+        int(context_length * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO),
+    )
+
+
 def build_summarization_hook(
     default_provider: LLMProviderBase,
     *,
     mode: str | None = None,
+    model_id: str | None = None,
 ) -> "SummarizationHook | None":
     """Return a configured SummarizationHook, or ``None`` if disabled.
 
@@ -259,7 +274,7 @@ def build_summarization_hook(
     return SummarizationHook(
         default_provider,
         summary_prompt=prompt_for_mode(mode),
-        prompt_token_threshold=DEFAULT_PROMPT_TOKEN_THRESHOLD,
+        prompt_token_threshold=prompt_token_threshold_for_model(model_id),
         keep_last_assistants=keep_last_for_mode(mode),
         max_token_length=DEFAULT_MAX_TOKEN_LENGTH,
     )

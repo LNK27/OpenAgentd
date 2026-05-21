@@ -821,6 +821,7 @@ class TeamMemberBase(abc.ABC):
             summ_hook = build_summarization_hook(
                 self.agent.llm_provider,
                 mode=self._team.mode,
+                model_id=self.agent.model_id,
             )
             if summ_hook:
                 # Flush memory before the summariser compresses the window —

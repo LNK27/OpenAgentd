@@ -53,9 +53,19 @@ Summarization has **no operator-facing configuration surface**. All tuning lives
 
 ### Module-level defaults (single source of truth)
 
+The trigger threshold is model-aware when `app/agent/providers/model_metadata.yaml` has a `limits.context_length` entry for the agent model:
+
+```text
+threshold = min(150000, 75% of model context length)
+```
+
+Unknown model context lengths fall back to `DEFAULT_PROMPT_TOKEN_THRESHOLD`.
+
 | Constant | Default | Meaning |
 |----------|---------|---------|
-| `DEFAULT_PROMPT_TOKEN_THRESHOLD` | `100000` | Trigger threshold for `state.usage.last_prompt_tokens`. Set to `0` to disable summarization entirely. |
+| `DEFAULT_PROMPT_TOKEN_THRESHOLD` | `100000` | Fallback trigger threshold for `state.usage.last_prompt_tokens` when model context is unknown. Set to `0` to disable summarization entirely. |
+| `MAX_PROMPT_TOKEN_THRESHOLD` | `150000` | Upper bound for model-aware summarization thresholds. |
+| `PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO` | `0.75` | Fraction of known model context used before applying the max cap. |
 | `DEFAULT_KEEP_LAST_ASSISTANTS` | `3` | Chat-mode keep window. |
 | `CODING_KEEP_LAST_ASSISTANTS` | `0` | Coding-mode keep window. |
 | `DEFAULT_MAX_TOKEN_LENGTH` | `10000` | Cap on the summariser LLM response length. `0` = unlimited. |
@@ -63,7 +73,7 @@ Summarization has **no operator-facing configuration surface**. All tuning lives
 
 ### Factory call
 
-`build_summarization_hook` has exactly two inputs: the agent's own LLM provider (used as the summariser too — no separate summariser model) and the session mode.
+`build_summarization_hook` takes the agent's own LLM provider (used as the summariser too — no separate summariser model), the session mode, and the agent `provider:model` ID used for model-aware threshold lookup.
 
 ```python
 from app.agent.hooks.summarization import build_summarization_hook
@@ -71,6 +81,7 @@ from app.agent.hooks.summarization import build_summarization_hook
 hook = build_summarization_hook(
     default_provider=provider,
     mode=team.mode,             # "coding" → CODING_SUMMARY_PROMPT + keep=0; else CHAT_SUMMARY_PROMPT + keep=3
+    model_id=agent.model_id,    # e.g. "openai:gpt-5"; threshold = min(150k, 75% context)
 )
 if hook:
     hooks.append(hook)
