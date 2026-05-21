@@ -27,7 +27,7 @@ from app.agent.schemas.chat import AssistantMessage, ChatCompletionChunk, ChatMe
 
 
 class UnconfiguredProviderError(ValueError):
-    """Raised when an agent tries to call an LLM but has no provider set.
+    """Raised when an agent tries to call an LLM but has no usable provider.
 
     Subclass of ``ValueError`` for backwards compatibility — older
     callers that catch ``ValueError`` from :func:`build_provider` keep
@@ -35,12 +35,17 @@ class UnconfiguredProviderError(ValueError):
     "user hasn't picked a provider yet" from "user typed garbage".
     """
 
-    def __init__(self, agent_name: str | None = None) -> None:
+    def __init__(
+        self, agent_name: str | None = None, message: str | None = None
+    ) -> None:
         self.agent_name = agent_name
         super().__init__(
-            f"Agent '{agent_name or '?'}' has no model configured. "
-            f"Open Settings → Providers in the UI to add a provider, "
-            f"or run `openagentd init` in a terminal."
+            message
+            or (
+                f"Agent '{agent_name or '?'}' has no model configured. "
+                f"Open Settings → Providers in the UI to add a provider, "
+                f"or run `openagentd init` in a terminal."
+            )
         )
 
 

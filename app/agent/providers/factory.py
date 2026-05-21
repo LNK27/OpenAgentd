@@ -251,7 +251,9 @@ def build_provider(
                         credentials=ProviderCredentialStore(name),
                     )
                 )
-            raise ValueError(
-                f"Unsupported provider '{name}'. "
-                f"Supported providers: {', '.join(SUPPORTED_PROVIDERS)}"
+            raise UnconfiguredProviderError(
+                message=(
+                    f"Unsupported provider '{name}'. "
+                    f"Supported providers: {', '.join(SUPPORTED_PROVIDERS)}"
+                )
             )
