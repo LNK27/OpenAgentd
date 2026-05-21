@@ -26,7 +26,6 @@ from app.agent.providers.bedrock import BedrockProvider
 from app.agent.providers.codex import CodexProvider
 from app.agent.providers.copilot import CopilotProvider
 from app.agent.providers.deepseek import DeepSeekProvider
-from app.agent.providers.geminicli import GeminiCLIProvider
 from app.agent.providers.googlegenai import GoogleGenAIProvider
 from app.agent.providers.ollama import OllamaProvider
 from app.agent.providers.openai import OpenAIProvider
@@ -42,7 +41,6 @@ SUPPORTED_PROVIDERS: tuple[str, ...] = (
     "codex",
     "copilot",
     "deepseek",
-    "geminicli",
     "googlegenai",
     "nvidia",
     "ollama",
@@ -181,9 +179,6 @@ def build_provider(
                 model=model,
                 model_kwargs=kwargs,
             )
-        case "geminicli":
-            # geminicli reads OAuth files itself — no API key.
-            return GeminiCLIProvider(model=model, model_kwargs=kwargs)
         case "vertexai":
             return VertexAIProvider(
                 api_key=require_api_key(

@@ -860,6 +860,9 @@ fn main() {
         // is staged.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .manage(state)
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
@@ -902,6 +905,9 @@ fn main() {
                         let _ = window.hide();
                     }
                 }
+            }
+            RunEvent::Reopen { has_visible_windows: _, .. } => {
+                show_main_window(app);
             }
             RunEvent::ExitRequested { .. } => {
                 let state: tauri::State<'_, AppState> = app.state();

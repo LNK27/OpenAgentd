@@ -19,7 +19,10 @@ from pydantic import ValidationError
 from app.agent.loader import AgentConfig
 from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.catalog import ProviderEntry, all_providers
-from app.agent.providers.model_discovery import discover_provider_models
+from app.agent.providers.model_discovery import (
+    discover_provider_models,
+    filter_agent_model_ids,
+)
 from app.agent.tools.builtin.skill import discover_skills
 from app.api.schemas.agents import (
     AgentDeleteResponse,
@@ -250,7 +253,7 @@ async def get_registry() -> RegistryResponse:
         fallback = entry.get("fallback_models", [])
         if not fallback or not _provider_is_configured(entry):
             continue
-        for model in fallback:
+        for model in filter_agent_model_ids(list(fallback)):
             _append(entry["id"], model)
 
     for provider, model in await _discover_configured_registry_models():
@@ -312,7 +315,7 @@ async def _discover_configured_registry_models() -> list[tuple[str, str]]:
             logger.info("registry_model_discovery_failed error={}", result)
             continue
         provider_id, model_ids = result
-        out.extend((provider_id, model) for model in model_ids)
+        out.extend((provider_id, model) for model in filter_agent_model_ids(model_ids))
     return out
 
 

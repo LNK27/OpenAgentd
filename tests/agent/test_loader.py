@@ -769,18 +769,13 @@ def test_make_default_provider_factory_googlegenai_model(monkeypatch):
         assert MockG.call_args.kwargs.get("model") == "gemini-3.1-flash"
 
 
-def test_make_default_provider_factory_geminicli_model():
-    from unittest.mock import MagicMock, patch
+def test_make_default_provider_factory_geminicli_removed():
+    from unittest.mock import patch
     from app.agent.providers.factory import build_provider
 
-    mock_provider = MagicMock()
-    with patch(
-        "app.agent.providers.factory.GeminiCLIProvider",
-        return_value=mock_provider,
-    ) as MockG:
-        build_provider("geminicli:gemini-2.0-flash")
-        MockG.assert_called_once()
-        assert MockG.call_args.kwargs.get("model") == "gemini-2.0-flash"
+    with patch("app.core.config.settings"):
+        with pytest.raises(ValueError, match="Unsupported provider 'geminicli'"):
+            build_provider("geminicli:gemini-2.0-flash")
 
 
 def test_make_default_provider_factory_openai_model(monkeypatch):

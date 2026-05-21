@@ -103,7 +103,7 @@ function UserBubble({ content, timestamp, attachments, onRevert }: { content: st
            </div>
          )}
 
-          <div className="relative overflow-hidden rounded-lg rounded-br-sm border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm">
+          <div className="relative overflow-hidden rounded-sm border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm">
            {/* Expand / collapse button — top-right inside bubble (compact) */}
            {needsCollapse && (
              <button

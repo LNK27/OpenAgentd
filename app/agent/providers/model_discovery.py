@@ -11,6 +11,25 @@ from app.core.config import settings
 
 TIMEOUT_S = 3.0
 
+_NON_AGENT_MODEL_MARKERS = (
+    "embedding",
+    "embed",
+    "rerank",
+    "moderation",
+    "whisper",
+    "tts",
+    "dall-e",
+    "davinci",
+    "gpt-audio",
+    "gpt-image",
+    "imagen",
+    "image",
+    "lyria",
+    "nano-banana",
+    "sora",
+    "veo",
+)
+
 
 def _secret_value(value: object) -> str:
     if value is None:
@@ -35,6 +54,16 @@ def _resolve(overrides: Mapping[str, str] | None, name: str, default: str = "") 
         return env_val
     setting_val = _secret_value(getattr(settings, name, None))
     return setting_val or default
+
+
+def is_agent_model_id(model_id: str) -> bool:
+    """Return True for model IDs that are plausible text-chat agent models."""
+    lowered = model_id.lower()
+    return not any(marker in lowered for marker in _NON_AGENT_MODEL_MARKERS)
+
+
+def filter_agent_model_ids(model_ids: list[str]) -> list[str]:
+    return [model_id for model_id in model_ids if is_agent_model_id(model_id)]
 
 
 async def _openai_compatible_models(
@@ -78,9 +107,7 @@ async def _google_genai_models(overrides: Mapping[str, str] | None) -> list[str]
             continue
         name = item.get("name")
         methods = item.get("supportedGenerationMethods", [])
-        if isinstance(name, str) and (
-            "generateContent" in methods or "predictLongRunning" in methods
-        ):
+        if isinstance(name, str) and "generateContent" in methods:
             models.append(name.removeprefix("models/"))
     return sorted(models)
 
@@ -180,43 +207,43 @@ async def discover_provider_models(
     try:
         match provider_id:
             case "openai":
-                return await _openai_compatible_models(
+                models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url="https://api.openai.com/v1",
                     api_key=_resolve(overrides, "OPENAI_API_KEY"),
                 )
             case "openrouter":
-                return await _openai_compatible_models(
+                models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url="https://openrouter.ai/api/v1",
                     api_key=_resolve(overrides, "OPENROUTER_API_KEY"),
                 )
             case "nvidia":
-                return await _openai_compatible_models(
+                models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url="https://integrate.api.nvidia.com/v1",
                     api_key=_resolve(overrides, "NVIDIA_API_KEY"),
                 )
             case "zai":
-                return await _openai_compatible_models(
+                models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url="https://api.z.ai/api/paas/v4",
                     api_key=_resolve(overrides, "ZAI_API_KEY"),
                 )
             case "xai":
-                return await _openai_compatible_models(
+                models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url="https://api.x.ai/v1",
                     api_key=_resolve(overrides, "XAI_API_KEY"),
                 )
             case "deepseek":
-                return await _openai_compatible_models(
+                models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url="https://api.deepseek.com/v1",
                     api_key=_resolve(overrides, "DEEPSEEK_API_KEY"),
                 )
             case "router9":
-                return await _openai_compatible_models(
+                models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url=_resolve(
                         overrides, "ROUTER9_BASE_URL", settings.ROUTER9_BASE_URL
@@ -224,7 +251,7 @@ async def discover_provider_models(
                     api_key=_resolve(overrides, "ROUTER9_API_KEY"),
                 )
             case "cliproxy":
-                return await _openai_compatible_models(
+                models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url=_resolve(
                         overrides, "CLIPROXY_BASE_URL", settings.CLIPROXY_BASE_URL
@@ -232,7 +259,7 @@ async def discover_provider_models(
                     api_key=_resolve(overrides, "CLIPROXY_API_KEY"),
                 )
             case "ollama":
-                return await _openai_compatible_models(
+                models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url=_resolve(
                         overrides, "OLLAMA_BASE_URL", settings.OLLAMA_BASE_URL
@@ -240,13 +267,13 @@ async def discover_provider_models(
                     api_key=_resolve(overrides, "OLLAMA_API_KEY") or "ollama",
                 )
             case "googlegenai":
-                return await _google_genai_models(overrides)
+                models = await _google_genai_models(overrides)
             case "copilot":
-                return await _copilot_models()
+                models = await _copilot_models()
             case "codex":
-                return await _codex_models()
+                models = await _codex_models()
             case "bedrock":
-                return await _bedrock_models()
+                models = await _bedrock_models()
             case _:
                 from app.agent.providers.plugin_registry import (
                     ProviderCredentialStore,
@@ -257,9 +284,12 @@ async def discover_provider_models(
                 if plugin is not None:
                     store = ProviderCredentialStore(provider_id, dict(overrides or {}))
                     if plugin.discover_models is not None:
-                        return await plugin.discover_models(store)
-                    return list(plugin.fallback_models)
-                return []
+                        models = await plugin.discover_models(store)
+                    else:
+                        models = list(plugin.fallback_models)
+                else:
+                    models = []
+        return filter_agent_model_ids(models)
     except Exception as exc:
         logger.info(
             "provider_models_unavailable provider={} error={}", provider_id, exc

@@ -305,6 +305,7 @@ async def list_providers() -> ProvidersListBody:
     isn't running.
     """
     from app.agent.providers.catalog import all_providers
+    from app.agent.providers.model_discovery import filter_agent_model_ids
 
     entries = all_providers()
     reachability = await asyncio.gather(
@@ -323,7 +324,9 @@ async def list_providers() -> ProvidersListBody:
                 credentials=list(entry.get("credentials", [])),
                 env_var=entry.get("env_var", ""),
                 env_vars=list(entry.get("env_vars", [])),
-                fallback_models=list(entry.get("fallback_models", [])),
+                fallback_models=filter_agent_model_ids(
+                    list(entry.get("fallback_models", []))
+                ),
                 oauth_command=entry.get("oauth_command", ""),
                 docs_url=entry.get("docs_url", ""),
                 is_configured=is_configured,
@@ -364,7 +367,10 @@ async def list_provider_models(
     the curated ``fallback_models`` set in the catalog.
     """
     from app.agent.providers.catalog import find
-    from app.agent.providers.model_discovery import discover_provider_models
+    from app.agent.providers.model_discovery import (
+        discover_provider_models,
+        filter_agent_model_ids,
+    )
 
     entry = find(provider_id)
     if entry is None:
@@ -373,7 +379,9 @@ async def list_provider_models(
     overrides = _provider_saved_overrides(entry) | _build_overrides(
         entry, body.api_key, body.extra
     )
-    discovered = await discover_provider_models(entry, overrides=overrides)
+    discovered = filter_agent_model_ids(
+        await discover_provider_models(entry, overrides=overrides)
+    )
     if discovered:
         return ProviderModelsResponse(
             provider=provider_id,
@@ -382,7 +390,7 @@ async def list_provider_models(
         )
     return ProviderModelsResponse(
         provider=provider_id,
-        models=list(entry.get("fallback_models", [])),
+        models=filter_agent_model_ids(list(entry.get("fallback_models", []))),
         source="fallback",
     )
 
