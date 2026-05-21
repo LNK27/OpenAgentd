@@ -349,9 +349,14 @@ class AgentTeam:
             logger.info("team_turn_done session_id={}", session_id)
 
     async def _activate_queued_user_messages(self, session_id: str) -> bool:
+        try:
+            session_uuid = UUID(session_id)
+        except ValueError:
+            return False
+
         db_factory = resolve_db_factory(self.lead.db_factory)
         async with db_factory() as db:
-            queued = await pop_queued_user_messages(db, UUID(session_id))
+            queued = await pop_queued_user_messages(db, session_uuid)
             if not queued:
                 await db.commit()
                 return False
