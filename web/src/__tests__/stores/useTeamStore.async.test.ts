@@ -625,7 +625,36 @@ describe("sendMessage: queue behaviour", () => {
 
     const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks
     expect(blocks.map((block) => block.content)).toEqual(["first queued", "second queued"])
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
+    expect(useTeamStore.getState().agentStreams.lead.status).toBe("working")
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
+  })
+
+  it("keeps the frontend streaming when a queued turn starts after undo reset state", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: false,
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-1", sessionId: "session-a", content: "queued after undo" },
+      ],
+      error: "Cannot undo while agents are working — /stop first",
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead", message_ids: ["pm-1"] })
+    useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "continued" })
+
+    const state = useTeamStore.getState()
+    expect(state.isTeamWorking).toBe(true)
+    expect(state.error).toBeNull()
+    expect(state.agentStreams.lead.status).toBe("working")
+    expect(state.agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
+      "queued after undo",
+      "continued",
+    ])
   })
 
   it("keeps queued messages for a different active session", () => {

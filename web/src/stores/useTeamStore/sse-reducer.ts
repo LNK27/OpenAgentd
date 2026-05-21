@@ -245,6 +245,10 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           ensureAgent(draft, agent)
           if (agent !== draft.leadName || !draft.sessionId) return
+          draft.isTeamWorking = true
+          draft.isContinuing = false
+          draft.error = null
+          draft.agentStreams[agent].status = 'working'
           const queued = draft._pendingMessages.filter((msg) => {
             if (msg.sessionId !== draft.sessionId) return false
             return messageIds === null || messageIds.has(msg.id)
