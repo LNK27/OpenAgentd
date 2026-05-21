@@ -25,7 +25,6 @@ Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are
 | Prefix | Auth | Notes |
 |--------|------|-------|
 | `googlegenai` | `GOOGLE_API_KEY` | Google Gemini Developer API. |
-| `geminicli` | OAuth files (read by the provider — no env var) | Uses local Gemini CLI credentials. |
 | `vertexai` | `VERTEXAI_API_KEY` *or* ADC + `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` | Vertex AI (express or normal mode). |
 | `zai` | `ZAI_API_KEY` | ZAI / GLM. |
 | `openai` | `OPENAI_API_KEY` | Chat Completions by default; `thinking_level` auto-routes to the Responses API. |
@@ -73,10 +72,6 @@ There are no per-model overrides and no name-substring heuristics. Edge cases (e
 ### `googlegenai` / `vertexai`
 
 Standard Gemini APIs. `_sanitize_schema()` strips JSON-Schema fields Gemini doesn't accept (`discriminator`, `const`, `exclusiveMinimum`, `additionalProperties`). New unsupported fields can be added to `_UNSUPPORTED_SCHEMA_KEYS` in `googlegenai.py` — see [`troubleshooting.md`](../troubleshooting.md).
-
-### `geminicli`
-
-Uses the local Gemini CLI OAuth credentials directly — no env var. Run `gemini` once to authenticate, then point an agent at `model: geminicli:gemini-3-flash-preview`.
 
 ### `openai`
 

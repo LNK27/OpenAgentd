@@ -97,14 +97,6 @@
 "vertexai:gemini-2.5-pro":
   input: { vision: true }
 
-# ── Gemini CLI ──────────────────────────────────────────────────────────────
-"geminicli:gemini-3.1-pro-preview":
-  input: { vision: true }
-"geminicli:gemini-3-flash-preview":
-  input: { vision: true }
-"geminicli:gemini-3.1-flash-lite-preview":
-  input: { vision: true }
-
 # ── GitHub Copilot ──────────────────────────────────────────────────────────
 "copilot:gpt-5.4":
   input: { vision: true }
