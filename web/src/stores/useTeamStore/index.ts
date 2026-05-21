@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import { postTeamChat, postTeamCommand, teamStream, teamStatus, teamHistory } from '@/api/client'
+import { cancelQueuedTeamMessage, postTeamChat, postTeamCommand, teamStream, teamStatus, teamHistory } from '@/api/client'
 import { parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
@@ -26,6 +26,16 @@ function messagesBeforeTime(messages: MessageResponse[], boundaryTime: number | 
 
 function messagesBeforeRevert(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): MessageResponse[] {
   return messagesBeforeTime(session.messages, revertBoundaryTime(session))
+}
+
+function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[]) {
+  return messages
+    .filter((msg) => msg.role === 'user' && msg.extra?.queue_status === 'queued')
+    .map((msg) => ({
+      id: msg.id,
+      sessionId,
+      content: msg.content ?? '',
+    }))
 }
 
 export type {
@@ -150,17 +160,38 @@ export const useTeamStore = create<TeamStore>()(
       const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
       if (leadWorking) {
-        set((draft) => {
-          draft._pendingMessages.push({
-            id: `pm-${Date.now()}`,
-            sessionId: get().sessionId,
-            content,
-            files,
-            mode: options?.mode,
-            workspace: options?.workspace,
+        if (files && files.length > 0) {
+          set((draft) => {
+            draft.error = 'Wait for the current response to finish before sending attachments.'
           })
-          draft.error = null
-        })
+          return
+        }
+        try {
+          const result = await postTeamChat(
+            content,
+            get().sessionId,
+            false,
+            files,
+            options?.mode ?? 'normal',
+            options?.workspace ?? null,
+          )
+          if (result.status === 'queued' && !result.message_id) {
+            throw new Error('Backend did not return a queued message id')
+          }
+          set((draft) => {
+            draft.sessionId = result.session_id
+            draft._pendingMessages.push({
+              id: result.message_id ?? '',
+              sessionId: result.session_id,
+              content,
+            })
+            draft.error = null
+          })
+        } catch (err) {
+          set((draft) => {
+            draft.error = err instanceof Error ? err.message : 'Failed to queue message'
+          })
+        }
         return
       }
 
@@ -285,6 +316,7 @@ export const useTeamStore = create<TeamStore>()(
           Object.values(draft.agentStreams).forEach((stream) => {
             applyRevertBoundary(stream, boundaryTime, {
               includeCurrent: true,
+              boundaryId: response.message?.id ?? null,
               boundaryContent: response.message?.content ?? null,
             })
           })
@@ -375,9 +407,17 @@ export const useTeamStore = create<TeamStore>()(
     },
 
     removePendingMessage: (id: string) => {
+      const pending = get()._pendingMessages.find((m) => m.id === id)
       set((draft) => {
         draft._pendingMessages = draft._pendingMessages.filter((m) => m.id !== id)
       })
+      if (pending?.sessionId) {
+        void cancelQueuedTeamMessage(pending.sessionId, id).catch((err) => {
+          set((draft) => {
+            draft.error = err instanceof Error ? err.message : 'Failed to cancel queued message'
+          })
+        })
+      }
     },
 
     stopTeam: async () => {
@@ -522,6 +562,13 @@ export const useTeamStore = create<TeamStore>()(
             leadStream.usage = leadUsage
             leadStream._completionBase = leadUsage.completionTokens
           }
+
+          const queued = queuedMessagesFromHistory(sessionId, history.lead.messages)
+          const queuedIds = new Set(queued.map((msg) => msg.id))
+          draft._pendingMessages = [
+            ...draft._pendingMessages.filter((msg) => msg.sessionId !== sessionId || queuedIds.has(msg.id)),
+            ...queued.filter((msg) => !draft._pendingMessages.some((existing) => existing.id === msg.id)),
+          ]
 
           history.members.forEach((member) => {
             const existingStatus = draft.agentStreams[member.name]?.status

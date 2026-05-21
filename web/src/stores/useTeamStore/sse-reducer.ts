@@ -249,6 +249,21 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             draft.agentStreams[agent]._completionEstimated = 0
             draft.isTeamWorking = true
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
+            if (agent === draft.leadName && draft.sessionId) {
+              const queued = draft._pendingMessages.filter((msg) => msg.sessionId === draft.sessionId)
+              if (queued.length > 0) {
+                draft.agentStreams[agent].currentBlocks.push(
+                  ...queued.map((msg) => ({
+                    id: msg.id,
+                    type: 'user' as const,
+                    content: msg.content,
+                    timestamp: new Date(),
+                  })),
+                )
+                const queuedIds = new Set(queued.map((msg) => msg.id))
+                draft._pendingMessages = draft._pendingMessages.filter((msg) => !queuedIds.has(msg.id))
+              }
+            }
           } else if (status === 'idle') {
             draft.agentStreams[agent].status = 'idle'
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
@@ -291,17 +306,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             }
           })
         })
-        const pending = get()._pendingMessages
-        const sessionId = get().sessionId
-        const nextIndex = pending.findIndex((msg) => (msg.sessionId ?? null) === sessionId)
-        if (nextIndex >= 0) {
-          const next = pending[nextIndex]
-          set((draft) => { draft._pendingMessages.splice(nextIndex, 1) })
-          void get().sendMessage(next.content, next.files, {
-            mode: next.mode,
-            workspace: next.workspace,
-          })
-        }
         break
       }
 

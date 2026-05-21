@@ -71,6 +71,35 @@ class TestInitTurn:
         # Me should not raise
         await store.init_turn("sid-1")
 
+    @pytest.mark.asyncio
+    async def test_init_turn_can_keep_old_subscribers(self):
+        await store.init_turn("sid-1")
+        q: asyncio.Queue = asyncio.Queue()
+        _turns["sid-1"].subscribers.append(q)
+
+        await store.init_turn("sid-1", keep_subscribers=True)
+
+        assert q.empty()
+        assert _turns["sid-1"].subscribers == [q]
+
+    @pytest.mark.asyncio
+    async def test_kept_subscribers_receive_next_turn_events(self):
+        await store.init_turn("sid-1")
+        q: asyncio.Queue = asyncio.Queue()
+        _turns["sid-1"].subscribers.append(q)
+        await store.init_turn("sid-1", keep_subscribers=True)
+
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "agent_status",
+                {"type": "agent_status", "agent": "lead", "status": "working"},
+            ),
+        )
+
+        item = q.get_nowait()
+        assert item["event"] == "agent_status"
+
 
 # ---------------------------------------------------------------------------
 # push_event

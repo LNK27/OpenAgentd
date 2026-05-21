@@ -171,6 +171,30 @@ class TestTeamChatRoute:
         test_team.handle_user_message.assert_awaited_once()
         assert test_team.handle_user_message.call_args.kwargs["content"] == "Hello team"
 
+    def test_team_chat_activates_queue_if_lead_goes_idle_after_save(
+        self, app_with_team, test_team
+    ):
+        session_id = str(uuid.uuid7())
+        test_team.lead.state = "working"
+        test_team._activate_queued_user_messages = AsyncMock(return_value=True)
+
+        async def save_queue(_db, _session_id, _message):
+            test_team.lead.state = "idle"
+            queued = AsyncMock()
+            queued.id = uuid.uuid7()
+            return queued
+
+        client = TestClient(app_with_team)
+        with patch("app.api.routes.team.chat.save_queued_user_message", save_queue):
+            response = client.post(
+                "/api/team/chat",
+                data={"message": "queued", "session_id": session_id},
+            )
+
+        assert response.status_code == 202
+        assert response.json()["status"] == "queued"
+        test_team._activate_queued_user_messages.assert_awaited_once_with(session_id)
+
     def test_team_chat_message_validation_empty_raises(self, app_with_team):
         client = TestClient(app_with_team)
         response = client.post("/api/team/chat", data={"message": ""})

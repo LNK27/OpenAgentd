@@ -154,8 +154,7 @@ describe('FloatingInputBar', () => {
     expect(screen.getByRole('button', { name: 'Stop generation' })).toBeTruthy()
   })
 
-  it('shows queued message details above the queue banner only after expanding', async () => {
-    const user = userEvent.setup()
+  it('does not render queued messages inside the floating composer', () => {
     useTeamStore.setState({
       sessionId: 'session-a',
       _pendingMessages: [
@@ -166,17 +165,8 @@ describe('FloatingInputBar', () => {
 
     render(<Harness />)
 
-    const banner = screen.getByRole('button', { name: /2 messages awaiting/i })
-    expect(banner).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /2 messages awaiting/i })).toBeNull()
     expect(screen.queryByText('first queued message')).toBeNull()
-
-    await user.click(banner)
-
-    const firstMessage = screen.getByText('first queued message')
-    expect(firstMessage).toBeTruthy()
-    expect(
-      firstMessage.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
   })
 
   it('expands and focuses the textarea through its imperative focus handle', async () => {

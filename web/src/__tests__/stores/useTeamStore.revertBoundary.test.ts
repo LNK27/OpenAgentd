@@ -291,6 +291,27 @@ describe("applyRevertBoundary", () => {
     expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["u2", "tool"])
     expect(s.revertedMessages).toEqual([{ role: "user", content: "second" }])
   })
+
+  it("prefers the backend boundary id for in-flight queued messages with client timestamps", () => {
+    const s = makeStream({
+      blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+      currentBlocks: [
+        block("q1", "user", "queued one", "2024-01-01T00:00:10Z"),
+        block("q2", "user", "queued two", "2024-01-01T00:00:10Z"),
+        block("partial", "text", "partial answer", "2024-01-01T00:00:10Z"),
+      ],
+    })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime(), {
+      includeCurrent: true,
+      boundaryId: "q2",
+      boundaryContent: "queued two",
+    })
+
+    expect(s.blocks.map((b) => b.id)).toEqual(["u1", "q1"])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["q2", "partial"])
+    expect(s.revertedMessages).toEqual([{ role: "user", content: "queued two" }])
+  })
 })
 
 describe("undoTeam — local boundary application", () => {

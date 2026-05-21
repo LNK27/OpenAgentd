@@ -82,6 +82,17 @@ class _TurnState:
         self.subscribers: list[asyncio.Queue] = []
         self._cleanup_handle: asyncio.TimerHandle | None = None
 
+    def reset_for_next_turn(self) -> None:
+        self.is_streaming = True
+        self.content = {}
+        self.thinking = {}
+        self.tool_calls = []
+        self.agent_statuses = {}
+        self.summarization = {}
+        self.usage = None
+        self.error = None
+        self.agent_not_configured = None
+
 
 # Me store all active turns here
 _turns: dict[str, _TurnState] = {}
@@ -103,13 +114,17 @@ def _schedule_cleanup(session_id: str, state: _TurnState) -> None:
 # ── Write side ────────────────────────────────────────────────────────────────
 
 
-async def init_turn(session_id: str) -> None:
+async def init_turn(session_id: str, *, keep_subscribers: bool = False) -> None:
     """Initialise a fresh state blob for a new turn."""
     try:
         # Me cancel old cleanup if session reused
         old = _turns.get(session_id)
         if old is not None:
             _cancel_cleanup(old)
+            if keep_subscribers:
+                old.reset_for_next_turn()
+                _schedule_cleanup(session_id, old)
+                return
             # Me drain old subscribers so they unblock
             for q in old.subscribers:
                 try:

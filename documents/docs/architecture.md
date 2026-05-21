@@ -125,7 +125,7 @@ The state blob holds **only unpersisted live content**. After `checkpointer.sync
 
 ### Turn Lifecycle
 
-1. **`init_turn(session_id)`** — called synchronously in POST handler before spawning the background task. Creates `_TurnState`, sets `is_streaming=True`. Eliminates producer/consumer race condition.
+1. **`init_turn(session_id)`** — called synchronously in POST handler before spawning the background task. Creates `_TurnState`, sets `is_streaming=True`. Queued follow-up turns may call `init_turn(..., keep_subscribers=True)` to reset replay state without disconnecting the current SSE subscriber.
 2. **`push_event(session_id, envelope: StreamEnvelope)`** — called for every SSE event. The envelope is a typed Pydantic wrapper `{event: str, data: dict}` (see `app/services/stream_envelope.py`). Updates state blob and fans out `envelope.to_wire()` to all subscriber queues.
 3. **`attach(session_id)`** — called by `GET /api/team/{session_id}/stream`. Subscribe-before-read two-phase protocol:
    - If `is_streaming=False` → return immediately (DB is authoritative).

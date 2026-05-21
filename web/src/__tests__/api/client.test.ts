@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { postTeamChat } from '@/api/client'
+import { cancelQueuedTeamMessage, postTeamChat } from '@/api/client'
 
 const originalFetch = globalThis.fetch
 
@@ -35,5 +35,20 @@ describe('postTeamChat', () => {
     const form = body as FormData
     expect(form.get('mode')).toBe('coding')
     expect(form.get('workspace')).toBe('/repo/app')
+  })
+
+  it('deletes queued messages by session and message id', async () => {
+    let url: string | URL | Request | undefined
+    let method: string | undefined
+    globalThis.fetch = mock((input, init) => {
+      url = input as string | URL | Request
+      method = (init as RequestInit | undefined)?.method
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }) as typeof fetch
+
+    await cancelQueuedTeamMessage('sid', 'mid')
+
+    expect(String(url)).toBe('/api/team/sessions/sid/queued-messages/mid')
+    expect(method).toBe('DELETE')
   })
 })

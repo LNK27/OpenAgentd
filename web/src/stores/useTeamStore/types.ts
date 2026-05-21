@@ -4,9 +4,6 @@ export interface PendingMessage {
   id: string
   sessionId?: string | null
   content: string
-  files?: File[]
-  mode?: string
-  workspace?: string | null
 }
 
 export type CacheInvalidation =

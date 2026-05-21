@@ -26,6 +26,7 @@ import { mock, describe, it, expect, beforeEach, spyOn } from "bun:test"
 const mockPostTeamChat = mock(() =>
   Promise.resolve({ status: "ok", session_id: "team-sid" })
 ) as any
+const mockCancelQueuedTeamMessage = mock(() => Promise.resolve()) as any
 const mockPostTeamCommand = mock(() =>
   Promise.resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
 ) as any
@@ -60,6 +61,7 @@ const mockTeamHistory = mock(() =>
 /* eslint-disable @typescript-eslint/no-explicit-any */
 (mock as any).module("@/api/client", () => ({
   postTeamChat: mockPostTeamChat,
+  cancelQueuedTeamMessage: mockCancelQueuedTeamMessage,
   postTeamCommand: mockPostTeamCommand,
   teamStream: mockTeamStream,
   teamStatus: mockTeamStatus,
@@ -145,6 +147,7 @@ function makeMessageResponse(overrides: object = {}) {
 beforeEach(() => {
   useTeamStore.setState(INITIAL_STATE)
   mockPostTeamChat.mockReset()
+  mockCancelQueuedTeamMessage.mockReset()
   mockPostTeamCommand.mockReset()
   mockTeamStream.mockReset()
   mockTeamStatus.mockReset()
@@ -154,6 +157,7 @@ beforeEach(() => {
   mockPostTeamChat.mockImplementation(() =>
     Promise.resolve({ status: "ok", session_id: "team-sid" })
   )
+  mockCancelQueuedTeamMessage.mockImplementation(() => Promise.resolve())
   mockPostTeamCommand.mockImplementation(() =>
     Promise.resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
   )
@@ -502,20 +506,56 @@ describe("sendMessage with files", () => {
 // ── sendMessage: queue behaviour (lead-working guard) ────────────────────────
 
 describe("sendMessage: queue behaviour", () => {
-  it("queues message without calling API when lead is working", async () => {
+  it("persists queued messages through the backend when lead is working", async () => {
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "session-a", message_id: "pm-a" }),
+    )
     useTeamStore.setState({
       sessionId: "session-a",
       leadName: "lead",
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
     await useTeamStore.getState().sendMessage("queued message", undefined, { mode: "coding", workspace: "/repo/a" })
-    expect(mockPostTeamChat).not.toHaveBeenCalled()
+    expect(mockPostTeamChat).toHaveBeenCalledTimes(1)
+    expect(mockPostTeamChat.mock.calls[0][0]).toBe("queued message")
+    expect(mockPostTeamChat.mock.calls[0][1]).toBe("session-a")
+    expect(mockPostTeamChat.mock.calls[0][4]).toBe("coding")
+    expect(mockPostTeamChat.mock.calls[0][5]).toBe("/repo/a")
     const pending = useTeamStore.getState()._pendingMessages
     expect(pending).toHaveLength(1)
     expect(pending[0].sessionId).toBe("session-a")
     expect(pending[0].content).toBe("queued message")
-    expect(pending[0].mode).toBe("coding")
-    expect(pending[0].workspace).toBe("/repo/a")
+  })
+
+  it("does not queue attachments while lead is working", async () => {
+    const file = new File(["data"], "doc.txt", { type: "text/plain" })
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+
+    await useTeamStore.getState().sendMessage("queued with file", [file])
+
+    expect(mockPostTeamChat).not.toHaveBeenCalled()
+    expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
+    expect(useTeamStore.getState().error).toBe("Wait for the current response to finish before sending attachments.")
+  })
+
+  it("treats a queued response without message_id as an error", async () => {
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "session-a" }),
+    )
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+
+    await useTeamStore.getState().sendMessage("queued")
+
+    expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
+    expect(useTeamStore.getState().error).toBe("Backend did not return a queued message id")
   })
 
   it("does NOT queue when only members are working (lead is idle)", async () => {
@@ -555,33 +595,27 @@ describe("sendMessage: queue behaviour", () => {
     expect(pending[2].content).toBe("third")
   })
 
-  it("drains one queued message per 'done' event (no concatenation)", async () => {
+  it("moves queued messages into the lead stream when the backend starts the queued turn", () => {
     useTeamStore.setState({
       sessionId: "session-a",
       leadName: "lead",
       agentStreams: {
-        lead: makeStream({
-          status: "working" as const,
-          currentBlocks: [{ id: "b1", type: "text" as const, content: "response" }],
-        }),
+        lead: makeStream({ status: "idle" as const }),
       },
       _pendingMessages: [
-        { id: "pm-1", sessionId: "session-a", content: "first queued", mode: "coding", workspace: "/repo/a" },
-        { id: "pm-2", sessionId: "session-a", content: "second queued", mode: "coding", workspace: "/repo/a" },
+        { id: "pm-1", sessionId: "session-a", content: "first queued" },
+        { id: "pm-2", sessionId: "session-a", content: "second queued" },
       ],
     })
-    useTeamStore.getState()._handleSSEEvent("done", {})
-    await new Promise((r) => setTimeout(r, 0))
-    expect(mockPostTeamChat).toHaveBeenCalledTimes(1)
-    expect(mockPostTeamChat.mock.calls[0][0]).toBe("first queued")
-    expect(mockPostTeamChat.mock.calls[0][4]).toBe("coding")
-    expect(mockPostTeamChat.mock.calls[0][5]).toBe("/repo/a")
-    const remaining = useTeamStore.getState()._pendingMessages
-    expect(remaining).toHaveLength(1)
-    expect(remaining[0].content).toBe("second queued")
+
+    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "working" })
+
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    expect(blocks.map((block) => block.content)).toEqual(["first queued", "second queued"])
+    expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
   })
 
-  it("does not drain queued messages for a different active session", async () => {
+  it("keeps queued messages for a different active session", () => {
     useTeamStore.setState({
       sessionId: "session-b",
       leadName: "lead",
@@ -593,41 +627,53 @@ describe("sendMessage: queue behaviour", () => {
       ],
     })
 
-    useTeamStore.getState()._handleSSEEvent("done", {})
-    await new Promise((r) => setTimeout(r, 0))
+    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "working" })
 
-    expect(mockPostTeamChat).not.toHaveBeenCalled()
     expect(useTeamStore.getState()._pendingMessages).toEqual([
       { id: "pm-a", sessionId: "session-a", content: "belongs to A" },
     ])
   })
 
-  it("assigns queued messages from a new session to the returned session id", async () => {
-    let resolvePost: (value: { status: string; session_id: string }) => void = () => {}
-    mockPostTeamChat.mockImplementationOnce(() => new Promise((resolve) => {
-      resolvePost = resolve
-    }))
+  it("moves queued messages for active session and keeps other sessions queued", () => {
     useTeamStore.setState({
-      sessionId: null,
+      sessionId: "session-a",
       leadName: "lead",
-      agentStreams: { lead: makeStream() },
+      agentStreams: {
+        lead: makeStream({ status: "working" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-a1", sessionId: "session-a", content: "first A" },
+        { id: "pm-b1", sessionId: "session-b", content: "only B" },
+        { id: "pm-a2", sessionId: "session-a", content: "second A" },
+      ],
     })
 
-    const firstSend = useTeamStore.getState().sendMessage("start")
-    await Promise.resolve()
-    useTeamStore.setState((state) => {
-      state.agentStreams.lead.status = "working"
-    })
-    await useTeamStore.getState().sendMessage("queued before session id")
+    useTeamStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "working" })
 
     expect(useTeamStore.getState()._pendingMessages).toEqual([
-      { id: expect.any(String), sessionId: null, content: "queued before session id", files: undefined, mode: undefined, workspace: undefined },
+      { id: "pm-b1", sessionId: "session-b", content: "only B" },
     ])
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
+      "first A",
+      "second A",
+    ])
+  })
 
-    resolvePost({ status: "ok", session_id: "session-a" })
-    await firstSend
+  it("stores backend queued message ids returned while lead is working", async () => {
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "session-a", message_id: "message-a" }),
+    )
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
 
-    expect(useTeamStore.getState()._pendingMessages[0].sessionId).toBe("session-a")
+    await useTeamStore.getState().sendMessage("queued")
+
+    expect(useTeamStore.getState()._pendingMessages).toEqual([
+      { id: "message-a", sessionId: "session-a", content: "queued" },
+    ])
   })
 
   it("removePendingMessage removes message by id", () => {
@@ -1014,6 +1060,35 @@ describe("loadSession", () => {
     expect(leadBlocks).toHaveLength(1)
     expect(leadBlocks[0].type).toBe("user")
     expect(leadBlocks[0].content).toBe("user msg")
+  })
+
+  it("loads queued history messages into the pending queue without rendering them as history blocks", async () => {
+    mockTeamHistory.mockImplementationOnce(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [
+            makeMessageResponse({ id: "q1", role: "user", content: "queued", extra: { queue_status: "queued" } }),
+            makeMessageResponse({ id: "a1", role: "assistant", content: "response" }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState()._pendingMessages).toEqual([
+      { id: "q1", sessionId: "sess-1", content: "queued" },
+    ])
+    expect(useTeamStore.getState().agentStreams.lead.blocks.map((block) => block.content)).toEqual(["response"])
   })
 
   it("clears currentBlocks for lead after loading", async () => {

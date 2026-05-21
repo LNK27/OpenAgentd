@@ -52,6 +52,7 @@ from app.services.chat_service import (
     BoundaryShift,
     get_messages_for_llm,
     heal_orphaned_tool_calls,
+    pop_queued_user_messages,
     redo_session_messages,
     save_message,
     undo_session_messages,
@@ -334,6 +335,9 @@ class AgentTeam:
             self._has_active_turn = False  # reset for next turn
             session_id = self.lead.session_id
 
+            if await self._activate_queued_user_messages(session_id):
+                return
+
             try:
                 await stream_store.push_event(
                     session_id,
@@ -343,6 +347,36 @@ class AgentTeam:
             except Exception as exc:
                 logger.warning("team_emit_done_failed error={}", exc)
             logger.info("team_turn_done session_id={}", session_id)
+
+    async def _activate_queued_user_messages(self, session_id: str) -> bool:
+        db_factory = resolve_db_factory(self.lead.db_factory)
+        async with db_factory() as db:
+            queued = await pop_queued_user_messages(db, UUID(session_id))
+            if not queued:
+                await db.commit()
+                return False
+            await db.commit()
+
+        try:
+            await stream_store.init_turn(session_id, keep_subscribers=True)
+        except Exception as exc:
+            logger.warning("team_init_queued_turn_failed error={}", exc)
+            return False
+
+        self._has_active_turn = True
+        for row in queued:
+            msg = Message(
+                from_agent="user",
+                to_agent=self.lead.name,
+                content=f"[user]: {row.content or ''}",
+            )
+            await self.mailbox.send(to=self.lead.name, message=msg)
+        logger.info(
+            "team_queued_messages_activated session_id={} count={}",
+            session_id,
+            len(queued),
+        )
+        return True
 
     # ------------------------------------------------------------------
     # User message entry point
@@ -369,6 +403,7 @@ class AgentTeam:
         receive the SSE event stream.
         """
         # Update the lead's active session
+
         if mode is not None:
             self.mode = mode
         if workspace is not None:
@@ -423,15 +458,6 @@ class AgentTeam:
             db_factory = resolve_db_factory(self.lead.db_factory)
             lead_uuid = UUID(session_id)
             async with db_factory() as db:
-                # Build multimodal HumanMessage if attachments present
-                if attachment_metas:
-                    parts = build_parts_from_metas(content, attachment_metas)
-                    user_msg = HumanMessage(content=content, parts=parts)
-                    msg_extra: dict | None = {"attachments": attachment_metas}
-                else:
-                    user_msg = HumanMessage(content=content)
-                    msg_extra = None
-
                 # Heal any tool_calls left orphaned by a previous crash /
                 # restart *before* persisting the new user message so the
                 # next turn's LLM input is well-formed.  See
@@ -443,6 +469,14 @@ class AgentTeam:
                     lead_row.mode = self.mode
                     lead_row.workspace = self.workspace
                     db.add(lead_row)
+
+                if attachment_metas:
+                    parts = build_parts_from_metas(content, attachment_metas)
+                    user_msg = HumanMessage(content=content, parts=parts)
+                    msg_extra: dict | None = {"attachments": attachment_metas}
+                else:
+                    user_msg = HumanMessage(content=content)
+                    msg_extra = None
 
                 workspace_path = session_workspace_dir(str(lead_uuid), self.workspace)
                 snapshot_hash = await snapshot_service.track(

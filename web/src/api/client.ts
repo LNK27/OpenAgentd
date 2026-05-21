@@ -48,7 +48,7 @@ export async function postTeamChat(
   files?: File[],
   mode = 'normal',
   workspace?: string | null,
-): Promise<{ status: string; session_id: string }> {
+): Promise<{ status: string; session_id: string; message_id?: string }> {
   const formData = new FormData()
   if (message) {
     formData.append('message', message)
@@ -96,6 +96,17 @@ export async function postTeamCommand(
     throw new Error(body?.detail || `POST /team/commands failed: ${res.status}`)
   }
   return res.json()
+}
+
+export async function cancelQueuedTeamMessage(sessionId: string, messageId: string): Promise<void> {
+  const res = await fetch(
+    `${API}/team/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.detail || `DELETE queued message failed: ${res.status}`)
+  }
 }
 
 export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: AbortSignal): void {

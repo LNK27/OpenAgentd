@@ -1,6 +1,6 @@
 ---
 title: Chat Input & Message Queue
-description: How the frontend queues messages while the lead is working and drains them after each turn.
+description: How queued follow-up messages work while the team lead is streaming.
 status: stable
 updated: 2026-05-21
 ---
@@ -13,7 +13,7 @@ updated: 2026-05-21
 
 ## Consecutive message behaviour
 
-The input bar (`FloatingInputBar` + `InputBar`) is never disabled. Submitting while the agent is busy does not block or discard the message — it enters a client-side queue.
+The input bar (`FloatingInputBar` + `InputBar`) is never disabled. Submitting text while the lead is busy persists the message to the backend queue; it is not kept only in browser memory.
 
 **Guard condition** (`sendMessage` in `useTeamStore/index.ts`):
 
@@ -24,18 +24,21 @@ lead.status !== "working"  →  POST /api/team/chat immediately
 
 Only the **lead's** status matters. Members running background sub-tasks do not block new input.
 
+Attachments are not queued while the lead is working. The UI asks the user to wait for the current response to finish before sending files.
+
 ---
 
 ## Queue lifecycle
 
 | Step | What happens |
 |------|-------------|
-| User submits while lead is busy | Message pushed to `_pendingMessages` with the active `sessionId`, `mode`, and `workspace` (no API call, no optimistic block) |
-| SSE `done` event fires | The first pending message for that same session is popped and sent as its own turn (`POST /api/team/chat`); the rest stay queued for the next `done` |
-| User clicks × on a queued item | Removed from store; text restored to the input bar |
+| User submits text while lead is busy | `POST /api/team/chat` stores a hidden `SessionMessage` with `extra.queue_status="queued"` and returns its `message_id` |
+| Current turn finishes | Backend pops queued rows in order, keeps the same SSE connection alive, and activates the lead with each queued message as a separate user message |
+| User reloads or switches sessions | Session history includes queued rows; the frontend rehydrates `_pendingMessages` for the active session |
+| User clicks × on a queued item | Frontend removes it and calls `DELETE /api/team/sessions/{session_id}/queued-messages/{message_id}` |
 | `newSession()` called | Queue cleared |
 
-The drain happens in `sse-reducer.ts` inside the `done` case — after flushing `currentBlocks`, one pending message for the active session is consumed per `done` event. Two queued messages ("then say hi" + "also summarise") become two sequential turns with their own user bubbles and assistant replies — never concatenated. Queues are session-scoped so switching from session A to session B does not display or send A's queued messages under B.
+Queued messages are never concatenated. Multiple queued messages become separate user rows and separate lead activations. Queues are session-scoped, so switching from session A to session B does not display A's queued messages under B.
 
 ---
 
@@ -43,12 +46,9 @@ The drain happens in `sse-reducer.ts` inside the `done` case — after flushing 
 
 ```ts
 interface PendingMessage {
-  id: string      // stable id (pm-<timestamp>), used as React key and for removal
+  id: string      // backend message id, used for cancellation
   sessionId?: string | null
   content: string
-  files?: File[]
-  mode?: string
-  workspace?: string | null
 }
 ```
 
@@ -58,7 +58,7 @@ Stored in `useTeamStore._pendingMessages: PendingMessage[]`.
 
 ## UI
 
-`PendingMessageQueue` renders directly above the input bar (both mobile and desktop). It starts collapsed as a `QUEUE · N messages awaiting` banner; clicking the banner expands the queued message details **above** the banner so the banner remains adjacent to the input. Each expanded item shows a clock icon, truncated message preview, optional file count badge, and an × button. Clicking × calls `removePendingMessage(id)` and restores the text via `InputBarHandle.setValue()`.
+`PendingMessageQueue` renders queued messages inside the conversation timeline below the streaming assistant response. Each queued item uses the normal right-aligned user bubble shape with a small × cancel button and a `Queued` label.
 
 The desktop floating composer starts as a compact action strip and expands on focus, `Ctrl+I`, New Chat focus, attachment/content insertion, or the Chat affordance. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
 

@@ -14,6 +14,7 @@ from app.agent.schemas.chat import (
     ToolMessage,
 )
 from app.services.chat_service import (
+    cancel_queued_user_message,
     cleanup_reverted_tail,
     create_chat_session,
     get_messages,
@@ -21,6 +22,8 @@ from app.services.chat_service import (
     heal_orphaned_tool_calls,
     hide_messages_before_summary,
     redo_session_messages,
+    pop_queued_user_messages,
+    save_queued_user_message,
     undo_session_messages,
     save_message,
 )
@@ -491,6 +494,79 @@ async def test_get_messages_excludes_hidden_from_user_extra(session):
 
     llm_messages = await get_messages_for_llm(session, chat_session.id)
     assert [m.content for m in llm_messages] == ["visible", "hidden from user"]
+
+
+async def test_queued_user_messages_are_hidden_until_popped(session):
+    chat_session = await create_chat_session(session, "Queue")
+    queued = await save_queued_user_message(session, chat_session.id, "next")
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="current response")
+    )
+    await session.commit()
+
+    visible = await get_messages(session, chat_session.id)
+    assert [msg.content for msg in visible] == ["next", "current response"]
+    assert visible[0].extra == {"queue_status": "queued"}
+
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    await session.commit()
+
+    assert [row.id for row in popped] == [queued.id]
+    assert popped[0].exclude_from_context is False
+    assert popped[0].extra is None
+    visible = await get_messages(session, chat_session.id)
+    assert [msg.content for msg in visible] == ["current response", "next"]
+
+
+async def test_popped_queued_user_messages_keep_queue_order_after_response(session):
+    chat_session = await create_chat_session(session, "Queue")
+    first = await save_queued_user_message(session, chat_session.id, "first")
+    second = await save_queued_user_message(session, chat_session.id, "second")
+    await save_message(session, chat_session.id, AssistantMessage(content="response"))
+    await session.commit()
+
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    await session.commit()
+
+    visible = await get_messages(session, chat_session.id)
+    assert [row.id for row in popped] == [first.id, second.id]
+    assert [msg.content for msg in visible] == ["response", "first", "second"]
+
+
+async def test_cancel_queued_user_message_skips_pop(session):
+    chat_session = await create_chat_session(session, "Queue")
+    queued = await save_queued_user_message(session, chat_session.id, "skip")
+    await session.commit()
+
+    cancelled = await cancel_queued_user_message(session, chat_session.id, queued.id)
+    await session.commit()
+
+    assert cancelled is True
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    assert popped == []
+
+
+async def test_cleanup_reverted_tail_preserves_queued_messages(session):
+    chat_session = await create_chat_session(session, "Queue")
+    await save_message(session, chat_session.id, HumanMessage(content="first"))
+    await save_message(session, chat_session.id, AssistantMessage(content="response"))
+    queued = await save_queued_user_message(session, chat_session.id, "queued")
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    await session.commit()
+
+    cleaned = await cleanup_reverted_tail(session, chat_session.id)
+    await session.commit()
+
+    refreshed = await session.get(SessionMessage, queued.id)
+    assert cleaned == 2
+    assert refreshed is not None
+    assert refreshed.extra == {"queue_status": "queued"}
+    assert refreshed.exclude_from_context is True
+    popped = await pop_queued_user_messages(session, chat_session.id)
+    assert [row.id for row in popped] == [queued.id]
 
 
 @pytest.mark.asyncio
