@@ -25,6 +25,8 @@ from uuid import uuid7
 from loguru import logger
 
 from app.core.paths import session_uploads_dir
+from app.services import memory_stream_store as stream_store
+from app.services.stream_envelope import StreamEnvelope
 
 
 def _uploads_dir(session_id: str) -> Path:
@@ -404,6 +406,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
     from app.services.chat_service import save_message
 
     names: list[str] = []
+    effective_session_id = session_id or getattr(team.lead, "session_id", None)
 
     live_members = getattr(team, "members", {})
     if isinstance(live_members, dict):
@@ -411,7 +414,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
             if member.state != "working":
                 continue
             names.append(member.name)
-            sid = session_id or getattr(team.lead, "session_id", None)
+            sid = effective_session_id
             released = (
                 release_in_progress_for_actor(
                     session_workspace_dir(sid, team.workspace), member.name, sid
@@ -465,5 +468,11 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
     for member in cancelled:
         member.interrupt()
     names.extend(m.name for m in cancelled)
+    if effective_session_id:
+        await stream_store.push_event(
+            effective_session_id,
+            StreamEnvelope.from_parts(event="done", data={}),
+        )
+        await stream_store.mark_done(effective_session_id)
     logger.info("team_interrupt session_id={} cancelled={}", session_id, names)
     return names

@@ -345,9 +345,46 @@ async def test_interrupt_team_cancels_working_members():
     team.members = {}
     team.all_members = [working, idle]
 
-    names = await interrupt_team(team, session_id="sess-1")
+    with (
+        patch(
+            "app.services.agent_service.stream_store.push_event", new=AsyncMock()
+        ) as push,
+        patch(
+            "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
+        ) as mark_done,
+    ):
+        names = await interrupt_team(team, session_id="sess-1")
+
     assert names == ["worker-a"]
     working.interrupt.assert_called_once()
+    push.assert_awaited_once()
+    mark_done.assert_awaited_once_with("sess-1")
+
+
+@pytest.mark.asyncio
+async def test_interrupt_team_marks_stream_done_even_when_no_members_working():
+    idle = MagicMock()
+    idle.state = "idle"
+    idle.name = "idler"
+
+    team = MagicMock()
+    team.members = {}
+    team.all_members = [idle]
+    team.lead.session_id = None
+
+    with (
+        patch(
+            "app.services.agent_service.stream_store.push_event", new=AsyncMock()
+        ) as push,
+        patch(
+            "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
+        ) as mark_done,
+    ):
+        names = await interrupt_team(team, session_id="sess-1")
+
+    assert names == []
+    push.assert_awaited_once()
+    mark_done.assert_awaited_once_with("sess-1")
 
 
 @pytest.mark.asyncio
@@ -368,7 +405,11 @@ async def test_interrupt_team_cancels_working_live_members_without_dismissing():
     team.lead.name = "lead"
     team.lead.session_id = None
 
-    names = await interrupt_team(team, session_id=None)
+    with (
+        patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
+        patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
+    ):
+        names = await interrupt_team(team, session_id=None)
     assert names == ["executor#1"]
     team._emit.assert_awaited_once_with(
         agent="lead",
@@ -391,6 +432,18 @@ async def test_interrupt_team_no_working_members():
     team = MagicMock()
     team.members = {}
     team.all_members = [idle]
+    team.lead.session_id = None
 
-    names = await interrupt_team(team, session_id=None)
+    with (
+        patch(
+            "app.services.agent_service.stream_store.push_event", new=AsyncMock()
+        ) as push,
+        patch(
+            "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
+        ) as mark_done,
+    ):
+        names = await interrupt_team(team, session_id=None)
+
     assert names == []
+    push.assert_not_awaited()
+    mark_done.assert_not_awaited()
