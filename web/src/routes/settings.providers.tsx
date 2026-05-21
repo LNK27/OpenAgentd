@@ -207,7 +207,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
         <p className="text-xs text-(--color-text-muted)">{provider.description}</p>
 
         {/* ── API-key controls ─────────────────────────────────────────── */}
-        {(provider.kind === 'api_key' || (provider.kind === 'oauth' && primaryCredential)) && (
+        {provider.kind === 'api_key' && (
           <div className="space-y-2">
             <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
               <label className="min-w-0">
