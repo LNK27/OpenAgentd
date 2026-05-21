@@ -13,6 +13,12 @@ function stripCompactionPrefix(content: string): string {
   return content.startsWith(prefix) ? content.slice(prefix.length) : content
 }
 
+function continuationSeparator(left: string, right: string): string {
+  if (!left || !right) return ''
+  if (/\s$/.test(left) || /^\s/.test(right)) return ''
+  return ' '
+}
+
 function sortMessages(msgs: MessageResponse[]): MessageResponse[] {
   return [...msgs].sort((a, b) => {
     const ta = a.created_at ? new Date(a.created_at).getTime() : 0
@@ -219,7 +225,14 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
 
     if (msg.role === 'assistant') {
       const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
-      result.push(...assistantBlocks(msg, pendingToolBlocks, timestamp))
+      for (const block of assistantBlocks(msg, pendingToolBlocks, timestamp)) {
+        const lastBlock = result[result.length - 1]
+        if (msg.extra?.is_continuation && block.type === 'text' && lastBlock?.type === 'text') {
+          lastBlock.content += continuationSeparator(lastBlock.content, block.content) + block.content
+        } else {
+          result.push(block)
+        }
+      }
     }
   }
 
