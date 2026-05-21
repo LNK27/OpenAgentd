@@ -38,6 +38,10 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
     }))
 }
 
+function effectiveLeadModel(state: TeamStore, leadName: string | null, requestedModel?: string | null): string | null {
+  return requestedModel ?? state.sessionModel ?? (leadName ? state.agentStreams[leadName]?.model : null) ?? null
+}
+
 export type {
   AgentStream,
   CacheInvalidation,
@@ -224,7 +228,7 @@ export const useTeamStore = create<TeamStore>()(
           stream.revertedMessages = []
         })
         if (leadName && draft.agentStreams[leadName]) {
-          const effectiveModel = options?.model ?? draft.sessionModel
+          const effectiveModel = effectiveLeadModel(draft, leadName, options?.model)
           const effectiveThinkingLevel = options?.thinkingLevel ?? draft.sessionThinkingLevel
           draft.agentStreams[leadName].currentBlocks.push({
             id: `user-${Date.now()}`,
