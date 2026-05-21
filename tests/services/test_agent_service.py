@@ -305,6 +305,30 @@ async def test_dispatch_reuses_provided_sid():
 
 
 @pytest.mark.asyncio
+async def test_dispatch_passes_session_model_settings():
+    team = _make_team()
+    await dispatch_user_message(
+        team,
+        content="hi",
+        session_id="my-sid-123",
+        model="openai:gpt-5.5",
+        thinking_level="high",
+    )
+    team.handle_user_message.assert_awaited_once_with(
+        content="hi",
+        session_id="my-sid-123",
+        interrupt=False,
+        attachment_metas=None,
+        mode="normal",
+        workspace=None,
+        model="openai:gpt-5.5",
+        model_provided=True,
+        thinking_level="high",
+        thinking_level_provided=True,
+    )
+
+
+@pytest.mark.asyncio
 async def test_dispatch_with_attachments_uses_fresh_sid_when_session_id_none(tmp_path):
     team = _make_team()
     att = RawAttachment(filename="f.txt", content_type="text/plain", data=b"content")

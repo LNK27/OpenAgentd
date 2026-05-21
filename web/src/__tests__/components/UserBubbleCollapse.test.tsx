@@ -380,6 +380,48 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(timeSpan.parentElement?.className).toContain("opacity-100")
   })
 
+  it("shows the model from user message metadata on hover", async () => {
+    const user = userEvent.setup()
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "Test message",
+        timestamp: new Date("2026-04-29T12:00:00Z"),
+        extra: { model: "openrouter:anthropic/claude-sonnet-4.5" },
+      },
+    ]
+
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const modelLabel = screen.getByText("claude-sonnet-4.5")
+    expect(modelLabel.parentElement?.className).toContain("opacity-0")
+
+    const groupDiv = container.querySelector("div[class*='group']")
+    await user.hover(groupDiv!)
+
+    expect(modelLabel.parentElement?.className).toContain("opacity-100")
+    expect(modelLabel).toHaveAttribute("title", "openrouter:anthropic/claude-sonnet-4.5")
+  })
+
+  it("does not show a model label for legacy user messages without metadata", async () => {
+    const user = userEvent.setup()
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "Legacy message",
+        timestamp: new Date("2026-04-29T12:00:00Z"),
+      },
+    ]
+
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const groupDiv = container.querySelector("div[class*='group']")
+    await user.hover(groupDiv!)
+
+    expect(screen.queryByText("gpt-4")).toBeNull()
+    expect(screen.getByText("12:00")).toBeTruthy()
+  })
+
   it("hides timestamp on mouse leave", async () => {
     const user = userEvent.setup()
     const content = "Test message"

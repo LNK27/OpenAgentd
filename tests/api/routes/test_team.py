@@ -178,6 +178,54 @@ class TestTeamChatRoute:
         test_team.handle_user_message.assert_awaited_once()
         assert test_team.handle_user_message.call_args.kwargs["content"] == "Hello team"
 
+    def test_team_chat_passes_model_settings(self, app_with_team, test_team):
+        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        client = TestClient(app_with_team)
+        with patch(
+            "app.api.routes.team.chat.is_registered_model_id",
+            AsyncMock(return_value=True),
+        ):
+            response = client.post(
+                "/api/team/chat",
+                data={
+                    "message": "Hello team",
+                    "model": "openai:gpt-5.5",
+                    "thinking_level": "high",
+                },
+            )
+        assert response.status_code == 202
+        kwargs = test_team.handle_user_message.call_args.kwargs
+        assert kwargs["model"] == "openai:gpt-5.5"
+        assert kwargs["model_provided"] is True
+        assert kwargs["thinking_level"] == "high"
+        assert kwargs["thinking_level_provided"] is True
+
+    def test_team_chat_empty_model_settings_reset(self, app_with_team, test_team):
+        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        client = TestClient(app_with_team)
+        response = client.post(
+            "/api/team/chat",
+            data={"message": "Hello team", "model": "", "thinking_level": ""},
+        )
+        assert response.status_code == 202
+        kwargs = test_team.handle_user_message.call_args.kwargs
+        assert kwargs["model"] is None
+        assert kwargs["model_provided"] is True
+        assert kwargs["thinking_level"] is None
+        assert kwargs["thinking_level_provided"] is True
+
+    def test_team_chat_rejects_unregistered_model(self, app_with_team):
+        client = TestClient(app_with_team)
+        with patch(
+            "app.api.routes.team.chat.is_registered_model_id",
+            AsyncMock(return_value=False),
+        ):
+            response = client.post(
+                "/api/team/chat",
+                data={"message": "Hello team", "model": "bad:model"},
+            )
+        assert response.status_code == 422
+
     def test_team_chat_activates_queue_if_lead_goes_idle_after_save(
         self, app_with_team, test_team
     ):
@@ -185,7 +233,8 @@ class TestTeamChatRoute:
         test_team.lead.state = "working"
         test_team._activate_queued_user_messages = AsyncMock(return_value=True)
 
-        async def save_queue(_db, _session_id, _message):
+        async def save_queue(_db, _session_id, _message, *, extra=None):
+            assert extra is not None
             test_team.lead.state = "idle"
             queued = AsyncMock()
             queued.id = uuid.uuid7()

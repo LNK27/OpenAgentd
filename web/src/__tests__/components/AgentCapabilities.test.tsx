@@ -186,7 +186,7 @@ describe("AgentCapabilities type shape", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Import the component for testing
-// Note: CapabilityBadges is not exported from AgentCapabilities.tsx
+// Note: CapabilityBadges is not exported from the session settings panel.
 // For testing purposes, we test it through the AgentCard component
 // or we can test the badge rendering logic indirectly
 

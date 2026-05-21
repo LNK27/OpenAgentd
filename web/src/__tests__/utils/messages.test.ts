@@ -107,6 +107,29 @@ describe("parseTeamBlocks", () => {
     expect(blocks[0].content).toBe("hello team");
   });
 
+  it("preserves user message model metadata while normalising routing fields", () => {
+    const msgs = [makeMsg({
+      role: "user",
+      content: "hello team",
+      extra: {
+        routing: { from_agents: ["planner#1"] },
+        model: "openrouter:anthropic/claude-sonnet-4.5",
+        thinking_level: "medium",
+      },
+    })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].extra?.from_agent).toBe("planner#1");
+    expect(blocks[0].extra?.model).toBe("openrouter:anthropic/claude-sonnet-4.5");
+    expect(blocks[0].extra?.thinking_level).toBe("medium");
+  });
+
+  it("does not invent model metadata for legacy user messages", () => {
+    const msgs = [makeMsg({ role: "user", content: "legacy", extra: null })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks[0].extra).toBeUndefined();
+  });
+
   it("converts assistant message to text block", () => {
     const msgs = [makeMsg({ role: "assistant", content: "here is my answer" })];
     const blocks = parseTeamBlocks(msgs);
