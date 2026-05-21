@@ -26,6 +26,7 @@ from app.agent.agent_loop.retry import stream_with_retry
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
+    HumanMessage,
     SystemMessage,
     ToolCall,
     Usage,
@@ -104,6 +105,41 @@ async def _interruptible_stream(
                 pass
 
 
+def _merge_consecutive_user_messages(
+    messages: list[ChatMessage],
+) -> list[ChatMessage]:
+    """Join adjacent plain-text :class:`HumanMessage` rows with ``\\n\\n``.
+
+    Some providers (notably OpenAI gpt-5.5) treat the latest user message
+    as superseding earlier ones, dropping prior instructions. Merging at
+    the wire preserves additive intent ("Stop + I forgot to add ...")
+    while the DB keeps the rows separate.
+
+    Multimodal pairs (either side has ``.parts``) stay separate to
+    preserve attachment ordering.
+    """
+    if not messages:
+        return messages
+    merged: list[ChatMessage] = []
+    for m in messages:
+        prev = merged[-1] if merged else None
+        can_merge = (
+            isinstance(m, HumanMessage)
+            and not m.parts
+            and isinstance(prev, HumanMessage)
+            and not prev.parts
+        )
+        if can_merge:
+            assert isinstance(prev, HumanMessage)
+            merged[-1] = HumanMessage(
+                content=f"{prev.content or ''}\n\n{m.content or ''}".strip(),
+                extra=prev.extra,
+            )
+        else:
+            merged.append(m)
+    return merged
+
+
 async def stream_and_assemble(
     *,
     req: ModelRequest,
@@ -135,11 +171,11 @@ async def stream_and_assemble(
     tool_calls_buffer: dict[int, dict] = {}
     last_usage: Usage | None = None
 
-    # Prepend SystemMessage from the (possibly hook-modified) prompt.
-    provider_messages: list[ChatMessage] = [
-        SystemMessage(content=req.system_prompt),
-        *req.messages,
-    ]
+    # Prepend system prompt and merge any [user, user] adjacency for the
+    # wire — DB keeps adjacent user rows verbatim.
+    provider_messages: list[ChatMessage] = _merge_consecutive_user_messages(
+        [SystemMessage(content=req.system_prompt), *req.messages]
+    )
 
     upstream = stream_with_retry(
         primary_provider=primary_provider,

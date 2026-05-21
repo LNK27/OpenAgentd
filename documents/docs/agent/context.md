@@ -37,6 +37,12 @@ The system prompt is **not** stored in `state.messages`. Instead, `_stream_and_a
 
 ---
 
+## Consecutive user message merge
+
+When a user presses Stop and sends an additional message before the agent has replied (the "I forgot to add ..." pattern), `state.messages` ends up with adjacent `HumanMessage` rows. The DB keeps them separate — that ordering is intentional. At the wire, `_stream_and_assemble` calls `_merge_consecutive_user_messages` to join adjacent plain-text user rows with `\n\n` before handing them to the provider; otherwise some providers (e.g. OpenAI gpt-5.5) treat the latest user message as superseding earlier ones and drop the prior instructions. Multimodal pairs (either side has `.parts`) are kept separate. See `app/agent/agent_loop/streaming.py`.
+
+---
+
 `RunContext` is a **frozen** dataclass created once at the start of `agent.run()` (see `app/agent/state.py:55`). It carries immutable identity for the run (`session_id`, `run_id`, `agent_name`, `session_created_at`) and is passed to every hook alongside `AgentState`.
 
 Because it is frozen, hooks and tools can safely share it across concurrent tool calls without locks. `session_created_at` is decoded from the UUIDv7 `session_id` by `RunConfig`'s model validator — no extra DB query. Hooks read it via `ctx.session_created_at` to inject a date that is stable for the lifetime of the session (see `inject_current_date`).

@@ -591,3 +591,87 @@ async def test_plain_string_tool_result_has_no_parts():
     # Parts should be None for plain string result
     assert tool_msg.parts is None
     assert tool_msg.content == "Plain text result"
+
+
+# ---------------------------------------------------------------------------
+# Adjacent HumanMessage merge — see streaming._merge_consecutive_user_messages.
+# ---------------------------------------------------------------------------
+
+
+def test_merge_consecutive_user_messages_joins_text_pairs():
+    from app.agent.agent_loop.streaming import _merge_consecutive_user_messages
+    from app.agent.schemas.chat import HumanMessage, SystemMessage
+
+    out = _merge_consecutive_user_messages(
+        [
+            SystemMessage(content="sys"),
+            HumanMessage(content="first"),
+            HumanMessage(content="second"),
+        ]
+    )
+    assert len(out) == 2
+    assert isinstance(out[0], SystemMessage)
+    assert isinstance(out[1], HumanMessage)
+    assert out[1].content == "first\n\nsecond"
+
+
+def test_merge_consecutive_user_messages_does_not_cross_other_roles():
+    from app.agent.agent_loop.streaming import _merge_consecutive_user_messages
+    from app.agent.schemas.chat import AssistantMessage, HumanMessage
+
+    out = _merge_consecutive_user_messages(
+        [
+            HumanMessage(content="A"),
+            AssistantMessage(content="ack"),
+            HumanMessage(content="B"),
+        ]
+    )
+    assert len(out) == 3
+    assert out[0].content == "A"
+    assert out[2].content == "B"
+
+
+def test_merge_consecutive_user_messages_preserves_multimodal_neighbours():
+    from app.agent.agent_loop.streaming import _merge_consecutive_user_messages
+    from app.agent.schemas.chat import HumanMessage, TextBlock
+
+    out = _merge_consecutive_user_messages(
+        [
+            HumanMessage(content="A"),
+            HumanMessage(content="B", parts=[TextBlock(text="B")]),
+        ]
+    )
+    assert len(out) == 2
+
+
+async def test_stream_and_assemble_merges_consecutive_user_messages():
+    """provider.stream() must receive a single merged user message."""
+    captured_kwargs: dict = {}
+
+    async def _gen():
+        yield _text_chunk("ok", finish="stop")
+        yield _usage_chunk()
+
+    def _capture(**kwargs):
+        captured_kwargs.update(kwargs)
+        return _gen()
+
+    mock_provider = MagicMock()
+    mock_provider.stream.side_effect = _capture
+
+    agent = Agent(
+        llm_provider=mock_provider,
+        name="test-agent",
+        system_prompt="sys",
+    )
+
+    await agent.run(
+        [HumanMessage(content="first"), HumanMessage(content="second")],
+        config=RunConfig(session_id="s_merge", run_id="r_merge"),
+    )
+
+    sent = captured_kwargs["messages"]
+    assert len(sent) == 2  # SystemMessage + one merged HumanMessage
+    user_msgs = [m for m in sent if isinstance(m, HumanMessage)]
+    assert len(user_msgs) == 1
+    assert user_msgs[0].content == "first\n\nsecond"
