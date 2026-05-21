@@ -367,6 +367,12 @@ Move the session revert boundary to the latest visible user message and restore 
 
 Returns 202 with `{"status": "accepted", "session_id": "...", "command": "undo", "message": {...}, "changed_paths": [...]}`. `changed_paths` is omitted when scoped workspace refresh is unavailable.
 
+Returns 409 (`{"detail": "..."}`) when the boundary cannot be moved:
+- **Lead is already working.** — the lead has an in-flight turn.
+- **Agent '<name>' is still working. Stop it before /undo.** — a member is streaming (lead may be idle). Reverting mid-stream would orphan the in-flight assistant tokens on the client; `/stop` first.
+- **Session not found.** / **Session belongs to '<name>', not '<lead>'.** — ownership guards.
+- **No user message to undo.** — already at the earliest user turn.
+
 ### `command: "redo"`
 
 Move the session revert boundary forward by one undone user turn and restore its workspace snapshot. When no later undone user message exists, the boundary is cleared and the session is live again. The web UI repeats this command for `/redo` until all undone turns are visible.

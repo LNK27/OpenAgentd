@@ -305,6 +305,16 @@ export const useTeamStore = create<TeamStore>()(
         set((draft) => { draft.error = 'No active session to undo' })
         return
       }
+      // Reverting mid-stream orphans the in-flight assistant tokens
+      // (currentBlocks gets spliced into _revertedSuffix while SSE keeps
+      // pushing deltas). Force the user to /stop first — matches the
+      // backend precondition in AgentTeam.handle_undo.
+      if (get().isTeamWorking) {
+        set((draft) => {
+          draft.error = 'Cannot undo while agents are working — /stop first'
+        })
+        return
+      }
 
       try {
         set((draft) => { draft.error = null })

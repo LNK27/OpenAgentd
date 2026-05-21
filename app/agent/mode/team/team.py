@@ -770,6 +770,18 @@ class AgentTeam:
         """
         if self._has_active_turn:
             raise ContinuePreconditionError("Lead is already working.")
+        # A member can still be streaming even when the lead is idle
+        # (e.g. delegated turn). Reverting the boundary mid-stream
+        # orphans the in-flight assistant tokens on the client, so
+        # require the team to be fully quiescent first.
+        busy = next(
+            (m for m in self.all_members if m.state == "working"),
+            None,
+        )
+        if busy is not None:
+            raise ContinuePreconditionError(
+                f"Agent '{busy.name}' is still working. Stop it before /undo."
+            )
 
         try:
             lead_uuid = UUID(session_id)

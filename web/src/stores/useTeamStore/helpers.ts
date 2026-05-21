@@ -90,7 +90,16 @@ export function applyRevertBoundary(
 ): void {
   const current = options.includeCurrent ? stream.currentBlocks : []
   const all = [...stream.blocks, ...current, ...(stream._revertedSuffix ?? [])]
-  if (options.includeCurrent) stream.currentBlocks = []
+  if (options.includeCurrent) {
+    // Late SSE deltas (text/thinking) arriving after the revert would
+    // otherwise re-seed currentBlocks via appendText/appendThinking and
+    // surface as a ghost message. Drop the in-flight scratch state so
+    // any straggler tokens land on a clean slate.
+    stream.currentBlocks = []
+    stream.currentText = ''
+    stream.currentThinking = ''
+    stream.status = 'idle'
+  }
 
   if (boundaryTime === null) {
     stream.blocks = all

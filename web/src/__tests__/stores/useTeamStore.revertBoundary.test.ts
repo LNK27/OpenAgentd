@@ -312,6 +312,206 @@ describe("applyRevertBoundary", () => {
     expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["q2", "partial"])
     expect(s.revertedMessages).toEqual([{ role: "user", content: "queued two" }])
   })
+
+  // ── In-flight scratch state is wiped when includeCurrent=true ────────
+  //
+  // Regression for the "tokens stream into a ghost message after /undo"
+  // bug: applyRevertBoundary only zeroed ``currentBlocks``, so a late
+  // SSE ``message``/``thinking`` delta would re-seed via appendText /
+  // appendThinking and surface as a new assistant block. The fix also
+  // clears currentText/currentThinking and resets status.
+
+  it("clears currentText, currentThinking and status when includeCurrent=true", () => {
+    const s = makeStream({
+      blocks: [block("u1", "user", "kept", "2024-01-01T00:00:00Z")],
+      currentBlocks: [
+        block("u2", "user", "in-flight", "2024-01-01T00:00:01Z"),
+        block("partial", "text", "half answer...", "2024-01-01T00:00:01Z"),
+      ],
+      currentText: "half answer...",
+      currentThinking: "let me see...",
+      status: "working",
+    })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime(), {
+      includeCurrent: true,
+      boundaryContent: "in-flight",
+    })
+
+    expect(s.currentBlocks).toEqual([])
+    expect(s.currentText).toBe("")
+    expect(s.currentThinking).toBe("")
+    expect(s.status).toBe("idle")
+  })
+
+  it("does NOT clear currentText/currentThinking/status when includeCurrent is omitted", () => {
+    // /redo and loadSession use the non-includeCurrent branch — those
+    // callers manage scratch state themselves, so the helper must not
+    // overstep and stomp on a still-active stream.
+    const s = makeStream({
+      blocks: [
+        block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+        block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+      ],
+      currentText: "still streaming",
+      currentThinking: "still thinking",
+      status: "working",
+    })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
+
+    expect(s.currentText).toBe("still streaming")
+    expect(s.currentThinking).toBe("still thinking")
+    expect(s.status).toBe("working")
+  })
+
+  it("preserves the ghost-block fix idempotently when includeCurrent=true twice", () => {
+    // Double-undo should not regress the cleared scratch state.
+    const s = makeStream({
+      currentText: "x",
+      currentThinking: "y",
+      status: "working",
+    })
+    applyRevertBoundary(s, null, { includeCurrent: true })
+    expect(s.currentText).toBe("")
+    expect(s.status).toBe("idle")
+
+    s.currentText = "should-not-resurrect"
+    s.status = "working"
+    applyRevertBoundary(s, null, { includeCurrent: true })
+    expect(s.currentText).toBe("")
+    expect(s.status).toBe("idle")
+  })
+})
+
+describe("undoTeam — blocks while team is working (anti-ghost-block guard)", () => {
+  it("sets an error and skips the POST when isTeamWorking is true", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      isTeamWorking: true,
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          currentBlocks: [
+            block("partial", "text", "half answer", "2024-01-01T00:00:01Z"),
+          ],
+          currentText: "half answer",
+          status: "working",
+        }),
+      },
+    })
+
+    const result = await useTeamStore.getState().undoTeam()
+
+    expect(result).toBeUndefined()
+    expect(mockPostTeamCommand).not.toHaveBeenCalled()
+    const state = useTeamStore.getState()
+    expect(state.error).toMatch(/cannot undo while agents are working/i)
+
+    // Stream untouched: no boundary applied, no scratch state cleared.
+    const stream = state.agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
+    expect(stream.currentBlocks.map((b) => b.id)).toEqual(["partial"])
+    expect(stream.currentText).toBe("half answer")
+    expect(stream.status).toBe("working")
+    expect(stream._revertedSuffix).toEqual([])
+  })
+
+  it("proceeds normally when isTeamWorking is false", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      isTeamWorking: false,
+      agentStreams: {
+        lead: makeStream({
+          blocks: [
+            block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({ created_at: "2024-01-01T00:00:02Z" }),
+      }),
+    )
+
+    await useTeamStore.getState().undoTeam()
+
+    expect(mockPostTeamCommand).toHaveBeenCalledTimes(1)
+    expect(useTeamStore.getState().error).toBeNull()
+  })
+
+  it("late SSE text deltas after an (illegally bypassed) undo cannot resurrect a ghost block", async () => {
+    // Defence-in-depth: even if the working-guard is bypassed (e.g. a
+    // member started streaming AFTER the precondition check but
+    // BEFORE the POST round-trip), the reducer hardening in
+    // applyRevertBoundary must ensure stray SSE deltas land on a
+    // clean slate instead of starting a new ghost assistant block.
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      isTeamWorking: false, // bypass the guard
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          currentBlocks: [
+            block("u2-opt", "user", "second", "2024-01-01T00:00:01Z"),
+            block("partial", "text", "...", "2024-01-01T00:00:01Z"),
+          ],
+          currentText: "...",
+          status: "working",
+        }),
+      },
+      agentNames: ["lead"],
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        message: makeMessageResponse({
+          id: "u2",
+          role: "user",
+          content: "second",
+          created_at: "2024-01-01T00:00:02Z",
+        }),
+      }),
+    )
+
+    await useTeamStore.getState().undoTeam()
+
+    // Confirm the bug-trigger preconditions: in-flight blocks moved to
+    // suffix and scratch state cleared.
+    let stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.currentBlocks).toEqual([])
+    expect(stream.currentText).toBe("")
+    expect(stream.status).toBe("idle")
+
+    // Now simulate a late SSE token arriving for the cancelled turn.
+    // Pre-fix this would call appendText on currentBlocks and produce
+    // a brand-new orphan ``text`` block.
+    useTeamStore.getState()._handleSSEEvent("message", {
+      agent: "lead",
+      text: "stray token after undo",
+    })
+
+    stream = useTeamStore.getState().agentStreams.lead
+    // The visible (committed) history must NOT have a ghost block.
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
+    // A late delta still seeds a fresh currentBlock — that's expected
+    // SSE-reducer behaviour — but it starts from an empty baseline,
+    // not from leftover partial state. The bug was that the prior
+    // PARTIAL block ("...") would be retained and grown; here we
+    // assert it's gone.
+    const partial = stream.currentBlocks.find((b) => b.id === "partial")
+    expect(partial).toBeUndefined()
+  })
 })
 
 describe("undoTeam — local boundary application", () => {

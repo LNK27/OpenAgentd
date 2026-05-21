@@ -311,6 +311,120 @@ class TestPostTeamCommands:
         ]
 
     @pytest.mark.asyncio
+    async def test_undo_rejected_when_lead_is_working(self, app_with_lead_only_team):
+        """Pre-existing precondition: lead's own turn is in flight.
+
+        Regression guard for the original ``_has_active_turn`` check —
+        the new member-busy guard must NOT short-circuit it.
+        """
+        sid = uuid.uuid7()
+        await _seed_session_and_messages(
+            sid,
+            [("user", "first", None), ("assistant", "first answer", None)],
+        )
+        team = app_with_lead_only_team.state.test_team
+        team._has_active_turn = True
+        try:
+            client = TestClient(app_with_lead_only_team)
+            resp = client.post(
+                "/api/team/commands",
+                json={"command": "undo", "session_id": str(sid)},
+            )
+        finally:
+            team._has_active_turn = False
+
+        assert resp.status_code == 409
+        # Must surface the original lead-working message, not the
+        # new member-busy one — keeps existing UX intact.
+        assert "lead is already working" in resp.json()["detail"].lower()
+
+        # DB untouched.
+        async with _db.async_session_factory() as db:
+            session = await db.get(ChatSession, sid)
+        assert session is not None
+        assert session.revert is None
+
+    @pytest.mark.asyncio
+    async def test_undo_rejected_when_member_is_working(self, app_with_lead_only_team):
+        """New behaviour: a member streaming while the lead is idle still
+        blocks /undo. Without this guard the in-flight assistant tokens
+        on the client get orphaned (the bug this fix addresses).
+        """
+        import types
+
+        sid = uuid.uuid7()
+        await _seed_session_and_messages(
+            sid,
+            [("user", "first", None), ("assistant", "first answer", None)],
+        )
+        team = app_with_lead_only_team.state.test_team
+        assert team.lead.state != "working"
+
+        # Stub a busy member — only ``.state`` and ``.name`` are read by
+        # the guard, so a SimpleNamespace is sufficient and avoids
+        # spinning up a real Agent + mailbox.
+        team.members["worker"] = types.SimpleNamespace(name="worker", state="working")
+        try:
+            client = TestClient(app_with_lead_only_team)
+            resp = client.post(
+                "/api/team/commands",
+                json={"command": "undo", "session_id": str(sid)},
+            )
+        finally:
+            team.members.pop("worker", None)
+
+        assert resp.status_code == 409
+        detail = resp.json()["detail"].lower()
+        # Error must identify *which* agent is busy so the UI can
+        # surface a useful message.
+        assert "worker" in detail
+        assert "working" in detail
+
+        # The /undo must short-circuit before touching the DB — no
+        # boundary, no commit.
+        async with _db.async_session_factory() as db:
+            session = await db.get(ChatSession, sid)
+        assert session is not None
+        assert session.revert is None
+
+    @pytest.mark.asyncio
+    async def test_undo_member_in_error_state_does_not_block(
+        self, app_with_lead_only_team
+    ):
+        """Negative case: only ``state == 'working'`` blocks /undo.
+
+        A member that crashed (state='error') or went offline must not
+        permanently lock the user out of /undo.
+        """
+        import types
+
+        sid = uuid.uuid7()
+        await _seed_session_and_messages(
+            sid,
+            [
+                ("user", "first", None),
+                ("assistant", "first answer", None),
+                ("user", "second", None),
+                ("assistant", "second answer", None),
+            ],
+        )
+        team = app_with_lead_only_team.state.test_team
+        team.members["dead"] = types.SimpleNamespace(name="dead", state="error")
+        team.members["gone"] = types.SimpleNamespace(name="gone", state="offline")
+        try:
+            client = TestClient(app_with_lead_only_team)
+            resp = client.post(
+                "/api/team/commands",
+                json={"command": "undo", "session_id": str(sid)},
+            )
+        finally:
+            team.members.pop("dead", None)
+            team.members.pop("gone", None)
+
+        assert resp.status_code == 202, resp.text
+        assert resp.json()["message"]["content"] == "second"
+
+    @pytest.mark.asyncio
     async def test_unknown_command_rejected_by_validator(self, app_with_lead_only_team):
         """Pydantic Literal rejects unknown command strings as 422."""
         client = TestClient(app_with_lead_only_team)
