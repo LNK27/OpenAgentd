@@ -34,6 +34,10 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   const workspace = workspaceFromSessionDetail(mode, sessionId, workspaceFromKey, sessionQuery.data?.workspace)
 
   useEffect(() => {
+    if (mode === 'coding' && workspace) saveLastCodingWorkspace(workspace)
+  }, [mode, workspace])
+
+  useEffect(() => {
     if (mode !== 'coding' || sessionId || workspaceId) return
     const restore = window.setTimeout(() => {
       if (!shouldRestoreLastCodingWorkspace(mode, sessionId, workspaceId, window.location.pathname)) return
