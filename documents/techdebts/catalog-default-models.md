@@ -46,15 +46,6 @@ branches (Bedrock via `boto3.client("bedrock").list_foundation_models`,
 Codex/Copilot via their OAuth-authenticated model listing endpoints).
 Vertex AI remained the lone exception.
 
-`geminicli` deserves a note: it isn't in the catalog at all (it's used
-purely via the agent loader by writing `model: geminicli:...` into an
-agent `.md`) so it doesn't appear in the Providers settings page or
-the registry endpoint. Upstream Gemini CLI itself hardcodes a
-`VALID_GEMINI_MODELS` set — there is no listing endpoint to call.
-`capabilities.yaml` curates the same set so the chat-attachment gate
-behaves correctly; that's the only place `geminicli` model names need
-to be known.
-
 ## What still warrants reopening
 
 - Vertex AI adds a chat-models-only listing endpoint (or the

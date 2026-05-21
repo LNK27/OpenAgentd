@@ -106,7 +106,7 @@ The `max_token_length` parameter limits the number of tokens in the summarizatio
 | Provider | API Parameter |
 |----------|---------------|
 | OpenAI | `max_output_tokens` |
-| Google Gemini / VertexAI / GeminiCLI | `max_output_tokens` |
+| Google Gemini / VertexAI | `max_output_tokens` |
 | ZAI | `max_tokens` |
 | Copilot | `max_output_tokens` |
 

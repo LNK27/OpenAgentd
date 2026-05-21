@@ -81,7 +81,7 @@ C4Component
         Component(tool_registry, "Tool Registry", "app/agent/tools/registry.py", "Manages available tools and JSON Schema metadata via @tool decorator.")
         Component(builtin_tools, "Builtin Tools", "app/agent/tools/builtin/", "filesystem (read, write, edit, ls, grep, glob, rm), shell (shell, bg), web (web_search, web_fetch), date, skill, wiki_search, note, todo, schedule.")
         Component(permission, "Permission Service", "app/agent/permission.py", "Rule/Ruleset wildcard matching. AutoAllowPermissionService auto-allows; PermissionService blocks on asyncio.Future until user replies.")
-        Component(provider, "LLM Provider", "app/agent/providers/", "GoogleGenAIProvider, VertexAIProvider, ZAIProvider, OpenAIProvider, OpenRouter, NVIDIA, xAI, DeepSeek, Bedrock, Copilot, Codex, GeminiCLI, Ollama — all implement LLMProviderBase. factory.py:build_provider dispatches a 'provider:model' string.")
+        Component(provider, "LLM Provider", "app/agent/providers/", "GoogleGenAIProvider, VertexAIProvider, ZAIProvider, OpenAIProvider, OpenRouter, NVIDIA, xAI, DeepSeek, Bedrock, Copilot, Codex, Ollama — all implement LLMProviderBase. factory.py:build_provider dispatches a 'provider:model' string.")
         Component(plugins, "Plugins", "app/agent/plugins/", "User-authored .py drop-ins loaded from settings.OPENAGENTD_PLUGINS_DIRS. Loader resolves @plugin functions and Plugin(BaseAgentHook) classes per (agent, role).")
         Component(chat_service, "Chat Service", "app/services/chat_service.py", "Sessions, messages, team-history aggregation, heal_orphaned_tool_calls.")
         Component(models, "Models", "app/models/", "SQLModel schemas: ChatSession, SessionMessage, ScheduledTask, etc.")

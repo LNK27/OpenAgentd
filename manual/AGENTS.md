@@ -208,7 +208,6 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 | `try_providers/try_googlegenai.py` | Test Google GenAI (Gemini) provider | `--model`, `--level`, `--tools`, `--real-tools` |
 | `try_providers/try_vertexai.py` | Test Vertex AI provider | `--model`, `--level`, `--tools`, `--real-tools` |
 | `try_providers/try_zai.py` | Test ZAI provider | `--model`, `--level`, `--tools`, `--real-tools` |
-| `try_providers/try_geminicli.py` | Test GeminiCLI provider (OAuth, no API key) | `--model`, `--level`, `--tools`, `--real-tools` |
 | `try_providers/try_ollama.py` | Test Ollama provider (local daemon; cloud via `-cloud` suffix after `ollama signin`) | `--model`, `--tools`, `--real-tools`, `--no-stream`, `--simple` |
 
 ```bash
@@ -219,7 +218,6 @@ uv run python -m manual.try_providers.try_googlegenai --model gemini-3.1-flash-l
 uv run python -m manual.try_providers.try_googlegenai --real-tools
 uv run python -m manual.try_providers.try_vertexai --simple
 uv run python -m manual.try_providers.try_zai --simple
-uv run python -m manual.try_providers.try_geminicli --simple
 uv run python -m manual.try_providers.try_ollama --simple
 uv run python -m manual.try_providers.try_ollama --model kimi-k2.6-cloud --simple
 ```
