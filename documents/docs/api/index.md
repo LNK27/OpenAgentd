@@ -662,4 +662,6 @@ Returns `{todos: []}` when the session todo file does not exist yet. `session_id
 | `agent_name` | string? | Agent name (team lead for team sessions) |
 | `created_at` | datetime? | |
 | `updated_at` | datetime? | |
+| `model` | string? | Per-session lead model override. Empty/reset means use the lead agent default. |
+| `thinking_level` | string? | Per-session lead thinking override: `none`, `low`, `medium`, or `high`. |
 | `sub_sessions` | SessionResponse[] | Child member sessions (team lead sessions only) |

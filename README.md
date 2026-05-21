@@ -59,7 +59,7 @@
 
 **See exactly what the agent is doing.** Built-in OTel dashboard — token usage, latency, trace waterfall. No third-party SaaS, all local.
 
-**Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config.
+**Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config, or override the lead model/thinking level per session from Session Settings.
 
 ---
 
@@ -168,7 +168,7 @@ Switch models with a single line in your agent's `.md` config file. Every provid
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional `CLIPROXY_BASE_URL`) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
-Set a `fallback_model` in your agent config for automatic failover on rate limits or 5xx errors.
+Set a `fallback_model` in your agent config for automatic failover on rate limits or 5xx errors. In the cockpit, Session Settings can override the lead agent's model and thinking level for the current chat; history keeps the model used for each user turn.
 
 ---
 

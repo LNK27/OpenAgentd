@@ -40,6 +40,8 @@ Attachments are not queued while the lead is working. The UI asks the user to wa
 
 Queued messages are never concatenated. Multiple queued messages become separate user rows and separate lead activations. Queues are session-scoped, so switching from session A to session B does not display A's queued messages under B.
 
+Session Settings may override the lead model and thinking level for the current chat. Sends include those settings, and queued rows keep the effective model metadata so history labels stay tied to the original turn.
+
 ---
 
 ## `PendingMessage` shape
