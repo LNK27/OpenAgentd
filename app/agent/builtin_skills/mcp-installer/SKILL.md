@@ -28,11 +28,14 @@ Pass `--base <url>` to override.
 ```bash
 # Add a remote HTTP server
 python "$SCRIPT" add <name> --http <url>
+python "$SCRIPT" add <name> --http <url> --header Authorization='Bearer ${TOKEN_ENV}'
 
-# Add an OAuth HTTP server. Paste credential values; the API stores them
-# as <SERVER>_MCP_CLIENT_ID / <SERVER>_MCP_CLIENT_SECRET in .env and writes
-# ${...} refs to mcp.json. Omit values for dynamic-registration servers.
+# Add an OAuth HTTP server. OAuth may be dynamic-registration (no app creds),
+# public-client (client ID only), or confidential-client (client ID + secret).
+# Direct credential values are stored as <SERVER>_MCP_CLIENT_ID /
+# <SERVER>_MCP_CLIENT_SECRET in .env and written as ${...} refs to mcp.json.
 python "$SCRIPT" add <name> --http <url> --oauth
+python "$SCRIPT" add <name> --http <url> --oauth --oauth-client-id <client-id>
 python "$SCRIPT" add slack --http https://mcp.slack.com/mcp \
   --oauth-client-id <client-id> --oauth-client-secret <client-secret>
 
@@ -41,6 +44,7 @@ python "$SCRIPT" add <name> --stdio <command> --args arg1 arg2 --env KEY=VALUE
 
 # Update an existing server
 python "$SCRIPT" update <name> --http <url>
+python "$SCRIPT" update <name> --http <url> --header Authorization='Bearer ${TOKEN_ENV}'
 python "$SCRIPT" update <name> --stdio <command> --args ...
 
 # Remove a server
@@ -79,7 +83,7 @@ always proceed to wiring after these commands regardless of daemon state.
 
 | User intent                                  | Command                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| Install / update a remote (HTTP) server      | `add` or `update` with `--http`              |
+| Install / update a remote (HTTP) server      | `add` or `update` with `--http`; add repeated `--header KEY=VALUE` when required |
 | Install / update a local (stdio) server      | `add` or `update` with `--stdio`             |
 | Remove a server                              | `remove` — but wire agent files first        |
 | Restart a crashed server                     | `restart`                                    |
@@ -92,8 +96,12 @@ always proceed to wiring after these commands regardless of daemon state.
 1. **Handle secrets safely** before installing servers that need them:
 
    - For stdio servers that read env vars directly, confirm the env var exists with `printenv KEY | head -c 4`. Empty → tell the user to add it to `{OPENAGENTD_CONFIG_DIR}/.env`; don't install a server you know will fail.
-   - For HTTP OAuth servers, ask the user for the app client ID/secret when required. Pass the pasted values with `--oauth-client-id` / `--oauth-client-secret`; the API stores only generated `<SERVER>_MCP_CLIENT_ID` / `<SERVER>_MCP_CLIENT_SECRET` keys in `{OPENAGENTD_CONFIG_DIR}/.env` and writes `${...}` refs to `mcp.json`.
-   - For dynamic-registration OAuth servers such as Notion, use `--oauth` without credential values.
+   - For HTTP headers, prefer env refs (`--header Authorization='Bearer ${TOKEN_ENV}'`) over pasting raw bearer tokens.
+   - For HTTP OAuth servers, choose the server's supported mode:
+     - Dynamic registration, e.g. Notion: use `--oauth` without credential values.
+     - Public client: use `--oauth --oauth-client-id <id>`.
+     - Confidential client, e.g. Slack: use `--oauth-client-id <id> --oauth-client-secret <secret>`.
+   - When direct OAuth credential values are passed, the API stores generated `<SERVER>_MCP_CLIENT_ID` / `<SERVER>_MCP_CLIENT_SECRET` keys in `{OPENAGENTD_CONFIG_DIR}/.env` and writes `${...}` refs to `mcp.json`. You may also pass existing `${ENV_VAR}` refs directly.
 
 2. **Expand `~` and relative paths** for stdio args — the daemon spawns under
    its own cwd. Use `realpath`:
@@ -105,14 +113,22 @@ always proceed to wiring after these commands regardless of daemon state.
 3. **Add or update** the server:
 
    ```bash
-   # Remote HTTP (preferred when the server offers a hosted URL)
-   python3 "$SCRIPT" add excalidraw --http https://mcp.excalidraw.com
+    # Remote HTTP (preferred when the server offers a hosted URL)
+    python3 "$SCRIPT" add excalidraw --http https://mcp.excalidraw.com
 
-   # HTTP OAuth, dynamic registration
-   python3 "$SCRIPT" add notion --http https://mcp.notion.com/mcp --oauth
+    # Remote HTTP with a bearer-token header stored in the user's .env
+    python3 "$SCRIPT" add private --http https://mcp.example.com/mcp \
+      --header Authorization='Bearer ${PRIVATE_MCP_TOKEN}'
 
-   # HTTP OAuth, app credentials required
-   python3 "$SCRIPT" add slack --http https://mcp.slack.com/mcp \
+    # HTTP OAuth, dynamic registration
+    python3 "$SCRIPT" add notion --http https://mcp.notion.com/mcp --oauth
+
+    # HTTP OAuth, public-client app credentials
+    python3 "$SCRIPT" add publicapp --http https://mcp.example.com/mcp \
+      --oauth --oauth-client-id <client-id>
+
+    # HTTP OAuth, app credentials required
+    python3 "$SCRIPT" add slack --http https://mcp.slack.com/mcp \
      --oauth-client-id <client-id> --oauth-client-secret <client-secret>
 
    # Local stdio

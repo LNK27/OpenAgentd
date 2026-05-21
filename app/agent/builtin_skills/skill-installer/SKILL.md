@@ -7,9 +7,25 @@ description: >-
 
 # Skill Installer
 
+## Discovery order
+
+OpenAgentd discovers skills from five roots, in this order. The first skill
+with a given name wins:
+
+1. `{cwd}/.openagentd/skills/{skill-name}/SKILL.md` — project-specific OpenAgentd skill.
+2. `{cwd}/.opencode/skills/{skill-name}/SKILL.md` — project opencode-compatible skill.
+3. `{SKILLS_DIR}/{skill-name}/SKILL.md` — global OpenAgentd skill.
+4. `~/.config/opencode/skills/{skill-name}/SKILL.md` — global opencode-compatible skill.
+5. Bundled OpenAgentd operational skills — read-only fallback.
+
+Default to `{SKILLS_DIR}` for user-global installs unless the user explicitly
+asks for a project-local skill or an opencode-shared skill.
+If the target name already exists only as a bundled skill, install an override
+in `{SKILLS_DIR}` (or the requested project root); never edit bundled files.
+
 ## Skill file format
 
-A skill is a directory at `{SKILLS_DIR}/{skill-name}/` containing at minimum a `SKILL.md` file. The `SKILL.md` has YAML frontmatter and a Markdown body:
+A skill is a directory at `{root}/{skill-name}/` containing at minimum a `SKILL.md` file. The `SKILL.md` has YAML frontmatter and a Markdown body:
 
 ```markdown
 ---

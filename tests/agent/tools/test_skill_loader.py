@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from app.agent.tools.builtin.skill import (
+    _builtin_skills_dir,
+    _discover_skills_cached,
     _parse_frontmatter,
     discover_skills,
     load_skill,
@@ -44,15 +46,15 @@ class TestParseFrontmatter:
 
 class TestDiscoverSkills:
     def test_discover_skills_from_dir(self, tmp_path):
-        skill_dir = tmp_path / "web-research"
+        skill_dir = tmp_path / "example-skill"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text(
-            "---\nname: web-research\ndescription: Research the web\n---\nInstructions."
+            "---\nname: example-skill\ndescription: Example skill\n---\nInstructions."
         )
         result = discover_skills(skills_dir=tmp_path)
-        assert "web-research" in result
-        assert result["web-research"]["description"] == "Research the web"
-        assert result["web-research"]["file"] == "web-research/SKILL.md"
+        assert "example-skill" in result
+        assert result["example-skill"]["description"] == "Example skill"
+        assert result["example-skill"]["file"] == "example-skill/SKILL.md"
 
     def test_discover_skills_empty_dir(self, tmp_path):
         result = discover_skills(skills_dir=tmp_path)
@@ -347,3 +349,32 @@ class TestMultiRootDiscovery:
         second = discover_skills()
 
         assert set(second.keys()) == {"alpha", "beta"}
+
+
+class TestBuiltinSkills:
+    @pytest.fixture(autouse=True)
+    def _builtin_only(self, monkeypatch):
+        _discover_skills_cached.cache_clear()
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.skill._iter_skill_roots",
+            lambda: [_builtin_skills_dir()],
+        )
+        yield
+        _discover_skills_cached.cache_clear()
+
+    def test_operational_builtin_skills_are_discovered(self):
+        result = discover_skills()
+
+        assert {
+            "self-healing",
+            "skill-installer",
+            "mcp-installer",
+            "plugin-installer",
+        }.issubset(result)
+        assert (_builtin_skills_dir() / "mcp-installer" / "mcp_apply.py").is_file()
+
+    @pytest.mark.asyncio
+    async def test_builtin_skill_dir_points_at_auxiliary_files(self):
+        body = await load_skill("mcp-installer")
+
+        assert str(_builtin_skills_dir() / "mcp-installer" / "mcp_apply.py") in body

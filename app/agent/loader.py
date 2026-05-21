@@ -28,7 +28,7 @@ Each file::
     temperature: 0.2
     thinking_level: low
     tools: [date, read, ls]
-    skills: [web-research]
+    skills: [mcp-installer]
     fallback_model: copilot:gpt-5-mini
     ---
 

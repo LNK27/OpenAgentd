@@ -117,7 +117,7 @@ class TestTeamConfigureList:
     async def test_list_reads_from_disk(self, tmp_path):
         team, _ = _make_team_with_file_backed_member(
             tmp_path,
-            skills=["web-research"],
+            skills=["example-skill"],
             tools=["read"],
             mcp=["context7"],
         )
@@ -125,7 +125,7 @@ class TestTeamConfigureList:
 
         result = await tool(member="executor", action="list")
 
-        assert "web-research" in result
+        assert "example-skill" in result
         assert "read" in result
         assert "context7" in result
         assert "executor.md" in result
@@ -152,18 +152,18 @@ class TestTeamConfigureAdd:
 
         with patch(
             "app.agent.tools.builtin.skill.discover_skills",
-            return_value={"web-research": {}},
+            return_value={"example-skill": {}},
         ):
             result = await tool(
                 member="executor",
                 action="add",
                 kind="skill",
-                name="web-research",
+                name="example-skill",
             )
 
         assert "Added" in result
         cfg = parse_agent_md(md)
-        assert "web-research" in cfg.skills
+        assert "example-skill" in cfg.skills
 
     async def test_add_mcp_writes_frontmatter(self, tmp_path):
         team, md = _make_team_with_file_backed_member(tmp_path, mcp=[])
@@ -248,13 +248,13 @@ class TestTeamConfigureRemove:
 
         with patch(
             "app.agent.tools.builtin.skill.discover_skills",
-            return_value={"web-research": {}},
+            return_value={"example-skill": {}},
         ):
             result = await tool(
                 member="executor",
                 action="remove",
                 kind="skill",
-                name="web-research",
+                name="example-skill",
             )
 
         assert "not in" in result
@@ -274,7 +274,7 @@ class TestTeamConfigureValidation:
 
         with patch(
             "app.agent.tools.builtin.skill.discover_skills",
-            return_value={"web-research": {}},
+            return_value={"example-skill": {}},
         ):
             result = await tool(
                 member="executor",
@@ -368,7 +368,7 @@ class TestTeamConfigureFrontmatterEdgeCases:
         """Frontmatter has skills/tools but no mcp key — add must create it."""
         # _write_member_md only emits keys we pass; omit mcp entirely.
         team, md = _make_team_with_file_backed_member(
-            tmp_path, skills=["web-research"], tools=["read"]
+            tmp_path, skills=["example-skill"], tools=["read"]
         )
         # Sanity: parsed config initially has empty mcp list.
         assert parse_agent_md(md).mcp == []
@@ -507,22 +507,22 @@ class TestTeamConfigureFrontmatterEdgeCases:
 
         with patch(
             "app.agent.tools.builtin.skill.discover_skills",
-            return_value={"web-research": {}, "self-healing": {}},
+            return_value={"example-skill": {}, "self-healing": {}},
         ):
             r1 = await tool(
-                member="executor", action="add", kind="skill", name="web-research"
+                member="executor", action="add", kind="skill", name="example-skill"
             )
             r2 = await tool(
                 member="executor", action="add", kind="skill", name="self-healing"
             )
 
         assert "Added" in r1 and "Added" in r2
-        assert parse_agent_md(md).skills == ["web-research", "self-healing"]
+        assert parse_agent_md(md).skills == ["example-skill", "self-healing"]
 
     async def test_round_trip_preserves_logical_config(self, tmp_path):
         """add(X) then remove(X) yields a config field equal to the original."""
         team, md = _make_team_with_file_backed_member(
-            tmp_path, skills=["web-research"], tools=["read"], mcp=[]
+            tmp_path, skills=["example-skill"], tools=["read"], mcp=[]
         )
         before = parse_agent_md(md)
 
@@ -879,7 +879,7 @@ class TestTeamConfigureFilesystemFailures:
         with (
             patch(
                 "app.agent.tools.builtin.skill.discover_skills",
-                return_value={"web-research": {}},
+                return_value={"example-skill": {}},
             ),
             patch("app.agent.mode.team.manage.Path.write_text", side_effect=boom),
         ):
@@ -887,7 +887,7 @@ class TestTeamConfigureFilesystemFailures:
                 member="executor",
                 action="add",
                 kind="skill",
-                name="web-research",
+                name="example-skill",
             )
 
         assert "Failed to update" in result
@@ -945,7 +945,7 @@ class TestTeamConfigureListContract:
     async def test_list_ignores_extra_kind_and_name(self, tmp_path):
         """Per the docstring, list ignores kind/name when supplied."""
         team, _ = _make_team_with_file_backed_member(
-            tmp_path, skills=["web-research"], tools=[], mcp=[]
+            tmp_path, skills=["example-skill"], tools=[], mcp=[]
         )
         tool = make_team_configure_tool(team)
 
@@ -958,7 +958,7 @@ class TestTeamConfigureListContract:
         )
 
         # Successful list output, NOT a validation error.
-        assert "web-research" in result
+        assert "example-skill" in result
         assert "Unknown" not in result
 
     async def test_list_output_is_sorted_for_stable_diffing(self, tmp_path):

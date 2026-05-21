@@ -1,5 +1,5 @@
-"""Seed-bundle installer — materialises the default agent team, skills,
-and configuration files into a fresh user's config directory.
+"""Seed-bundle installer — materialises the default agent team and
+configuration files into a fresh user's config directory.
 
 What ships
 ----------
@@ -8,8 +8,8 @@ What ships
   provider:model the user picked in ``init``. Existing files are preserved,
   except this placeholder token may be replaced in-place after first-run
   desktop seeding.
-- ``skills/`` — one subdirectory per skill, each with at minimum a
-  ``SKILL.md``.
+- ``skills/`` — optional user-editable skills. Core operational skills ship
+  as read-only builtins under ``app/agent/builtin_skills`` instead.
 - Top-level config files: ``mcp.json`` plus generated ``settings.yaml``,
   ``multimodal.yaml``, and ``speech.yaml``. These are the defaults the user can edit later;
   any file already present in the user's config dir is left untouched.
@@ -312,7 +312,7 @@ def _install_from_github(
             rel = _strip_repo_prefix(member.name)
             if rel is None or not rel.startswith("seed/"):
                 continue
-            # Strip "seed/" → leaves agents/foo.md, skills/foo/SKILL.md,
+            # Strip "seed/" → leaves agents/foo.md, optional skills/foo/SKILL.md,
             # or top-level mcp.json / multimodal.yaml / etc.
             target_rel = Path(rel).relative_to("seed")
             if not target_rel.parts or not _is_seed_artefact(target_rel):

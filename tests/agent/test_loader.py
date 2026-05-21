@@ -156,7 +156,7 @@ def test_parse_agent_md_full_frontmatter(tmp_path):
             "temperature": 0.3,
             "thinking_level": "low",
             "tools": ["read", "shell"],
-            "skills": ["web-research"],
+            "skills": ["example-skill"],
             "description": "Does things.",
         },
         "Custom prompt.",
@@ -165,7 +165,7 @@ def test_parse_agent_md_full_frontmatter(tmp_path):
     assert cfg.temperature == 0.3
     assert cfg.thinking_level == "low"
     assert cfg.tools == ["read", "shell"]
-    assert cfg.skills == ["web-research"]
+    assert cfg.skills == ["example-skill"]
     assert cfg.description == "Does things."
     assert cfg.system_prompt == "Custom prompt."
 

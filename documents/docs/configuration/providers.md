@@ -13,7 +13,7 @@ A model is selected by setting `model: <prefix>:<model-id>` in an agent's `.md` 
 
 ## Setup paths
 
-- **Desktop/web UI:** open **Settings → Providers**. First launch creates the config/cache/state/data/workspace roots, `{OPENAGENTD_CONFIG_DIR}/plugins`, and default editable agents/skills with a placeholder model. Packaged installs download those defaults from the GitHub release seed bundle. API-key providers write to `{OPENAGENTD_CONFIG_DIR}/.env`; OAuth providers use the in-app flow and store tokens under `{OPENAGENTD_CACHE_DIR}`.
+- **Desktop/web UI:** open **Settings → Providers**. First launch creates the config/cache/state/data/workspace roots, `{OPENAGENTD_CONFIG_DIR}/plugins`, and default editable agents with a placeholder model. Packaged installs download those defaults from the GitHub release seed bundle. API-key providers write to `{OPENAGENTD_CONFIG_DIR}/.env`; OAuth providers use the in-app flow and store tokens under `{OPENAGENTD_CACHE_DIR}`.
 - **CLI/server:** run `openagentd init` for first setup, or `openagentd auth copilot|codex` for OAuth-only providers.
 
 Provider setup replaces the seeded placeholder model without overwriting existing user-edited files.

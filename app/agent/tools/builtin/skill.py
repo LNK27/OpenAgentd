@@ -1,10 +1,10 @@
 """Skill loader tool — lets agents dynamically load skill instructions.
 
-Skills live in the ``skills/`` directory at the project root using the
-directory layout ``skills/{skill_name}/SKILL.md``.  Each ``SKILL.md``
-has YAML frontmatter (name, description) followed by a markdown body.
-Extra files (e.g. ``creating.md``, ``reference/``) may sit alongside
-``SKILL.md`` for the agent to read separately via file tools.
+Skills live in directory roots using the layout
+``skills/{skill_name}/SKILL.md``.  Each ``SKILL.md`` has YAML frontmatter
+(name, description) followed by a markdown body. Extra files (e.g.
+``creating.md``, ``reference/``) may sit alongside ``SKILL.md`` for the
+agent to read separately via file tools.
 
 The ``load_skill`` tool reads the skill file and returns its content
 so the LLM can apply the instructions in subsequent reasoning.
@@ -46,6 +46,7 @@ def _iter_skill_roots() -> list[Path]:
     3. ``_SKILLS_DIR``                (global, OpenAgentd — typically
                                         ``{OPENAGENTD_CONFIG_DIR}/skills``)
     4. ``~/.config/opencode/skills/`` (global, opencode reuse)
+    5. bundled OpenAgentd skills      (read-only fallback)
 
     Earlier entries win on a name collision. ``_SKILLS_DIR`` is
     referenced indirectly (via the module-level binding) so existing
@@ -57,7 +58,13 @@ def _iter_skill_roots() -> list[Path]:
         cwd / ".opencode" / "skills",
         _SKILLS_DIR,
         Path.home() / ".config" / "opencode" / "skills",
+        _builtin_skills_dir(),
     ]
+
+
+def _builtin_skills_dir() -> Path:
+    """Directory containing bundled read-only OpenAgentd skills."""
+    return Path(__file__).resolve().parents[2] / "builtin_skills"
 
 
 def _render_tokens(text: str, *, skill_dir: Path | None = None) -> str:
@@ -112,10 +119,11 @@ def discover_skills(
 
     Returns a dict mapping skill name → metadata dict.
 
-    With ``skills_dir`` omitted, walks the four roots in
+    With ``skills_dir`` omitted, walks the roots in
     ``_iter_skill_roots()`` (project + global, OpenAgentd + opencode) in
-    precedence order — first source wins on a name collision. Pass an
-    explicit ``skills_dir`` to scan a single root (used by tests).
+    precedence order, ending with bundled read-only OpenAgentd skills —
+    first source wins on a name collision. Pass an explicit
+    ``skills_dir`` to scan a single root (used by tests).
 
     Uses an mtime-keyed cache so the next call after a skill is added,
     removed, or its ``SKILL.md`` edited returns the fresh listing
@@ -133,7 +141,7 @@ def discover_skills(
     roots = [r for r in _iter_skill_roots() if r.is_dir()]
     if not roots:
         return {}
-    signature = max(_skills_dir_signature(r) for r in roots)
+    signature = tuple(_skills_dir_signature(r) for r in roots)
     return _discover_skills_cached(tuple(str(r) for r in roots), signature)
 
 
@@ -163,7 +171,7 @@ def _skills_dir_signature(directory: Path) -> int:
 
 @lru_cache(maxsize=16)
 def _discover_skills_cached(
-    directories: tuple[str, ...], signature: int
+    directories: tuple[str, ...], signature: int | tuple[int, ...]
 ) -> dict[str, dict]:
     """Cache keyed by ``(roots, mtime signature)``.
 
@@ -220,7 +228,7 @@ async def load_skill(
     skill_name: Annotated[
         str,
         Field(
-            description="Skill name as listed in Available Skills (e.g. 'web-research')."
+            description="Skill name as listed in Available Skills (e.g. 'mcp-installer')."
         ),
     ],
 ) -> str:
