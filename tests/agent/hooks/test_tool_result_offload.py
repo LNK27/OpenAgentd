@@ -5,11 +5,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 
-from app.agent.hooks.tool_result_offload import (
-    ToolResultOffloadHook,
-    _NEVER_OFFLOAD,
-    _OFFLOAD_SUBDIR,
-)
+from app.agent.artifacts import TOOL_RESULTS_DIR
+from app.agent.hooks.tool_result_offload import ToolResultOffloadHook, _NEVER_OFFLOAD
 from app.agent.sandbox import SandboxConfig, set_sandbox
 from app.agent.schemas.chat import FunctionCall, ToolCall
 from app.agent.state import AgentState, RunContext
@@ -67,7 +64,7 @@ class TestSmallResult:
 
             await hook.wrap_tool_call(ctx, state, tc, handler)
 
-            offload_dir = tmp_path / ctx.agent_name / _OFFLOAD_SUBDIR
+            offload_dir = tmp_path / ".openagentd" / "sessions" / "s" / TOOL_RESULTS_DIR
             assert not offload_dir.exists()
         finally:
             from app.agent.sandbox import _sandbox_ctx
@@ -218,7 +215,15 @@ class TestLargeResult:
 
             await hook.wrap_tool_call(ctx, state, tc, handler)
 
-            dest = tmp_path / "agent1" / _OFFLOAD_SUBDIR / "tc_file.txt"
+            dest = (
+                tmp_path
+                / ".openagentd"
+                / "sessions"
+                / "s"
+                / TOOL_RESULTS_DIR
+                / "agent1"
+                / "tc_file.txt"
+            )
             assert dest.exists()
             assert dest.read_text() == full_content
         finally:
@@ -375,7 +380,8 @@ class TestWriteOffload:
             assert path.exists()
             assert path.read_text() == "file content here"
             assert path.name == "tc_123.txt"
-            assert path.parent.name == _OFFLOAD_SUBDIR
+            assert path.parent.name == "myagent"
+            assert path.parent.parent.name == TOOL_RESULTS_DIR
         finally:
             from app.agent.sandbox import _sandbox_ctx
 

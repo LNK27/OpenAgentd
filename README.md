@@ -119,6 +119,18 @@ openagentd        # http://localhost:4082
 
 Other install options (pip, pipx, from source) — see [`documents/docs/install.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md).
 
+Useful maintenance commands:
+
+```bash
+openagentd logs                 # tail the local server log
+openagentd doctor               # check install health
+openagentd cleanup              # dry-run cleanup for generated artifacts older than 14 days
+openagentd cleanup --apply      # delete the listed generated artifacts
+openagentd update               # update to the latest version
+```
+
+Generated artifacts are session-scoped under `.openagentd/sessions/{session_id}/` inside the active workspace. Todos live in `.todos.json`; bulky tool output lives under `.tool_results/`, including shell spills at `.tool_results/shell/`. Normal session workspaces are removed when the session is deleted. Coding sessions keep the project directory but remove that session's `.openagentd/sessions/{session_id}/` metadata.
+
 ---
 
 ## Migrate from OpenClaw or Hermes Agent

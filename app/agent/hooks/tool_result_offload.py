@@ -56,8 +56,8 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from app.agent.artifacts import TOOL_RESULTS_DIR, tool_results_dir
 from app.agent.hooks.base import BaseAgentHook
-from app.agent.sandbox import get_sandbox
 
 if TYPE_CHECKING:
     from app.agent.state import AgentState, RunContext
@@ -67,14 +67,13 @@ if TYPE_CHECKING:
 DEFAULT_CHAR_THRESHOLD = 40000
 # Me preview chars: first N + last N shown inline so agent sees head & tail
 DEFAULT_PREVIEW_CHARS = 1000
-# Me dotfolder inside workspace — keeps it out of normal file listings
-_OFFLOAD_SUBDIR = ".tool_results"
 # Never offload read — agent uses it to access prior offloads, offloading
 # its result would create a circular dependency.
 # Never offload skill — skill content must reach the agent intact; truncating
 # it would silently deliver incomplete instructions.
 # shell is NOT excluded: it self-truncates large output (persists full content
-# to .openagentd/sessions/<sid>/.shell_output/) so the offload hook never sees oversized shell results.
+# to .openagentd/sessions/<sid>/.tool_results/shell/) so this hook normally
+# never sees oversized shell results.
 _NEVER_OFFLOAD = frozenset({"read", "skill"})
 
 
@@ -119,7 +118,11 @@ class ToolResultOffloadHook(BaseAgentHook):
         tool_call_id = tool_call.id or f"tc_{tool_call.function.name}"
         try:
             path = await asyncio.to_thread(
-                self._write_offload, ctx.agent_name, tool_call_id, result
+                self._write_offload,
+                ctx.agent_name,
+                tool_call_id,
+                result,
+                ctx.session_id,
             )
         except Exception as exc:
             # Me keep original result if write fails — never break tool execution
@@ -145,7 +148,12 @@ class ToolResultOffloadHook(BaseAgentHook):
         )
 
         # Me path relative to workspace root — agent can pass to read_file directly
-        rel_path = f"{ctx.agent_name}/{_OFFLOAD_SUBDIR}/{tool_call_id}.txt"
+        rel_path = (
+            f".openagentd/sessions/{ctx.session_id}/{TOOL_RESULTS_DIR}/"
+            f"{ctx.agent_name}/{tool_call_id}.txt"
+            if ctx.session_id
+            else f".openagentd/{TOOL_RESULTS_DIR}/{ctx.agent_name}/{tool_call_id}.txt"
+        )
 
         compact = (
             f"[Tool result offloaded — content saved to workspace]\n"
@@ -196,10 +204,15 @@ class ToolResultOffloadHook(BaseAgentHook):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _write_offload(self, agent_name: str, tool_call_id: str, content: str) -> Path:
-        """Write full tool result to {workspace}/{agent_name}/.tool_results/{id}.txt."""
-        sandbox = get_sandbox()
-        offload_dir = sandbox.workspace_root / agent_name / _OFFLOAD_SUBDIR
+    def _write_offload(
+        self,
+        agent_name: str,
+        tool_call_id: str,
+        content: str,
+        session_id: str | None = None,
+    ) -> Path:
+        """Write full tool result to session metadata below ``.openagentd``."""
+        offload_dir = tool_results_dir(agent_name, session_id)
         offload_dir.mkdir(parents=True, exist_ok=True)
         dest = offload_dir / f"{tool_call_id}.txt"
         dest.write_text(content, encoding="utf-8")

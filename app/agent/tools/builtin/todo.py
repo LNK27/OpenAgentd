@@ -38,16 +38,16 @@ from typing import Annotated, Any, Literal
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from app.agent.sandbox import get_sandbox
+from app.agent.artifacts import (
+    TODOS_FILENAME,
+    todos_path,
+    workspace_session_artifact_dir,
+)
 from app.agent.tools.registry import InjectedArg, Tool
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-#: Filename for the todo store.  Public so the ``/team/sessions/{id}/todos``
-#: endpoint can locate the same file under the session metadata directory.
-TODOS_FILENAME = ".todos.json"
 
 # ---------------------------------------------------------------------------
 # Action models (discriminated union on "action")
@@ -147,8 +147,7 @@ ActionModel = (
 
 
 def _todos_path() -> Any:
-    sandbox = get_sandbox()
-    return sandbox.metadata_path(TODOS_FILENAME)
+    return todos_path()
 
 
 def _load_store() -> dict:
@@ -175,10 +174,11 @@ def release_in_progress_for_actor(
     workspace_root: Path, actor: str, session_id: str | None = None
 ) -> list[str]:
     """Release an actor's unfinished todos for reassignment."""
-    path = workspace_root / ".openagentd"
-    if session_id:
-        path = path / "sessions" / session_id
-    path = path / TODOS_FILENAME
+    path = (
+        workspace_session_artifact_dir(workspace_root, session_id) / TODOS_FILENAME
+        if session_id
+        else workspace_root / ".openagentd" / TODOS_FILENAME
+    )
     if not path.exists():
         return []
     try:

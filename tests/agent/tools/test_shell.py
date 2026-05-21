@@ -5,7 +5,7 @@ Covers the rewritten shell tool:
 - streaming foreground execution
 - workdir parameter
 - timeout handling
-- output spilling to .openagentd/sessions/<sid>/.shell_output/
+- output spilling to .openagentd/sessions/<sid>/.tool_results/shell/
 - background process management
 """
 
@@ -322,7 +322,7 @@ async def test_shell_output_spill_file_readable(sandbox_workspace):
     import re
 
     match = re.search(
-        r"\.openagentd/sessions/session-1/\.shell_output/([a-f0-9]+\.txt)",
+        r"\.openagentd/sessions/session-1/\.tool_results/shell/([a-f0-9]+\.txt)",
         result,
     )
     assert match is not None
@@ -331,14 +331,15 @@ async def test_shell_output_spill_file_readable(sandbox_workspace):
         / ".openagentd"
         / "sessions"
         / "session-1"
-        / ".shell_output"
+        / ".tool_results"
+        / "shell"
         / match.group(1)
     )
     assert (
         spill_file.read_text(encoding="utf-8")
         == "some longer output that will be truncated\n"
     )
-    assert ".openagentd/.shell_output" not in result
+    assert ".openagentd/.tool_results" not in result
 
 
 # ---------------------------------------------------------------------------
