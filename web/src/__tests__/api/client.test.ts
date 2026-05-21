@@ -51,4 +51,10 @@ describe('postTeamChat', () => {
     expect(String(url)).toBe('/api/team/sessions/sid/queued-messages/mid')
     expect(method).toBe('DELETE')
   })
+
+  it('treats missing queued messages as already cancelled', async () => {
+    globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'not found' }), { status: 404 }))) as typeof fetch
+
+    await expect(cancelQueuedTeamMessage('sid', 'mid')).resolves.toBeUndefined()
+  })
 })

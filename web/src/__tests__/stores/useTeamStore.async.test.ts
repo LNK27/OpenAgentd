@@ -539,7 +539,7 @@ describe("sendMessage: queue behaviour", () => {
 
     expect(mockPostTeamChat).not.toHaveBeenCalled()
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
-    expect(useTeamStore.getState().error).toBe("Wait for the current response to finish before sending attachments.")
+    expect(useTeamStore.getState().error).toBe("Files cannot be queued yet. Wait for this response to finish, then send the attachment.")
   })
 
   it("treats a queued response without message_id as an error", async () => {

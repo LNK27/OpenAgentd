@@ -103,6 +103,7 @@ export async function cancelQueuedTeamMessage(sessionId: string, messageId: stri
     `${API}/team/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`,
     { method: 'DELETE' },
   )
+  if (res.status === 404) return
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     throw new Error(body?.detail || `DELETE queued message failed: ${res.status}`)

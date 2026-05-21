@@ -162,7 +162,7 @@ export const useTeamStore = create<TeamStore>()(
       if (leadWorking) {
         if (files && files.length > 0) {
           set((draft) => {
-            draft.error = 'Wait for the current response to finish before sending attachments.'
+            draft.error = 'Files cannot be queued yet. Wait for this response to finish, then send the attachment.'
           })
           return
         }

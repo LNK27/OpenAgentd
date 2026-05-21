@@ -372,9 +372,10 @@ class AgentTeam:
             )
             await self.mailbox.send(to=self.lead.name, message=msg)
         logger.info(
-            "team_queued_messages_activated session_id={} count={}",
+            "team_queued_messages_activated session_id={} count={} message_ids={}",
             session_id,
             len(queued),
+            [str(row.id) for row in queued],
         )
         return True
 

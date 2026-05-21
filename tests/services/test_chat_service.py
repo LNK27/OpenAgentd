@@ -506,14 +506,15 @@ async def test_queued_user_messages_are_hidden_until_popped(session):
 
     visible = await get_messages(session, chat_session.id)
     assert [msg.content for msg in visible] == ["next", "current response"]
-    assert visible[0].extra == {"queue_status": "queued"}
+    assert visible[0].extra and visible[0].extra["queue_status"] == "queued"
+    assert isinstance(visible[0].extra.get("queued_at"), str)
 
     popped = await pop_queued_user_messages(session, chat_session.id)
     await session.commit()
 
     assert [row.id for row in popped] == [queued.id]
     assert popped[0].exclude_from_context is False
-    assert popped[0].extra is None
+    assert popped[0].extra and isinstance(popped[0].extra.get("queued_at"), str)
     visible = await get_messages(session, chat_session.id)
     assert [msg.content for msg in visible] == ["current response", "next"]
 
@@ -563,7 +564,8 @@ async def test_cleanup_reverted_tail_preserves_queued_messages(session):
     refreshed = await session.get(SessionMessage, queued.id)
     assert cleaned == 2
     assert refreshed is not None
-    assert refreshed.extra == {"queue_status": "queued"}
+    assert refreshed.extra and refreshed.extra["queue_status"] == "queued"
+    assert isinstance(refreshed.extra.get("queued_at"), str)
     assert refreshed.exclude_from_context is True
     popped = await pop_queued_user_messages(session, chat_session.id)
     assert [row.id for row in popped] == [queued.id]

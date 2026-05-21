@@ -621,12 +621,13 @@ async def save_queued_user_message(
     session_id: UUID,
     content: str,
 ) -> SessionMessage:
+    queued_at = datetime.now(timezone.utc).isoformat()
     return await save_message(
         db,
         session_id,
         HumanMessage(content=content),
         is_hidden=True,
-        extra={"queue_status": "queued"},
+        extra={"queue_status": "queued", "queued_at": queued_at},
     )
 
 
