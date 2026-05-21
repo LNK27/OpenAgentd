@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import AsyncGenerator, Literal
 from uuid import UUID
+from uuid import uuid7
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from loguru import logger
@@ -123,7 +124,6 @@ def _changed_paths_payload(shift: BoundaryShift) -> dict:
 
 @router.post("/chat", status_code=202)
 async def team_chat(
-    team: TeamDep,
     db: DbSession,
     body: ChatFormDep,
     files: list[UploadFile] = File(default=[]),
@@ -183,7 +183,10 @@ async def team_chat(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:
-        team_obj = _require_team(team)
+        if session_id is None:
+            session_id = str(uuid7())
+        team_obj = await team_manager.get_or_start_team_for_session(session_id)
+        team_obj = _require_team(team_obj)
 
     # ── Interrupt (mutually exclusive with message) ─────────────────────────
     if interrupt:
@@ -267,7 +270,6 @@ class CommandRequest(BaseModel):
 
 @router.post("/commands", status_code=202)
 async def team_command(
-    team: TeamDep,
     body: CommandRequest,
 ) -> dict:
     """Run a slash-command on a session — no new user message persisted.
@@ -291,7 +293,8 @@ async def team_command(
     be continued (no assistant message, last message has unfinished tool
     calls, lead is already working, etc.).
     """
-    team_obj = _require_team(team)
+    team_obj = await team_manager.get_or_start_team_for_session(body.session_id)
+    team_obj = _require_team(team_obj)
 
     if body.command == "continue":
         try:

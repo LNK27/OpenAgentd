@@ -87,6 +87,40 @@ async def test_get_or_start_team_is_idempotent(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_or_start_team_for_session_is_idempotent(monkeypatch):
+    fake_team = _make_team()
+    monkeypatch.setattr(
+        "app.services.team_manager.load_team_from_dir", lambda _: fake_team
+    )
+
+    first = await team_manager.get_or_start_team_for_session("session-a")
+    second = await team_manager.get_or_start_team_for_session("session-a")
+
+    assert first is second
+    assert team_manager.current_team_for_session("session-a") is fake_team
+    fake_team.start.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_or_start_team_for_session_isolated_by_session(monkeypatch):
+    first_team = _make_team("lead-a")
+    second_team = _make_team("lead-b")
+    teams = iter([first_team, second_team])
+    monkeypatch.setattr(
+        "app.services.team_manager.load_team_from_dir", lambda _: next(teams)
+    )
+
+    first = await team_manager.get_or_start_team_for_session("session-a")
+    second = await team_manager.get_or_start_team_for_session("session-b")
+
+    assert first is first_team
+    assert second is second_team
+    assert first is not second
+    first_team.start.assert_awaited_once()
+    second_team.start.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_get_or_start_team_evicts_after_idle(monkeypatch):
     """Team evicts when idle for longer than _DEFAULT_TEAM_IDLE_SECONDS."""
     fake_team = _make_team()

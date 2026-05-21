@@ -88,6 +88,8 @@ class TeamDiff:
 
 _team: "AgentTeam | None" = None
 _team_last_used: float = 0.0
+_session_teams: dict[str, "AgentTeam"] = {}
+_session_team_last_used: dict[str, float] = {}
 _coding_teams: dict[str, "AgentTeam"] = {}
 _coding_team_last_used: dict[str, float] = {}
 _DEFAULT_TEAM_IDLE_SECONDS = 60 * 60
@@ -144,6 +146,23 @@ def _maybe_pop_idle_default_team_locked(
     return expired
 
 
+def _pop_idle_session_teams_locked(now: float) -> list[tuple[str, "AgentTeam"]]:
+    expired = [
+        session_id
+        for session_id, last_used in _session_team_last_used.items()
+        if now - last_used > _DEFAULT_TEAM_IDLE_SECONDS
+        and (team := _session_teams.get(session_id)) is not None
+        and _team_is_idle(team)
+    ]
+    popped: list[tuple[str, "AgentTeam"]] = []
+    for session_id in expired:
+        team = _session_teams.pop(session_id, None)
+        _session_team_last_used.pop(session_id, None)
+        if team is not None:
+            popped.append((session_id, team))
+    return popped
+
+
 def _pop_idle_coding_teams_locked(now: float) -> list[tuple[str, "AgentTeam"]]:
     expired = [
         workspace
@@ -171,6 +190,16 @@ async def _stop_coding_teams(teams: list[tuple[str, "AgentTeam"]]) -> None:
             logger.info("coding_team_idle_stopped workspace={}", workspace)
 
 
+async def _stop_session_teams(teams: list[tuple[str, "AgentTeam"]]) -> None:
+    for session_id, team in teams:
+        try:
+            await team.stop()
+        except Exception:
+            logger.exception("team_session_idle_stop_error session_id={}", session_id)
+        else:
+            logger.info("team_session_idle_stopped session_id={}", session_id)
+
+
 def current_team() -> "AgentTeam | None":
     return _team
 
@@ -179,6 +208,10 @@ def current_team_for_workspace(workspace: str | None) -> "AgentTeam | None":
     if not workspace:
         return _team
     return _coding_teams.get(str(_resolve_workspace(workspace)))
+
+
+def current_team_for_session(session_id: str) -> "AgentTeam | None":
+    return _session_teams.get(session_id)
 
 
 def set_team(team: "AgentTeam | None") -> None:
@@ -264,6 +297,49 @@ async def get_or_start_team() -> "AgentTeam | None":
     return result
 
 
+async def get_or_start_team_for_session(session_id: str) -> "AgentTeam | None":
+    """Return the default-mode team instance dedicated to one chat session."""
+    global _team_last_used
+
+    async with _lock:
+        now = time.monotonic()
+        expired_default = _maybe_pop_idle_default_team_locked(now)
+        expired_sessions = _pop_idle_session_teams_locked(now)
+
+        existing = _session_teams.get(session_id)
+        if existing is not None:
+            _session_team_last_used[session_id] = now
+            result: "AgentTeam | None" = existing
+        else:
+            agents_dir = _resolve_agents_dir()
+            candidate = load_team_from_dir(agents_dir)
+            if candidate is None:
+                logger.warning("team_manager_no_agents path={}", agents_dir)
+                result = None
+            else:
+                await candidate.start()
+                _session_teams[session_id] = candidate
+                _session_team_last_used[session_id] = now
+                _team_last_used = now
+                logger.info(
+                    "team_manager_session_started session_id={} lead={}",
+                    session_id,
+                    candidate.lead.name,
+                )
+                result = candidate
+
+    if expired_default is not None:
+        try:
+            await expired_default.stop()
+        except Exception:
+            logger.exception("team_manager_idle_stop_error")
+        else:
+            logger.info("team_manager_idle_stopped")
+    await _stop_session_teams(expired_sessions)
+
+    return result
+
+
 async def stop() -> None:
     """Stop the current team (if any) on server shutdown."""
     global _team, _team_last_used
@@ -275,6 +351,15 @@ async def stop() -> None:
                 logger.exception("team_manager_stop_error")
             _team = None
             _team_last_used = 0.0
+        for session_id, team in list(_session_teams.items()):
+            try:
+                await team.stop()
+            except Exception:
+                logger.exception(
+                    "team_session_manager_stop_error session_id={}", session_id
+                )
+        _session_teams.clear()
+        _session_team_last_used.clear()
         for workspace, team in list(_coding_teams.items()):
             try:
                 await team.stop()
