@@ -75,9 +75,10 @@ export function MentionOverlay({
     const ta = textareaRef.current
     const mirror = mirrorRef.current
     if (!ta || !mirror) return
+    // Only vertical sync — horizontal overflow can't happen because both
+    // layers use ``whitespace: pre-wrap`` + ``break-words``.
     const sync = () => {
       mirror.scrollTop = ta.scrollTop
-      mirror.scrollLeft = ta.scrollLeft
     }
     sync()
     ta.addEventListener('scroll', sync)

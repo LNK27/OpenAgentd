@@ -779,6 +779,12 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // Cap matches the ``resize()`` ceiling above so the JS-driven height
         // and the CSS limit stay in lockstep.
         style={{ maxHeight: '120px' }}
+        // Spellcheck disabled: the squiggle is painted by the browser under
+        // the textarea's own glyphs, but the visible text comes from the
+        // overlay mirror. Even with identical font/wrap/scroll the two
+        // text-layout paths drift by 1–2px, leaving the squiggle a word
+        // off. Same call Discord/Slack/ChatGPT make for the same reason.
+        spellCheck={false}
         aria-label="Message input"
         aria-expanded={mentionMenuOpen || slashMenuOpen}
         aria-controls={activePopupId}
