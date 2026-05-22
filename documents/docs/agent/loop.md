@@ -169,14 +169,14 @@ The loop buffers streaming tool-call deltas by `tc.index` — providers stream a
 
 | Status | Behaviour |
 |--------|-----------|
-| `429 Too Many Requests` | Retry; parse `Retry-After` from header or body |
+| `429 Too Many Requests` | Parse `Retry-After`; retry only when delay is under 60s, otherwise move to fallback or raise |
 | `500 / 502 / 503 / 504` | Retry with exponential backoff |
 | `400 Bad Request` | Raise immediately — malformed request won't self-heal |
 | `ConnectError / ReadTimeout` | Retry |
 
-Retry schedule: `min(1 × 3^attempt, 60)` seconds (1s, 3s, 9s, 27s, 60s). On the **last** attempt, no sleep — immediately move to fallback (or raise).
+Retry schedule: `min(1 × 3^attempt, 60)` seconds (1s, 3s, 9s, 27s, 60s). On the **last** attempt, no sleep — immediately move to fallback (or raise). For `429`, a computed delay of 60 seconds or more also skips the remaining retries and moves to fallback (or raises if no fallback is configured).
 
-On `429`, fires `on_rate_limit(ctx, state, retry_after, attempt, max_attempts)` on all hooks before sleeping, so `StreamingHook` can push a `rate_limit` SSE event to the client.
+On `429`, fires `on_rate_limit(ctx, state, retry_after, attempt, max_attempts)` on all hooks before any retry sleep, so `StreamingHook` can push a `rate_limit` SSE event to the client.
 
 ### Fallback model
 
@@ -192,6 +192,7 @@ Primary provider (5 retries for transient failures)
       → all retries exhausted? raise last exception
 ```
 
+- 429s with retry delays of 60 seconds or more skip retries and move to fallback immediately.
 - Quota-style 429s skip retries and move to fallback immediately.
 - Non-retryable errors (400, 401, 403) are raised immediately — no fallback.
 - The fallback provider gets the same retry budget (5 attempts with backoff).
