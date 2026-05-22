@@ -72,11 +72,12 @@ def app_with_team(test_team):
     set_team(None)
 
 
-async def _create_team_session(db, session_id, agent_name="lead"):
+async def _create_team_session(db, session_id, agent_name="lead", **kwargs):
     """Helper to create a top-level (team lead) session in DB."""
     session = ChatSession(
         id=session_id,
         agent_name=agent_name,
+        **kwargs,
     )
     db.add(session)
     return session
@@ -162,6 +163,32 @@ class TestListTeamSessionsWithData:
             assert by_id[str(idle_id)]["running"] is False
         finally:
             await memory_stream_store.clear(str(running_id))
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_filters_coding_workspace(self, app_with_team):
+        import app.core.db as _db
+
+        workspace_id = uuid.uuid7()
+        other_workspace_id = uuid.uuid7()
+        normal_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(
+                    db, workspace_id, mode="coding", workspace="/repo/project"
+                )
+                await _create_team_session(
+                    db, other_workspace_id, mode="coding", workspace="/repo/other"
+                )
+                await _create_team_session(db, normal_id, mode="normal")
+
+        client = TestClient(app_with_team)
+        resp = client.get(
+            "/api/team/sessions",
+            params={"mode": "coding", "workspace": "/repo/project"},
+        )
+        assert resp.status_code == 200
+        ids = [s["id"] for s in resp.json()["data"]]
+        assert ids == [str(workspace_id)]
 
     @pytest.mark.asyncio
     async def test_list_sessions_empty(self, app_with_team):

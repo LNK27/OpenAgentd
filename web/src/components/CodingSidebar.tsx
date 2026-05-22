@@ -35,10 +35,10 @@ import {
   Settings,
   Trash2,
 } from 'lucide-react'
-import { useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries/useSessionsQuery'
+import { useCodingWorkspaceSessionsQuery, useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries/useSessionsQuery'
 import { browseWorkspaces, resolveTeamSession, validateWorkspace } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
-import { prependSession } from '@/stores/cache-invalidation-bridge'
+import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { formatRelativeDate } from '@/utils/format'
 import {
   loadCodingWorkspaceEntries,
@@ -75,6 +75,84 @@ interface CodingSidebarProps {
   mobileOpen?: boolean
   /** Mobile only: called when the drawer should close (backdrop tap, navigation). */
   onMobileClose?: () => void
+}
+
+function WorkspaceSessionList({
+  path,
+  currentSessionId,
+  runningSessions,
+  collapsed = false,
+  onSessionSelect,
+  onSessionDelete,
+}: {
+  path: string
+  currentSessionId?: string
+  runningSessions?: SessionResponse[]
+  collapsed?: boolean
+  onSessionSelect: (session: SessionResponse, workspacePath: string) => void
+  onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
+}) {
+  const sessions = useCodingWorkspaceSessionsQuery(path, !collapsed)
+  const workspaceSessions = collapsed
+    ? (runningSessions ?? [])
+    : (sessions.data?.pages.flatMap((page) => page.data) ?? [])
+
+  return (
+    <div className="space-y-0.5 pb-2 pl-4 pr-2">
+      {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && (
+        <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
+      )}
+      {workspaceSessions.map((session) => {
+        const isCurrent = session.id === currentSessionId
+        const isRunning = session.running === true
+        return (
+          <div key={session.id} className="group relative">
+            <button
+              type="button"
+              onClick={() => onSessionSelect(session, path)}
+              className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+                isCurrent
+                  ? 'bg-(--bg-key) text-(--color-text)'
+                  : 'text-(--color-text-2) hover:text-(--color-text)'
+              }`}
+            >
+              <p className="truncate font-medium">{session.title || 'Untitled'}</p>
+              <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
+                {formatRelativeDate(session.created_at)}
+              </p>
+              {isRunning && (
+                <span
+                  className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)"
+                  aria-label="Session running"
+                >
+                  <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => onSessionDelete(e, session)}
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
+              aria-label={`Delete session ${session.title || 'Untitled'}`}
+            >
+              <Trash2 size={11} />
+            </button>
+          </div>
+        )
+      })}
+      {!collapsed && sessions.hasNextPage && (
+        <button
+          type="button"
+          onClick={() => { void sessions.fetchNextPage() }}
+          disabled={sessions.isFetchingNextPage}
+          className="mt-1 flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key) disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {sessions.isFetchingNextPage && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
+          <span>{sessions.isFetchingNextPage ? 'Loading…' : 'Load more'}</span>
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function CodingSidebar({
@@ -229,8 +307,12 @@ export function CodingSidebar({
         workspace: session.workspace ?? path,
         model: session.model ?? state.sessionModel,
         thinkingLevel: session.thinking_level ?? state.sessionThinkingLevel,
+        skipInitialRestore: create && session.created,
       })
-      prependSession(queryClient, session)
+      if (create && session.created) {
+        prependSession(queryClient, session)
+        prependWorkspaceSession(queryClient, path, session)
+      }
       navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create session')
@@ -374,7 +456,8 @@ export function CodingSidebar({
           const isExpanded = expandedWorkspaces.has(path)
           const isPending = pendingWorkspace === path
           const workspaceSessions = codingSessions.filter((s) => s.workspace === path)
-          const hasRunningSession = workspaceSessions.some((s) => s.running === true)
+          const runningSessions = workspaceSessions.filter((s) => s.running === true)
+          const hasRunningSession = runningSessions.length > 0
           return (
             <div key={path} className="relative">
               {/* Workspace row */}
@@ -417,51 +500,16 @@ export function CodingSidebar({
                 </button>
               </div>
 
-              {/* Nested sessions — only when expanded */}
-              {isExpanded && (
-                <div className="space-y-0.5 pb-2 pl-4 pr-2">
-                  {workspaceSessions.length === 0 && (
-                    <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
-                  )}
-                  {workspaceSessions.map((session) => {
-                    const isCurrent = session.id === currentSessionId
-                    const isRunning = session.running === true
-                    return (
-                      <div key={session.id} className="group relative">
-                        <button
-                          type="button"
-                          onClick={() => handleSessionSelect(session, path)}
-                          className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
-                            isCurrent
-                              ? 'bg-(--bg-key) text-(--color-text)'
-                              : 'text-(--color-text-2) hover:text-(--color-text)'
-                          }`}
-                        >
-                          <p className="truncate font-medium">{session.title || 'Untitled'}</p>
-                          <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
-                            {formatRelativeDate(session.created_at)}
-                          </p>
-                          {isRunning && (
-                            <span
-                              className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)"
-                              aria-label="Session running"
-                            >
-                              <Loader2 size={11} className="animate-spin" aria-hidden="true" />
-                            </span>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleSessionDelete(e, session)}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
-                          aria-label={`Delete session ${session.title || 'Untitled'}`}
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
+              {/* Nested sessions — expanded list, or running sessions only when collapsed */}
+              {(isExpanded || hasRunningSession) && (
+                <WorkspaceSessionList
+                  path={path}
+                  currentSessionId={currentSessionId}
+                  runningSessions={runningSessions}
+                  collapsed={!isExpanded}
+                  onSessionSelect={handleSessionSelect}
+                  onSessionDelete={handleSessionDelete}
+                />
               )}
             </div>
           )

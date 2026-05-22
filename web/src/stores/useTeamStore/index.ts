@@ -76,6 +76,7 @@ function resetSessionState(
   state._leadRevertTime = null
   state._workspace = options.mode === 'coding' ? (options.workspace ?? null) : null
   state._loadingOlder = false
+  state._resolvedSessionReadyId = null
   state.agentNames = leadName ? [leadName] : []
   state.liveAgentNames = leadName ? [leadName] : null
   state.activeAgent = leadName ?? null
@@ -172,6 +173,7 @@ export const useTeamStore = create<TeamStore>()(
     _leadRevertTime: null,
     _workspace: null,
     _loadingOlder: false,
+    _resolvedSessionReadyId: null,
 
     newSession: () => {
       get()._abortController?.abort()
@@ -190,6 +192,7 @@ export const useTeamStore = create<TeamStore>()(
           mode: options?.mode,
           workspace: options?.workspace,
         })
+        if (options?.skipInitialRestore) state._resolvedSessionReadyId = sessionId
       })
     },
 
@@ -197,6 +200,23 @@ export const useTeamStore = create<TeamStore>()(
       const state = get()
       if (!state.sessionId || state.isTeamWorking) return false
       return state.agentNames.every((name) => !hasVisibleBlocks(state.agentStreams[name]))
+    },
+
+    consumeResolvedSessionReady: (sessionId, workspace) => {
+      const state = get()
+      const expectedWorkspace = workspace ?? null
+      if (
+        state.sessionId !== sessionId ||
+        state._resolvedSessionReadyId !== sessionId ||
+        state._workspace !== expectedWorkspace ||
+        !state.isEmptyIdleSession()
+      ) {
+        return false
+      }
+      set((draft) => {
+        draft._resolvedSessionReadyId = null
+      })
+      return true
     },
 
     sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null }) => {
@@ -684,6 +704,7 @@ export const useTeamStore = create<TeamStore>()(
           draft._leadRevertTime = revertBoundaryTime(history.lead)
           draft._workspace = workspace ?? null
           draft._loadingOlder = false
+          draft._resolvedSessionReadyId = null
         })
       } catch (err) {
         if (get()._sessionGeneration !== gen) return

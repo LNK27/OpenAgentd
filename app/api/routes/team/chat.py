@@ -583,15 +583,22 @@ async def list_team_sessions(
         description="ISO 8601 created_at cursor — return sessions older than this.",
     ),
     limit: int = Query(20, ge=1, le=100),
+    mode: str | None = Query(None),
+    workspace: str | None = Query(None),
 ) -> SessionPageResponse:
     """List team lead sessions newest-first, cursor-paginated by created_at.
 
     Pass ``before=<created_at_iso>`` (the ``next_cursor`` from the previous
     page) to retrieve the next batch.  Omit to start from the newest.
     """
+    if mode is not None and mode not in {"normal", "coding"}:
+        raise HTTPException(status_code=422, detail="Invalid mode")
+    if workspace is not None and mode != "coding":
+        raise HTTPException(status_code=422, detail="workspace requires mode=coding")
+
     try:
         sessions, next_cursor, has_more = await list_sessions_page(
-            db, before=before, limit=limit
+            db, before=before, limit=limit, mode=mode, workspace=workspace
         )
     except ValueError:
         raise HTTPException(

@@ -105,6 +105,10 @@ const INITIAL_STATE = {
   hasMore: false,
   nextCursor: null,
   _leadRevertTime: null,
+  _workspace: null,
+  _loadingOlder: false,
+  _resolvedSessionReadyId: null,
+  cacheInvalidations: [],
 }
 
 function makeStream(overrides: object = {}) {
@@ -787,6 +791,53 @@ describe("sendMessage: queue behaviour", () => {
     })
     useTeamStore.getState().newSession()
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
+  })
+
+  it("marks a resolved empty session ready for one route restore skip", () => {
+    useTeamStore.setState({
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
+    })
+    useTeamStore.getState().beginResolvedSession("new-session", {
+      mode: "coding",
+      workspace: "/repo/project",
+      skipInitialRestore: true,
+    })
+
+    expect(useTeamStore.getState().consumeResolvedSessionReady("new-session", "/repo/project")).toBe(true)
+    expect(useTeamStore.getState()._resolvedSessionReadyId).toBeNull()
+    expect(useTeamStore.getState().consumeResolvedSessionReady("new-session", "/repo/project")).toBe(false)
+  })
+
+  it("does not mark restored sessions for a route restore skip by default", () => {
+    useTeamStore.setState({
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
+    })
+    useTeamStore.getState().beginResolvedSession("existing-session", {
+      mode: "coding",
+      workspace: "/repo/project",
+    })
+
+    expect(useTeamStore.getState().consumeResolvedSessionReady("existing-session", "/repo/project")).toBe(false)
+  })
+
+  it("does not skip restore when the resolved session workspace differs", () => {
+    useTeamStore.setState({
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
+    })
+    useTeamStore.getState().beginResolvedSession("new-session", {
+      mode: "coding",
+      workspace: "/repo/project",
+      skipInitialRestore: true,
+    })
+
+    expect(useTeamStore.getState().consumeResolvedSessionReady("new-session", "/repo/other")).toBe(false)
+    expect(useTeamStore.getState()._resolvedSessionReadyId).toBe("new-session")
   })
 })
 

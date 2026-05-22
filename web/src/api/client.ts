@@ -190,10 +190,16 @@ export async function getCodingWorkspaceStatus(workspace: string): Promise<Works
   return res.json()
 }
 
-export async function listTeamSessions(before?: string | null, limit = 20): Promise<SessionPageResponse> {
+export async function listTeamSessions(
+  before?: string | null,
+  limit = 20,
+  filters?: { mode?: 'normal' | 'coding'; workspace?: string | null },
+): Promise<SessionPageResponse> {
   const params = new URLSearchParams()
   if (before) params.set('before', before)
   params.set('limit', String(limit))
+  if (filters?.mode) params.set('mode', filters.mode)
+  if (filters?.workspace) params.set('workspace', filters.workspace)
   const res = await fetch(`${API}/team/sessions?${params}`)
   if (!res.ok) throw new Error(`listTeamSessions failed: ${res.status}`)
   return res.json()

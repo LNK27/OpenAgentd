@@ -61,6 +61,7 @@ export interface TeamStoreState {
   _leadRevertTime: number | null
   _workspace: string | null
   _loadingOlder: boolean
+  _resolvedSessionReadyId: string | null
   cacheInvalidations: CacheInvalidation[]
 }
 
@@ -75,13 +76,14 @@ export interface TeamStoreActions {
   connectStream: () => AbortController
   loadTeamStatus: (workspace?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
-  beginResolvedSession: (sessionId: string, options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null }) => void
+  beginResolvedSession: (sessionId: string, options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
   setActiveAgent: (name: string) => void
   cycleActiveAgent: (dir: 'next' | 'prev') => void
   toggleSidebar: () => void
   dismissSetupRequired: () => void
   isEmptyIdleSession: () => boolean
+  consumeResolvedSessionReady: (sessionId: string, workspace?: string | null) => boolean
   /** Reset local chat state. Retained for stale async-generation guards in tests. */
   newSession: () => void
   removePendingMessage: (id: string) => void

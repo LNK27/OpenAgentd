@@ -15,7 +15,7 @@ const browseResponse = {
 }
 let validateError: Error | null = null
 const deleteSessionMutate = mock(() => {})
-let sessionsData: Array<{
+type TestSession = {
   id: string
   title: string | null
   agent_name: string | null
@@ -24,7 +24,13 @@ let sessionsData: Array<{
   mode?: string
   workspace?: string | null
   running?: boolean
-}> = []
+}
+
+let sessionsData: TestSession[] = []
+let workspaceSessionsData: TestSession[] = []
+let workspaceHasNextPage = false
+let workspaceIsFetchingNextPage = false
+const fetchWorkspaceNextPage = mock(() => {})
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
@@ -73,6 +79,13 @@ mock.module('@/queries/useSessionsQuery', () => ({
     isFetching: false,
     refetch: mock(() => {}),
   }),
+  useCodingWorkspaceSessionsQuery: () => ({
+    data: { pages: [{ data: workspaceSessionsData }] },
+    isLoading: false,
+    hasNextPage: workspaceHasNextPage,
+    isFetchingNextPage: workspaceIsFetchingNextPage,
+    fetchNextPage: fetchWorkspaceNextPage,
+  }),
   useDeleteTeamSessionMutation: () => ({ mutate: deleteSessionMutate }),
 }))
 
@@ -80,9 +93,13 @@ describe('CodingSidebar workspace trust flow', () => {
   beforeEach(() => {
     localStorage.clear()
     sessionsData = []
+    workspaceSessionsData = []
+    workspaceHasNextPage = false
+    workspaceIsFetchingNextPage = false
     useTeamStore.setState({ isTeamWorking: false, sessionId: null })
     navigate.mockClear()
     deleteSessionMutate.mockClear()
+    fetchWorkspaceNextPage.mockClear()
     validateError = null
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
@@ -228,6 +245,18 @@ describe('CodingSidebar workspace trust flow', () => {
   it('shows a running indicator on every running coding session', async () => {
     sessionsData = [
       {
+        id: 'session-2',
+        title: 'Background running session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+      },
+    ]
+    workspaceSessionsData = [
+      {
         id: 'session-1',
         title: 'Selected idle session',
         agent_name: 'lead',
@@ -255,7 +284,7 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getByText('Background running session')).toBeTruthy()
   })
 
-  it('shows a workspace-level running indicator when a running session is collapsed', async () => {
+  it('keeps running sessions visible when a workspace is collapsed', async () => {
     sessionsData = [
       {
         id: 'session-2',
@@ -268,13 +297,15 @@ describe('CodingSidebar workspace trust flow', () => {
         running: true,
       },
     ]
+    workspaceSessionsData = sessionsData
 
     await renderCodingSidebarForSessions(undefined)
     await userEvent.setup().click(screen.getByLabelText('Collapse project'))
 
     expect(screen.getByLabelText('Expand project')).toBeTruthy()
-    expect(screen.queryByText('Background running session')).toBeNull()
+    expect(screen.getByText('Background running session')).toBeTruthy()
     expect(screen.getByLabelText('Workspace has running session')).toBeTruthy()
+    expect(screen.getByLabelText('Session running')).toBeTruthy()
   })
 
   it('does not create a new session when the current coding session is empty and idle', async () => {
@@ -290,6 +321,7 @@ describe('CodingSidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
+    workspaceSessionsData = sessionsData
     useTeamStore.setState({
       sessionId: 'session-1',
       isTeamWorking: false,
@@ -329,10 +361,33 @@ describe('CodingSidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
+    workspaceSessionsData = sessionsData
 
     await renderCodingSidebarForSessions('session-1')
 
     expect(screen.queryByLabelText('Session running')).toBeNull()
+  })
+
+  it('loads more sessions at the bottom of a workspace session list', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'First page session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    workspaceHasNextPage = true
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByRole('button', { name: /load more/i }))
+
+    expect(fetchWorkspaceNextPage).toHaveBeenCalled()
   })
 
   it('selects another coding session after deleting the current one', async () => {
@@ -357,6 +412,7 @@ describe('CodingSidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
+    workspaceSessionsData = sessionsData
 
     await renderCodingSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('Delete session Delete me'))
@@ -384,6 +440,7 @@ describe('CodingSidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
+    workspaceSessionsData = sessionsData
 
     await renderCodingSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('Delete session Delete me'))

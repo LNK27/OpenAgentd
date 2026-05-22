@@ -45,7 +45,7 @@ export function applyCacheInvalidations(
         queryClient.invalidateQueries({ queryKey: queryKeys.teamAgents() })
         break
       case 'team_sessions':
-        queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.infinite() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
         break
     }
   }
@@ -155,27 +155,43 @@ export function patchSessionTitle(
   )
 }
 
+function prependSessionToInfiniteData(
+  old: InfiniteData<SessionPageResponse> | undefined,
+  session: SessionResponse,
+): InfiniteData<SessionPageResponse> | undefined {
+  if (!isInfiniteSessionData(old)) return old
+  if (old.pages.some((page) => page.data.some((item) => item.id === session.id))) return old
+  const [first, ...rest] = old.pages
+  if (!first) return old
+  return {
+    ...old,
+    pages: [
+      {
+        ...first,
+        data: [session, ...first.data],
+      },
+      ...rest,
+    ],
+  }
+}
+
 export function prependSession(
-  queryClient: Pick<QueryClient, 'setQueriesData'>,
+  queryClient: Pick<QueryClient, 'setQueryData'>,
   session: SessionResponse,
 ): void {
-  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
-    { queryKey: queryKeys.team.sessions.all() },
-    (old) => {
-      if (!isInfiniteSessionData(old)) return old
-      if (old.pages.some((page) => page.data.some((item) => item.id === session.id))) return old
-      const [first, ...rest] = old.pages
-      if (!first) return old
-      return {
-        ...old,
-        pages: [
-          {
-            ...first,
-            data: [session, ...first.data],
-          },
-          ...rest,
-        ],
-      }
-    },
+  queryClient.setQueryData<InfiniteData<SessionPageResponse>>(
+    queryKeys.team.sessions.infinite(),
+    (old) => prependSessionToInfiniteData(old, session),
+  )
+}
+
+export function prependWorkspaceSession(
+  queryClient: Pick<QueryClient, 'setQueryData'>,
+  workspace: string,
+  session: SessionResponse,
+): void {
+  queryClient.setQueryData<InfiniteData<SessionPageResponse>>(
+    queryKeys.team.sessions.workspace(workspace),
+    (old) => prependSessionToInfiniteData(old, session),
   )
 }

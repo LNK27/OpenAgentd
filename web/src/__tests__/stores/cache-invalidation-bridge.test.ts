@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { QueryClient, type InfiniteData } from '@tanstack/react-query'
-import { applyCacheInvalidations, patchSessionTitle, prependSession } from '@/stores/cache-invalidation-bridge'
+import { applyCacheInvalidations, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
 import type { CacheInvalidation } from '@/stores/useTeamStore'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
@@ -96,7 +96,7 @@ describe('applyCacheInvalidations', () => {
     applyCacheInvalidations(client, [{ kind: 'team_sessions' }])
     expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
     expect(client.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.team.sessions.infinite(),
+      queryKey: queryKeys.team.sessions.all(),
     })
   })
 
@@ -219,6 +219,7 @@ function makeSession(id: string, title: string | null): SessionResponse {
 function seedInfinite(
   client: QueryClient,
   pages: SessionResponse[][],
+  key: readonly unknown[] = queryKeys.team.sessions.infinite(),
 ): void {
   const data: InfiniteData<SessionPageResponse> = {
     pages: pages.map((rows, i) => ({
@@ -228,7 +229,7 @@ function seedInfinite(
     })),
     pageParams: pages.map((_, i) => (i === 0 ? null : `cursor-${i - 1}`)),
   }
-  client.setQueryData(queryKeys.team.sessions.infinite(), data)
+  client.setQueryData(key, data)
 }
 
 function readInfinite(client: QueryClient): InfiniteData<SessionPageResponse> | undefined {
@@ -434,13 +435,14 @@ describe('patchSessionTitle', () => {
 })
 
 describe('prependSession', () => {
-  it('ignores non-infinite session caches matched by the session query prefix', () => {
+  it('does not mutate workspace session caches when prepending the global session list', () => {
     const client = new QueryClient()
-    client.setQueryData(queryKeys.team.sessions.detail('s1'), makeSession('s1', 'Detail'))
+    const workspaceKey = queryKeys.team.sessions.workspace('/repo/other')
+    seedInfinite(client, [[makeSession('other', 'Other')]], workspaceKey)
 
     expect(() => prependSession(client, makeSession('new', null))).not.toThrow()
 
-    expect(client.getQueryData(queryKeys.team.sessions.detail('s1'))).toEqual(makeSession('s1', 'Detail'))
+    expect(client.getQueryData<InfiniteData<SessionPageResponse>>(workspaceKey)?.pages[0].data.map((s) => s.id)).toEqual(['other'])
     expect(readInfinite(client)).toBeUndefined()
   })
 
@@ -461,5 +463,15 @@ describe('prependSession', () => {
     prependSession(client, makeSession('s1', 'A'))
 
     expect(readInfinite(client)?.pages[0].data.map((s) => s.id)).toEqual(['s1'])
+  })
+
+  it('adds a coding session to the top of the workspace cache', () => {
+    const client = new QueryClient()
+    const key = queryKeys.team.sessions.workspace('/repo/project')
+    seedInfinite(client, [[makeSession('s1', 'A')]], key)
+
+    prependWorkspaceSession(client, '/repo/project', makeSession('new', null))
+
+    expect(client.getQueryData<InfiniteData<SessionPageResponse>>(key)?.pages[0].data.map((s) => s.id)).toEqual(['new', 's1'])
   })
 })

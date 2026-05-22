@@ -39,7 +39,7 @@ import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { renderCommand, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { prependSession } from '@/stores/cache-invalidation-bridge'
+import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { useUIStore } from '@/stores/useUIStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
@@ -124,6 +124,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const sendMessage    = useTeamStore((s) => s.sendMessage)
   const continueTeam   = useTeamStore((s) => s.continueTeam)
   const beginResolvedSession = useTeamStore((s) => s.beginResolvedSession)
+  const consumeResolvedSessionReady = useTeamStore((s) => s.consumeResolvedSessionReady)
   const cycleActiveAgent = useTeamStore((s) => s.cycleActiveAgent)
   const setActiveAgent   = useTeamStore((s) => s.setActiveAgent)
   const setSessionModelSettings = useTeamStore((s) => s.setSessionModelSettings)
@@ -233,7 +234,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     // dispatched, so replay + live events accumulate cleanly.
     let cancelled = false
     ;(async () => {
-      await loadSession(sessionId, agentWorkspace)
+      if (!consumeResolvedSessionReady(sessionId, agentWorkspace)) {
+        await loadSession(sessionId, agentWorkspace)
+      }
       if (cancelled) return
       const controller = connectStream()
       if (controller) abortRef.current = controller
@@ -272,9 +275,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           workspace: session.workspace ?? workspace,
           model: session.model ?? sessionModel,
           thinkingLevel: session.thinking_level ?? sessionThinkingLevel,
+          skipInitialRestore: session.created,
         })
-        prependSession(queryClient, session)
+        if (session.created) {
+          prependSession(queryClient, session)
+        }
         if (mode === 'coding' && workspace) {
+          if (session.created) prependWorkspaceSession(queryClient, workspace, session)
           saveLastCodingWorkspace(workspace)
           navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
         } else {
