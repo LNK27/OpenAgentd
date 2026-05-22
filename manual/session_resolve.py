@@ -5,6 +5,7 @@ Tests: POST /team/sessions/resolve, GET /team/sessions/{id}.
 Usage:
   uv run python -m manual.session_resolve
   uv run python -m manual.session_resolve --workspace /path/to/repo
+  uv run python -m manual.session_resolve --keep-workspace
 """
 
 from __future__ import annotations
@@ -42,6 +43,11 @@ def main() -> None:
         "--workspace",
         default=None,
         help="Workspace path for coding resolve. Defaults to a temp directory.",
+    )
+    parser.add_argument(
+        "--keep-workspace",
+        action="store_true",
+        help="Do not delete the temporary workspace after the smoke test.",
     )
     args = parser.parse_args()
 
@@ -102,7 +108,7 @@ def main() -> None:
         print(f"coding: {coding['id']} workspace={coding['workspace']}")
         print(f"coding_new: {coding_new['id']} forced_create=True")
     finally:
-        if temp_dir is not None:
+        if temp_dir is not None and not args.keep_workspace:
             temp_dir.cleanup()
 
 

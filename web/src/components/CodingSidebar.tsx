@@ -205,7 +205,7 @@ export function CodingSidebar({
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)
   }, [pendingWorkspace, workspace])
 
-  const selectWorkspace = async (path: string) => {
+  const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
     const entry = saveLastCodingWorkspace(path)
     setPendingWorkspace(path)
     setWorkspaces(loadCodingWorkspaces())
@@ -216,7 +216,7 @@ export function CodingSidebar({
         workspace: path,
         model: state.sessionModel,
         thinkingLevel: state.sessionThinkingLevel,
-        create: true,
+        create: opts.create,
       })
       state.beginResolvedSession(session.id, {
         mode: 'coding',
@@ -376,7 +376,7 @@ export function CodingSidebar({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { void selectWorkspace(path) }}
+                  onClick={() => { void selectWorkspace(path, { create: true }) }}
                   className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) group-hover:opacity-100"
                   aria-label={`New session in ${workspaceLabel(path)}`}
                   title={`New session in ${workspaceLabel(path)}`}

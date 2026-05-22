@@ -79,19 +79,21 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
     let cancelled = false
     ;(async () => {
       const current = useTeamStore.getState()
+      const model = current.sessionModel
+      const thinkingLevel = current.sessionThinkingLevel
       try {
         const session = await resolveTeamSession({
           mode,
           workspace: mode === 'coding' ? workspace : null,
-          model: current.sessionModel,
-          thinkingLevel: current.sessionThinkingLevel,
+          model,
+          thinkingLevel,
         })
         if (cancelled || sessionIdRef.current) return
-        current.beginResolvedSession(session.id, {
+        useTeamStore.getState().beginResolvedSession(session.id, {
           mode,
           workspace: session.workspace ?? workspace,
-          model: session.model ?? null,
-          thinkingLevel: session.thinking_level ?? null,
+          model: session.model ?? model,
+          thinkingLevel: session.thinking_level ?? thinkingLevel,
         })
         void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
         if (mode === 'coding') {

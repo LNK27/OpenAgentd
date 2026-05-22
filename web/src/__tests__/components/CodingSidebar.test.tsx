@@ -93,6 +93,18 @@ describe('CodingSidebar workspace trust flow', () => {
         }
         return new Response(JSON.stringify({ workspace: '/repo/project' }))
       }
+      if (url === '/api/team/sessions/resolve') {
+        return new Response(JSON.stringify({
+          id: 'resolved-session',
+          title: null,
+          agent_name: null,
+          mode: 'coding',
+          workspace: '/repo/project',
+          created_at: null,
+          updated_at: null,
+          created: true,
+        }))
+      }
       return new Response(null, { status: 404 })
     }) as typeof fetch
   })
@@ -124,6 +136,30 @@ describe('CodingSidebar workspace trust flow', () => {
 
   it('does not navigate or save the last workspace until the user trusts the validated directory', async () => {
     const user = userEvent.setup()
+    let resolveBody: unknown
+    globalThis.fetch = mock(async (input: unknown, init: unknown) => {
+      const url = String(input)
+      if (url.startsWith('/api/team/workspace/browse')) {
+        return new Response(JSON.stringify(browseResponse))
+      }
+      if (url.startsWith('/api/team/workspace/validate')) {
+        return new Response(JSON.stringify({ workspace: '/repo/project' }))
+      }
+      if (url === '/api/team/sessions/resolve') {
+        resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
+        return new Response(JSON.stringify({
+          id: 'resolved-session',
+          title: null,
+          agent_name: null,
+          mode: 'coding',
+          workspace: '/repo/project',
+          created_at: null,
+          updated_at: null,
+          created: true,
+        }))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
     await renderCodingSidebar()
 
     const openButton = await screen.findByRole('button', { name: /open this folder/i })
@@ -138,9 +174,16 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await waitFor(() => {
       expect(navigate).toHaveBeenCalledWith({
-        to: '/coding',
+        to: '/coding/$sessionId',
+        params: { sessionId: 'resolved-session' },
         search: { w: findCodingWorkspaceId('/repo/project') },
       })
+    })
+    expect(resolveBody).toEqual({
+      mode: 'coding',
+      workspace: '/repo/project',
+      model: null,
+      thinking_level: null,
     })
     expect(loadLastCodingWorkspace()?.path).toBe('/repo/project')
   })
