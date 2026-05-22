@@ -638,14 +638,21 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             >
               <Menu size={16} aria-hidden="true" />
             </button>
-            {mode !== 'coding' && sessionTitle && (
+            {mode === 'coding' && workspace ? (
+              <span
+                className="ml-1 max-w-60 truncate text-sm font-semibold text-(--color-text)"
+                title={workspace}
+              >
+                {workspaceLabel(workspace)}
+              </span>
+            ) : mode !== 'coding' && sessionTitle ? (
               <span
                 className="ml-1 max-w-60 truncate text-sm font-semibold text-(--color-text)"
                 title={sessionTitle}
               >
                 {sessionTitle}
               </span>
-            )}
+            ) : null}
           </div>
 
           {/* Active-agent chip → dropdown of all members. Split view
@@ -851,42 +858,42 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           </div>
         ) : null}
 
-        <FloatingInputBar
-          ref={inputRef}
-          boundsRef={mainColumnRef}
-          onSubmit={async (content, files) => {
-            const expanded = await expandUserCommand(content)
-            sendMessage(expanded, files, {
-              mode,
-              workspace,
-              model: selectedModel || null,
-              thinkingLevel: selectedThinkingLevel || null,
-            })
-          }}
-          onStop={() => useTeamStore.getState().stopTeam()}
-          onSlashCommand={handleSlashCommand}
-          slashCommands={slashCommands}
-          fileRefs={fileRefs}
-          isStreaming={isTeamWorking}
-          disabled={mode === 'coding' && (!workspace || isCodingSessionLoading)}
-          autoFocus={!sessionId}
-          placeholder={
-            dreamMutation.isPending
-              ? 'Dream is running…'
-              : isTeamWorking
-                ? 'Team working… type to interrupt'
-                : mode === 'coding' && workspace
-                  ? `Coding in ${workspaceLabel(workspace)}`
-                  : mode === 'coding'
-                    ? 'Choose a workspace to start coding…'
+        {(mode !== 'coding' || workspace) && (
+          <FloatingInputBar
+            ref={inputRef}
+            boundsRef={mainColumnRef}
+            onSubmit={async (content, files) => {
+              const expanded = await expandUserCommand(content)
+              sendMessage(expanded, files, {
+                mode,
+                workspace,
+                model: selectedModel || null,
+                thinkingLevel: selectedThinkingLevel || null,
+              })
+            }}
+            onStop={() => useTeamStore.getState().stopTeam()}
+            onSlashCommand={handleSlashCommand}
+            slashCommands={slashCommands}
+            fileRefs={fileRefs}
+            isStreaming={isTeamWorking}
+            disabled={mode === 'coding' && isCodingSessionLoading}
+            autoFocus={!sessionId}
+            placeholder={
+              dreamMutation.isPending
+                ? 'Dream is running…'
+                : isTeamWorking
+                  ? 'Team working… type to interrupt'
+                  : mode === 'coding' && workspace
+                    ? `Coding in ${workspaceLabel(workspace)}`
                     : 'Message the team…'
-          }
-          capabilities={leadCapabilities}
-          voiceEnabled={voiceEnabled}
-          revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
-          revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
-          onRedo={() => { void useTeamStore.getState().redoTeam() }}
-        />
+            }
+            capabilities={leadCapabilities}
+            voiceEnabled={voiceEnabled}
+            revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
+            revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
+            onRedo={() => { void useTeamStore.getState().redoTeam() }}
+          />
+        )}
         </main>
         {mode === 'coding' && workspace && codingPanel !== null && (
           <CodingWorkspacePanel
