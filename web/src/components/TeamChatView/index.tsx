@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { AgentView } from '../AgentView'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
@@ -40,6 +41,7 @@ import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { renderCommand, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { prependSession } from '@/stores/cache-invalidation-bridge'
 import { useUIStore } from '@/stores/useUIStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
@@ -88,6 +90,7 @@ async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
 
 export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: TeamChatViewProps) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const { isMacOverlay } = usePlatform()
   // Manual drag pattern: a mousedown handler that only starts a drag
@@ -275,6 +278,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           model: session.model ?? sessionModel,
           thinkingLevel: session.thinking_level ?? sessionThinkingLevel,
         })
+        prependSession(queryClient, session)
         if (mode === 'coding' && workspace) {
           const entry = saveCodingWorkspace(workspace)
           navigate({ to: '/coding/$sessionId', params: { sessionId: session.id }, search: { w: entry.id } })
@@ -288,7 +292,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         })
       }
     })()
-  }, [beginResolvedSession, isEmptyIdleSession, mode, navigate, sessionModel, sessionThinkingLevel, workspace])
+  }, [beginResolvedSession, isEmptyIdleSession, mode, navigate, queryClient, sessionModel, sessionThinkingLevel, workspace])
 
   const handleWorkspaceFiles = useCallback(() => {
     if (mode === 'coding') {

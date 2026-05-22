@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { findCodingWorkspaceId, loadLastCodingWorkspace } from '@/utils/workspace'
 import { useTeamStore } from '@/stores/useTeamStore'
 
@@ -116,9 +117,14 @@ describe('CodingSidebar workspace trust flow', () => {
 
   async function renderCodingSidebar() {
     const { CodingSidebar } = await import('@/components/CodingSidebar')
+    const queryClient = new QueryClient()
     let view: ReturnType<typeof render> | undefined
     await act(async () => {
-      view = render(<CodingSidebar openWorkspaceDialogKey={1} />)
+      view = render(
+        <QueryClientProvider client={queryClient}>
+          <CodingSidebar openWorkspaceDialogKey={1} />
+        </QueryClientProvider>,
+      )
       await Promise.resolve()
     })
     return view
@@ -126,9 +132,14 @@ describe('CodingSidebar workspace trust flow', () => {
 
   async function renderCodingSidebarForSessions(currentSessionId?: string) {
     const { CodingSidebar } = await import('@/components/CodingSidebar')
+    const queryClient = new QueryClient()
     let view: ReturnType<typeof render> | undefined
     await act(async () => {
-      view = render(<CodingSidebar currentSessionId={currentSessionId} workspace="/repo/project" />)
+      view = render(
+        <QueryClientProvider client={queryClient}>
+          <CodingSidebar currentSessionId={currentSessionId} workspace="/repo/project" />
+        </QueryClientProvider>,
+      )
       await Promise.resolve()
     })
     return view

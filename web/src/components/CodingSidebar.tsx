@@ -23,6 +23,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -38,6 +39,7 @@ import {
 import { useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries/useSessionsQuery'
 import { browseWorkspaces, resolveTeamSession, validateWorkspace } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
+import { prependSession } from '@/stores/cache-invalidation-bridge'
 import { formatRelativeDate } from '@/utils/format'
 import {
   codingSessionSearch,
@@ -94,6 +96,7 @@ export function CodingSidebar({
   // hamburger and Ctrl+B own that surface.
   void onCollapse
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
   const isTeamWorking = useTeamStore((state) => state.isTeamWorking)
@@ -224,6 +227,7 @@ export function CodingSidebar({
         model: session.model ?? state.sessionModel,
         thinkingLevel: session.thinking_level ?? state.sessionThinkingLevel,
       })
+      prependSession(queryClient, session)
       navigate({ to: '/coding/$sessionId', params: { sessionId: session.id }, search: { w: entry.id } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create session')

@@ -1,6 +1,6 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 import type { CacheInvalidation } from '@/stores/useTeamStore'
-import type { SessionPageResponse, WorkspaceGitDiffResponse } from '@/api/types'
+import type { SessionPageResponse, SessionResponse, WorkspaceGitDiffResponse } from '@/api/types'
 import { getCodingWorkspaceGitDiff } from '@/api/client'
 import { queryKeys } from '@/queries'
 
@@ -136,6 +136,31 @@ export function patchSessionTitle(
         ...page,
         data: page.data.map((s) => s.id === sessionId ? { ...s, title } : s),
       })),
+    },
+  )
+}
+
+export function prependSession(
+  queryClient: Pick<QueryClient, 'setQueriesData'>,
+  session: SessionResponse,
+): void {
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    { queryKey: queryKeys.team.sessions.all() },
+    (old) => {
+      if (!old) return old
+      if (old.pages.some((page) => page.data.some((item) => item.id === session.id))) return old
+      const [first, ...rest] = old.pages
+      if (!first) return old
+      return {
+        ...old,
+        pages: [
+          {
+            ...first,
+            data: [session, ...first.data],
+          },
+          ...rest,
+        ],
+      }
     },
   )
 }

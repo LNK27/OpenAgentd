@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { QueryClient, type InfiniteData } from '@tanstack/react-query'
-import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
+import { applyCacheInvalidations, patchSessionTitle, prependSession } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
 import type { CacheInvalidation } from '@/stores/useTeamStore'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
@@ -417,5 +417,26 @@ describe('patchSessionTitle', () => {
 
     expect(client.getQueryData(queryKeys.team.files('s1'))).toEqual(['file-a.txt'])
     expect(client.getQueryData(queryKeys.team.status())).toEqual({ lead: 'x' })
+  })
+})
+
+describe('prependSession', () => {
+  it('adds a new session to the top of the first cached page', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[makeSession('s1', 'A')]])
+
+    prependSession(client, makeSession('new', null))
+
+    expect(readInfinite(client)?.pages[0].data.map((s) => s.id)).toEqual(['new', 's1'])
+  })
+
+  it('does not duplicate an already cached session', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[makeSession('s1', 'A')]])
+
+    prependSession(client, makeSession('s1', 'A'))
+    prependSession(client, makeSession('s1', 'A'))
+
+    expect(readInfinite(client)?.pages[0].data.map((s) => s.id)).toEqual(['s1'])
   })
 })
