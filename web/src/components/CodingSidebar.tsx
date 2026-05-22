@@ -27,7 +27,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
-  Ellipsis,
   Folder,
   HelpCircle,
   Loader2,
@@ -59,12 +58,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import type { SessionResponse } from '@/api/types'
 
 interface CodingSidebarProps {
@@ -373,24 +366,15 @@ export function CodingSidebar({
                 >
                   <Plus size={11} aria-hidden="true" />
                 </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-muted) opacity-0 outline-none transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) group-hover:opacity-100 data-[popup-open]:bg-(--bg-key) data-[popup-open]:text-(--color-text-2) data-[popup-open]:opacity-100"
-                    aria-label={`More actions for ${workspaceLabel(path)}`}
-                    title="More actions"
-                  >
-                    <Ellipsis size={12} aria-hidden="true" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" sideOffset={4} className="min-w-[180px]">
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setRemoveWorkspaceTarget(path)}
-                    >
-                      <Trash2 size={12} aria-hidden="true" />
-                      <span>Remove</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <button
+                  type="button"
+                  onClick={() => setRemoveWorkspaceTarget(path)}
+                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
+                  aria-label={`Remove ${workspaceLabel(path)} from sidebar`}
+                  title="Remove from sidebar"
+                >
+                  <Trash2 size={11} aria-hidden="true" />
+                </button>
               </div>
 
               {/* Nested sessions — only when expanded */}
