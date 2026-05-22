@@ -46,7 +46,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: version
         # Use the same ``v<X.Y.Z>`` tag as ``release.yml``. Both
         # workflows publish into one release so the artefact set
@@ -106,7 +106,7 @@ jobs:
             tauri_args: "--bundles deb --verbose"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Linux WebKitGTK + AppImage deps
         if: matrix.platform == 'linux'
@@ -131,7 +131,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v8
         with:
           enable-cache: true
 
@@ -353,7 +353,7 @@ jobs:
     name: Publish release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/download-artifact@v4
         with:
