@@ -44,14 +44,15 @@ collision:
 
 | # | Root | Source label | Use it for |
 |---|------|--------------|------------|
-| 1 | `{cwd}/.openagentd/commands/` | `project-openagentd` | Project-specific, OpenAgentd-native |
-| 2 | `{cwd}/.opencode/commands/`   | `project-opencode`   | Reuse an opencode project library |
+| 1 | `{workspace}/.openagentd/commands/` | `project-openagentd` | Project-specific, OpenAgentd-native |
+| 2 | `{workspace}/.opencode/commands/`   | `project-opencode`   | Reuse an opencode project library |
 | 3 | `{OPENAGENTD_CONFIG_DIR}/commands/` | `global-openagentd` | Your personal library |
 | 4 | `~/.config/opencode/commands/` | `global-opencode`   | Reuse your global opencode library |
 
-`{cwd}` is the working directory the OpenAgentd server was launched
-from — in coding mode this is your project root, so `/commit` can mean
-different things in different projects without manual switching.
+`{workspace}` is the selected coding workspace. Local command roots are
+loaded only in coding mode, so a `/run` template in Project A does not
+appear while coding in Project B or while using the regular cockpit chat.
+Cockpit chat lists only global commands.
 
 ## Picker behaviour
 

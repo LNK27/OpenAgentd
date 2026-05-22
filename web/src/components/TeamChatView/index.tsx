@@ -368,7 +368,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   // Built-ins execute immediately on pick; user-defined commands are inserted
   // into the textarea (``keepInputOpen``) so the user can append
   // ``$ARGUMENTS`` before submitting.
-  const commandsQ = useCommandsQuery()
+  const commandsQ = useCommandsQuery(agentWorkspace)
   const userCommandNames = useMemo(
     () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
     [commandsQ.data],
@@ -425,7 +425,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       case 'init':
         // Prompt body lives on the backend so it can be tweaked without a
         // web rebuild and stays the single source of truth.
-        void renderCommand('init', '')
+        void renderCommand('init', '', agentWorkspace)
           .then((res) =>
             useTeamStore.getState().sendMessage(res.content, undefined, {
               mode,
@@ -463,7 +463,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           const restOfMessage = rest.slice(firstLine.length)
           const args = (argsHead + restOfMessage).trim()
           try {
-            const res = await renderCommand(candidate, args)
+            const res = await renderCommand(candidate, args, agentWorkspace)
             return res.content
           } catch (err) {
             pushToast({
@@ -477,7 +477,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       }
       return content
     },
-    [userCommandNames, pushToast],
+    [userCommandNames, agentWorkspace, pushToast],
   )
 
   const cycleViewMode = useCallback(() => {
@@ -504,6 +504,22 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     setActiveAgent,
     navigate,
   })
+  const paletteCommands = useMemo(
+    () => [
+      ...commands,
+      ...(commandsQ.data?.commands ?? []).map((c) => ({
+        id: `slash-${c.name}`,
+        group: 'Slash Commands',
+        label: `/${c.name}`,
+        description: c.description || `Custom command (${c.source})`,
+        action: () => {
+          inputRef.current?.setValue(`/${c.name} `)
+          inputRef.current?.focus()
+        },
+      })),
+    ],
+    [commands, commandsQ.data],
+  )
 
   useKeyboardShortcuts({
     n: handleNewSession,
@@ -868,7 +884,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         contextWorkspace={workspace ?? null}
       />
       {!isMobile && showPalette && (
-        <CommandPalette commands={commands} onClose={() => setShowPalette(false)} />
+        <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />
       )}
     </div>
   )

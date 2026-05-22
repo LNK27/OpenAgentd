@@ -40,6 +40,15 @@ def roots(tmp_path: Path, monkeypatch):
 
 
 @pytest.fixture
+def workspaces(tmp_path: Path):
+    workspace_a = tmp_path / "workspace-a"
+    workspace_b = tmp_path / "workspace-b"
+    workspace_a.mkdir()
+    workspace_b.mkdir()
+    return workspace_a, workspace_b
+
+
+@pytest.fixture
 async def client(roots):
     app = FastAPI()
     app.include_router(commands_router, prefix="/api/commands")
@@ -69,6 +78,26 @@ async def test_list_empty(client):
 
 
 @pytest.mark.asyncio
+async def test_list_without_workspace_ignores_project_local_commands(client, roots):
+    project_openagentd, _project_opencode, global_openagentd, _global_opencode = roots
+    _write(project_openagentd / "run.md", "---\ndescription: Local run\n---\nrun")
+    _write(global_openagentd / "review.md", "---\ndescription: Review\n---\nreview")
+
+    res = await client.get("/api/commands")
+
+    assert res.status_code == 200
+    assert res.json() == {
+        "commands": [
+            {
+                "name": "review",
+                "description": "Review",
+                "source": "global-openagentd",
+            }
+        ]
+    }
+
+
+@pytest.mark.asyncio
 async def test_list_returns_discovered(client, roots):
     project_openagentd, _project_opencode, _global_openagentd, _global_opencode = roots
     _write(project_openagentd / "commit.md", COMMIT)
@@ -77,7 +106,9 @@ async def test_list_returns_discovered(client, roots):
         "---\ndescription: Push.\n---\nPush body.\n",
     )
 
-    res = await client.get("/api/commands")
+    res = await client.get(
+        "/api/commands", params={"workspace": str(project_openagentd.parents[1])}
+    )
 
     assert res.status_code == 200
     names = [c["name"] for c in res.json()["commands"]]
@@ -93,7 +124,9 @@ async def test_render_substitutes_arguments(client, roots):
     _write(project_openagentd / "commit.md", COMMIT)
 
     res = await client.post(
-        "/api/commands/commit/render", json={"arguments": "fix bug"}
+        "/api/commands/commit/render",
+        params={"workspace": str(project_openagentd.parents[1])},
+        json={"arguments": "fix bug"},
     )
 
     assert res.status_code == 200
@@ -109,7 +142,9 @@ async def test_render_nested_command(client, roots):
     )
 
     res = await client.post(
-        "/api/commands/git/push/render", json={"arguments": "force"}
+        "/api/commands/git/push/render",
+        params={"workspace": str(project_openagentd.parents[1])},
+        json={"arguments": "force"},
     )
 
     assert res.status_code == 200
@@ -144,7 +179,9 @@ async def test_precedence_is_local_before_global_and_openagentd_before_opencode(
         "---\ndescription: project openagentd\n---\nproject openagentd",
     )
 
-    res = await client.get("/api/commands")
+    res = await client.get(
+        "/api/commands", params={"workspace": str(project_openagentd.parents[1])}
+    )
 
     assert res.status_code == 200
     assert res.json()["commands"] == [
@@ -168,7 +205,94 @@ async def test_local_opencode_wins_over_global_openagentd(client, roots):
         "---\ndescription: project opencode\n---\nproject opencode",
     )
 
-    res = await client.post("/api/commands/review/render", json={"arguments": ""})
+    res = await client.post(
+        "/api/commands/review/render",
+        params={"workspace": str(project_opencode.parents[1])},
+        json={"arguments": ""},
+    )
 
     assert res.status_code == 200
     assert res.json() == {"name": "review", "content": "project opencode"}
+
+
+@pytest.mark.asyncio
+async def test_workspace_local_commands_do_not_leak_between_projects(
+    client, workspaces
+):
+    workspace_a, workspace_b = workspaces
+    _write(
+        workspace_a / ".openagentd" / "commands" / "run.md",
+        "---\ndescription: Run project A\n---\nrun a",
+    )
+
+    res_a = await client.get("/api/commands", params={"workspace": str(workspace_a)})
+    res_b = await client.get("/api/commands", params={"workspace": str(workspace_b)})
+
+    assert res_a.status_code == 200
+    assert res_b.status_code == 200
+    assert [c["name"] for c in res_a.json()["commands"]] == ["run"]
+    assert res_b.json() == {"commands": []}
+
+
+@pytest.mark.asyncio
+async def test_render_uses_workspace_local_command(client, workspaces):
+    workspace_a, workspace_b = workspaces
+    _write(
+        workspace_a / ".openagentd" / "commands" / "run.md",
+        "---\ndescription: Run project A\n---\nrun a",
+    )
+
+    res_a = await client.post(
+        "/api/commands/run/render",
+        params={"workspace": str(workspace_a)},
+        json={"arguments": ""},
+    )
+    res_b = await client.post(
+        "/api/commands/run/render",
+        params={"workspace": str(workspace_b)},
+        json={"arguments": ""},
+    )
+
+    assert res_a.status_code == 200
+    assert res_a.json() == {"name": "run", "content": "run a"}
+    assert res_b.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_global_commands_are_available_for_each_workspace(
+    client, roots, workspaces
+):
+    _project_openagentd, _project_opencode, global_openagentd, _global_opencode = roots
+    workspace_a, workspace_b = workspaces
+    _write(
+        global_openagentd / "review.md",
+        "---\ndescription: Global review\n---\nreview",
+    )
+
+    res_a = await client.get("/api/commands", params={"workspace": str(workspace_a)})
+    res_b = await client.get("/api/commands", params={"workspace": str(workspace_b)})
+
+    assert res_a.status_code == 200
+    assert res_b.status_code == 200
+    assert (
+        res_a.json()
+        == res_b.json()
+        == {
+            "commands": [
+                {
+                    "name": "review",
+                    "description": "Global review",
+                    "source": "global-openagentd",
+                }
+            ]
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_rejects_missing_workspace(client, tmp_path):
+    res = await client.get(
+        "/api/commands", params={"workspace": str(tmp_path / "missing")}
+    )
+
+    assert res.status_code == 422
