@@ -535,22 +535,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     setActiveAgent,
     navigate,
   })
-  const paletteCommands = useMemo(
-    () => [
-      ...commands,
-      ...(commandsQ.data?.commands ?? []).map((c) => ({
-        id: `slash-${c.name}`,
-        group: 'Slash Commands',
-        label: `/${c.name}`,
-        description: c.description || `Custom command (${c.source})`,
-        action: () => {
-          inputRef.current?.setValue(`/${c.name} `)
-          inputRef.current?.focus()
-        },
-      })),
-    ],
-    [commands, commandsQ.data],
-  )
+  const paletteCommands = commands
 
   useKeyboardShortcuts({
     n: handleNewSession,
