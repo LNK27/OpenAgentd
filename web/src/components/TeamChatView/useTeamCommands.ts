@@ -96,7 +96,6 @@ export function useTeamCommands({
       : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: 'Ctrl+B', action: () => dispatchCtrlKey('b') },
     { id: 'wiki',             group: 'View',       label: 'Wiki',              description: 'Browse and edit the agent wiki', shortcut: 'Ctrl+M', action: () => dispatchCtrlKey('m') },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: 'Ctrl+S', action: () => dispatchCtrlKey('s') },
-    { id: 'focus-input',      group: 'View',       label: 'Focus Chat Input',  description: 'Jump cursor to the message composer', shortcut: 'Ctrl+I', action: () => window.dispatchEvent(new CustomEvent('focus-chat-input')) },
     ...agentNames.map((name) => ({
       id: `switch-${name}`, group: 'Agents',
       label: `View ${name}`,
