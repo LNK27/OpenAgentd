@@ -8,7 +8,6 @@ import {
   loadLastCodingWorkspace,
   saveCodingWorkspace,
   saveLastCodingWorkspace,
-  shouldResetCodingWorkspaceSession,
   shouldRestoreLastCodingWorkspace,
   workspaceFromSessionDetail,
 } from '@/utils/workspace'
@@ -87,13 +86,6 @@ describe('coding workspace persistence', () => {
 
   it('does not build session route search when no workspace is known', () => {
     expect(codingSessionSearch(null, null)).toBeUndefined()
-  })
-
-  it('resets stale chat state only when changing coding workspaces without a session', () => {
-    expect(shouldResetCodingWorkspaceSession('coding', undefined, '/repo/a', '/repo/b')).toBe(true)
-    expect(shouldResetCodingWorkspaceSession('coding', 'sid', '/repo/a', '/repo/b')).toBe(false)
-    expect(shouldResetCodingWorkspaceSession('normal', undefined, '/repo/a', '/repo/b')).toBe(false)
-    expect(shouldResetCodingWorkspaceSession('coding', undefined, '/repo/a', '/repo/a')).toBe(false)
   })
 
   it('restores the last workspace only on the bare coding route', () => {

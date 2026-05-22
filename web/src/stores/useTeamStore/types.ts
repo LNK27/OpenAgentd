@@ -80,6 +80,7 @@ export interface TeamStoreActions {
   cycleActiveAgent: (dir: 'next' | 'prev') => void
   toggleSidebar: () => void
   dismissSetupRequired: () => void
+  /** Reset local chat state. Retained for stale async-generation guards in tests. */
   newSession: () => void
   removePendingMessage: (id: string) => void
   _handleSSEEvent: (type: string, data: unknown) => void

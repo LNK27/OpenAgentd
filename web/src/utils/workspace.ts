@@ -127,15 +127,6 @@ export function codingSessionSearch(
   return workspace ? { w: workspaceId(workspace) } : undefined
 }
 
-export function shouldResetCodingWorkspaceSession(
-  mode: 'normal' | 'coding',
-  sessionId: string | undefined,
-  previousWorkspace: string | null,
-  workspace: string | null,
-): boolean {
-  return mode === 'coding' && !sessionId && previousWorkspace !== workspace
-}
-
 export function shouldRestoreLastCodingWorkspace(
   mode: 'normal' | 'coding',
   sessionId: string | undefined,
