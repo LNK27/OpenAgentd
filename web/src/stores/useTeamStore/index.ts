@@ -465,6 +465,7 @@ export const useTeamStore = create<TeamStore>()(
 
       try {
         await postTeamChat(null, sessionId, true)
+        await get().loadSession(sessionId, get()._workspace)
       } catch (err) {
         console.warn('stopTeam failed', err)
       }

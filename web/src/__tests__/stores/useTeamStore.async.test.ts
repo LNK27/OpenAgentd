@@ -790,6 +790,24 @@ describe("sendMessage: queue behaviour", () => {
   })
 })
 
+// ── stopTeam ─────────────────────────────────────────────────────────────────
+
+describe("stopTeam", () => {
+  it("reloads the session after interrupt so released queued messages become history", async () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      isTeamWorking: true,
+      _workspace: "/repo/a",
+    })
+
+    await useTeamStore.getState().stopTeam()
+
+    expect(mockPostTeamChat).toHaveBeenCalledWith(null, "session-a", true)
+    expect(mockTeamHistory).toHaveBeenCalledWith("session-a")
+    expect(useTeamStore.getState()._workspace).toBe("/repo/a")
+  })
+})
+
 // ── connectStream ─────────────────────────────────────────────────────────────
 
 describe("connectStream", () => {
@@ -856,6 +874,37 @@ describe("connectStream", () => {
     useTeamStore.setState({ sessionId: "stream-sid" })
     useTeamStore.getState().connectStream()
 
+    expect(useTeamStore.getState().isConnected).toBe(false)
+  })
+
+  it("does not reconnect after onDone when queued messages are pending", () => {
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onDone?: () => void }) => {
+        cbs.onDone?.()
+      }
+    )
+    useTeamStore.setState({
+      sessionId: "stream-sid",
+      _pendingMessages: [{ id: "pm-1", sessionId: "stream-sid", content: "queued" }],
+    })
+
+    useTeamStore.getState().connectStream()
+
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
+    expect(useTeamStore.getState().isConnected).toBe(false)
+  })
+
+  it("does not reconnect after onDone when no queued messages are pending", () => {
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onDone?: () => void }) => {
+        cbs.onDone?.()
+      }
+    )
+    useTeamStore.setState({ sessionId: "stream-sid" })
+
+    useTeamStore.getState().connectStream()
+
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
     expect(useTeamStore.getState().isConnected).toBe(false)
   })
 

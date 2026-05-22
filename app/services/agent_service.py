@@ -411,7 +411,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
     from app.agent.tools.builtin.todo import release_in_progress_for_actor
     from app.core.db import resolve_db_factory
     from app.core.paths import session_workspace_dir
-    from app.services.chat_service import save_message
+    from app.services.chat_service import release_queued_user_messages, save_message
 
     names: list[str] = []
     effective_session_id = session_id or getattr(team.lead, "session_id", None)
@@ -477,6 +477,25 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
         member.interrupt()
     names.extend(m.name for m in cancelled)
     if effective_session_id:
+        try:
+            db_factory = resolve_db_factory(team.lead.db_factory)
+            async with db_factory() as db:
+                released = await release_queued_user_messages(
+                    db, uuid.UUID(effective_session_id)
+                )
+                await db.commit()
+            if released:
+                logger.info(
+                    "team_interrupt_released_queued session_id={} count={}",
+                    effective_session_id,
+                    len(released),
+                )
+        except Exception as exc:
+            logger.warning(
+                "team_interrupt_release_queue_failed session_id={} error={}",
+                effective_session_id,
+                exc,
+            )
         await stream_store.push_event(
             effective_session_id,
             StreamEnvelope.from_parts(event="done", data={}),

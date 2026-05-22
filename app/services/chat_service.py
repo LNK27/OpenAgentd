@@ -637,6 +637,32 @@ async def save_queued_user_message(
     )
 
 
+async def release_queued_user_messages(
+    db: AsyncSession,
+    session_id: UUID,
+) -> list[SessionMessage]:
+    rows = await db.exec(
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == session_id)
+        .where(col(SessionMessage.role) == "user")
+        .where(col(SessionMessage.exclude_from_context))
+        .where(col(SessionMessage.extra)["queue_status"].as_string() == "queued")
+        .order_by(col(SessionMessage.created_at).asc())
+    )
+    queued = list(rows.all())
+    released_at = datetime.now(timezone.utc)
+    for i, row in enumerate(queued):
+        extra = dict(row.extra or {})
+        extra.pop("queue_status", None)
+        extra.pop("queued_at", None)
+        row.extra = extra or None
+        row.exclude_from_context = False
+        row.created_at = released_at + timedelta(microseconds=i)
+        db.add(row)
+    await db.flush()
+    return queued
+
+
 async def pop_queued_user_messages(
     db: AsyncSession,
     session_id: UUID,

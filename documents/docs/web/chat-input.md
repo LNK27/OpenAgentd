@@ -2,7 +2,7 @@
 title: Chat Input & Message Queue
 description: How queued follow-up messages work while the team lead is streaming.
 status: stable
-updated: 2026-05-21
+updated: 2026-05-22
 ---
 
 # Chat Input & Message Queue
@@ -34,11 +34,12 @@ Attachments are not queued while the lead is working. The UI asks the user to wa
 |------|-------------|
 | User submits text while lead is busy | `POST /api/team/chat` stores a hidden `SessionMessage` with `extra.queue_status="queued"` and returns its `message_id` |
 | Lead finishes its current activation | Backend emits `queued_turn_start`, pops queued rows in order, keeps the same SSE connection alive, and sends each queued message to the lead mailbox immediately. Team-level `done` still waits for all members to finish; the queue handoff does not wait for every member status to become `idle`. |
+| User clicks `/stop` while messages are queued | Backend releases queued rows into normal visible history, removes their queued metadata, stops the stream, and does not activate those messages. Frontend reloads the session so the released messages can be edited with `/undo` or followed by a new message. |
 | User reloads or switches sessions | Session history includes queued rows; the frontend rehydrates `_pendingMessages` for the active session |
 | User clicks × on a queued item | Frontend removes it and calls `DELETE /api/team/sessions/{session_id}/queued-messages/{message_id}` |
 | `newSession()` called | Queue cleared |
 
-Queued messages are never concatenated. Multiple queued messages become separate user rows and separate lead activations. Queues are session-scoped, so switching from session A to session B does not display A's queued messages under B.
+Queued messages are never concatenated. Multiple queued messages become separate user rows and separate lead activations unless the user clicks `/stop`, which pauses the queue by converting pending rows into normal history without running them. Queues are session-scoped, so switching from session A to session B does not display A's queued messages under B.
 
 Session Settings may override the lead model and thinking level for the current chat. Sends include those settings, and queued rows keep the effective model metadata so history labels stay tied to the original turn.
 

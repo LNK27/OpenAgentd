@@ -386,6 +386,38 @@ async def test_interrupt_team_cancels_working_members():
 
 
 @pytest.mark.asyncio
+async def test_interrupt_team_releases_queued_messages_before_stopping_stream():
+    idle = MagicMock()
+    idle.state = "idle"
+    idle.name = "idler"
+
+    team = MagicMock()
+    team.members = {}
+    team.all_members = [idle]
+    team.lead.session_id = None
+
+    with (
+        patch(
+            "app.services.chat_service.release_queued_user_messages",
+            new=AsyncMock(return_value=[object()]),
+        ) as release_queued,
+        patch(
+            "app.services.agent_service.stream_store.push_event", new=AsyncMock()
+        ) as push,
+        patch(
+            "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
+        ) as mark_done,
+    ):
+        names = await interrupt_team(
+            team, session_id="018f0000-0000-7000-8000-000000000001"
+        )
+
+    assert names == []
+    release_queued.assert_awaited_once()
+    push.assert_awaited_once()
+    mark_done.assert_awaited_once_with("018f0000-0000-7000-8000-000000000001")
+
+
 async def test_interrupt_team_marks_stream_done_even_when_no_members_working():
     idle = MagicMock()
     idle.state = "idle"
