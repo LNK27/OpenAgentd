@@ -543,6 +543,7 @@ export const useTeamStore = create<TeamStore>()(
           onEvent: (type, data) => {
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+            if (current._unloading && type === 'error') return
             current._handleSSEEvent(type, data)
           },
           onParseError: (err) => {

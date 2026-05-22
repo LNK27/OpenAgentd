@@ -924,6 +924,16 @@ describe("connectStream", () => {
     expect(useTeamStore.getState().isConnected).toBe(true)
   })
 
+  it("ignores backend error events while the page is unloading", () => {
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true, _unloading: true })
+    let callbacks!: { onEvent: (type: string, data: unknown) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
+    callbacks.onEvent("error", { message: "Error in input stream" })
+    expect(useTeamStore.getState().error).toBeNull()
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
+  })
+
   it("onDone sets isConnected=false and invalidates sessions", () => {
     mockTeamStream.mockImplementation(
       (_sid: string, cbs: { onDone?: () => void }) => {
