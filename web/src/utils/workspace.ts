@@ -110,40 +110,19 @@ export function loadLastCodingWorkspace(): CodingWorkspaceEntry | null {
   }
 }
 
-export function findCodingWorkspaceById(id: string | null): string | null {
-  if (!id) return null
-  return loadCodingWorkspaceEntries().find((entry) => entry.id === id)?.path ?? null
-}
-
-export function findCodingWorkspaceId(workspace: string): string {
-  return workspaceId(workspace)
-}
-
-export function codingSessionSearch(
-  sessionWorkspace: string | null | undefined,
-  activeWorkspace: string | null | undefined,
-): { w: string } | undefined {
-  const workspace = sessionWorkspace ?? activeWorkspace
-  return workspace ? { w: workspaceId(workspace) } : undefined
-}
-
 export function shouldRestoreLastCodingWorkspace(
   mode: 'normal' | 'coding',
   sessionId: string | undefined,
-  workspaceId: string | null,
   pathname: string,
 ): boolean {
-  return mode === 'coding' && !sessionId && !workspaceId && pathname === '/coding'
+  return mode === 'coding' && !sessionId && pathname === '/coding'
 }
 
 export function workspaceFromSessionDetail(
   mode: 'normal' | 'coding',
   sessionId: string | undefined,
-  workspaceFromKey: string | null,
   sessionWorkspace: string | null | undefined,
 ): string | null {
-  if (mode !== 'coding') return null
-  if (workspaceFromKey) return workspaceFromKey
-  if (sessionId) return sessionWorkspace ?? null
-  return null
+  if (mode !== 'coding' || !sessionId) return null
+  return sessionWorkspace ?? null
 }

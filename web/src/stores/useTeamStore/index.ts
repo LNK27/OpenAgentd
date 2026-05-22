@@ -613,11 +613,11 @@ export const useTeamStore = create<TeamStore>()(
             stream.revertedMessages = []
           })
 
-          const leadName = history.lead.agent_name
+          const memberNames = history.members.map((m) => m.name)
+          const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName
           draft.leadName = leadName
           if (liveNames !== null) draft.liveAgentNames = liveNames
 
-          const memberNames = history.members.map((m) => m.name)
           const allNames = leadName ? [leadName, ...memberNames] : memberNames
           draft.agentNames = allNames
           const leadRevertTime = revertBoundaryTime(history.lead)

@@ -1,12 +1,12 @@
 import { useRef, useEffect, useLayoutEffect } from 'react'
-import { Outlet, useLocation, useParams, useNavigate } from '@tanstack/react-router'
+import { Outlet, useParams, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { TeamChatView } from '@/components/TeamChatView'
 import { getTeamSession, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
-import { findCodingWorkspaceById, loadLastCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSessionDetail } from '@/utils/workspace'
+import { loadLastCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSessionDetail } from '@/utils/workspace'
 
 /**
  * Layout route for /cockpit, /coding, and their session routes.
@@ -16,36 +16,64 @@ import { findCodingWorkspaceById, loadLastCodingWorkspace, saveLastCodingWorkspa
 function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   const params = useParams({ strict: false }) as Record<string, string>
   const sessionId = params.sessionId as string | undefined
-  const location = useLocation()
-  const search = location.search as Record<string, unknown>
   const mode = forcedMode ?? 'normal'
-  const workspaceId = typeof search.w === 'string' ? search.w : null
-  const workspaceFromKey = mode === 'coding' ? findCodingWorkspaceById(workspaceId) : null
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const workspaceRef = useRef<string | null>(null)
   const sessionQuery = useQuery({
     queryKey: queryKeys.team.sessions.detail(sessionId ?? ''),
     queryFn: () => getTeamSession(sessionId as string),
-    enabled: mode === 'coding' && Boolean(sessionId) && !workspaceFromKey,
+    enabled: mode === 'coding' && Boolean(sessionId),
     staleTime: 30_000,
   })
-  const workspace = workspaceFromSessionDetail(mode, sessionId, workspaceFromKey, sessionQuery.data?.workspace)
+  const workspace = workspaceFromSessionDetail(mode, sessionId, sessionQuery.data?.workspace)
 
   useEffect(() => {
     if (mode === 'coding' && workspace) saveLastCodingWorkspace(workspace)
   }, [mode, workspace])
 
   useEffect(() => {
-    if (mode !== 'coding' || sessionId || workspaceId) return
+    if (mode !== 'coding' || sessionId) return
+    let cancelled = false
     const restore = window.setTimeout(() => {
-      if (!shouldRestoreLastCodingWorkspace(mode, sessionId, workspaceId, window.location.pathname)) return
+      if (!shouldRestoreLastCodingWorkspace(mode, sessionId, window.location.pathname)) return
       const lastWorkspace = loadLastCodingWorkspace()
       if (!lastWorkspace) return
-      navigate({ to: '/coding', search: { w: lastWorkspace.id }, replace: true })
+      ;(async () => {
+        const current = useTeamStore.getState()
+        try {
+          const session = await resolveTeamSession({
+            mode: 'coding',
+            workspace: lastWorkspace.path,
+            model: current.sessionModel,
+            thinkingLevel: current.sessionThinkingLevel,
+          })
+          if (cancelled || sessionIdRef.current) return
+          current.beginResolvedSession(session.id, {
+            mode: 'coding',
+            workspace: session.workspace ?? lastWorkspace.path,
+            model: session.model ?? current.sessionModel,
+            thinkingLevel: session.thinking_level ?? current.sessionThinkingLevel,
+          })
+          void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+          navigate({
+            to: '/coding/$sessionId',
+            params: { sessionId: session.id },
+            replace: true,
+          })
+        } catch (err) {
+          if (cancelled) return
+          useTeamStore.setState((state) => {
+            state.error = err instanceof Error ? err.message : 'Failed to restore coding session'
+          })
+        }
+      })()
     }, 0)
-    return () => window.clearTimeout(restore)
-  }, [mode, navigate, sessionId, workspaceId])
+    return () => {
+      cancelled = true
+      window.clearTimeout(restore)
+    }
+  }, [mode, navigate, queryClient, sessionId])
 
   const navigateRef = useRef(navigate)
   const sessionIdRef = useRef(sessionId)
@@ -97,11 +125,10 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
         })
         void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
         if (mode === 'coding') {
-          const entry = workspace ? saveLastCodingWorkspace(workspace) : null
+          if (workspace) saveLastCodingWorkspace(workspace)
           navigate({
             to: '/coding/$sessionId',
             params: { sessionId: session.id },
-            search: entry ? { w: entry.id } : undefined,
             replace: true,
           })
         } else {
@@ -131,11 +158,10 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
         void queryClient.refetchQueries({ queryKey: queryKeys.team.sessions.infinite(), type: 'active' })
         if (modeRef.current === 'coding') {
           const workspace = workspaceRef.current
-          const entry = workspace ? saveLastCodingWorkspace(workspace) : null
+          if (workspace) saveLastCodingWorkspace(workspace)
           navigateRef.current({
             to: '/coding/$sessionId',
             params: { sessionId: state.sessionId },
-            search: entry ? { w: entry.id } : undefined,
             replace: true,
           })
         } else {
@@ -169,7 +195,12 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
 
   return (
     <>
-      <TeamChatView sessionId={sessionId} mode={mode} workspace={workspace} />
+      <TeamChatView
+        sessionId={sessionId}
+        mode={mode}
+        workspace={workspace}
+        codingSessionLoading={mode === 'coding' && Boolean(sessionId) && sessionQuery.isLoading}
+      />
       <Outlet />
     </>
   )

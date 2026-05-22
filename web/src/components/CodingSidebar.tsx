@@ -16,8 +16,7 @@
  * The 64 px icon rail from the previous design is gone — workspace
  * navigation now lives inline so the sidebar matches the cockpit's
  * single-column shape. ``activeWorkspace`` is the workspace driving
- * the current chat (loaded from the route's ``w=`` search param);
- * ``expandedWorkspaces`` is local UI state for which tree nodes are
+ * the current chat; ``expandedWorkspaces`` is local UI state for which tree nodes are
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
@@ -42,7 +41,6 @@ import { useTeamStore } from '@/stores/useTeamStore'
 import { prependSession } from '@/stores/cache-invalidation-bridge'
 import { formatRelativeDate } from '@/utils/format'
 import {
-  codingSessionSearch,
   loadCodingWorkspaceEntries,
   loadCodingWorkspaces,
   removeCodingWorkspace,
@@ -209,7 +207,7 @@ export function CodingSidebar({
   }, [pendingWorkspace, workspace])
 
   const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
-    const entry = saveLastCodingWorkspace(path)
+    saveLastCodingWorkspace(path)
     setPendingWorkspace(path)
     setWorkspaces(loadCodingWorkspaces())
     try {
@@ -234,7 +232,7 @@ export function CodingSidebar({
         thinkingLevel: session.thinking_level ?? state.sessionThinkingLevel,
       })
       prependSession(queryClient, session)
-      navigate({ to: '/coding/$sessionId', params: { sessionId: session.id }, search: { w: entry.id } })
+      navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create session')
     }
@@ -280,12 +278,10 @@ export function CodingSidebar({
   }
 
   const handleSessionSelect = (session: SessionResponse, workspacePath: string) => {
-    const search = codingSessionSearch(session.workspace, workspacePath)
-    if (!search) return
+    if (session.workspace ?? workspacePath) saveLastCodingWorkspace(session.workspace ?? workspacePath)
     navigate({
       to: '/coding/$sessionId',
       params: { sessionId: session.id },
-      search,
     })
     onMobileClose?.()
   }

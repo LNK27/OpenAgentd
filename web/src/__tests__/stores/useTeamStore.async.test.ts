@@ -1128,6 +1128,32 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().leadName).toBe("lead")
   })
 
+  it("falls back to live lead when history has no agent_name", async () => {
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: null,
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState().leadName).toBe("lead")
+    expect(useTeamStore.getState().activeAgent).toBe("lead")
+    expect(useTeamStore.getState().agentNames).toEqual(["lead"])
+    expect(useTeamStore.getState().agentStreams.lead).toBeDefined()
+  })
+
   it("populates agentNames with lead and members", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({

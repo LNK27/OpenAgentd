@@ -3,7 +3,7 @@ import type React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { findCodingWorkspaceId, loadLastCodingWorkspace } from '@/utils/workspace'
+import { loadLastCodingWorkspace } from '@/utils/workspace'
 import { useTeamStore } from '@/stores/useTeamStore'
 
 const navigate = mock(() => {})
@@ -187,7 +187,6 @@ describe('CodingSidebar workspace trust flow', () => {
       expect(navigate).toHaveBeenCalledWith({
         to: '/coding/$sessionId',
         params: { sessionId: 'resolved-session' },
-        search: { w: findCodingWorkspaceId('/repo/project') },
       })
     })
     expect(resolveBody).toEqual({

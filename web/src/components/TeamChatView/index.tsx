@@ -65,13 +65,14 @@ import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment } fr
 import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
-import { saveCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { setTraySession } from '@/lib/tray'
 
 interface TeamChatViewProps {
   sessionId?: string
   mode?: 'normal' | 'coding'
   workspace?: string | null
+  codingSessionLoading?: boolean
 }
 
 async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
@@ -86,7 +87,7 @@ async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
   )
 }
 
-export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: TeamChatViewProps) {
+export function TeamChatView({ sessionId, mode = 'normal', workspace = null, codingSessionLoading = false }: TeamChatViewProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
@@ -172,6 +173,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   // Lead capabilities — used to drive composer affordances (slash menu).
   const agentWorkspace = mode === 'coding' ? workspace : null
   const hasCodingWorkspace = mode !== 'coding' || Boolean(workspace)
+  const isCodingSessionLoading = mode === 'coding' && codingSessionLoading
   const { data: teamAgentsData, isLoading: teamAgentsLoading } = useTeamAgentsQuery(agentWorkspace, hasCodingWorkspace)
   const leadCapabilities: AgentCapabilitiesType | undefined = teamAgentsData?.agents
     ?.find((a) => a.is_lead)?.capabilities
@@ -271,8 +273,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
         })
         prependSession(queryClient, session)
         if (mode === 'coding' && workspace) {
-          const entry = saveCodingWorkspace(workspace)
-          navigate({ to: '/coding/$sessionId', params: { sessionId: session.id }, search: { w: entry.id } })
+          saveLastCodingWorkspace(workspace)
+          navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
         } else {
           navigate({ to: '/cockpit/$sessionId', params: { sessionId: session.id } })
         }
@@ -794,6 +796,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               onContinue={continueTeam}
             />
           </div>
+        ) : isCodingSessionLoading ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
+            <div>
+              <h2 className="text-sm font-medium text-(--color-text)">Opening coding session…</h2>
+              <p className="mt-1 text-xs text-(--color-text-muted)">Loading the saved workspace for this session.</p>
+            </div>
+          </div>
         ) : mode === 'coding' && workspace && teamAgentsLoading ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
@@ -857,7 +867,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           slashCommands={slashCommands}
           fileRefs={fileRefs}
           isStreaming={isTeamWorking}
-          disabled={mode === 'coding' && !workspace}
+          disabled={mode === 'coding' && (!workspace || isCodingSessionLoading)}
           autoFocus={!sessionId}
           placeholder={
             dreamMutation.isPending
