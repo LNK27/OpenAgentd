@@ -264,6 +264,17 @@ async def stream_with_retry(
                     retry_after if retry_after > 0 else _BASE_DELAY * (3**attempt),
                     _MAX_DELAY,
                 )
+                if exc.response.status_code == 429 and delay >= _MAX_DELAY:
+                    logger.warning(
+                        "llm_provider_rate_limit_too_long model={} status={} attempt={}/{} delay={:.1f}s retry_after={}s",
+                        provider_label,
+                        exc.response.status_code,
+                        attempt + 1,
+                        MAX_RETRIES,
+                        delay,
+                        retry_after,
+                    )
+                    break
                 logger.warning(
                     "llm_provider_retry model={} status={} attempt={}/{} delay={:.1f}s retry_after={}s",
                     provider_label,

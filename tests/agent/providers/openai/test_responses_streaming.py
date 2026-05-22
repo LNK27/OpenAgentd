@@ -138,6 +138,36 @@ class TestResponsesStreaming:
         assert chunks[0].choices[0].delta.reasoning_content == "Let me think"
         assert chunks[1].choices[0].delta.content == "The answer"
 
+    async def test_parse_stream_accepts_all_reasoning_delta_event_names(self, handler):
+        """Parse all known Responses reasoning delta event names."""
+        lines = [
+            "event: response.created",
+            'data: {"type": "response.created", "response": {"id": "resp_123"}}',
+            "event: response.reasoning_text.delta",
+            'data: {"type": "response.reasoning_text.delta", "delta": "raw"}',
+            "event: response.reasoning_summary.delta",
+            'data: {"type": "response.reasoning_summary.delta", "delta": "summary"}',
+            "event: response.reasoning_summary_text.delta",
+            'data: {"type": "response.reasoning_summary_text.delta", "delta": "summary text"}',
+        ]
+
+        async def async_iter_lines():
+            for line in lines:
+                yield line
+
+        response = MagicMock()
+        response.aiter_lines = lambda: async_iter_lines()
+
+        chunks = []
+        async for chunk in handler._parse_stream(response):
+            chunks.append(chunk)
+
+        assert [c.choices[0].delta.reasoning_content for c in chunks] == [
+            "raw",
+            "summary",
+            "summary text",
+        ]
+
     async def test_parse_stream_inserts_blank_line_between_reasoning_parts(
         self, handler
     ):

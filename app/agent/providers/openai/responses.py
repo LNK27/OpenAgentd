@@ -354,7 +354,11 @@ class ResponsesHandler:
                         ],
                     )
 
-            elif etype == "response.reasoning_summary_text.delta":
+            elif etype in {
+                "response.reasoning_text.delta",
+                "response.reasoning_summary.delta",
+                "response.reasoning_summary_text.delta",
+            }:
                 delta_text = event.get("delta", "")
                 if delta_text:
                     yield ChatCompletionChunk(

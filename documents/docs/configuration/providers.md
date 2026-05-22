@@ -176,6 +176,7 @@ fallback_model: copilot:gpt-5-mini  # used after retry exhaustion or quota 429s
 ```
 
 - Primary is retried 5× with exponential backoff for transient failures.
+- 429s retry only when the computed retry delay is under 60 seconds; delays of 60 seconds or more skip the remaining retries and switch to fallback immediately.
 - Quota-style 429s, such as usage-limit or insufficient-balance responses, skip retries and switch to fallback immediately.
 - On the last transient attempt, no sleep — switches to fallback immediately.
 - Fallback gets its own 5-retry budget with the same backoff.

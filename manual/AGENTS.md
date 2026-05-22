@@ -218,6 +218,7 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 |--------|---------|-----------|
 | `try_providers/try_openai.py` | Test OpenAI provider (completions + responses) | `--model`, `--level`, `--responses` |
 | `try_providers/try_copilot.py` | Test Copilot provider (requires `uv run openagentd auth copilot` first) | `--model`, `--level` |
+| `try_providers/try_codex.py` | Test Codex provider (requires `uv run openagentd auth codex` first) | `--model`, `--level`, `--no-stream`, `--simple` |
 | `try_providers/try_googlegenai.py` | Test Google GenAI (Gemini) provider | `--model`, `--level`, `--tools`, `--real-tools` |
 | `try_providers/try_vertexai.py` | Test Vertex AI provider | `--model`, `--level`, `--tools`, `--real-tools` |
 | `try_providers/try_zai.py` | Test ZAI provider | `--model`, `--level`, `--tools`, `--real-tools` |
@@ -226,6 +227,7 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 ```bash
 uv run python -m manual.try_providers.try_openai
 uv run python -m manual.try_providers.try_copilot --model gpt-5.4-mini
+uv run python -m manual.try_providers.try_codex --model gpt-5.5 --level low
 uv run python -m manual.try_providers.try_googlegenai
 uv run python -m manual.try_providers.try_googlegenai --model gemini-3.1-flash-lite-preview --simple
 uv run python -m manual.try_providers.try_googlegenai --real-tools

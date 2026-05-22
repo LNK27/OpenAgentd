@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -227,6 +228,40 @@ class TestRefresh:
         )
         with pytest.raises(httpx.HTTPStatusError):
             old.refresh(path)
+
+    def test_refresh_reuses_fresh_credentials_written_by_another_caller(self, tmp_path):
+        path = tmp_path / "oauth.json"
+        old = CodexOAuth(
+            access_token=SecretStr("old_at"),
+            refresh_token=SecretStr("old_rt"),
+            expires_at=time.time() - 10,
+        )
+        old.save(path)
+        calls = 0
+
+        def refresh_token(_refresh_token: str) -> dict[str, object]:
+            nonlocal calls
+            calls += 1
+            time.sleep(0.05)
+            return {
+                "access_token": "new_at",
+                "refresh_token": "new_rt",
+                "expires_in": 3600,
+            }
+
+        with patch(
+            "app.agent.providers.codex.oauth._refresh_access_token",
+            side_effect=refresh_token,
+        ):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(lambda _: old.refresh(path), range(2)))
+
+        assert calls == 1
+        assert [r.access_token.get_secret_value() for r in results] == [
+            "new_at",
+            "new_at",
+        ]
+        assert CodexOAuth.load(path).refresh_token.get_secret_value() == "new_rt"  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------

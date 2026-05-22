@@ -1447,7 +1447,7 @@ async def test_stream_with_retry_calls_on_rate_limit_on_hooks():
 
 
 async def test_stream_with_retry_interrupt_stops_rate_limit_wait():
-    """User stop should break out immediately while waiting for a 429 retry."""
+    """User stop should break out immediately while waiting for a short 429 retry."""
     import asyncio
     import httpx
 
@@ -1462,7 +1462,7 @@ async def test_stream_with_retry_interrupt_stops_rate_limit_wait():
         call_count += 1
         response = httpx.Response(
             429,
-            headers={"retry-after": "60"},
+            headers={"retry-after": "1"},
             request=httpx.Request("POST", "http://x"),
         )
         raise httpx.HTTPStatusError(
@@ -1593,6 +1593,63 @@ async def test_fallback_model_used_when_primary_exhausts_retries():
         ]
 
     assert primary_calls == MAX_RETRIES
+    assert len(chunks) == 1
+    assert chunks[0].choices[0].delta.content == "fallback response"
+
+
+async def test_fallback_model_used_immediately_on_429_retry_after_60s():
+    """429 with a 60s retry delay skips retries and falls back immediately."""
+    import httpx
+    from unittest.mock import AsyncMock, patch
+
+    primary_calls = 0
+
+    async def primary_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal primary_calls
+        primary_calls += 1
+        response = httpx.Response(
+            429,
+            headers={"retry-after": "60"},
+            request=httpx.Request("POST", "http://x"),
+        )
+        raise httpx.HTTPStatusError(
+            "rate limited", request=response.request, response=response
+        )
+        yield  # pragma: no cover
+
+    async def fallback_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        yield make_text_chunk("fallback response")
+
+    primary_provider = MockProvider([[]])
+    primary_provider.stream = primary_stream  # type: ignore[method-assign]
+
+    fallback_provider = MockProvider([[]])
+    fallback_provider.stream = fallback_stream  # type: ignore[method-assign]
+
+    agent = Agent(
+        name="bot",
+        llm_provider=primary_provider,
+        fallback_provider=fallback_provider,
+        fallback_model_id="fallback:model",
+    )
+
+    with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
+        chunks = [
+            c
+            async for c in stream_with_retry(
+                **retry_args(agent), messages=[], tools=None
+            )
+        ]
+
+    assert primary_calls == 1
     assert len(chunks) == 1
     assert chunks[0].choices[0].delta.content == "fallback response"
 
