@@ -174,6 +174,7 @@ export const useTeamStore = create<TeamStore>()(
     _workspace: null,
     _loadingOlder: false,
     _resolvedSessionReadyId: null,
+    _unloading: false,
 
     newSession: () => {
       get()._abortController?.abort()
@@ -550,6 +551,7 @@ export const useTeamStore = create<TeamStore>()(
           onError: (err) => {
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+            if (current._unloading || abort.signal.aborted) return
             if (!current.isTeamWorking) {
               set((draft) => { draft.isConnected = false })
               return
@@ -779,7 +781,16 @@ export const useTeamStore = create<TeamStore>()(
 )
 
 useTeamStore.subscribe((state, prev) => {
-  if (state.error && state.error !== prev.error) {
+  if (state.error && state.error !== prev.error && !state._unloading) {
     useToastStore.getState().push({ tone: 'error', title: 'Agent error', description: state.error })
   }
 })
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    useTeamStore.setState((state) => {
+      state._unloading = true
+      state._abortController?.abort()
+    })
+  })
+}

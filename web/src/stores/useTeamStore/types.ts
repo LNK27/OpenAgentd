@@ -62,6 +62,7 @@ export interface TeamStoreState {
   _workspace: string | null
   _loadingOlder: boolean
   _resolvedSessionReadyId: string | null
+  _unloading: boolean
   cacheInvalidations: CacheInvalidation[]
 }
 

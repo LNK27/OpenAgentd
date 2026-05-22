@@ -108,6 +108,7 @@ const INITIAL_STATE = {
   _workspace: null,
   _loadingOlder: false,
   _resolvedSessionReadyId: null,
+  _unloading: false,
   cacheInvalidations: [],
 }
 
@@ -904,16 +905,23 @@ describe("connectStream", () => {
   })
 
   it("onError sets error and isConnected=false", () => {
-    mockTeamStream.mockImplementation(
-      (_sid: string, cbs: { onError?: (e: Error) => void }) => {
-        cbs.onError?.(new Error("stream error"))
-      }
-    )
-    useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true })
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true })
+    let callbacks!: { onError: (err: Error) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useTeamStore.getState().connectStream()
-
-    expect(useTeamStore.getState().error).toBe("stream error")
+    callbacks.onError(new Error("boom"))
+    expect(useTeamStore.getState().error).toBe("boom")
     expect(useTeamStore.getState().isConnected).toBe(false)
+  })
+
+  it("ignores stream errors while the page is unloading", () => {
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true, _unloading: true })
+    let callbacks!: { onError: (err: Error) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
+    callbacks.onError(new Error("NetworkError when attempting to fetch resource"))
+    expect(useTeamStore.getState().error).toBeNull()
+    expect(useTeamStore.getState().isConnected).toBe(true)
   })
 
   it("onDone sets isConnected=false and invalidates sessions", () => {
