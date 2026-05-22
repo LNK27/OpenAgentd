@@ -310,7 +310,7 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 - One live team is kept per resolved workspace; multiple workspaces can run at the same time.
 - Concurrent sends to the same workspace are admitted by the lead's mailbox — if the lead is working, the new message is queued in its inbox and drained on the next LLM call; if the lead is idle, it starts a fresh activation. Same model as normal mode.
 - The workspace root's `AGENTS.md`, when present and under the size limit, is appended to the model system prompt.
-- The web UI enters coding mode at `/coding`; URLs carry a local browser workspace key (`w`), the last opened workspace is restored locally, and session rows store the resolved workspace for direct restores. Queryless `/coding/{session_id}` is still supported by resolving the workspace from session detail.
+- The web UI enters coding mode at `/coding`; the last opened workspace is restored locally. Persisted coding session routes use `/coding/{session_id}` without a workspace query param; the workspace is resolved from session detail.
 
 `GET /api/team/workspace/browse?path=...` supports the frontend folder picker. It lists readable child directories only; omit `path` to start at the server user's home directory. The frontend requires an explicit trust confirmation before opening a newly selected directory. The `/coding` workbench also uses workspace file listing and git diff endpoints to render an IDE-like project rail.
 
