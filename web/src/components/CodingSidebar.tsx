@@ -293,8 +293,23 @@ export function CodingSidebar({
 
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
+    const fallbackSession = deleteTarget.id === currentSessionId
+      ? codingSessions.find((session) => session.id !== deleteTarget.id && session.workspace === deleteTarget.workspace)
+        ?? codingSessions.find((session) => session.id !== deleteTarget.id)
+      : null
     deleteSession.mutate(deleteTarget.id)
-    if (deleteTarget.id === currentSessionId) navigate({ to: '/coding' })
+    if (deleteTarget.id === currentSessionId) {
+      if (fallbackSession) {
+        if (fallbackSession.workspace) saveLastCodingWorkspace(fallbackSession.workspace)
+        navigate({
+          to: '/coding/$sessionId',
+          params: { sessionId: fallbackSession.id },
+          replace: true,
+        })
+      } else {
+        navigate({ to: '/coding', replace: true })
+      }
+    }
     setDeleteTarget(null)
   }
 

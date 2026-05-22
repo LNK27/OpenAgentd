@@ -312,6 +312,42 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.queryByLabelText('Session running')).toBeNull()
   })
 
+  it('selects another coding session after deleting the current one', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Delete me',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+      {
+        id: 'session-2',
+        title: 'Keep me',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Delete session Delete me'))
+    await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/coding/$sessionId',
+      params: { sessionId: 'session-2' },
+      replace: true,
+    })
+    expect(loadLastCodingWorkspace()?.path).toBe('/repo/project')
+  })
+
   it('requires confirmation before deleting a coding session', async () => {
     const user = userEvent.setup()
     sessionsData = [
@@ -336,6 +372,6 @@ describe('CodingSidebar workspace trust flow', () => {
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
     expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
-    expect(navigate).toHaveBeenCalledWith({ to: '/coding' })
+    expect(navigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
   })
 })

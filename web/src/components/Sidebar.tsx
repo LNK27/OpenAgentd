@@ -148,9 +148,20 @@ export function Sidebar({
 
   const confirmDelete = () => {
     if (!deleteTarget) return
+    const fallbackSession = deleteTarget.id === currentSessionId
+      ? normalSessions.find((session) => session.id !== deleteTarget.id)
+      : null
     deleteSession.mutate(deleteTarget.id)
     if (deleteTarget.id === currentSessionId) {
-      navigate({ to: '/cockpit' })
+      if (fallbackSession) {
+        navigate({
+          to: '/cockpit/$sessionId',
+          params: { sessionId: fallbackSession.id },
+          replace: true,
+        })
+      } else {
+        navigate({ to: '/cockpit', replace: true })
+      }
     }
     setDeleteTarget(null)
   }
