@@ -31,6 +31,10 @@ function makeToolBlock(id: string, toolName: string): ContentBlock {
   return { id, type: "tool", content: "", toolName, toolDone: true }
 }
 
+function makeCompactionBlock(id: string, content: string): ContentBlock {
+  return { id, type: "compaction", content }
+}
+
 function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {}) {
   return render(
     <AgentView
@@ -94,6 +98,17 @@ describe("AgentView — AssistantFooter", () => {
       })
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeNull()
+    })
+
+    it("renders the empty state when only compaction markers are visible", () => {
+      renderStream({
+        blocks: [makeCompactionBlock("c1", "Older context compacted")],
+        currentBlocks: [],
+        isWorking: false,
+      })
+
+      expect(screen.getByText("what’s on your mind?")).toBeTruthy()
+      expect(screen.getByText("Older context compacted")).toBeTruthy()
     })
 
     it("does not render footer when there is no text content and no timestamp", () => {

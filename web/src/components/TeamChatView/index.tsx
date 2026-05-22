@@ -20,8 +20,6 @@
  * that returning a freshly-built object on every render would trigger.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
-
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
@@ -843,12 +841,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               ) : undefined
             }
           />
-        ) : (
-          <div className="flex flex-1 select-none flex-col items-center justify-center gap-3">
-            <img src={OctobotMascot} className="opacity-25 grayscale" width={64} height={64} alt="Idle octobot" />
-            <p className="text-sm text-(--color-text-muted)">Select an agent above</p>
+        ) : mode === 'coding' && workspace ? (
+          <div className="flex flex-1 flex-col items-center justify-center py-16">
+            <WorkspaceInfoCard workspace={workspace} />
           </div>
-        )}
+        ) : null}
 
         <FloatingInputBar
           ref={inputRef}

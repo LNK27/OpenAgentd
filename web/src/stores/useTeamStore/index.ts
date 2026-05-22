@@ -540,7 +540,7 @@ export const useTeamStore = create<TeamStore>()(
       try {
         const status = await teamStatus(workspace)
         if (status) {
-          const allAgents = get().sessionId ? [status.lead, ...status.members] : [status.lead]
+          const allAgents = [status.lead, ...status.members]
           const liveNames = allAgents.map((a) => a.name)
           set((draft) => {
             draft.leadName = status.lead.name

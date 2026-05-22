@@ -944,9 +944,9 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().leadName).toBe("lead")
   })
 
-  it("sets agentNames to lead only before a session is active", async () => {
+  it("sets agentNames including lead and members before a session is active", async () => {
     await useTeamStore.getState().loadTeamStatus()
-    expect(useTeamStore.getState().agentNames).toEqual(["lead"])
+    expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
   })
 
   it("sets agentNames including lead and members when a session is active", async () => {
@@ -983,11 +983,11 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
   })
 
-  it("creates agent streams for the lead before a session is active", async () => {
+  it("creates agent streams for all agents before a session is active", async () => {
     await useTeamStore.getState().loadTeamStatus()
     const streams = useTeamStore.getState().agentStreams
     expect(streams["lead"]).toBeDefined()
-    expect(streams["worker"]).toBeUndefined()
+    expect(streams["worker"]).toBeDefined()
   })
 
   it("creates agent streams for all agents when a session is active", async () => {
@@ -998,10 +998,10 @@ describe("loadTeamStatus", () => {
     expect(streams["worker"]).toBeDefined()
   })
 
-  it("sets model on the lead stream before a session is active", async () => {
+  it("sets model on each agent stream before a session is active", async () => {
     await useTeamStore.getState().loadTeamStatus()
     expect(useTeamStore.getState().agentStreams["lead"].model).toBe("gpt-4")
-    expect(useTeamStore.getState().agentStreams["worker"]).toBeUndefined()
+    expect(useTeamStore.getState().agentStreams["worker"].model).toBe("claude-3")
   })
 
   it("sets model on each agent stream when a session is active", async () => {
