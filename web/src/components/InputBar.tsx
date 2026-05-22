@@ -766,10 +766,25 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // placeholder is exempt from ``text-transparent`` — it's owned by
         // ``::placeholder`` and ``placeholder-(--color-text-subtle)``
         // keeps it readable.
-        className="block w-full resize-none bg-transparent p-0 align-middle text-sm leading-relaxed text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
+        // ``scrollbar-none`` hides the textarea's own scrollbar. Without it,
+        // the textarea grows a ~15px-wide vertical scrollbar once content
+        // exceeds ``maxHeight``, which narrows its inner text-width and makes
+        // it wrap a few characters earlier than the overlay mirror (which
+        // has no scrollbar). The wrap-point drift is invisible while typing
+        // but the native spellcheck squiggle is anchored to textarea text
+        // positions, so it ends up under the wrong overlay word and drifts
+        // further with every scroll. The wrapper around the overlay handles
+        // overflow via the overlay's ``overflow-hidden`` + scroll sync.
+        className="block w-full resize-none scrollbar-none bg-transparent p-0 align-middle text-sm leading-relaxed break-words text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
         // Cap matches the ``resize()`` ceiling above so the JS-driven height
         // and the CSS limit stay in lockstep.
         style={{ maxHeight: '120px' }}
+        // Spellcheck disabled: the squiggle is painted by the browser under
+        // the textarea's own glyphs, but the visible text comes from the
+        // overlay mirror. Even with identical font/wrap/scroll the two
+        // text-layout paths drift by 1–2px, leaving the squiggle a word
+        // off. Same call Discord/Slack/ChatGPT make for the same reason.
+        spellCheck={false}
         aria-label="Message input"
         aria-expanded={mentionMenuOpen || slashMenuOpen}
         aria-controls={activePopupId}

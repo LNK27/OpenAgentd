@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useProximityTracker, useProximityIntensity } from '@/hooks/useProximity'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
@@ -81,7 +80,6 @@ export function Sidebar({
   const deleteSession = useDeleteTeamSessionMutation()
   const sessionListRef = useRef<HTMLDivElement>(null)
   const loadMoreRef = useRef<HTMLDivElement>(null)
-  const mouseY = useProximityTracker(sessionListRef)
 
   // Flatten pages into a single list of sessions
   const allSessions = sessions.data?.pages.flatMap((p) => p.data) ?? []
@@ -305,7 +303,6 @@ export function Sidebar({
                                 key={session.id}
                                 session={session}
                                 isActive={session.id === currentSessionId}
-                                mouseY={mouseY}
                                 onSelect={handleSelect}
                                 onDelete={(e, s) => handleDelete(e, s)}
                               />
@@ -419,45 +416,26 @@ export function Sidebar({
 interface SessionRowProps {
   session: SessionResponse
   isActive: boolean
-  mouseY: number | null
   onSelect: (id: string) => void
   onDelete: (e: React.MouseEvent, session: SessionResponse) => void
 }
 
 /**
- * Single session row with proximity fade. Layers, back to front:
- *   1. Proximity layer — absolute ::before-style div, background set inline
- *      from cursor distance. Skipped for active rows (already at peak).
- *   2. Button — transparent default; `:hover` and `[data-active]` paint a
- *      solid accent-dim background on top of the proximity layer.
- *
- * Because the proximity layer is a sibling positioned behind the button's
- * visible chrome (via `isolation: isolate` + stacking), the `:hover` class
- * background sits on top and wins without inline-style interference.
+ * Single session row. Background stays flat on hover; instead the row
+ * brightens its text from ``--color-text-2`` to ``--color-text`` as the
+ * hover affordance. Active rows keep the solid ``--bg-key`` background.
  */
-function SessionRow({ session, isActive, mouseY, onSelect, onDelete }: SessionRowProps) {
-  const { ref, intensity } = useProximityIntensity(mouseY)
-  const showProximity = !isActive && intensity > 0
+function SessionRow({ session, isActive, onSelect, onDelete }: SessionRowProps) {
   const isScheduled = Boolean(session.scheduled_task_name)
 
   return (
-    <div ref={ref as React.RefObject<HTMLDivElement>} className="group relative isolate">
-      {/* Proximity layer — behind the button, same rounded corners */}
-      {showProximity && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 rounded-md"
-          style={{
-            backgroundColor: `color-mix(in srgb, var(--bg-key) ${intensity * 100}%, transparent)`,
-          }}
-        />
-      )}
+    <div className="group relative">
       <button
         onClick={() => onSelect(session.id)}
         className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${
           isActive
             ? 'bg-(--bg-key) text-(--color-text)'
-            : 'hover:bg-(--bg-key) text-(--color-text-2)'
+            : 'text-(--color-text-2) hover:text-(--color-text)'
         }`}
       >
         <div className="min-w-0 flex-1">
@@ -469,10 +447,10 @@ function SessionRow({ session, isActive, mouseY, onSelect, onDelete }: SessionRo
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6 }}
                 transition={{ duration: 0.18, ease: 'easeOut' }}
-                className={`min-w-0 truncate text-xs ${
+                className={`min-w-0 truncate text-xs transition-colors ${
                   isActive
                     ? 'font-medium text-(--color-text)'
-                    : 'text-(--color-text-2)'
+                    : 'text-(--color-text-2) group-hover:font-medium group-hover:text-(--color-text)'
                 }`}
               >
                 {session.title || 'Untitled'}
@@ -485,11 +463,11 @@ function SessionRow({ session, isActive, mouseY, onSelect, onDelete }: SessionRo
             )}
           </div>
           {isScheduled && (
-            <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
+            <p className="mt-0.5 truncate text-xs text-(--color-text-subtle) transition-colors group-hover:text-(--color-text-muted)">
               {session.scheduled_task_name}
             </p>
           )}
-          <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
+          <p className="mt-0.5 truncate text-xs text-(--color-text-subtle) transition-colors group-hover:text-(--color-text-muted)">
             {formatRelativeDate(session.created_at)}
           </p>
         </div>

@@ -266,7 +266,7 @@ The sidebar composes two reusable primitives: a brand header and a sidebar item.
 ### Recent sessions
 
 - Grouped by relative date headers ("Today", "Yesterday", "Older"). Headers use mono uppercase 10px in `--color-text-muted`.
-- Rows use the proximity-fade pattern (see [interaction.md § Proximity effects](./interaction.md#proximity-effects)): hover wash strength tracks cursor distance, not binary on/off.
+- Rows keep a flat background. Hover brightens the title from `--color-text-2` to `--color-text` and bumps its weight from 440 to 500 (see [typography.md § Font-weight transitions](./typography.md#font-weight-transitions-signature-interaction)); secondary lines lift one step from `--color-text-subtle` to `--color-text-muted`. The proximity-fade pattern that previously washed the row background has been retired in favor of this text-only affordance — heavy backgrounds in a dense list were strobing more than they were helping. Active row still uses a solid `--bg-key` fill.
 - A delete affordance lives at the trailing edge of each row. On desktop it is hidden until hover; on mobile it is always visible (touch has no hover state).
 - Scheduled sessions add a "sched" mono badge after the title and a second line with the schedule name in `--color-text-subtle`.
 

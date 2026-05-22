@@ -66,21 +66,24 @@ export function MentionOverlay({
 
   // Keep the mirror's scroll position in lock-step with the textarea so
   // the colored text stays aligned when the message overflows the bar's
-  // max-height. Re-runs whenever the range count changes because adding
-  // or removing a mention can shift ``scrollHeight`` before the next
-  // scroll event fires.
+  // max-height. Re-runs whenever the range count or value length changes:
+  // the overlay returns ``null`` on an empty value (see below), so without
+  // ``value.length`` in the deps the listener would never attach for the
+  // first non-empty render, leaving long mention-less messages frozen in
+  // place while the caret scrolls.
   useEffect(() => {
     const ta = textareaRef.current
     const mirror = mirrorRef.current
     if (!ta || !mirror) return
+    // Only vertical sync — horizontal overflow can't happen because both
+    // layers use ``whitespace: pre-wrap`` + ``break-words``.
     const sync = () => {
       mirror.scrollTop = ta.scrollTop
-      mirror.scrollLeft = ta.scrollLeft
     }
     sync()
     ta.addEventListener('scroll', sync)
     return () => ta.removeEventListener('scroll', sync)
-  }, [textareaRef, ranges.length])
+  }, [textareaRef, ranges.length, value.length])
 
   // No mentions and no text? Skip the mirror entirely.
   if (ranges.length === 0 && value.length === 0) return null
@@ -131,7 +134,7 @@ export function MentionOverlay({
       // normal foreground; the per-span color override above paints
       // mention tokens in blue (files) or orange (folders).
       className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-sm leading-relaxed text-(--color-text)"
-      style={{ maxHeight: '144px' }}
+      style={{ maxHeight: '120px' }}
     >
       {segments}
     </div>

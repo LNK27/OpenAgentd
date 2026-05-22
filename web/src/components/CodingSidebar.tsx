@@ -43,6 +43,7 @@ import {
   codingSessionSearch,
   loadCodingWorkspaceEntries,
   loadCodingWorkspaces,
+  removeCodingWorkspace,
   saveLastCodingWorkspace,
   workspaceLabel,
 } from '@/utils/workspace'
@@ -163,6 +164,9 @@ export function CodingSidebar({
   const [pendingWorkspace, setPendingWorkspace] = useState<string | null>(null)
   const [trustWorkspace, setTrustWorkspace] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
+  // Workspace pending removal — null when no confirmation is open. The
+  // confirmation dialog reads this; ``confirmRemoveWorkspace`` commits.
+  const [removeWorkspaceTarget, setRemoveWorkspaceTarget] = useState<string | null>(null)
 
   const loadBrowser = useCallback(async (path?: string | null) => {
     setLoading(true)
@@ -207,6 +211,27 @@ export function CodingSidebar({
     setWorkspaces(loadCodingWorkspaces())
     useTeamStore.getState().newSession()
     navigate({ to: '/coding', search: { w: entry.id } })
+  }
+
+  // Remove a workspace from the sidebar. Sessions stay in the backend —
+  // reopening the same folder later resurfaces them. If the removed
+  // workspace was the active one, navigate back to the empty /coding
+  // route so the URL doesn't reference a workspace that no longer
+  // appears in the sidebar. Called from the confirmation dialog below.
+  const confirmRemoveWorkspace = () => {
+    const path = removeWorkspaceTarget
+    if (!path) return
+    removeCodingWorkspace(path)
+    setExpandedWorkspaces((current) => {
+      if (!current.has(path)) return current
+      const next = new Set(current)
+      next.delete(path)
+      return next
+    })
+    if (path === activeWorkspace) {
+      navigate({ to: '/coding' })
+    }
+    setRemoveWorkspaceTarget(null)
   }
 
   const openSelectedFolder = async () => {
@@ -319,13 +344,13 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => toggleWorkspaceExpanded(path)}
-                  className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-md px-1.5 py-1 text-left text-xs transition-colors hover:bg-(--bg-key)"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-md px-1.5 py-1 text-left text-xs transition-colors"
                   aria-expanded={isExpanded}
                   aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${workspaceLabel(path)}`}
                   title={path}
                 >
                   <Folder size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-                  <span className={`truncate ${isActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2)'}`}>
+                  <span className={`truncate ${isActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
                     {workspaceLabel(path)}
                   </span>
                   {isPending && (
@@ -340,6 +365,15 @@ export function CodingSidebar({
                   title={`New session in ${workspaceLabel(path)}`}
                 >
                   <Plus size={11} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRemoveWorkspaceTarget(path)}
+                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
+                  aria-label={`Remove ${workspaceLabel(path)} from sidebar`}
+                  title="Remove from sidebar"
+                >
+                  <Trash2 size={11} aria-hidden="true" />
                 </button>
               </div>
 
@@ -359,7 +393,7 @@ export function CodingSidebar({
                           className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
                             isCurrent
                               ? 'bg-(--bg-key) text-(--color-text)'
-                              : 'text-(--color-text-2) hover:bg-(--bg-key)'
+                              : 'text-(--color-text-2) hover:text-(--color-text)'
                           }`}
                         >
                           <p className="truncate font-medium">{session.title || 'Untitled'}</p>
@@ -525,6 +559,25 @@ export function CodingSidebar({
           <DialogFooter className="p-3">
             <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button type="button" variant="destructive" onClick={confirmSessionDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={removeWorkspaceTarget !== null}
+        onOpenChange={(open) => { if (!open) setRemoveWorkspaceTarget(null) }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Remove workspace from sidebar</DialogTitle>
+            <DialogDescription>
+              &ldquo;{removeWorkspaceTarget ? workspaceLabel(removeWorkspaceTarget) : ''}&rdquo; will be hidden from
+              the sidebar. Its sessions stay on disk — reopening this folder later restores the list.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="p-3">
+            <Button type="button" variant="outline" onClick={() => setRemoveWorkspaceTarget(null)}>Cancel</Button>
+            <Button type="button" variant="destructive" onClick={confirmRemoveWorkspace}>Remove</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
