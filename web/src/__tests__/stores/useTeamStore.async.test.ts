@@ -1318,6 +1318,33 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().agentStreams["lead"].currentBlocks).toHaveLength(0)
   })
 
+  it("marks the lead working when loaded session detail is still running", async () => {
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          running: true,
+          sub_sessions: [],
+          messages: [
+            makeMessageResponse({ id: "m1", role: "user", content: "resume task" }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
+    expect(useTeamStore.getState().agentStreams.lead.status).toBe("working")
+  })
+
   it("sets activeAgent to lead when no activeAgent is set", async () => {
     await useTeamStore.getState().loadSession("sess-1")
     expect(useTeamStore.getState().activeAgent).toBe("lead")

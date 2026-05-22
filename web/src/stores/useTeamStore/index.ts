@@ -627,7 +627,7 @@ export const useTeamStore = create<TeamStore>()(
           draft.sessionId = sessionId
           draft.sessionModel = history.lead.model ?? null
           draft.sessionThinkingLevel = history.lead.thinking_level ?? null
-          draft.isTeamWorking = false
+          draft.isTeamWorking = history.lead.running === true
           draft.isContinuing = false
           draft.error = null
 
@@ -657,7 +657,7 @@ export const useTeamStore = create<TeamStore>()(
             leadStream.currentBlocks = []
             leadStream.currentText = ''
             leadStream.currentThinking = ''
-            leadStream.status = 'idle'
+            leadStream.status = history.lead.running === true ? 'working' : 'idle'
             const leadVisibleMsgs = messagesBeforeRevert(history.lead)
             const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
             leadStream.usage = leadUsage

@@ -674,7 +674,12 @@ async def get_team_session_detail(
     if history is None:
         raise HTTPException(status_code=404, detail="Session not found.")
 
-    lead_resp = SessionResponse.model_validate(history.lead_session)
+    lead_resp = SessionResponse.model_validate(history.lead_session).model_copy(
+        update={
+            "running": str(history.lead_session.id)
+            in stream_store.running_session_ids()
+        }
+    )
     return SessionDetailResponse(
         **lead_resp.model_dump(),
         messages=[_message_response(m) for m in history.lead_messages],
@@ -725,7 +730,12 @@ async def team_history(
     else:
         _require_team(team)
 
-    lead_resp = SessionResponse.model_validate(history.lead_session)
+    lead_resp = SessionResponse.model_validate(history.lead_session).model_copy(
+        update={
+            "running": str(history.lead_session.id)
+            in stream_store.running_session_ids()
+        }
+    )
     lead_detail = SessionDetailResponse(
         **lead_resp.model_dump(),
         messages=[_message_response(m) for m in history.lead_messages],

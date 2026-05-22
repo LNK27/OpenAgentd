@@ -597,6 +597,40 @@ class TestGetTeamSessionDetail:
         assert data["workspace"] == workspace
         assert data["messages"] == []
 
+    @pytest.mark.asyncio
+    async def test_session_detail_marks_running_session(
+        self, app_without_team, monkeypatch
+    ):
+        from app.services import memory_stream_store
+
+        session_id = uuid.uuid7()
+        lead_session = ChatSession(
+            id=session_id,
+            title="Running task",
+            agent_name="lead",
+        )
+
+        async def fake_get_team_history(db, requested_id, offset=0, limit=1000):
+            assert requested_id == session_id
+            return SimpleNamespace(
+                lead_session=lead_session, lead_messages=[], members=[]
+            )
+
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.get_team_history",
+            fake_get_team_history,
+        )
+
+        await memory_stream_store.init_turn(str(session_id))
+        try:
+            client = TestClient(app_without_team)
+            resp = client.get(f"/api/team/sessions/{session_id}")
+        finally:
+            await memory_stream_store.clear(str(session_id))
+
+        assert resp.status_code == 200
+        assert resp.json()["running"] is True
+
     def test_session_detail_missing_session_returns_404(
         self, app_without_team, monkeypatch
     ):
