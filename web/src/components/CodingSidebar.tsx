@@ -27,10 +27,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
+  Ellipsis,
   Folder,
   HelpCircle,
   Loader2,
-  MoreHorizontal,
   Plus,
   Search,
   Settings,
@@ -379,7 +379,7 @@ export function CodingSidebar({
                     aria-label={`More actions for ${workspaceLabel(path)}`}
                     title="More actions"
                   >
-                    <MoreHorizontal size={12} aria-hidden="true" />
+                    <Ellipsis size={12} aria-hidden="true" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" sideOffset={4} className="min-w-[180px]">
                     <DropdownMenuItem
@@ -387,7 +387,7 @@ export function CodingSidebar({
                       onClick={() => setRemoveWorkspaceTarget(path)}
                     >
                       <Trash2 size={12} aria-hidden="true" />
-                      <span>Remove from sidebar</span>
+                      <span>Remove</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
