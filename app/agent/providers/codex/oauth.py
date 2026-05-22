@@ -23,7 +23,7 @@ from collections.abc import Callable
 from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 from typing import Any
 
 import httpx
@@ -35,6 +35,7 @@ CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 ISSUER = "https://auth.openai.com"
 OAUTH_PORT = 1455
 _USER_AGENT = "openagentd/1.0.0"
+_REFRESH_LOCK = Lock()
 
 
 # Mirrors app.agent.providers.copilot.oauth.EventSink — kept duplicated
@@ -94,18 +95,31 @@ class CodexOAuth(BaseModel):
         return time.time() >= self.expires_at - 60  # 60s buffer
 
     def refresh(self, path: Path | None = None) -> CodexOAuth:
-        """Exchange refresh_token for a new access_token and persist it."""
-        tokens = _refresh_access_token(self.refresh_token.get_secret_value())
-        new = CodexOAuth(
-            access_token=SecretStr(tokens["access_token"]),
-            refresh_token=SecretStr(
-                tokens.get("refresh_token") or self.refresh_token.get_secret_value()
-            ),
-            expires_at=time.time() + tokens.get("expires_in", 3600),
-            account_id=_extract_account_id(tokens) or self.account_id,
-        )
-        new.save(path)
-        return new
+        """Exchange refresh_token for a new access_token and persist it.
+
+        Refresh tokens can rotate.  If concurrent requests all notice expiry at
+        once, only the first should call the token endpoint; later callers reuse
+        the fresh credentials written by the first refresh.
+        """
+        p = path or _default_oauth_file()
+        with _REFRESH_LOCK:
+            current = CodexOAuth.load(p)
+            if current and not current.is_expired():
+                return current
+
+            source = current or self
+            tokens = _refresh_access_token(source.refresh_token.get_secret_value())
+            new = CodexOAuth(
+                access_token=SecretStr(tokens["access_token"]),
+                refresh_token=SecretStr(
+                    tokens.get("refresh_token")
+                    or source.refresh_token.get_secret_value()
+                ),
+                expires_at=time.time() + tokens.get("expires_in", 3600),
+                account_id=_extract_account_id(tokens) or source.account_id,
+            )
+            new.save(p)
+            return new
 
 
 # -- PKCE helpers -------------------------------------------------------------
