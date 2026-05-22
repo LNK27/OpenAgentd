@@ -210,13 +210,15 @@ export async function resolveTeamSession(options: {
   workspace?: string | null
   model?: string | null
   thinkingLevel?: string | null
+  create?: boolean
 }): Promise<TeamSessionResolveResponse> {
-  const body: Record<string, string | null> = {
+  const body: Record<string, string | boolean | null> = {
     mode: options.mode ?? 'normal',
   }
   if (options.workspace !== undefined) body.workspace = options.workspace
   if (options.model !== undefined) body.model = options.model
   if (options.thinkingLevel !== undefined) body.thinking_level = options.thinkingLevel
+  if (options.create !== undefined) body.create = options.create
   const res = await fetch(`${API}/team/sessions/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

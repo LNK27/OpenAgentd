@@ -631,9 +631,11 @@ async def resolve_team_session(
         raise HTTPException(status_code=422, detail="Choose a model from the registry.")
 
     async with db.begin():
-        session = await get_latest_top_level_session(
-            db, mode=body.mode, workspace=workspace
-        )
+        session = None
+        if not body.create:
+            session = await get_latest_top_level_session(
+                db, mode=body.mode, workspace=workspace
+            )
         created = session is None
         if session is None:
             session = ChatSession(

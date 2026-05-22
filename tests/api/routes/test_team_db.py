@@ -198,6 +198,26 @@ class TestResolveTeamSession:
         assert data["created"] is False
         assert data["id"] == str(lead_id)
 
+    @pytest.mark.asyncio
+    async def test_resolve_can_force_create_normal_session(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+
+        client = TestClient(app_with_team)
+        resp = client.post(
+            "/api/team/sessions/resolve",
+            json={"mode": "normal", "create": True},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["created"] is True
+        assert data["id"] != str(lead_id)
+
     def test_resolve_creates_coding_session(self, app_with_team, tmp_path):
         client = TestClient(app_with_team)
 

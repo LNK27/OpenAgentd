@@ -88,9 +88,19 @@ def main() -> None:
         if coding_again.get("created") is not False:
             raise AssertionError(f"second coding resolve should not create: {coding_again}")
 
+        coding_new = resolve_session(
+            args.base,
+            {"mode": "coding", "workspace": str(workspace), "create": True},
+        )
+        if coding_new["id"] == coding["id"]:
+            raise AssertionError("forced coding create should allocate a fresh session")
+        if coding_new.get("created") is not True:
+            raise AssertionError(f"forced coding create should report created: {coding_new}")
+
         print("session_resolve: ok")
         print(f"normal: {normal['id']} created={normal.get('created')}")
         print(f"coding: {coding['id']} workspace={coding['workspace']}")
+        print(f"coding_new: {coding_new['id']} forced_create=True")
     finally:
         if temp_dir is not None:
             temp_dir.cleanup()

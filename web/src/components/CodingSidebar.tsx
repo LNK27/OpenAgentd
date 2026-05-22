@@ -216,6 +216,7 @@ export function CodingSidebar({
         workspace: path,
         model: state.sessionModel,
         thinkingLevel: state.sessionThinkingLevel,
+        create: true,
       })
       state.beginResolvedSession(session.id, {
         mode: 'coding',

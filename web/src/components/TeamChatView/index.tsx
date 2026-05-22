@@ -267,6 +267,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
           workspace: mode === 'coding' ? workspace : null,
           model: sessionModel,
           thinkingLevel: sessionThinkingLevel,
+          create: true,
         })
         beginResolvedSession(session.id, {
           mode,

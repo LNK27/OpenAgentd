@@ -129,6 +129,7 @@ describe('resolveTeamSession', () => {
       workspace: '/repo/app',
       model: 'openai:gpt-5.5',
       thinkingLevel: 'high',
+      create: true,
     })
 
     expect(url).toBe('/api/team/sessions/resolve')
@@ -139,6 +140,7 @@ describe('resolveTeamSession', () => {
       workspace: '/repo/app',
       model: 'openai:gpt-5.5',
       thinking_level: 'high',
+      create: true,
     })
     expect(result.created).toBe(true)
     expect(result.id).toBe('sid')

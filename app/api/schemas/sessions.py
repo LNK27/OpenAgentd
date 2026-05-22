@@ -20,6 +20,7 @@ class TeamSessionResolveRequest(BaseModel):
     workspace: str | None = None
     model: str | None = None
     thinking_level: str | None = None
+    create: bool = False
 
 
 class SessionResponse(_ExcludeNoneModel):
