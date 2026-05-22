@@ -37,7 +37,7 @@ import { SchedulerPanel } from '../SchedulerPanel'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery, useTriggerDreamMutation } from '@/queries'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
-import { renderCommand } from '@/api/client'
+import { renderCommand, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -121,7 +121,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const loadSession    = useTeamStore((s) => s.loadSession)
   const sendMessage    = useTeamStore((s) => s.sendMessage)
   const continueTeam   = useTeamStore((s) => s.continueTeam)
-  const newSession     = useTeamStore((s) => s.newSession)
+  const beginResolvedSession = useTeamStore((s) => s.beginResolvedSession)
   const cycleActiveAgent = useTeamStore((s) => s.cycleActiveAgent)
   const setActiveAgent   = useTeamStore((s) => s.setActiveAgent)
   const setSessionModelSettings = useTeamStore((s) => s.setSessionModelSettings)
@@ -244,18 +244,50 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
+  const isEmptyIdleSession = useCallback(() => {
+    if (!sessionIdState || isTeamWorking) return false
+    return agentNames.every((name) => {
+      const stream = agentStreams[name]
+      if (!stream) return true
+      return stream.blocks.length === 0 && stream.currentBlocks.length === 0
+    })
+  }, [agentNames, agentStreams, isTeamWorking, sessionIdState])
+
   const handleNewSession = useCallback(() => {
+    if (isEmptyIdleSession()) {
+      requestAnimationFrame(() => inputRef.current?.focus())
+      return
+    }
     abortRef.current?.abort()
     abortRef.current = null
-    newSession()
-    if (mode === 'coding' && workspace) {
-      const entry = saveCodingWorkspace(workspace)
-      navigate({ to: '/coding', search: { w: entry.id } })
-    } else {
-      navigate({ to: mode === 'coding' ? '/coding' : '/cockpit' })
-    }
-    requestAnimationFrame(() => inputRef.current?.focus())
-  }, [mode, workspace, newSession, navigate])
+    ;(async () => {
+      try {
+        const session = await resolveTeamSession({
+          mode,
+          workspace: mode === 'coding' ? workspace : null,
+          model: sessionModel,
+          thinkingLevel: sessionThinkingLevel,
+        })
+        beginResolvedSession(session.id, {
+          mode,
+          workspace: session.workspace ?? workspace,
+          model: session.model ?? sessionModel,
+          thinkingLevel: session.thinking_level ?? sessionThinkingLevel,
+        })
+        if (mode === 'coding' && workspace) {
+          const entry = saveCodingWorkspace(workspace)
+          navigate({ to: '/coding/$sessionId', params: { sessionId: session.id }, search: { w: entry.id } })
+        } else {
+          navigate({ to: '/cockpit/$sessionId', params: { sessionId: session.id } })
+        }
+        requestAnimationFrame(() => inputRef.current?.focus())
+      } catch (err) {
+        useTeamStore.setState((state) => {
+          state.error = err instanceof Error ? err.message : 'Failed to create session'
+        })
+      }
+    })()
+  }, [beginResolvedSession, isEmptyIdleSession, mode, navigate, sessionModel, sessionThinkingLevel, workspace])
 
   const handleWorkspaceFiles = useCallback(() => {
     if (mode === 'coding') {

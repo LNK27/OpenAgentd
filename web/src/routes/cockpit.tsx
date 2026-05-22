@@ -2,11 +2,11 @@ import { useRef, useEffect, useLayoutEffect } from 'react'
 import { Outlet, useLocation, useParams, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { TeamChatView } from '@/components/TeamChatView'
-import { getTeamSession } from '@/api/client'
+import { getTeamSession, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
-import { findCodingWorkspaceById, loadLastCodingWorkspace, saveLastCodingWorkspace, shouldResetCodingWorkspaceSession, shouldRestoreLastCodingWorkspace, workspaceFromSessionDetail } from '@/utils/workspace'
+import { findCodingWorkspaceById, loadLastCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSessionDetail } from '@/utils/workspace'
 
 /**
  * Layout route for /cockpit, /coding, and their session routes.
@@ -24,7 +24,6 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const workspaceRef = useRef<string | null>(null)
-  const previousWorkspaceRef = useRef<string | null>(null)
   const sessionQuery = useQuery({
     queryKey: queryKeys.team.sessions.detail(sessionId ?? ''),
     queryFn: () => getTeamSession(sessionId as string),
@@ -58,13 +57,6 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
     workspaceRef.current = workspace
   })
 
-  useLayoutEffect(() => {
-    if (shouldResetCodingWorkspaceSession(mode, sessionId, previousWorkspaceRef.current, workspace)) {
-      previousWorkspaceRef.current = workspace
-      useTeamStore.getState().newSession()
-    }
-  }, [mode, sessionId, workspace])
-
   // Keep ``useTeamStore._workspace`` in sync with the URL-derived
   // workspace path the moment we render the layout. The SSE reducer
   // reads this field to decide whether to fire ``coding_workspace`` or
@@ -80,6 +72,54 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
       state._workspace = workspace ?? null
     })
   }, [mode, workspace])
+
+  useEffect(() => {
+    if (sessionId) return
+    if (mode === 'coding' && !workspace) return
+    let cancelled = false
+    ;(async () => {
+      const current = useTeamStore.getState()
+      try {
+        const session = await resolveTeamSession({
+          mode,
+          workspace: mode === 'coding' ? workspace : null,
+          model: current.sessionModel,
+          thinkingLevel: current.sessionThinkingLevel,
+        })
+        if (cancelled || sessionIdRef.current) return
+        current.beginResolvedSession(session.id, {
+          mode,
+          workspace: session.workspace ?? workspace,
+          model: session.model ?? null,
+          thinkingLevel: session.thinking_level ?? null,
+        })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+        if (mode === 'coding') {
+          const entry = workspace ? saveLastCodingWorkspace(workspace) : null
+          navigate({
+            to: '/coding/$sessionId',
+            params: { sessionId: session.id },
+            search: entry ? { w: entry.id } : undefined,
+            replace: true,
+          })
+        } else {
+          navigate({
+            to: '/cockpit/$sessionId',
+            params: { sessionId: session.id },
+            replace: true,
+          })
+        }
+      } catch (err) {
+        if (cancelled) return
+        useTeamStore.setState((state) => {
+          state.error = err instanceof Error ? err.message : 'Failed to resolve session'
+        })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [mode, navigate, queryClient, sessionId, workspace])
 
   // When team store gets a new sessionId, navigate to the matching session route.
   useEffect(() => {

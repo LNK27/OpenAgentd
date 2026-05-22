@@ -36,7 +36,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries/useSessionsQuery'
-import { browseWorkspaces, validateWorkspace } from '@/api/client'
+import { browseWorkspaces, resolveTeamSession, validateWorkspace } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { formatRelativeDate } from '@/utils/format'
 import {
@@ -205,12 +205,28 @@ export function CodingSidebar({
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)
   }, [pendingWorkspace, workspace])
 
-  const selectWorkspace = (path: string) => {
+  const selectWorkspace = async (path: string) => {
     const entry = saveLastCodingWorkspace(path)
     setPendingWorkspace(path)
     setWorkspaces(loadCodingWorkspaces())
-    useTeamStore.getState().newSession()
-    navigate({ to: '/coding', search: { w: entry.id } })
+    try {
+      const state = useTeamStore.getState()
+      const session = await resolveTeamSession({
+        mode: 'coding',
+        workspace: path,
+        model: state.sessionModel,
+        thinkingLevel: state.sessionThinkingLevel,
+      })
+      state.beginResolvedSession(session.id, {
+        mode: 'coding',
+        workspace: session.workspace ?? path,
+        model: session.model ?? state.sessionModel,
+        thinkingLevel: session.thinking_level ?? state.sessionThinkingLevel,
+      })
+      navigate({ to: '/coding/$sessionId', params: { sessionId: session.id }, search: { w: entry.id } })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to create session')
+    }
   }
 
   // Remove a workspace from the sidebar. Sessions stay in the backend —
@@ -249,7 +265,7 @@ export function CodingSidebar({
     const workspaceToOpen = trustWorkspace
     setTrustWorkspace(null)
     setDialogOpen(false)
-    selectWorkspace(workspaceToOpen)
+    void selectWorkspace(workspaceToOpen)
   }
 
   const handleSessionSelect = (session: SessionResponse, workspacePath: string) => {
@@ -359,7 +375,7 @@ export function CodingSidebar({
                 </button>
                 <button
                   type="button"
-                  onClick={() => selectWorkspace(path)}
+                  onClick={() => { void selectWorkspace(path) }}
                   className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) group-hover:opacity-100"
                   aria-label={`New session in ${workspaceLabel(path)}`}
                   title={`New session in ${workspaceLabel(path)}`}

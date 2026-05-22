@@ -142,6 +142,10 @@ export interface SessionDetailResponse extends SessionResponse {
   messages: MessageResponse[]
 }
 
+export interface TeamSessionResolveResponse extends SessionResponse {
+  created: boolean
+}
+
 export interface SessionPageResponse {
   data: SessionResponse[]
   /** ISO 8601 created_at of the last item; pass as `before` to fetch next page. */

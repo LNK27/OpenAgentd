@@ -163,6 +163,52 @@ export const useTeamStore = create<TeamStore>()(
       })
     },
 
+    beginResolvedSession: (sessionId, options) => {
+      get()._abortController?.abort()
+      set((state) => {
+        const leadName = state.leadName ?? state.agentNames[0] ?? null
+        state.sessionId = sessionId
+        state.sessionTitle = null
+        state.sessionModel = options?.model ?? null
+        state.sessionThinkingLevel = options?.thinkingLevel ?? null
+        state.isTeamWorking = false
+        state.isContinuing = false
+        state.isConnected = false
+        state.error = null
+        state.setupRequired = null
+        state._abortController = null
+        state._pendingMessages = []
+        state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
+        state.cacheInvalidations = []
+        state.hasMore = false
+        state.nextCursor = null
+        state._leadRevertTime = null
+        state._workspace = options?.mode === 'coding' ? (options.workspace ?? null) : null
+        state._loadingOlder = false
+        state.agentNames = leadName ? [leadName] : []
+        state.liveAgentNames = leadName ? [leadName] : null
+        state.activeAgent = leadName ?? null
+
+        Object.keys(state.agentStreams).forEach((name) => {
+          if (name !== leadName) {
+            delete state.agentStreams[name]
+            return
+          }
+          state.agentStreams[name].blocks = []
+          state.agentStreams[name].currentBlocks = []
+          state.agentStreams[name].currentText = ''
+          state.agentStreams[name].currentThinking = ''
+          state.agentStreams[name].status = 'idle'
+          state.agentStreams[name].lastError = null
+          state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
+          state.agentStreams[name]._completionBase = 0
+          state.agentStreams[name].revertedCount = 0
+          state.agentStreams[name].revertedMessages = []
+          state.agentStreams[name]._revertedSuffix = []
+        })
+      })
+    },
+
     sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null }) => {
       const { leadName, agentStreams } = get()
       const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false

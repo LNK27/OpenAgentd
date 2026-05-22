@@ -9,6 +9,7 @@
 import { readSSE, type SSECallbacks } from './sse'
 import type {
   SessionDetailResponse,
+  TeamSessionResolveResponse,
   SessionPageResponse,
   TeamHistoryResponse,
   TeamAgentsResponse,
@@ -201,6 +202,27 @@ export async function listTeamSessions(before?: string | null, limit = 20): Prom
 export async function getTeamSession(id: string): Promise<SessionDetailResponse> {
   const res = await fetch(`${API}/team/sessions/${id}`)
   if (!res.ok) throw new Error(`getTeamSession failed: ${res.status}`)
+  return res.json()
+}
+
+export async function resolveTeamSession(options: {
+  mode?: string
+  workspace?: string | null
+  model?: string | null
+  thinkingLevel?: string | null
+}): Promise<TeamSessionResolveResponse> {
+  const body: Record<string, string | null> = {
+    mode: options.mode ?? 'normal',
+  }
+  if (options.workspace !== undefined) body.workspace = options.workspace
+  if (options.model !== undefined) body.model = options.model
+  if (options.thinkingLevel !== undefined) body.thinking_level = options.thinkingLevel
+  const res = await fetch(`${API}/team/sessions/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`resolveTeamSession failed: ${res.status}`)
   return res.json()
 }
 
