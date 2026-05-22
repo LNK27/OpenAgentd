@@ -150,7 +150,11 @@ Single buttons, sparse navigation (fewer than 6 items), icons in toolbars — us
 
 ### When hover fades with proximity
 
-Dense lists (agent/session lists, command palette results, sidebars with 10+ items) — use a proximity fade so the cursor traveling through doesn't strobe every row. Full spec in [interaction.md](./interaction.md#proximity-effects).
+Result lists that are scanned by cursor sweep — command palette results, file pickers, mention popovers — use a proximity fade so the cursor traveling through doesn't strobe every row. Full spec in [interaction.md](./interaction.md#proximity-effects).
+
+### When hover brightens text instead
+
+Dense persistent sidebars (chat session list, coding workspaces) skip the background fade entirely. Hover bumps the title weight and brightens its color (see [applications.md § Recent sessions](./applications.md#recent-sessions)). Avoids strobing in long-lived UI where the same rows live next to the user for hours.
 
 ### Row height targets
 

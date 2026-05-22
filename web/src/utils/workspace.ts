@@ -70,6 +70,26 @@ export function saveCodingWorkspace(workspace: string): CodingWorkspaceEntry {
   return entry
 }
 
+/**
+ * Removes a workspace from the saved list. Sessions belonging to it are
+ * left untouched in the backend — reopening the same path later will
+ * resurface them. Also clears the "last opened" pointer if it was this
+ * workspace, so a stale id doesn't get auto-restored on next launch.
+ */
+export function removeCodingWorkspace(workspace: string): void {
+  try {
+    const entries = loadCodingWorkspaceEntries().filter((entry) => entry.path !== workspace)
+    localStorage.setItem(CODING_WORKSPACES_KEY, JSON.stringify(entries))
+    const lastId = localStorage.getItem(LAST_CODING_WORKSPACE_KEY)
+    if (lastId && !entries.some((entry) => entry.id === lastId)) {
+      localStorage.removeItem(LAST_CODING_WORKSPACE_KEY)
+    }
+    window.dispatchEvent(new CustomEvent('coding-workspaces-changed'))
+  } catch {
+    // ignore storage failures
+  }
+}
+
 export function saveLastCodingWorkspace(workspace: string): CodingWorkspaceEntry {
   const entry = saveCodingWorkspace(workspace)
   try {
