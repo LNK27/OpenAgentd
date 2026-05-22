@@ -474,4 +474,27 @@ describe('prependSession', () => {
 
     expect(client.getQueryData<InfiniteData<SessionPageResponse>>(key)?.pages[0].data.map((s) => s.id)).toEqual(['new', 's1'])
   })
+
+  it('keeps existing visible workspace rows when prepending beyond the first-page size', () => {
+    const client = new QueryClient()
+    const key = queryKeys.team.sessions.workspace('/repo/project')
+    seedInfinite(client, [[
+      makeSession('s1', 'A'),
+      makeSession('s2', 'B'),
+      makeSession('s3', 'C'),
+      makeSession('s4', 'D'),
+      makeSession('s5', 'E'),
+    ]], key)
+
+    prependWorkspaceSession(client, '/repo/project', makeSession('new', null))
+
+    expect(client.getQueryData<InfiniteData<SessionPageResponse>>(key)?.pages[0].data.map((s) => s.id)).toEqual([
+      'new',
+      's1',
+      's2',
+      's3',
+      's4',
+      's5',
+    ])
+  })
 })

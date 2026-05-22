@@ -5,6 +5,7 @@ import { queryKeys } from './keys'
 
 const PAGE_SIZE = 20
 const CODING_WORKSPACE_PAGE_SIZE = 5
+const CODING_WORKSPACE_SMOOTHING_MS = 5000
 
 export function useTeamSessionsQuery() {
   return useInfiniteQuery({
@@ -26,6 +27,7 @@ export function useCodingWorkspaceSessionsQuery(workspace: string, enabled = tru
     getNextPageParam: (lastPage: SessionPageResponse) =>
       lastPage.has_more ? lastPage.next_cursor : undefined,
     enabled,
+    staleTime: CODING_WORKSPACE_SMOOTHING_MS,
   })
 }
 
