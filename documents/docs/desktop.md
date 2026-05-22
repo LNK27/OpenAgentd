@@ -247,7 +247,7 @@ History — pre-1.0.9 releases used a split-tag scheme (`v<X.Y.Z>` for PyPI, `v<
 2. Windows x64 on `windows-latest`.
 3. Linux x64 on `ubuntu-22.04`.
 
-Each runner: `scripts/build_sidecar.py` → `cargo tauri build` → `gh release upload`. The `latest.json` updater manifest is produced after all three matrix legs succeed and uploaded to a rolling `latest-desktop` release that mirrors only the manifest (artefact URLs *inside* `latest.json` still point at the immutable `v<X.Y.Z>` release).
+Each runner: `scripts/build_sidecar.py` → `cargo tauri build` → `gh release upload`. The workflow pins current Node 24-compatible GitHub action majors for cache and artifact upload/download steps. The `latest.json` updater manifest is produced after all three matrix legs succeed and uploaded to a rolling `latest-desktop` release that mirrors only the manifest (artefact URLs *inside* `latest.json` still point at the immutable `v<X.Y.Z>` release).
 
 Signing happens when secrets are present:
 

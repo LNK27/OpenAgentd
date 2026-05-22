@@ -143,7 +143,7 @@ data: <json>\n
 \n
 ```
 
-The `type` field inside the JSON body mirrors the SSE `event:` line. Both must be used.
+The `type` field inside the JSON body mirrors the SSE `event:` line. Both must be used. Browser clients mark page unload on `beforeunload`/`pagehide` and suppress only unload-time stream failures, so real active-page `error` events still surface.
 
 ### SSE Event Protocol
 

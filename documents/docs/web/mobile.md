@@ -49,6 +49,7 @@ Mirrors the `Sidebar` pattern for `/coding` mode:
 - Mobile: `position: fixed`, slides in/out via `x` transform (`w-[272px]`, `z-40`). Backdrop overlay closes it on tap.
 - Props: `desktopCollapsed`, `mobileOpen`, `onMobileClose` (owner: `TeamChatView`).
 - Always mounted once — branching happens internally based on `useIsMobile()` to avoid an unmount/remount race when the hook resolves after first paint.
+- Coding session restore and workspace list behavior is shared with desktop; see [Coding sessions UI](./coding-sessions.md).
 - `handleSessionSelect` calls `onMobileClose()` so picking a session auto-dismisses the drawer.
 - `TeamChatView`'s hamburger routes to `setMobileSidebarOpen` on coding+mobile (shares state with the regular `Sidebar` drawer).
 

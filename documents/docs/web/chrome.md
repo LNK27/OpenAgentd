@@ -64,6 +64,8 @@ core:window:allow-internal-toggle-maximize
 
 The position is set programmatically in `configure_window_chrome` (`desktop/src-tauri/src/main.rs`) because Tauri ignores `tauri.conf.json` values when the window is built from Rust. `y` is a *bottom* inset — Tao resizes the native title-bar container to `button_height + y`. For our 40 px header, **`y = 22`** centres the buttons. Documented tuning notes live in the function's Rust comment.
 
-## Sidebar
+## Sidebar and command palette
 
 Both `Sidebar` and `CodingSidebar` draw `border-r border-(--color-border)` so the boundary between sidebar and content is unambiguous on dark themes.
+
+In coding mode, the topbar shows `Workspace: <name>` for the active workspace. The command palette intentionally excludes custom slash commands, Focus Chat Input, and the lead self-switch command; slash commands stay in the composer picker, `Ctrl+I` still focuses the composer, and worker-agent view commands remain available.
