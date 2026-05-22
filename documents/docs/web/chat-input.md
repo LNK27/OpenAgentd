@@ -7,7 +7,7 @@ updated: 2026-05-22
 
 # Chat Input & Message Queue
 
-**Sources:** `web/src/stores/useTeamStore/`, `web/src/components/FloatingInputBar.tsx`, `web/src/components/PendingMessageQueue.tsx`, `web/src/components/InputBar.mentions.ts`, `web/src/components/InputBar.overlay.tsx`
+**Sources:** `web/src/stores/useTeamStore/`, `web/src/components/FloatingInputBar.tsx`, `web/src/components/PendingMessageQueue.tsx`, `web/src/components/InputBar.mentions.ts`, `web/src/components/InputBar.overlay.tsx`, `web/src/components/AgentView.tsx` (`renderMentionSegments`), `app/api/routes/team/_helpers.py` (`collect_mention_attachments`)
 
 ---
 
@@ -83,10 +83,38 @@ Typing `@` (at start of input or after whitespace) opens a picker of workspace f
 | Sources | Files come from `GET /api/team/{sid}/files` (normal mode) or `GET /api/team/workspace/files/list?workspace=…` (`/coding`). Folders are derived from path prefixes client-side. Cached 30s by TanStack Query. |
 | Ranking | Fuzzy subsequence via `fuzzysort` (so `dockcom` matches `docker-compose.yml`). Directories get a small bonus so `@src` surfaces the `src/` directory above its children. Empty query lists top-level folders alphabetically. |
 | Inserted text | Plain `@path ` for files, `@dir/ ` for directories. The textarea stays plain-text — no structured chips inside the value. |
-| Picker row | A lucide `Folder` (accent-tinted) or `File` (subtle-tinted) icon, then the path with the parent directory dimmed and the basename in full text colour. Directories show a trailing `/`. |
-| Visual chip | A transparent mirror `<div>` behind the textarea paints a soft accent background at each committed mention's position. The chip renders **only** when the token resolves to a known workspace file or folder — `@@`, `@nonexistent`, and `@foo@bar` produce no chip, matching opencode's exact-match pill semantics. Trailing sentence punctuation (`,` `.` `;` `:` `!` `?` `)`) is stripped before resolution so "look at @README.md, please" chips just `@README.md` and leaves the comma plain. The actively-typed mention is also excluded so the chip doesn't flash on every keystroke before the user commits. |
+| Picker row | A lucide `Folder` or `File` icon, then the path with the parent directory dimmed and the basename in full text colour. Directories show a trailing `/`. |
 
-Helpers live in `InputBar.mentions.ts` (`findActiveMention`, `findCommittedMentions`, `rankFileRefs`). The overlay is `InputBar.overlay.tsx`. The query hook is `useFileRefsQuery.ts`.
+### Syntax-highlight rendering
+
+Committed mentions are coloured like editor tokens — no background tint:
+
+| Kind | Colour token | Detection |
+|---|---|---|
+| File | `--accent-blue-text` | default (no trailing `/`) |
+| Folder | `--accent-orange-text` | token ends in `/` |
+
+The textarea is rendered with `color: transparent` + `caret-color: var(--color-text)`, and a mirror `<div>` (`InputBar.overlay.tsx`) paints all glyphs — non-mention text in `--color-text`, mention spans in the kind-specific colour. Standard syntax-highlighter pattern (CodeMirror / react-simple-code-editor). Selection is restored via the `selection:` Tailwind variant so highlighted text stays visible.
+
+`--color-accent` is **not** used for mentions — in the dark palette it equals `--color-text` and would be invisible. The dedicated `--accent-blue-text` / `--accent-orange-text` tokens are theme-safe.
+
+The same colours apply in rendered user message bubbles (`AgentView.tsx` → `renderMentionSegments`). Kind is inferred from the trailing slash (immutable per-message), not from a live `fileRefs` lookup — historical messages keep their colours even after the referenced path is renamed or removed.
+
+Tokens chip **only** when they resolve to a known workspace ref — `@@`, `@nonexistent`, and `@foo@bar` produce no chip. Trailing sentence punctuation (`,` `.` `;` `:` `!` `?` `)`) is stripped before resolution. The actively-typed mention is excluded so the colour doesn't flash on every keystroke.
+
+### Send-time auto-attachment
+
+When the message is dispatched (`POST /api/team/chat`, immediate path only — queued messages are not re-parsed at activation), the backend resolves committed mentions against the session workspace and may attach the referenced file as a `RawAttachment`:
+
+| Mention | Auto-attach behaviour |
+|---|---|
+| Text file (`.md`, `.txt`, `.json`, …) | Inlined into the prompt with a head + tail window capped at 32K chars (see [API — mention attachments](../api/index.md#mention-auto-attachment)). |
+| Document (`.pdf`, `.docx`) | Same — markitdown-converted then truncated head + tail. |
+| Image (`.png`, `.jpg`, …) | Reference only. Agent uses its vision-aware `Read` tool on demand. |
+| Folder | Reference only. Agent uses `LS` / `Glob` / `Read` on demand. |
+| Unresolvable path | Silently skipped — also no chip. |
+
+Helpers live in `InputBar.mentions.ts` (`findActiveMention`, `findCommittedMentions`, `rankFileRefs`). The overlay is `InputBar.overlay.tsx`. The query hook is `useFileRefsQuery.ts`. Backend resolution is `app/api/routes/team/_helpers.py::collect_mention_attachments`.
 
 ---
 

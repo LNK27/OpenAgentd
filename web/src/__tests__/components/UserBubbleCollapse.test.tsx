@@ -830,3 +830,50 @@ describe("AgentPane — UserBubble collapse feature", () => {
     expect(gradientFade).toBeNull()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UserBubble — @mention syntax highlighting
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("AgentView — UserBubble @mention highlighting", () => {
+  it("colors file mentions blue and folder mentions orange", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        // ``@src/`` is a folder (trailing slash, picker convention);
+        // ``@README.md`` is a file. Both should chip with distinct colors.
+        content: "look in @src/ and read @README.md please",
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const folderSpan = document.querySelector('[data-mention-kind="directory"]')
+    const fileSpan = document.querySelector('[data-mention-kind="file"]')
+
+    expect(folderSpan).toBeTruthy()
+    expect(fileSpan).toBeTruthy()
+    expect(folderSpan!.textContent).toBe("@src/")
+    expect(fileSpan!.textContent).toBe("@README.md")
+    expect(folderSpan!.className).toContain("--accent-orange-text")
+    expect(fileSpan!.className).toContain("--accent-blue-text")
+  })
+
+  it("renders prose without mentions as plain text (no spans)", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "just a regular message with no mentions",
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    expect(document.querySelector("[data-mention-kind]")).toBeNull()
+    expect(screen.getByText("just a regular message with no mentions")).toBeTruthy()
+  })
+})

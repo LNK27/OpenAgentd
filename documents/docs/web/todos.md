@@ -2,14 +2,14 @@
 title: Todos Popover
 description: Chat header popover showing the agent's current task list with live invalidation on tool_end.
 status: stable
-updated: 2026-05-11
+updated: 2026-05-22
 ---
 
 # Todos popover
 
 A popover card anchored to the **Todos** button in the team chat header. Shows
-the agent's current task list as a four-column task board managed by
-`todo_manage`, grouped by status and updated automatically after each
+the agent's current task list as a flat scrollable checklist managed by
+`todo_manage`, sorted by status and updated automatically after each
 `todo_manage` call.
 
 ---
@@ -64,30 +64,20 @@ on page refresh too — both `parseTeamBlocks` (team history) and
 
 ## Display
 
-Items render in status columns: `pending`, `in_progress`, `completed`, and `cancelled`. Columns are always visible, including when the session has no todos yet.
+Items render as a flat checklist sorted `in_progress → pending → completed → cancelled`. Each row is a status-aware checkbox icon followed by the task content; the optional claimed/assigned agent is shown as a small mono-uppercase tag at the row end.
 
 | Status | Icon | Style |
 |--------|------|-------|
-| `in_progress` | `▶` | Normal text |
-| `pending` | `○` | Normal text |
-| `completed` | `✓` | Dimmed + strikethrough |
-| `cancelled` | `✗` | Dimmed + strikethrough |
+| `in_progress` | empty square, breathing pulse (`animate-pulse`) — `--color-info` | Normal text |
+| `pending` | empty square — `--color-text-muted` | Normal text |
+| `completed` | checked square — `--color-success` | Dimmed + strikethrough |
+| `cancelled` | empty square — `--color-text-subtle` | Dimmed + strikethrough |
 
-Priority badges:
+Note: `--color-accent` is **not** used for status hue — in the dark palette it resolves to the same value as `--color-text` and would lose contrast. The `in_progress` icon uses `--color-info` (which resolves to `--accent-blue`) so it stays distinct in both themes.
 
-| Priority | Color |
-|----------|-------|
-| `high` | Red tint |
-| `medium` | Amber tint |
-| `low` | Accent dim |
+The popover header shows a `{done}/{total}` counter when the list is non-empty. A dot indicator on the button itself appears when any item has `status === 'in_progress'`. Empty state: a single `No tasks yet` line.
 
-Each card shows `task_id`, priority, content, assigned/claimed agent (`claimed_by ?? assigned_to ?? "Unassigned"`), and dependency ids. Dependency and ownership fields come from the first-class todo schema, not from parsing task content.
-
-The popover header shows a `{done}/{total}` counter when the list is non-empty.
-A dot indicator on the button itself is shown when any item has `status === 'in_progress'`.
-Empty state: all four columns remain visible with per-column `Nothing here` messages.
-
-The board scrolls horizontally on narrow screens. Each non-empty column owns its own vertical scroll region with hidden scrollbar chrome, keeping the status headers fixed while task cards scroll.
+Priority badges, task ids, and dependency lists from the underlying schema are intentionally not rendered — the popover is a quick-glance affordance, not a full task manager. Schema details are still available via `GET /api/team/sessions/{id}/todos`.
 
 ---
 

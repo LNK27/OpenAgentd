@@ -32,6 +32,7 @@ import { PendingMessageQueue } from './PendingMessageQueue'
 import { partitionTurns } from '@/utils/turns'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { useTeamStore } from '@/stores/useTeamStore'
+import { findCommittedMentions } from './InputBar.mentions'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
 const SCROLL_THRESHOLD = 40
@@ -66,6 +67,46 @@ const USER_COLLAPSE_CHARS = 700
 function shortModelName(modelId: string | null | undefined): string | null {
   if (!modelId) return null
   return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
+}
+
+/**
+ * Render user prose with ``@mention`` tokens syntax-highlighted.
+ *
+ * Matches the InputBar's overlay convention so a message looks the same
+ * after send as it did while composing:
+ *   - folders (token ends in ``/``)      → ``--accent-orange-text``
+ *   - files (everything else, default)   → ``--accent-blue-text``
+ *
+ * The slash heuristic is what the picker inserts; using it (rather than
+ * resolving against ``fileRefs``) keeps highlighting stable for old
+ * messages whose referenced paths may since have been renamed/removed.
+ * ``findCommittedMentions`` without refs falls back to syntax-only range
+ * detection — same code path the overlay relies on.
+ */
+function renderMentionSegments(content: string): React.ReactNode[] {
+  const ranges = findCommittedMentions(content, null)
+  if (ranges.length === 0) return [content]
+  const out: React.ReactNode[] = []
+  let cursor = 0
+  for (const r of ranges) {
+    if (r.start > cursor) out.push(content.slice(cursor, r.start))
+    const token = content.slice(r.start, r.end)
+    const isFolder = token.endsWith('/')
+    out.push(
+      <span
+        key={r.start}
+        data-mention-kind={isFolder ? 'directory' : 'file'}
+        className={
+          isFolder ? 'text-(--accent-orange-text)' : 'text-(--accent-blue-text)'
+        }
+      >
+        {token}
+      </span>,
+    )
+    cursor = r.end
+  }
+  if (cursor < content.length) out.push(content.slice(cursor))
+  return out
 }
 
 function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null }) {
@@ -140,7 +181,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
              </button>
            )}
-           <p className="break-words whitespace-pre-wrap">{visibleContent}</p>
+           <p className="break-words whitespace-pre-wrap">{renderMentionSegments(visibleContent)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
