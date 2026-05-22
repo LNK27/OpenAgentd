@@ -509,6 +509,53 @@ def test_load_team_from_dir_valid_minimal(tmp_path):
     assert team.members == {}
 
 
+def test_load_team_from_dir_degrades_when_lead_provider_missing_key(tmp_path):
+    from app.agent.loader import load_team_from_dir
+    from app.agent.providers.unconfigured import UnconfiguredProvider
+
+    d = _make_agents_dir(
+        tmp_path,
+        [
+            {"name": "lead", "role": "lead", "model": "anthropic:claude-sonnet-4"},
+        ],
+    )
+
+    def factory(model_str: str | None, model_kwargs: dict | None = None):
+        raise ValueError("Anthropic API key is required. Set ANTHROPIC_API_KEY.")
+
+    team = load_team_from_dir(d, provider_factory=factory)
+    assert team is not None
+    assert team.lead.name == "lead"
+    assert isinstance(team.lead.agent.llm_provider, UnconfiguredProvider)
+
+
+def test_load_team_from_dir_skips_unavailable_fallback_provider(tmp_path):
+    from app.agent.loader import load_team_from_dir
+
+    d = _make_agents_dir(
+        tmp_path,
+        [
+            {
+                "name": "lead",
+                "role": "lead",
+                "model": "openai:gpt-5.4",
+                "fallback_model": "anthropic:claude-sonnet-4",
+            },
+        ],
+    )
+    mock_provider = MagicMock()
+
+    def factory(model_str: str | None, model_kwargs: dict | None = None):
+        if model_str == "anthropic:claude-sonnet-4":
+            raise ValueError("Anthropic API key is required. Set ANTHROPIC_API_KEY.")
+        return mock_provider
+
+    team = load_team_from_dir(d, provider_factory=factory)
+    assert team is not None
+    assert team.lead.agent.llm_provider is mock_provider
+    assert team.lead.agent.fallback_provider is None
+
+
 def test_load_team_from_dir_with_members(tmp_path):
     from app.agent.loader import load_team_from_dir
 
