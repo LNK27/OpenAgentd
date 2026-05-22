@@ -251,6 +251,86 @@ class TestTeamChatRoute:
         assert response.json()["status"] == "queued"
         test_team._activate_queued_user_messages.assert_awaited_once_with(session_id)
 
+    def test_team_chat_queued_message_persists_mention_attachments(
+        self, app_with_team, test_team
+    ):
+        """Mentions on a busy lead must persist on the queued row.
+
+        Before the fix, ``collect_mention_attachments`` only ran on the
+        dispatch branch — queued messages silently lost their `@file`
+        context. Verify the metas now land in ``extra["attachments"]``.
+        """
+        from app.services.agent_service import RawAttachment
+
+        session_id = str(uuid.uuid7())
+        test_team.lead.state = "working"
+        test_team._activate_queued_user_messages = AsyncMock(return_value=False)
+
+        fake_att = RawAttachment(
+            filename="note.txt",
+            content_type="text/plain",
+            data=b"hi",
+            truncate_inline_to=32_000,
+        )
+        captured: dict = {}
+
+        async def save_queue(_db, _session_id, _message, *, extra=None):
+            captured["extra"] = extra
+            queued = AsyncMock()
+            queued.id = uuid.uuid7()
+            return queued
+
+        async def fake_collect(**_kwargs):
+            return [fake_att]
+
+        async def fake_persist(_team, atts, sid):
+            metas = [
+                {
+                    "filename": a.filename,
+                    "original_name": a.filename,
+                    "category": "text",
+                    "converted_text": "hi",
+                }
+                for a in atts
+            ]
+            return sid, metas
+
+        client = TestClient(app_with_team)
+        with (
+            patch("app.api.routes.team.chat.save_queued_user_message", save_queue),
+            patch("app.api.routes.team.chat.collect_mention_attachments", fake_collect),
+            patch(
+                "app.api.routes.team.chat.agent_service.validate_and_persist_attachments",
+                fake_persist,
+            ),
+        ):
+            response = client.post(
+                "/api/team/chat",
+                data={"message": "look at @note.txt", "session_id": session_id},
+            )
+
+        assert response.status_code == 202
+        assert response.json()["status"] == "queued"
+        atts = captured["extra"]["attachments"]
+        assert len(atts) == 1
+        assert atts[0]["original_name"] == "note.txt"
+        assert atts[0]["converted_text"] == "hi"
+
+    def test_team_chat_queue_still_409s_on_explicit_uploads(
+        self, app_with_team, test_team
+    ):
+        """Paperclip uploads keep the 409; only mentions get the queue path."""
+        session_id = str(uuid.uuid7())
+        test_team.lead.state = "working"
+        client = TestClient(app_with_team)
+        response = client.post(
+            "/api/team/chat",
+            data={"message": "msg", "session_id": session_id},
+            files={"files": ("a.txt", b"hi", "text/plain")},
+        )
+        assert response.status_code == 409
+        assert "while the agent is working" in response.json()["detail"]
+
     def test_team_chat_message_validation_empty_raises(self, app_with_team):
         client = TestClient(app_with_team)
         response = client.post("/api/team/chat", data={"message": ""})

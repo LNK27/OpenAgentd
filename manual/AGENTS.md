@@ -23,6 +23,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `continue_smoketest.py` | End-to-end test of `/continue`: send long prompt, wait, interrupt, inspect truncated assistant row, dispatch `/continue`, stream resumption inline, print final history | `--wait-before-stop N`, `--wait N`, `--base URL` |
 | `stop_mid_stream.py` | Drive the user-stop matrix (early / text / tool phases, with and without `/undo`) and check phase-agnostic invariants on the persisted history + follow-up SSE. Exits non-zero on any invariant failure | `--only NAME`, `--skip-undo`, `--base URL` |
 | `stop_additive.py` | Verify the Stop + additional-message ("I forgot to add ...") additive semantic — send msg_A, Stop, send msg_B, assert the final assistant reply incorporates both. Exits non-zero if either word is missing | `--wait N`, `--base URL` |
+| `mention_attachments.py` | Smoke-test `@`-mention auto-attachment: text file fenced, large text head+tail truncated, image and folder mentions are reference-only (no attachment). Exits non-zero on any invariant failure | `--base URL` |
 | `undo_mid_second_turn.py` | Two-turn `/undo` scenario: turn 1 completes, turn 2 is interrupted mid-stream, `/undo` must return 202 (lead is idle post-Stop, busy-member guard does not fire) and the boundary must roll back so a follow-up runs without the interrupted prompt in context | `--base URL` |
 
 ```bash
@@ -68,6 +69,9 @@ uv run python -m manual.stop_additive --wait 1.5                    # mid-stream
 
 # Two-turn /undo: complete turn 1, interrupt turn 2 mid-stream, /undo, verify boundary rolled back
 uv run python -m manual.undo_mid_second_turn
+
+# @-mention attachment behaviour (text fenced+truncated, image/folder reference-only)
+uv run python -m manual.mention_attachments
 ```
 
 ---

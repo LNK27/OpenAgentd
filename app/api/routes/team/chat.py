@@ -21,6 +21,7 @@ from app.api.routes.team._helpers import (
     _message_response,
     _read_upload_as_attachment,
     _require_team,
+    collect_mention_attachments,
 )
 from app.api.routes.agents import is_registered_model_id
 from app.api.schemas.sessions import (
@@ -223,13 +224,47 @@ async def team_chat(
         raw = await _read_upload_as_attachment(file)
         if raw is not None:
             attachments.append(raw)
+    explicit_attachment_count = len(attachments)
+
+    # Resolve any ``@path`` mentions in the message text against the
+    # session workspace and attach the matched files. Done before the
+    # queue branch so a queued message keeps its mention attachments
+    # rather than silently dropping them when the agent is busy. Missing
+    # / oversize / unsupported paths are silently dropped (the visual
+    # chip in the input already gates this on workspace-resolvable refs).
+    # Explicit uploads above remain authoritative — mentions only *add*
+    # context.
+    mention_attachments = await collect_mention_attachments(
+        message=message,
+        team=team_obj,
+        session_id=session_id,
+        workspace=workspace,
+        existing_total_bytes=sum(len(a.data) for a in attachments),
+    )
+    attachments.extend(mention_attachments)
 
     if session_uuid is not None and team_obj.lead.state == "working":
-        if attachments:
+        # Explicit uploads still 409 — they need the live capability check
+        # + persistence pipeline that only runs on the dispatch path. But
+        # mentions are derived from workspace files the agent will see
+        # anyway, so we persist them onto the queued row so the dequeue
+        # path rehydrates the same context the user typed.
+        if explicit_attachment_count > 0:
             raise HTTPException(
                 status_code=409,
                 detail="Cannot queue messages with attachments while the agent is working.",
             )
+        queued_attachment_metas: list[dict] = []
+        if mention_attachments:
+            try:
+                (
+                    _,
+                    queued_attachment_metas,
+                ) = await agent_service.validate_and_persist_attachments(
+                    team_obj, mention_attachments, session_id
+                )
+            except AttachmentError as exc:
+                raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
         async with db.begin():
             queued_extra: dict[str, object] = {}
             effective_model = model or team_obj.lead.agent.model_id
@@ -237,6 +272,8 @@ async def team_chat(
                 queued_extra["model"] = effective_model
             if thinking_level:
                 queued_extra["thinking_level"] = thinking_level
+            if queued_attachment_metas:
+                queued_extra["attachments"] = queued_attachment_metas
             existing_row = await db.get(ChatSession, session_uuid)
             if existing_row is not None:
                 if model_provided:
@@ -256,9 +293,10 @@ async def team_chat(
                 extra=queued_extra,
             )
         logger.info(
-            "team_chat_queued session_id={} message_id={}",
+            "team_chat_queued session_id={} message_id={} mentions={}",
             session_id,
             queued.id,
+            len(queued_attachment_metas),
         )
         if team_obj.lead.state != "working":
             await team_obj._activate_queued_user_messages(session_id)
