@@ -19,6 +19,8 @@ from app.api.schemas.sessions import (
     SessionListResponse,
     SessionPageResponse,
     SessionResponse,
+    TeamSessionResolveRequest,
+    TeamSessionResolveResponse,
 )
 from app.api.schemas.settings import SandboxSettingsBody
 
@@ -35,6 +37,8 @@ __all__ = [
     "SessionListResponse",
     "SessionPageResponse",
     "SessionResponse",
+    "TeamSessionResolveRequest",
+    "TeamSessionResolveResponse",
     # Settings
     "SandboxSettingsBody",
 ]

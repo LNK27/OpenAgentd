@@ -15,6 +15,13 @@ class SessionCreate(BaseModel):
     agent_name: str | None = None
 
 
+class TeamSessionResolveRequest(BaseModel):
+    mode: str = "normal"
+    workspace: str | None = None
+    model: str | None = None
+    thinking_level: str | None = None
+
+
 class SessionResponse(_ExcludeNoneModel):
     id: UUID
     title: str | None = None
@@ -27,6 +34,10 @@ class SessionResponse(_ExcludeNoneModel):
     revert: dict | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class TeamSessionResolveResponse(SessionResponse):
+    created: bool
 
 
 class SessionListResponse(BaseModel):

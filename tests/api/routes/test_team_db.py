@@ -169,6 +169,57 @@ class TestListTeamSessionsWithData:
         assert len(data["data"]) <= 2
 
 
+class TestResolveTeamSession:
+    def test_resolve_creates_normal_session(self, app_with_team):
+        client = TestClient(app_with_team)
+
+        resp = client.post("/api/team/sessions/resolve", json={"mode": "normal"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["created"] is True
+        assert data["mode"] == "normal"
+        assert "workspace" not in data
+
+    @pytest.mark.asyncio
+    async def test_resolve_reuses_latest_normal_session(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+
+        client = TestClient(app_with_team)
+        resp = client.post("/api/team/sessions/resolve", json={"mode": "normal"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["created"] is False
+        assert data["id"] == str(lead_id)
+
+    def test_resolve_creates_coding_session(self, app_with_team, tmp_path):
+        client = TestClient(app_with_team)
+
+        resp = client.post(
+            "/api/team/sessions/resolve",
+            json={"mode": "coding", "workspace": str(tmp_path)},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["created"] is True
+        assert data["mode"] == "coding"
+        assert data["workspace"] == str(tmp_path.resolve())
+
+    def test_resolve_requires_workspace_for_coding(self, app_with_team):
+        client = TestClient(app_with_team)
+
+        resp = client.post("/api/team/sessions/resolve", json={"mode": "coding"})
+
+        assert resp.status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # DELETE /team/sessions/{session_id}
 # ---------------------------------------------------------------------------

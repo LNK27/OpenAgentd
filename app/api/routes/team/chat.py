@@ -28,6 +28,8 @@ from app.api.schemas.sessions import (
     SessionDetailResponse,
     SessionPageResponse,
     SessionResponse,
+    TeamSessionResolveRequest,
+    TeamSessionResolveResponse,
 )
 from app.api.schemas.team import TeamHistoryMember, TeamHistoryResponse
 from app.models.chat import ChatSession
@@ -43,6 +45,7 @@ from app.services.chat_service import (
     cleanup_reverted_tail,
     delete_session,
     get_team_history,
+    get_latest_top_level_session,
     list_sessions_page,
     save_queued_user_message,
 )
@@ -601,6 +604,50 @@ async def list_team_sessions(
         next_cursor=next_cursor,
         has_more=has_more,
     )
+
+
+@router.post("/sessions/resolve", response_model=TeamSessionResolveResponse)
+async def resolve_team_session(
+    body: TeamSessionResolveRequest, db: DbSession
+) -> TeamSessionResolveResponse:
+    """Return the newest matching top-level session, creating one if absent."""
+    if body.mode not in {"normal", "coding"}:
+        raise HTTPException(
+            status_code=422, detail="mode must be 'normal' or 'coding'."
+        )
+    workspace = body.workspace
+    if body.mode == "normal":
+        workspace = None
+    elif not workspace:
+        raise HTTPException(
+            status_code=422, detail="workspace is required when mode='coding'."
+        )
+    else:
+        workspace = _validate_workspace_or_422(workspace)
+
+    model = body.model.strip() if body.model else None
+    thinking_level = body.thinking_level.strip() if body.thinking_level else None
+    if model and not await is_registered_model_id(model):
+        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
+
+    async with db.begin():
+        session = await get_latest_top_level_session(
+            db, mode=body.mode, workspace=workspace
+        )
+        created = session is None
+        if session is None:
+            session = ChatSession(
+                mode=body.mode,
+                workspace=workspace,
+                model=model,
+                thinking_level=thinking_level,
+            )
+            db.add(session)
+            await db.flush()
+            await db.refresh(session)
+
+    data = SessionResponse.model_validate(session).model_dump()
+    return TeamSessionResolveResponse(**data, created=created)
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
