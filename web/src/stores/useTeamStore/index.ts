@@ -788,10 +788,12 @@ useTeamStore.subscribe((state, prev) => {
 })
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('pagehide', () => {
+  const markUnloading = () => {
     useTeamStore.setState((state) => {
       state._unloading = true
       state._abortController?.abort()
     })
-  })
+  }
+  window.addEventListener('beforeunload', markUnloading)
+  window.addEventListener('pagehide', markUnloading)
 }
