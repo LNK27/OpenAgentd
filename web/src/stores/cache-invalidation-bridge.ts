@@ -123,6 +123,15 @@ function nextUntracked(
   return [...carry, ...(scoped ?? [])]
 }
 
+function isInfiniteSessionData(value: unknown): value is InfiniteData<SessionPageResponse> {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    'pages' in value &&
+    Array.isArray(value.pages),
+  )
+}
+
 export function patchSessionTitle(
   queryClient: Pick<QueryClient, 'setQueriesData'>,
   sessionId: string,
@@ -130,12 +139,15 @@ export function patchSessionTitle(
 ): void {
   queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
     { queryKey: queryKeys.team.sessions.all() },
-    (old) => old && {
-      ...old,
-      pages: old.pages.map((page) => ({
-        ...page,
-        data: page.data.map((s) => s.id === sessionId ? { ...s, title } : s),
-      })),
+    (old) => {
+      if (!isInfiniteSessionData(old)) return old
+      return {
+        ...old,
+        pages: old.pages.map((page) => ({
+          ...page,
+          data: page.data.map((s) => s.id === sessionId ? { ...s, title } : s),
+        })),
+      }
     },
   )
 }
@@ -147,7 +159,7 @@ export function prependSession(
   queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
     { queryKey: queryKeys.team.sessions.all() },
     (old) => {
-      if (!old) return old
+      if (!isInfiniteSessionData(old)) return old
       if (old.pages.some((page) => page.data.some((item) => item.id === session.id))) return old
       const [first, ...rest] = old.pages
       if (!first) return old

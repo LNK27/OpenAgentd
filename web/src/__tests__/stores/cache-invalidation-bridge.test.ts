@@ -403,24 +403,38 @@ describe('patchSessionTitle', () => {
     })
   })
 
-  it('matches by exact queryKey prefix — does not write to unrelated caches', () => {
+  it('matches by exact queryKey prefix and skips non-infinite session caches', () => {
     // ``queryKeys.team.sessions.all()`` returns ``['team', 'sessions']``
     // and matches every key starting with that prefix (the infinite
-    // key is ``['team', 'sessions', 'infinite']``).  Other ``team.*``
-    // caches must be left alone.
+    // key is ``['team', 'sessions', 'infinite']``). Detail caches share
+    // that prefix too, so they must be skipped rather than treated as
+    // infinite query data. Other ``team.*`` caches must be left alone.
     const client = new QueryClient()
     seedInfinite(client, [[makeSession('s1', 'Old')]])
+    client.setQueryData(queryKeys.team.sessions.detail('s1'), makeSession('s1', 'Detail'))
     client.setQueryData(queryKeys.team.files('s1'), ['file-a.txt'])
     client.setQueryData(queryKeys.team.status(), { lead: 'x' })
 
     patchSessionTitle(client, 's1', 'New')
 
+    expect(readInfinite(client)!.pages[0].data[0].title).toBe('New')
+    expect(client.getQueryData(queryKeys.team.sessions.detail('s1'))).toEqual(makeSession('s1', 'Detail'))
     expect(client.getQueryData(queryKeys.team.files('s1'))).toEqual(['file-a.txt'])
     expect(client.getQueryData(queryKeys.team.status())).toEqual({ lead: 'x' })
   })
 })
 
 describe('prependSession', () => {
+  it('ignores non-infinite session caches matched by the session query prefix', () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.team.sessions.detail('s1'), makeSession('s1', 'Detail'))
+
+    expect(() => prependSession(client, makeSession('new', null))).not.toThrow()
+
+    expect(client.getQueryData(queryKeys.team.sessions.detail('s1'))).toEqual(makeSession('s1', 'Detail'))
+    expect(readInfinite(client)).toBeUndefined()
+  })
+
   it('adds a new session to the top of the first cached page', () => {
     const client = new QueryClient()
     seedInfinite(client, [[makeSession('s1', 'A')]])
