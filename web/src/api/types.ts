@@ -186,6 +186,7 @@ export type SSEEventType =
   | 'usage'
   | 'done'
   | 'rate_limit'
+  | 'provider_status'
   | 'error'
   | 'agent_status'
   | 'queued_turn_start'
@@ -203,7 +204,7 @@ export interface SSEEvent {
 // Content Block Types
 export interface ContentBlock {
   id: string
-  type: 'thinking' | 'tool' | 'text' | 'user' | 'compaction'
+  type: 'thinking' | 'tool' | 'text' | 'user' | 'compaction' | 'provider_status'
   content: string
   toolName?: string
   toolArgs?: string

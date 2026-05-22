@@ -102,6 +102,40 @@ class BaseAgentHook(ABC):
     ) -> None:
         """Called when the provider returns 429 Too Many Requests."""
 
+    async def on_provider_retry(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        model: str,
+        attempt: int,
+        max_attempts: int,
+        delay_seconds: float,
+        error_type: str,
+        status_code: int | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        """Called when a provider call will be retried."""
+
+    async def on_provider_exhausted(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        model: str,
+        max_attempts: int,
+        error_type: str,
+        status_code: int | None = None,
+    ) -> None:
+        """Called when a provider exhausts its retry budget."""
+
+    async def on_provider_fallback(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        primary: str,
+        fallback: str,
+    ) -> None:
+        """Called when the agent switches from primary to fallback provider."""
+
     async def wrap_model_call(
         self,
         ctx: "RunContext",
