@@ -640,10 +640,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             </button>
             {mode === 'coding' && workspace ? (
               <span
-                className="ml-1 max-w-60 truncate text-sm font-semibold text-(--color-text)"
+                className="ml-1 flex min-w-0 max-w-60 items-baseline gap-1 text-sm"
                 title={workspace}
               >
-                {workspaceLabel(workspace)}
+                <span className="shrink-0 text-(--color-text-muted)">Workspace:</span>
+                <span className="truncate font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
               </span>
             ) : mode !== 'coding' && sessionTitle ? (
               <span
