@@ -255,6 +255,46 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getByText('Idle session')).toBeTruthy()
   })
 
+  it('does not create a new session when the current coding session is empty and idle', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: null,
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      isTeamWorking: false,
+      agentNames: ['lead'],
+      agentStreams: {
+        lead: {
+          blocks: [],
+          currentBlocks: [],
+          currentText: '',
+          currentThinking: '',
+          status: 'idle',
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
+          _completionBase: 0,
+          model: null,
+          lastError: null,
+        },
+      },
+    })
+    const fetchSpy = globalThis.fetch as unknown as ReturnType<typeof mock>
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('New session in project'))
+
+    expect(fetchSpy).not.toHaveBeenCalledWith('/api/team/sessions/resolve', expect.anything())
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
   it('does not show a running indicator for idle coding sessions', async () => {
     sessionsData = [
       {

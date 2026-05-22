@@ -245,14 +245,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
-  const isEmptyIdleSession = useCallback(() => {
-    if (!sessionIdState || isTeamWorking) return false
-    return agentNames.every((name) => {
-      const stream = agentStreams[name]
-      if (!stream) return true
-      return stream.blocks.length === 0 && stream.currentBlocks.length === 0
-    })
-  }, [agentNames, agentStreams, isTeamWorking, sessionIdState])
+  const isEmptyIdleSession = useCallback(() => useTeamStore.getState().isEmptyIdleSession(), [])
 
   const handleNewSession = useCallback(() => {
     if (isEmptyIdleSession()) {

@@ -143,6 +143,50 @@ describe("beginResolvedSession", () => {
   });
 });
 
+// ── isEmptyIdleSession ───────────────────────────────────────────────────────
+
+describe("isEmptyIdleSession", () => {
+  it("returns true for a persisted idle session with no visible blocks", () => {
+    useTeamStore.setState({
+      sessionId: "empty-sid",
+      isTeamWorking: false,
+      agentNames: ["lead", "worker"],
+      agentStreams: {
+        lead: makeStream(),
+        worker: makeStream(),
+      },
+    });
+
+    expect(useTeamStore.getState().isEmptyIdleSession()).toBe(true);
+  });
+
+  it("ignores compaction markers when checking visible blocks", () => {
+    useTeamStore.setState({
+      sessionId: "empty-sid",
+      isTeamWorking: false,
+      agentNames: ["lead"],
+      agentStreams: {
+        lead: makeStream({ blocks: [{ id: "c1", type: "compaction" as const, content: "summary" }] }),
+      },
+    });
+
+    expect(useTeamStore.getState().isEmptyIdleSession()).toBe(true);
+  });
+
+  it("returns false when the session has a visible message", () => {
+    useTeamStore.setState({
+      sessionId: "active-sid",
+      isTeamWorking: false,
+      agentNames: ["lead"],
+      agentStreams: {
+        lead: makeStream({ blocks: [{ id: "u1", type: "user" as const, content: "hello" }] }),
+      },
+    });
+
+    expect(useTeamStore.getState().isEmptyIdleSession()).toBe(false);
+  });
+});
+
 // ── setActiveAgent ────────────────────────────────────────────────────────────
 
 describe("setActiveAgent", () => {

@@ -214,12 +214,18 @@ export function CodingSidebar({
     setWorkspaces(loadCodingWorkspaces())
     try {
       const state = useTeamStore.getState()
+      const create = opts.create && !(
+        state.isEmptyIdleSession() &&
+        state.sessionId === currentSessionId &&
+        workspace === path
+      )
+      if (opts.create && !create) return
       const session = await resolveTeamSession({
         mode: 'coding',
         workspace: path,
         model: state.sessionModel,
         thinkingLevel: state.sessionThinkingLevel,
-        create: opts.create,
+        create,
       })
       state.beginResolvedSession(session.id, {
         mode: 'coding',

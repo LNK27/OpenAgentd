@@ -6,7 +6,7 @@ import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { createSSEHandler } from './sse-reducer'
 import { useToastStore } from '@/stores/useToastStore'
-import type { TeamStore } from './types'
+import type { AgentStream, TeamStore } from './types'
 import type { MessageResponse } from '@/api/types'
 
 function revertBoundaryTime(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): number | null {
@@ -40,6 +40,11 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
 
 function effectiveLeadModel(state: TeamStore, leadName: string | null, requestedModel?: string | null): string | null {
   return requestedModel ?? state.sessionModel ?? (leadName ? state.agentStreams[leadName]?.model : null) ?? null
+}
+
+function hasVisibleBlocks(stream: AgentStream | undefined): boolean {
+  if (!stream) return false
+  return [...stream.blocks, ...stream.currentBlocks].some((block) => block.type !== 'compaction')
 }
 
 function resetSessionState(
@@ -186,6 +191,12 @@ export const useTeamStore = create<TeamStore>()(
           workspace: options?.workspace,
         })
       })
+    },
+
+    isEmptyIdleSession: () => {
+      const state = get()
+      if (!state.sessionId || state.isTeamWorking) return false
+      return state.agentNames.every((name) => !hasVisibleBlocks(state.agentStreams[name]))
     },
 
     sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null }) => {
