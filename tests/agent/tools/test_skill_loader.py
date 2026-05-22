@@ -305,6 +305,16 @@ class TestMultiRootDiscovery:
         # The winning ``dir`` must point at the openagentd-project copy.
         assert str(project_oad / "research") == result["research"]["dir"]
 
+    def test_local_opencode_skill_wins_over_global_openagentd(self, roots):
+        _project_oad, project_oc, global_oad, _global_oc = roots
+        self._write_skill(global_oad, "research", "global openagentd", "global body")
+        self._write_skill(project_oc, "research", "local opencode", "local body")
+
+        result = discover_skills()
+
+        assert result["research"]["description"] == "local opencode"
+        assert str(project_oc / "research") == result["research"]["dir"]
+
     def test_skills_from_all_roots_merged(self, roots):
         project_oad, project_oc, global_oad, global_oc = roots
         self._write_skill(project_oad, "alpha", "a", "ab")
