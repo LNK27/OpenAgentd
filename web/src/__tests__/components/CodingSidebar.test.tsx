@@ -23,6 +23,7 @@ let sessionsData: Array<{
   updated_at: string | null
   mode?: string
   workspace?: string | null
+  running?: boolean
 }> = []
 
 mock.module('@tanstack/react-router', () => ({
@@ -224,11 +225,11 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(loadLastCodingWorkspace()).toBeNull()
   })
 
-  it('shows a running indicator on the active coding session while the team is working', async () => {
+  it('shows a running indicator on every running coding session', async () => {
     sessionsData = [
       {
         id: 'session-1',
-        title: 'Active session',
+        title: 'Selected idle session',
         agent_name: 'lead',
         created_at: '2026-05-13T00:00:00Z',
         updated_at: '2026-05-13T00:00:00Z',
@@ -237,21 +238,43 @@ describe('CodingSidebar workspace trust flow', () => {
       },
       {
         id: 'session-2',
-        title: 'Idle session',
+        title: 'Background running session',
         agent_name: 'lead',
         created_at: '2026-05-12T00:00:00Z',
         updated_at: '2026-05-12T00:00:00Z',
         mode: 'coding',
         workspace: '/repo/project',
+        running: true,
       },
     ]
-    useTeamStore.setState({ isTeamWorking: true, sessionId: 'session-1' })
 
     await renderCodingSidebarForSessions('session-1')
 
     expect(screen.getByLabelText('Session running')).toBeTruthy()
-    expect(screen.getByText('Active session')).toBeTruthy()
-    expect(screen.getByText('Idle session')).toBeTruthy()
+    expect(screen.getByText('Selected idle session')).toBeTruthy()
+    expect(screen.getByText('Background running session')).toBeTruthy()
+  })
+
+  it('shows a workspace-level running indicator when a running session is collapsed', async () => {
+    sessionsData = [
+      {
+        id: 'session-2',
+        title: 'Background running session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+      },
+    ]
+
+    await renderCodingSidebarForSessions(undefined)
+    await userEvent.setup().click(screen.getByLabelText('Collapse project'))
+
+    expect(screen.getByLabelText('Expand project')).toBeTruthy()
+    expect(screen.queryByText('Background running session')).toBeNull()
+    expect(screen.getByLabelText('Workspace has running session')).toBeTruthy()
   })
 
   it('does not create a new session when the current coding session is empty and idle', async () => {

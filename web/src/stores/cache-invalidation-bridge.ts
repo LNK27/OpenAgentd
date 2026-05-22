@@ -44,6 +44,9 @@ export function applyCacheInvalidations(
       case 'team_agents':
         queryClient.invalidateQueries({ queryKey: queryKeys.teamAgents() })
         break
+      case 'team_sessions':
+        queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.infinite() })
+        break
     }
   }
 }

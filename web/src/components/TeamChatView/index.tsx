@@ -237,6 +237,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       if (cancelled) return
       const controller = connectStream()
       if (controller) abortRef.current = controller
+      requestAnimationFrame(() => inputRef.current?.focus())
     })()
 
     return () => {

@@ -140,6 +140,30 @@ class TestListTeamSessionsWithData:
         assert len(found) == 1
 
     @pytest.mark.asyncio
+    async def test_list_sessions_marks_running_sessions(self, app_with_team):
+        import app.core.db as _db
+        from app.services import memory_stream_store
+
+        running_id = uuid.uuid7()
+        idle_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, running_id)
+                await _create_team_session(db, idle_id)
+
+        await memory_stream_store.init_turn(str(running_id))
+        try:
+            client = TestClient(app_with_team)
+            resp = client.get("/api/team/sessions")
+            assert resp.status_code == 200
+            by_id = {s["id"]: s for s in resp.json()["data"]}
+
+            assert by_id[str(running_id)]["running"] is True
+            assert by_id[str(idle_id)]["running"] is False
+        finally:
+            await memory_stream_store.clear(str(running_id))
+
+    @pytest.mark.asyncio
     async def test_list_sessions_empty(self, app_with_team):
         """No team_lead sessions → empty data list, has_more=False."""
         client = TestClient(app_with_team)

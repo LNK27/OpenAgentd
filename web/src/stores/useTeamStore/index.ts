@@ -539,7 +539,10 @@ export const useTeamStore = create<TeamStore>()(
           onDone: () => {
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
-            set((draft) => { draft.isConnected = false })
+            set((draft) => {
+              draft.isConnected = false
+              draft.cacheInvalidations.push({ kind: 'team_sessions' })
+            })
           },
         },
         abort.signal,

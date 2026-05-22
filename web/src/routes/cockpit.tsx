@@ -6,7 +6,7 @@ import { getTeamSession, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
-import { loadLastCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSessionDetail } from '@/utils/workspace'
+import { loadLastCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSession } from '@/utils/workspace'
 
 /**
  * Layout route for /cockpit, /coding, and their session routes.
@@ -20,13 +20,21 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const workspaceRef = useRef<string | null>(null)
+  const cachedSessionPages = queryClient.getQueryData<{
+    pages: Array<{ data: Array<{ id: string; workspace?: string | null }> }>
+  }>(queryKeys.team.sessions.infinite())
+  const cachedSession = sessionId
+    ? cachedSessionPages?.pages
+      .flatMap((page) => page.data)
+      .find((session) => session.id === sessionId)
+    : undefined
   const sessionQuery = useQuery({
     queryKey: queryKeys.team.sessions.detail(sessionId ?? ''),
     queryFn: () => getTeamSession(sessionId as string),
-    enabled: mode === 'coding' && Boolean(sessionId),
+    enabled: mode === 'coding' && Boolean(sessionId) && !cachedSession?.workspace,
     staleTime: 30_000,
   })
-  const workspace = workspaceFromSessionDetail(mode, sessionId, sessionQuery.data?.workspace)
+  const workspace = workspaceFromSession(mode, sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace)
 
   useEffect(() => {
     if (mode === 'coding' && workspace) saveLastCodingWorkspace(workspace)
@@ -199,7 +207,7 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
         sessionId={sessionId}
         mode={mode}
         workspace={workspace}
-        codingSessionLoading={mode === 'coding' && Boolean(sessionId) && sessionQuery.isLoading}
+        codingSessionLoading={mode === 'coding' && Boolean(sessionId) && !workspace && sessionQuery.isLoading}
       />
       <Outlet />
     </>

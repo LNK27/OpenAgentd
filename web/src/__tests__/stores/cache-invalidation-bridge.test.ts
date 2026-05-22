@@ -91,6 +91,15 @@ describe('applyCacheInvalidations', () => {
     })
   })
 
+  it('maps `team_sessions` event to team session list', () => {
+    const client = makeMockClient()
+    applyCacheInvalidations(client, [{ kind: 'team_sessions' }])
+    expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.team.sessions.infinite(),
+    })
+  })
+
   it('uses the exact key shape ["scheduler", "list"] (regression guard)', () => {
     const client = makeMockClient()
     applyCacheInvalidations(client, [{ kind: 'scheduler' }])

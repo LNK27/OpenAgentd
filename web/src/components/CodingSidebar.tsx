@@ -97,7 +97,6 @@ export function CodingSidebar({
   const queryClient = useQueryClient()
   const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
-  const isTeamWorking = useTeamStore((state) => state.isTeamWorking)
 
   const allSessions = sessions.data?.pages.flatMap((page) => page.data) ?? []
   const codingSessions = allSessions.filter(
@@ -375,6 +374,7 @@ export function CodingSidebar({
           const isExpanded = expandedWorkspaces.has(path)
           const isPending = pendingWorkspace === path
           const workspaceSessions = codingSessions.filter((s) => s.workspace === path)
+          const hasRunningSession = workspaceSessions.some((s) => s.running === true)
           return (
             <div key={path} className="relative">
               {/* Workspace row */}
@@ -391,8 +391,10 @@ export function CodingSidebar({
                   <span className={`truncate ${isActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
                     {workspaceLabel(path)}
                   </span>
-                  {isPending && (
-                    <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
+                  {(isPending || hasRunningSession) && (
+                    <span aria-label={hasRunningSession ? 'Workspace has running session' : undefined}>
+                      <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
+                    </span>
                   )}
                 </button>
                 <button
@@ -423,6 +425,7 @@ export function CodingSidebar({
                   )}
                   {workspaceSessions.map((session) => {
                     const isCurrent = session.id === currentSessionId
+                    const isRunning = session.running === true
                     return (
                       <div key={session.id} className="group relative">
                         <button
@@ -438,7 +441,7 @@ export function CodingSidebar({
                           <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
                             {formatRelativeDate(session.created_at)}
                           </p>
-                          {isCurrent && isTeamWorking && (
+                          {isRunning && (
                             <span
                               className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)"
                               aria-label="Session running"

@@ -599,8 +599,14 @@ async def list_team_sessions(
             detail="Invalid 'before' cursor — expected ISO 8601 datetime.",
         )
 
+    running_session_ids = stream_store.running_session_ids()
     return SessionPageResponse(
-        data=[SessionResponse.model_validate(s) for s in sessions],
+        data=[
+            SessionResponse.model_validate(s).model_copy(
+                update={"running": str(s.id) in running_session_ids}
+            )
+            for s in sessions
+        ],
         next_cursor=next_cursor,
         has_more=has_more,
     )

@@ -33,6 +33,7 @@ class SessionResponse(_ExcludeNoneModel):
     model: str | None = None
     thinking_level: str | None = None
     revert: dict | None = None
+    running: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

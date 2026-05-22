@@ -6,7 +6,7 @@ import {
   saveCodingWorkspace,
   saveLastCodingWorkspace,
   shouldRestoreLastCodingWorkspace,
-  workspaceFromSessionDetail,
+  workspaceFromSession,
 } from '@/utils/workspace'
 
 const STORAGE_KEY = 'oa-coding-workspaces'
@@ -69,10 +69,10 @@ describe('coding workspace persistence', () => {
   })
 
   it('does not reuse a previous workspace while direct session details are loading', () => {
-    expect(workspaceFromSessionDetail('coding', 'sid', undefined)).toBeNull()
+    expect(workspaceFromSession('coding', 'sid', undefined)).toBeNull()
   })
 
   it('uses loaded session workspace for direct coding session links', () => {
-    expect(workspaceFromSessionDetail('coding', 'sid', '/repo/session')).toBe('/repo/session')
+    expect(workspaceFromSession('coding', 'sid', '/repo/session')).toBe('/repo/session')
   })
 })

@@ -118,7 +118,7 @@ export function shouldRestoreLastCodingWorkspace(
   return mode === 'coding' && !sessionId && pathname === '/coding'
 }
 
-export function workspaceFromSessionDetail(
+export function workspaceFromSession(
   mode: 'normal' | 'coding',
   sessionId: string | undefined,
   sessionWorkspace: string | null | undefined,

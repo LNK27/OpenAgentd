@@ -295,6 +295,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             draft.agentStreams[agent]._completionEstimated = 0
             draft.isTeamWorking = true
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
+            draft.cacheInvalidations.push({ kind: 'team_sessions' })
           } else if (status === 'idle') {
             draft.agentStreams[agent].status = 'idle'
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
@@ -336,6 +337,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               stream.status = 'idle'
             }
           })
+          draft.cacheInvalidations.push({ kind: 'team_sessions' })
         })
         break
       }

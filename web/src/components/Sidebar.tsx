@@ -11,6 +11,7 @@ import {
   Search,
   Settings,
   HelpCircle,
+  Loader2,
 } from 'lucide-react'
 import { isToday, isYesterday } from 'date-fns'
 import { useTeamSessionsQuery, useDeleteTeamSessionMutation } from '@/queries'
@@ -438,6 +439,7 @@ interface SessionRowProps {
  */
 function SessionRow({ session, isActive, onSelect, onDelete }: SessionRowProps) {
   const isScheduled = Boolean(session.scheduled_task_name)
+  const isRunning = session.running === true
 
   return (
     <div className="group relative">
@@ -470,6 +472,11 @@ function SessionRow({ session, isActive, onSelect, onDelete }: SessionRowProps) 
             {isScheduled && (
               <span className="shrink-0 rounded px-1 py-px text-[10px] leading-tight bg-(--bg-key) text-(--color-text-subtle)">
                 sched
+              </span>
+            )}
+            {isRunning && (
+              <span className="shrink-0 text-(--color-accent)" aria-label="Session running">
+                <Loader2 size={11} className="animate-spin" aria-hidden="true" />
               </span>
             )}
           </div>

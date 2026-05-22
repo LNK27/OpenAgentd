@@ -136,6 +136,7 @@ export interface SessionResponse {
   workspace?: string | null
   model?: string | null
   thinking_level?: string | null
+  running?: boolean
 }
 
 export interface SessionDetailResponse extends SessionResponse {

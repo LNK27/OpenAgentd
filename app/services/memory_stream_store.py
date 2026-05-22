@@ -202,6 +202,9 @@ async def push_event(session_id: str, envelope: StreamEnvelope) -> None:
         elif event_type == "error":
             state.error = data.get("message", "error")
 
+        elif event_type == "done":
+            state.is_streaming = False
+
         elif event_type == "agent_not_configured":
             state.agent_not_configured = data
 
@@ -367,6 +370,11 @@ async def is_done(session_id: str) -> bool:
     if state is None:
         return True
     return not state.is_streaming
+
+
+def running_session_ids() -> set[str]:
+    """Return session ids that currently have an in-flight stream turn."""
+    return {session_id for session_id, state in _turns.items() if state.is_streaming}
 
 
 async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:

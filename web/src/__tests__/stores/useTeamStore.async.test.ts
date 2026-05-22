@@ -865,7 +865,7 @@ describe("connectStream", () => {
     expect(useTeamStore.getState().isConnected).toBe(false)
   })
 
-  it("onDone sets isConnected=false", () => {
+  it("onDone sets isConnected=false and invalidates sessions", () => {
     mockTeamStream.mockImplementation(
       (_sid: string, cbs: { onDone?: () => void }) => {
         cbs.onDone?.()
@@ -875,6 +875,7 @@ describe("connectStream", () => {
     useTeamStore.getState().connectStream()
 
     expect(useTeamStore.getState().isConnected).toBe(false)
+    expect(useTeamStore.getState().cacheInvalidations).toContainEqual({ kind: "team_sessions" })
   })
 
   it("does not reconnect after onDone when queued messages are pending", () => {
