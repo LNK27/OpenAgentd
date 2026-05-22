@@ -206,6 +206,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   useEffect(() => {
     if (hasCodingWorkspace) loadTeamStatus(agentWorkspace)
+    if (isCodingSessionLoading) return
     if (!sessionId) return
     const store = useTeamStore.getState()
     if (store.sessionId === sessionId && store.isConnected) return
@@ -243,7 +244,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       abortRef.current?.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, agentWorkspace, hasCodingWorkspace])
+  }, [sessionId, agentWorkspace, hasCodingWorkspace, isCodingSessionLoading])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
