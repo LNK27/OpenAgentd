@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cancelQueuedTeamMessage, postTeamChat } from '@/api/client'
+import { cancelQueuedTeamMessage, postTeamChat, resolveTeamSession } from '@/api/client'
 
 const originalFetch = globalThis.fetch
 
@@ -100,5 +100,53 @@ describe('postTeamChat', () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'not found' }), { status: 404 }))) as typeof fetch
 
     await expect(cancelQueuedTeamMessage('sid', 'mid')).resolves.toBeUndefined()
+  })
+})
+
+describe('resolveTeamSession', () => {
+  it('posts mode, workspace, and model settings as JSON', async () => {
+    let url = ''
+    let init: RequestInit | undefined
+    globalThis.fetch = mock((input, requestInit) => {
+      url = String(input)
+      init = requestInit as RequestInit | undefined
+      return Promise.resolve(new Response(JSON.stringify({
+        id: 'sid',
+        title: null,
+        agent_name: null,
+        mode: 'coding',
+        workspace: '/repo/app',
+        model: 'openai:gpt-5.5',
+        thinking_level: 'high',
+        created_at: null,
+        updated_at: null,
+        created: true,
+      })))
+    }) as typeof fetch
+
+    const result = await resolveTeamSession({
+      mode: 'coding',
+      workspace: '/repo/app',
+      model: 'openai:gpt-5.5',
+      thinkingLevel: 'high',
+    })
+
+    expect(url).toBe('/api/team/sessions/resolve')
+    expect(init?.method).toBe('POST')
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(JSON.parse(init?.body as string)).toEqual({
+      mode: 'coding',
+      workspace: '/repo/app',
+      model: 'openai:gpt-5.5',
+      thinking_level: 'high',
+    })
+    expect(result.created).toBe(true)
+    expect(result.id).toBe('sid')
+  })
+
+  it('throws when backend rejects resolve request', async () => {
+    globalThis.fetch = mock(() => Promise.resolve(new Response('bad', { status: 422 }))) as typeof fetch
+
+    await expect(resolveTeamSession({ mode: 'coding' })).rejects.toThrow('resolveTeamSession failed: 422')
   })
 })

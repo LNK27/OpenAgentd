@@ -14,6 +14,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 |--------|---------|-----------|
 | `team_chat.py` | Send a team message, wait for done, print full history | `--session ID`, `--wait N` |
 | `team_sessions.py` | List team sessions or inspect one | `--id ID`, `--all` |
+| `session_resolve.py` | Verify resolve-or-create for normal and coding sessions | `--workspace PATH`, `--base URL` |
 | `team_history.py` | Print lead + member messages for a session | positional `SESSION_ID` |
 | `team_timeline.py` | Chronological cross-agent timeline (reads DB directly) | `SESSION_ID`, `--full` |
 | `team_todos.py` | Print session todos and flag dependency/claim consistency issues | positional `SESSION_ID` |
@@ -32,6 +33,10 @@ uv run python -m manual.team_chat "Research the latest Python release"
 
 # Follow-up
 uv run python -m manual.team_chat "Summarise your findings" --session <ID>
+
+# Resolve/create active sessions without sending a message
+uv run python -m manual.session_resolve
+uv run python -m manual.session_resolve --workspace /path/to/repo
 
 # Full history after a run
 uv run python -m manual.team_history <SESSION_ID>

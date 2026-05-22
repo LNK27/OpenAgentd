@@ -93,6 +93,56 @@ describe("newSession", () => {
   });
 });
 
+// ── beginResolvedSession ────────────────────────────────────────────────────
+
+describe("beginResolvedSession", () => {
+  it("sets the persisted session id and model settings", () => {
+    useTeamStore.setState({
+      sessionId: "old-sid",
+      sessionModel: "old:model",
+      sessionThinkingLevel: "low",
+      isConnected: true,
+    });
+
+    useTeamStore.getState().beginResolvedSession("new-sid", {
+      mode: "normal",
+      model: "openai:gpt-5.5",
+      thinkingLevel: "high",
+    });
+
+    const s = useTeamStore.getState();
+    expect(s.sessionId).toBe("new-sid");
+    expect(s.sessionModel).toBe("openai:gpt-5.5");
+    expect(s.sessionThinkingLevel).toBe("high");
+    expect(s.isConnected).toBe(false);
+  });
+
+  it("stores coding workspace and resets streams to the lead", () => {
+    useTeamStore.setState({
+      leadName: "lead",
+      agentNames: ["lead", "worker"],
+      activeAgent: "worker",
+      agentStreams: {
+        lead: makeStream({ blocks: [{ id: "b1", type: "text" as const, content: "old" }] }),
+        worker: makeStream({ status: "working" }),
+      },
+    });
+
+    useTeamStore.getState().beginResolvedSession("coding-sid", {
+      mode: "coding",
+      workspace: "/repo/app",
+    });
+
+    const s = useTeamStore.getState();
+    expect(s.sessionId).toBe("coding-sid");
+    expect(s._workspace).toBe("/repo/app");
+    expect(s.agentNames).toEqual(["lead"]);
+    expect(s.activeAgent).toBe("lead");
+    expect(s.agentStreams.lead.blocks).toHaveLength(0);
+    expect(s.agentStreams.worker).toBeUndefined();
+  });
+});
+
 // ── setActiveAgent ────────────────────────────────────────────────────────────
 
 describe("setActiveAgent", () => {
