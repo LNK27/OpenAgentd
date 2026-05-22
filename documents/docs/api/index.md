@@ -310,12 +310,51 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 - `message` must be absent.
 - Returns `{"status": "interrupted", "session_id": "..."}` with HTTP 200.
 - The agent loop breaks mid-stream; the checkpointer has already saved partial output. Completed tools keep their real results; still-running tools return `"Cancelled by user."`.
-- The interrupted assistant row is stamped with `extra["interrupted"] = true` (invisible to the LLM, available to UI/audit) — content itself is left intact.
+- The interrupted assistant row is stamped with `extra["interrupted"] = true` (invisible to UI/audit) — content itself is left intact.
 - The SSE stream emits a final `done` event with `cancelled: true` in metadata:
   ```json
   { "type": "done", "metadata": { "cancelled": true } }
   ```
   Clients should reload the session from `GET /api/team/sessions/{id}` on receiving this event.
+
+### Mention auto-attachment
+
+On the immediate dispatch path (not the queued path), the route scans `message` for `@<path>` tokens and resolves each against the session workspace via `app/api/routes/team/_helpers.py::collect_mention_attachments`. Resolved files are appended to the same `attachments: list[RawAttachment]` as the multipart `files`, then flow through the standard `validate_and_persist_attachments` + `build_parts_from_metas` pipeline.
+
+| Mention kind | Auto-attached? | Notes |
+|---|---|---|
+| Text / document | Yes | Reused size limits (`SIZE_LIMITS["text"] = 500 KB`, `SIZE_LIMITS["document"] = 5 MB`). |
+| Image | No | Reference only — the agent uses its vision-aware `Read` tool to fetch on demand, so base64 pixels don't ride on every history rehydration. |
+| Folder | No | Reference only — agent uses `LS` / `Glob` / `Read`. |
+| Bad path / traversal / missing | No | Silently dropped. |
+
+Soft constraints: per-message cap of 20 mention attachments, global byte cap of `GLOBAL_SIZE_LIMIT` (20 MB). Capability-incompatible documents are skipped. Mentions never surface a 4xx — explicit paperclip uploads remain the authoritative way to force a file in.
+
+#### Head + tail truncation for inlined content
+
+Mention-sourced `RawAttachment` objects set `truncate_inline_to = 32_000` (chars). `_persist_attachment` in `agent_service` runs `converted_text` through `_maybe_truncate_inline(text, cap)`, which returns the text unchanged when it fits, otherwise keeps the first `cap // 2` chars + a marker line + the last `cap // 2` chars:
+
+```
+<first 16,000 chars>
+
+... [Middle truncated — N chars elided. Use the Read tool for full content.] ...
+
+<last 16,000 chars>
+```
+
+Paperclip uploads leave `truncate_inline_to = None`, so the full body always reaches the prompt — same behaviour as before. Truncation is mention-only.
+
+#### Attachment fence format
+
+`build_parts_from_metas` wraps text/document attachment bodies in matched open + close tags so the model can tell where the file ends:
+
+```
+[File: notes.txt]
+<body>
+[End file: notes.txt]
+```
+
+(Documents use `[Document: …]` / `[End document: …]`.) Without the close tag, agents tended to re-call `Read` on already-inlined files. Images are emitted as a separate `ImageDataBlock` and don't need a fence — their boundary is structural.
 
 ---
 

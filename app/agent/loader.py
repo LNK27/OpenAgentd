@@ -334,10 +334,18 @@ def _build_agent(
 
     try:
         provider = provider_factory(cfg.model, model_kwargs=model_kwargs)
-    except UnconfiguredProviderError:
-        logger.warning(
-            "agent_unconfigured_provider agent={} model={}", cfg.name, cfg.model
-        )
+    except Exception as exc:
+        if not isinstance(exc, UnconfiguredProviderError):
+            logger.warning(
+                "agent_provider_unavailable agent={} model={} error={}",
+                cfg.name,
+                cfg.model,
+                exc,
+            )
+        else:
+            logger.warning(
+                "agent_unconfigured_provider agent={} model={}", cfg.name, cfg.model
+            )
         provider = UnconfiguredProvider(agent_name=cfg.name)
 
     fallback_provider = None
@@ -346,8 +354,13 @@ def _build_agent(
             fallback_provider = provider_factory(
                 cfg.fallback_model, model_kwargs=model_kwargs
             )
-        except UnconfiguredProviderError:
-            # Fallback is best-effort — skip silently when unconfigured.
+        except Exception as exc:
+            logger.warning(
+                "agent_fallback_provider_unavailable agent={} model={} error={}",
+                cfg.name,
+                cfg.fallback_model,
+                exc,
+            )
             fallback_provider = None
 
     agent = Agent[AgentContext](

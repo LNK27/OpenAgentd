@@ -359,6 +359,8 @@ class Agent(Generic[TContext]):
 
             tc_list = assistant_msg.tool_calls or []
             last_usage = iter_usage_holder[0]
+            effective_model = state.metadata.pop("effective_model", None)
+            provider_fallback = state.metadata.pop("provider_fallback", None)
             stream_elapsed = time.monotonic() - iter_start
 
             logger.info(
@@ -375,6 +377,12 @@ class Agent(Generic[TContext]):
                 last_usage.total_tokens if last_usage else 0,
             )
 
+            message_extra = dict(assistant_msg.extra or {})
+            message_extra["model"] = effective_model or active_model_id
+            if provider_fallback:
+                message_extra["requested_model"] = active_model_id
+                message_extra["provider_fallback"] = provider_fallback
+
             # Me attach usage to message + state (single dict, shared reference)
             if last_usage:
                 usage_dict: dict = {
@@ -387,7 +395,7 @@ class Agent(Generic[TContext]):
                     usage_dict["thoughts"] = last_usage.thoughts_tokens
                 if last_usage.tool_use_tokens is not None:
                     usage_dict["tool_use"] = last_usage.tool_use_tokens
-                assistant_msg.extra = {"usage": usage_dict}
+                message_extra["usage"] = usage_dict
                 total_tokens += last_usage.total_tokens
                 state.usage.last_prompt_tokens = last_usage.prompt_tokens
                 state.usage.last_completion_tokens = last_usage.completion_tokens
@@ -395,6 +403,8 @@ class Agent(Generic[TContext]):
                 state.usage.last_usage = usage_dict
                 state.metadata["total_tokens"] = total_tokens
                 state.metadata["last_usage"] = usage_dict
+
+            assistant_msg.extra = message_extra
 
             messages.append(assistant_msg)
             last_assistant_msg = assistant_msg

@@ -1,16 +1,22 @@
 /**
- * Visual chip overlay for the InputBar's textarea.
+ * Syntax-highlight overlay for the InputBar's textarea.
  *
- * Renders a mirror ``<div>`` directly behind the textarea with the same
- * font and wrapping rules. The mirror's text is transparent, so only the
- * colored chip backgrounds at committed `@mention` positions bleed through;
- * the textarea's caret and selection paint normally on top.
+ * Renders a mirror ``<div>`` directly behind the textarea using the same
+ * font, line-height and wrap rules. The mirror paints the full message
+ * text in normal foreground color, with committed ``@mention`` tokens
+ * colored by kind — files in blue, folders in orange — same idea as a
+ * code editor coloring identifiers vs types.
  *
- * Same pattern GitHub / Linear use — strictly cosmetic, leaves the
- * underlying ``<textarea>`` plain-text so paste / select-all / IME work
- * without surprises.
+ * The textarea on top sets ``color: transparent`` (only the caret remains
+ * visible via ``caret-color``), so the user sees the overlay's text, not
+ * a doubled-up render. Selection rectangles still draw via the textarea
+ * because the browser owns selection chrome on the focused element.
+ *
+ * Same pattern Slate / CodeMirror / react-simple-code-editor use for
+ * lightweight in-place highlighting without giving up textarea semantics
+ * (paste, IME, mobile keyboards, undo stack).
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { findCommittedMentions, type FileRef } from './InputBar.mentions'
 
@@ -19,7 +25,7 @@ interface MentionOverlayProps {
   value: string
   /**
    * Range of the mention currently being typed (from ``findActiveMention``).
-   * Excluded from highlighting so users don't see a chip materialise on
+   * Excluded from highlighting so users don't see the color materialise on
    * every keystroke before they've committed the selection.
    */
   activeRange: { start: number; end: number } | null
@@ -27,7 +33,7 @@ interface MentionOverlayProps {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   /**
    * Workspace file/folder list used to validate committed mentions —
-   * ``@nonexistent`` and ``@@`` get no chip because they don't resolve.
+   * ``@nonexistent`` and ``@@`` get no color because they don't resolve.
    */
   fileRefs: readonly FileRef[]
 }
@@ -41,10 +47,28 @@ export function MentionOverlay({
   const mirrorRef = useRef<HTMLDivElement>(null)
   const ranges = findCommittedMentions(value, activeRange, fileRefs)
 
+  // Build a token → kind lookup so each committed mention can pick its
+  // color (file = blue, directory = orange). Same key shape used by
+  // ``findCommittedMentions`` for resolution: ``@<path>`` for files,
+  // and either ``@<path>`` or ``@<path>/`` for directories.
+  const kindByToken = useMemo(() => {
+    const map = new Map<string, 'file' | 'directory'>()
+    for (const ref of fileRefs) {
+      if (ref.type === 'directory') {
+        map.set(`@${ref.path}`, 'directory')
+        map.set(`@${ref.path}/`, 'directory')
+      } else {
+        map.set(`@${ref.path}`, 'file')
+      }
+    }
+    return map
+  }, [fileRefs])
+
   // Keep the mirror's scroll position in lock-step with the textarea so
-  // chips stay aligned when the message overflows the bar's max-height.
-  // Re-runs whenever ``ranges`` changes because adding/removing a chip can
-  // shift the textarea's scrollHeight before the next scroll event fires.
+  // the colored text stays aligned when the message overflows the bar's
+  // max-height. Re-runs whenever the range count changes because adding
+  // or removing a mention can shift ``scrollHeight`` before the next
+  // scroll event fires.
   useEffect(() => {
     const ta = textareaRef.current
     const mirror = mirrorRef.current
@@ -58,43 +82,55 @@ export function MentionOverlay({
     return () => ta.removeEventListener('scroll', sync)
   }, [textareaRef, ranges.length])
 
-  // No chips? Skip the mirror entirely — keeps the DOM clean when the
-  // user is composing a plain message.
-  if (ranges.length === 0) return null
+  // No mentions and no text? Skip the mirror entirely.
+  if (ranges.length === 0 && value.length === 0) return null
 
-  // Build alternating plain text + chip spans in one pass.
+  // Build alternating plain-text + colored-mention spans in one pass.
+  // Files paint in ``--accent-blue-text``, directories in
+  // ``--accent-orange-text``; both tokens are defined per-theme to stay
+  // readable against the surface, unlike ``--color-accent`` which equals
+  // ``--color-text`` in the dark palette. Fallback to file styling when
+  // the token isn't in the map (shouldn't happen — ``findCommittedMentions``
+  // only returns ranges that resolved against ``fileRefs``).
   const segments: React.ReactNode[] = []
   let cursor = 0
   for (const r of ranges) {
     if (r.start > cursor) segments.push(value.slice(cursor, r.start))
+    const token = value.slice(r.start, r.end)
+    const kind = kindByToken.get(token) ?? 'file'
+    const colorClass =
+      kind === 'directory'
+        ? 'text-(--accent-orange-text)'
+        : 'text-(--accent-blue-text)'
     segments.push(
       <span
         key={r.start}
         data-testid="mention-chip"
-        // Soft accent tint that works in both light and dark themes —
-        // same ``color-mix`` recipe the global focus-ring uses.
-        style={{
-          background:
-            'color-mix(in srgb, var(--color-accent) 18%, transparent)',
-        }}
-        className="rounded-sm"
+        data-mention-kind={kind}
+        className={colorClass}
       >
-        {value.slice(r.start, r.end)}
+        {token}
       </span>,
     )
     cursor = r.end
   }
   if (cursor < value.length) segments.push(value.slice(cursor))
+  // Trailing newline guard: a value ending in ``\n`` would otherwise
+  // cause the mirror to render one line shorter than the textarea
+  // (browsers collapse a trailing newline in ``white-space: pre-wrap``).
+  if (value.endsWith('\n')) segments.push('\u200b')
 
   return (
     <div
       ref={mirrorRef}
       aria-hidden="true"
       // ``inset-0`` pins the mirror to the wrapper (which equals the
-      // textarea's box). ``text-transparent`` hides the mirror's own
-      // glyphs; only chip backgrounds remain visible. Wrapping classes
-      // mirror the textarea so chip positions line up glyph-for-glyph.
-      className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-sm leading-relaxed text-transparent"
+      // textarea's box). Wrapping/font classes mirror the textarea
+      // exactly so glyph positions line up character-for-character.
+      // ``text-(--color-text)`` paints the non-mention text in the
+      // normal foreground; the per-span color override above paints
+      // mention tokens in blue (files) or orange (folders).
+      className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-sm leading-relaxed text-(--color-text)"
       style={{ maxHeight: '144px' }}
     >
       {segments}

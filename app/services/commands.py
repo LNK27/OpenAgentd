@@ -14,8 +14,10 @@ format so users can share a single library between the two tools:
 Discovery walks four roots in precedence order — first hit wins on a
 name collision, later sources are silently ignored:
 
-    1. ``{cwd}/.openagentd/commands/``  (project, OpenAgentd-native)
-    2. ``{cwd}/.opencode/commands/``    (project, opencode reuse)
+    1. ``{workspace}/.openagentd/commands/``  (project, OpenAgentd-native;
+                                               coding mode only)
+    2. ``{workspace}/.opencode/commands/``    (project, opencode reuse;
+                                               coding mode only)
     3. ``{OPENAGENTD_CONFIG_DIR}/commands/``     (global, OpenAgentd)
     4. ``~/.config/opencode/commands/`` (global, opencode reuse)
 
@@ -49,22 +51,30 @@ class Command:
 # ── Discovery roots ─────────────────────────────────────────────────────────
 
 
-def _candidate_roots(cwd: Path | None = None) -> list[tuple[Path, str]]:
+def _candidate_roots(workspace: Path | None = None) -> list[tuple[Path, str]]:
     """Ordered list of ``(root_dir, source_label)`` to search.
 
     Roots that don't exist are still returned — the caller filters them
     out — so the precedence rule is deterministic regardless of which
     sources happen to be present on disk.
     """
-    cwd = cwd or Path.cwd()
     home = Path.home()
     config = Path(settings.OPENAGENTD_CONFIG_DIR)
-    return [
-        (cwd / ".openagentd" / "commands", "project-openagentd"),
-        (cwd / ".opencode" / "commands", "project-opencode"),
-        (config / "commands", "global-openagentd"),
-        (home / ".config" / "opencode" / "commands", "global-opencode"),
-    ]
+    roots: list[tuple[Path, str]] = []
+    if workspace is not None:
+        roots.extend(
+            [
+                (workspace / ".openagentd" / "commands", "project-openagentd"),
+                (workspace / ".opencode" / "commands", "project-opencode"),
+            ]
+        )
+    roots.extend(
+        [
+            (config / "commands", "global-openagentd"),
+            (home / ".config" / "opencode" / "commands", "global-opencode"),
+        ]
+    )
+    return roots
 
 
 # ── Parsing ─────────────────────────────────────────────────────────────────
@@ -152,14 +162,14 @@ def get_builtin_command(name: str) -> Command | None:
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
-def discover_commands(cwd: Path | None = None) -> dict[str, Command]:
+def discover_commands(workspace: Path | None = None) -> dict[str, Command]:
     """Return ``{name: Command}`` for every command across the four roots.
 
-    First-source wins on conflict. ``cwd`` is exposed for tests; production
-    callers pass nothing and get ``Path.cwd()``.
+    First-source wins on conflict. ``workspace`` is exposed for tests and
+    coding mode; callers pass nothing to list only global commands.
     """
     commands: dict[str, Command] = {}
-    for root, source in _candidate_roots(cwd):
+    for root, source in _candidate_roots(workspace):
         for path, name in _iter_md(root):
             if name in commands:
                 continue  # earlier source wins

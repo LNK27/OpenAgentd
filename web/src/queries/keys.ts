@@ -56,7 +56,7 @@ export const queryKeys = {
     detail: (name: string) => ['skillFiles', 'detail', name] as const,
   },
   commands: {
-    list: () => ['commands', 'list'] as const,
+    list: (workspace?: string | null) => ['commands', 'list', workspace ?? null] as const,
   },
   observability: {
     summary: (days: number) => ['observability', 'summary', days] as const,

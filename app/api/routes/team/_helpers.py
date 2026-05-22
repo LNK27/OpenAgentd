@@ -7,12 +7,24 @@ modules only handle HTTP concerns.
 
 from __future__ import annotations
 
+import mimetypes
+import re
+from pathlib import Path
+
 from fastapi import HTTPException, UploadFile
+from loguru import logger
 
 from app.agent.mode.team.team import AgentTeam
 from app.api.schemas.sessions import MessageResponse
+from app.core.paths import session_workspace_dir
 from app.services import agent_service
-from app.services.agent_service import NoTeamConfigured, RawAttachment
+from app.services.agent_service import (
+    GLOBAL_SIZE_LIMIT,
+    SIZE_LIMITS,
+    NoTeamConfigured,
+    RawAttachment,
+    categorize,
+)
 
 
 # Server-internal attachment fields that must never leak to clients:
@@ -56,3 +68,208 @@ async def _read_upload_as_attachment(file: UploadFile) -> RawAttachment | None:
         content_type=file.content_type,
         data=data,
     )
+
+
+# ── @-mention attachments ────────────────────────────────────────────────────
+#
+# Mirrors the frontend's `findCommittedMentions` semantics:
+#
+#   - ``@`` must be at the start of the message or after whitespace
+#   - the token runs from the ``@`` to the next whitespace
+#   - trailing sentence punctuation ``,.;:!?)`` is stripped
+#
+# Tokens are resolved against the session workspace (normal session
+# sandbox, or the coding workspace root if `workspace` is provided).
+# Only files are auto-attached. Folder mentions stay as visual prose
+# references — the agent already has ``LS`` / ``Glob`` / ``Read``
+# tools to inspect a directory on demand, and pre-feeding an ``ls``
+# would add noise to the context for context the agent didn't ask for.
+
+# Anchored at start-of-string or after a whitespace / opening-bracket /
+# quote / comma character. Users routinely write quoted or parenthesised
+# mentions — `"@foo.txt"`, `(@foo.txt)`, `,@bar.md` — and we'd rather
+# pick those up than silently lose them.
+_MENTION_RE = re.compile(r"(?:^|(?<=[\s\"'(\[{,]))@(\S+)")
+# Trailing punctuation stripped before resolution. Includes closing
+# brackets / quotes that mirror the boundary chars above so paired
+# wrappers like `(@foo.txt)` resolve to `foo.txt`.
+_TRAILING_PUNCT = ",.;:!?)\"']}>"
+
+# Per-message ceiling on auto-attached mentions. Defensive — a user pasting
+# a wall of `@paths` shouldn't trigger an unbounded read storm.
+_MAX_MENTION_ATTACHMENTS = 20
+
+# Cap on inlined text per mention attachment. Mentions are implicit
+# context — a 500 KB file shouldn't blow up the prompt on every history
+# rehydration. The agent gets the head of the file (enough for a quick
+# reference) plus a marker telling it the full content is still reachable
+# via its ``Read`` tool. 32 K chars ≈ 8 K tokens ≈ 10 PDF pages.
+_MENTION_INLINE_MAX_CHARS = 32_000
+
+
+def _extract_mention_paths(message: str) -> list[str]:
+    """Return the unique, ordered list of @file tokens from ``message``.
+
+    Directory mentions (trailing ``/``) and the bare ``@`` are dropped:
+    folders are visual references only, the agent uses its own tools to
+    inspect them. Trailing sentence punctuation is stripped before
+    deduplication so "see @a.ts, please" yields ``["a.ts"]``.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for match in _MENTION_RE.finditer(message):
+        token = match.group(1)
+        # Strip trailing punctuation in a loop — handles `@x?!`.
+        while token and token[-1] in _TRAILING_PUNCT:
+            token = token[:-1]
+        if not token or token.endswith("/"):
+            continue
+        if token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+        if len(out) >= _MAX_MENTION_ATTACHMENTS:
+            break
+    return out
+
+
+def _safe_join(root: Path, rel: str) -> Path | None:
+    """Resolve ``rel`` under ``root``; ``None`` if it escapes or is bad.
+
+    Files only — directory paths return ``None`` so the caller's loop
+    silently skips them. Mirrors ``app.api.routes.team.files._safe_resolve``
+    semantics but returns ``None`` on every failure (no exceptions).
+    """
+    if not rel:
+        return None
+    candidate = Path(rel)
+    if candidate.is_absolute() or (len(rel) >= 2 and rel[1] == ":"):
+        return None
+    try:
+        resolved = (root / candidate).resolve(strict=False)
+        root_resolved = root.resolve(strict=False)
+    except (OSError, RuntimeError):
+        return None
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError:
+        return None
+    if not resolved.exists() or not resolved.is_file():
+        return None
+    return resolved
+
+
+async def _read_mention_as_attachment(
+    rel_path: str, abs_path: Path, capabilities
+) -> RawAttachment | None:
+    """Read one mentioned file as a ``RawAttachment`` when the lead can use it.
+
+    Only text and document categories auto-attach. Images are skipped
+    intentionally — they are visual references, and the agent's ``Read``
+    tool is already image-aware: it can fetch + inline the pixels on
+    demand. Auto-attaching images would force a base64-encoded payload
+    on every history rehydration even when the agent never needs to
+    look at them.
+
+    Returns ``None`` (and logs at debug level) when the file fails any of
+    the soft constraints — image category, capability mismatch,
+    unsupported type, oversize. Hard read failures (``OSError``) also
+    return ``None``. Mentions are an implicit attachment surface; we
+    never surface a 4xx to the user just because they typed
+    ``@somefile.png`` against a non-vision model.
+    """
+    filename = abs_path.name
+    mime, _ = mimetypes.guess_type(str(abs_path))
+    category = categorize(filename, mime)
+    if category is None:
+        return None
+    if category == "image":
+        # Image mentions are reference-only. The agent uses ``Read``
+        # (vision-aware) to look at them on demand.
+        return None
+    if category == "document" and not capabilities.input.document_text:
+        return None
+    try:
+        data = await _read_bytes(abs_path)
+    except OSError as exc:
+        logger.debug("mention_read_failed path={} error={}", rel_path, exc)
+        return None
+    if not data:
+        return None
+    if len(data) > SIZE_LIMITS[category]:
+        logger.debug(
+            "mention_oversize path={} category={} size={}",
+            rel_path,
+            category,
+            len(data),
+        )
+        return None
+    return RawAttachment(
+        filename=filename,
+        content_type=mime,
+        data=data,
+        truncate_inline_to=_MENTION_INLINE_MAX_CHARS,
+    )
+
+
+async def _read_bytes(path: Path) -> bytes:
+    """Off-thread file read so we don't block the event loop."""
+    import asyncio
+
+    return await asyncio.to_thread(path.read_bytes)
+
+
+async def collect_mention_attachments(
+    *,
+    message: str,
+    team: AgentTeam,
+    session_id: str,
+    workspace: str | None,
+    existing_total_bytes: int,
+) -> list[RawAttachment]:
+    """Resolve ``@path`` mentions in ``message`` to ``RawAttachment`` objects.
+
+    Implicit attachments — surface only files that pass every check. Any
+    failure (missing file, path escape, unsupported type, oversize,
+    capability mismatch, would-exceed-global-cap) is silently dropped.
+    Explicit paperclip uploads remain the authoritative way to force a
+    file in regardless of these soft rules.
+
+    ``existing_total_bytes`` is the cumulative size of the message's
+    explicit attachments so far. We deduct it from the global budget so
+    a mention can't push the message over the limit on its own.
+    """
+    paths = _extract_mention_paths(message)
+    if not paths:
+        return []
+
+    root = session_workspace_dir(session_id, workspace)
+    out: list[RawAttachment] = []
+    running_total = existing_total_bytes
+    for rel in paths:
+        abs_path = _safe_join(root, rel)
+        if abs_path is None:
+            continue
+        att = await _read_mention_as_attachment(
+            rel, abs_path, team.lead.agent.capabilities
+        )
+        if att is None:
+            continue
+        running_total += len(att.data)
+        if running_total > GLOBAL_SIZE_LIMIT:
+            # Stop accumulating — the rest would push us over the cap.
+            logger.debug(
+                "mention_global_cap_reached session_id={} dropped_from={}",
+                session_id,
+                rel,
+            )
+            break
+        out.append(att)
+    if out:
+        logger.info(
+            "mention_attachments_collected session_id={} count={} bytes={}",
+            session_id,
+            len(out),
+            sum(len(a.data) for a in out),
+        )
+    return out

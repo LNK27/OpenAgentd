@@ -61,10 +61,22 @@ def build_parts_from_metas(
         original_name = att.get("original_name", att.get("filename", "file"))
 
         if "converted_text" in att:
-            # Me fast path — cached content, no disk read
-            label = "[File" if category == "text" else "[Document"
+            # Me fast path — cached content, no disk read.
+            #
+            # Bracketed open + close tags fence the content so the model
+            # knows exactly where it ends. Without an explicit close
+            # marker, agents often re-call ``Read`` on the same file
+            # ("just to be sure I have all of it") — wasting a tool turn
+            # on content already in the prompt.
+            kind = "File" if category == "text" else "Document"
             parts.append(
-                TextBlock(text=f"{label}: {original_name}]\n{att['converted_text']}")
+                TextBlock(
+                    text=(
+                        f"[{kind}: {original_name}]\n"
+                        f"{att['converted_text']}\n"
+                        f"[End {kind.lower()}: {original_name}]"
+                    )
+                )
             )
 
         elif category in ("image", "document"):

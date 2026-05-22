@@ -625,7 +625,36 @@ describe("sendMessage: queue behaviour", () => {
 
     const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks
     expect(blocks.map((block) => block.content)).toEqual(["first queued", "second queued"])
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
+    expect(useTeamStore.getState().agentStreams.lead.status).toBe("working")
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
+  })
+
+  it("keeps the frontend streaming when a queued turn starts after undo reset state", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: false,
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-1", sessionId: "session-a", content: "queued after undo" },
+      ],
+      error: "Cannot undo while agents are working — /stop first",
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead", message_ids: ["pm-1"] })
+    useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "continued" })
+
+    const state = useTeamStore.getState()
+    expect(state.isTeamWorking).toBe(true)
+    expect(state.error).toBeNull()
+    expect(state.agentStreams.lead.status).toBe("working")
+    expect(state.agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
+      "queued after undo",
+      "continued",
+    ])
   })
 
   it("keeps queued messages for a different active session", () => {
@@ -761,6 +790,24 @@ describe("sendMessage: queue behaviour", () => {
   })
 })
 
+// ── stopTeam ─────────────────────────────────────────────────────────────────
+
+describe("stopTeam", () => {
+  it("reloads the session after interrupt so released queued messages become history", async () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      isTeamWorking: true,
+      _workspace: "/repo/a",
+    })
+
+    await useTeamStore.getState().stopTeam()
+
+    expect(mockPostTeamChat).toHaveBeenCalledWith(null, "session-a", true)
+    expect(mockTeamHistory).toHaveBeenCalledWith("session-a")
+    expect(useTeamStore.getState()._workspace).toBe("/repo/a")
+  })
+})
+
 // ── connectStream ─────────────────────────────────────────────────────────────
 
 describe("connectStream", () => {
@@ -827,6 +874,37 @@ describe("connectStream", () => {
     useTeamStore.setState({ sessionId: "stream-sid" })
     useTeamStore.getState().connectStream()
 
+    expect(useTeamStore.getState().isConnected).toBe(false)
+  })
+
+  it("does not reconnect after onDone when queued messages are pending", () => {
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onDone?: () => void }) => {
+        cbs.onDone?.()
+      }
+    )
+    useTeamStore.setState({
+      sessionId: "stream-sid",
+      _pendingMessages: [{ id: "pm-1", sessionId: "stream-sid", content: "queued" }],
+    })
+
+    useTeamStore.getState().connectStream()
+
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
+    expect(useTeamStore.getState().isConnected).toBe(false)
+  })
+
+  it("does not reconnect after onDone when no queued messages are pending", () => {
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onDone?: () => void }) => {
+        cbs.onDone?.()
+      }
+    )
+    useTeamStore.setState({ sessionId: "stream-sid" })
+
+    useTeamStore.getState().connectStream()
+
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
     expect(useTeamStore.getState().isConnected).toBe(false)
   })
 

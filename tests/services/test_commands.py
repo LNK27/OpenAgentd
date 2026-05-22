@@ -71,7 +71,7 @@ Hello $ARGUMENTS, welcome.
 
 def test_discover_returns_empty_when_no_roots(roots):
     cwd, *_ = roots
-    assert discover_commands(cwd=cwd) == {}
+    assert discover_commands(workspace=cwd) == {}
 
 
 def test_discover_finds_command_in_each_root(roots):
@@ -81,7 +81,7 @@ def test_discover_finds_command_in_each_root(roots):
     _write(global_oad / "c.md", VALID)
     _write(global_oc / "d.md", VALID)
 
-    result = discover_commands(cwd=cwd)
+    result = discover_commands(workspace=cwd)
 
     assert set(result.keys()) == {"a", "b", "c", "d"}
     assert result["a"].source == "project-openagentd"
@@ -109,7 +109,7 @@ def test_precedence_project_openagentd_wins_over_global(roots):
         "---\ndescription: global-oc\n---\nglobal-oc body\n",
     )
 
-    result = discover_commands(cwd=cwd)
+    result = discover_commands(workspace=cwd)
 
     assert result["commit"].source == "project-openagentd"
     assert result["commit"].description == "project-oad"
@@ -122,7 +122,7 @@ def test_nested_folders_become_slashed_names(roots):
     _write(proj_oad / "git" / "push.md", VALID)
     _write(proj_oad / "review.md", VALID)
 
-    result = discover_commands(cwd=cwd)
+    result = discover_commands(workspace=cwd)
 
     assert set(result.keys()) == {"git/commit", "git/push", "review"}
 
@@ -131,7 +131,7 @@ def test_missing_frontmatter_yields_empty_description_and_full_body(roots):
     cwd, proj_oad, *_ = roots
     _write(proj_oad / "raw.md", NO_FRONTMATTER)
 
-    result = discover_commands(cwd=cwd)
+    result = discover_commands(workspace=cwd)
 
     assert result["raw"].description == ""
     assert result["raw"].body == "Just a body, no metadata."
@@ -141,7 +141,7 @@ def test_non_dict_frontmatter_is_ignored_gracefully(roots):
     cwd, proj_oad, *_ = roots
     _write(proj_oad / "weird.md", "---\n- just a list\n---\nbody\n")
 
-    result = discover_commands(cwd=cwd)
+    result = discover_commands(workspace=cwd)
 
     assert result["weird"].description == ""
     assert result["weird"].body == "body"
@@ -154,7 +154,7 @@ def test_render_substitutes_arguments_placeholder(roots):
     cwd, proj_oad, *_ = roots
     _write(proj_oad / "greet.md", WITH_ARGS)
 
-    cmd = discover_commands(cwd=cwd)["greet"]
+    cmd = discover_commands(workspace=cwd)["greet"]
 
     assert render_command(cmd, "world") == "Hello world, welcome."
 
@@ -163,7 +163,7 @@ def test_render_appends_arguments_when_no_placeholder(roots):
     cwd, proj_oad, *_ = roots
     _write(proj_oad / "commit.md", VALID)
 
-    cmd = discover_commands(cwd=cwd)["commit"]
+    cmd = discover_commands(workspace=cwd)["commit"]
 
     rendered = render_command(cmd, "fix bug")
     assert rendered.startswith("Commit body.")
@@ -174,7 +174,7 @@ def test_render_with_no_arguments_leaves_body_unchanged(roots):
     cwd, proj_oad, *_ = roots
     _write(proj_oad / "commit.md", VALID)
 
-    cmd = discover_commands(cwd=cwd)["commit"]
+    cmd = discover_commands(workspace=cwd)["commit"]
 
     assert render_command(cmd, "") == "Commit body."
 
@@ -186,6 +186,6 @@ def test_render_substitutes_all_occurrences(roots):
         "---\ndescription: x\n---\n$ARGUMENTS / $ARGUMENTS\n",
     )
 
-    cmd = discover_commands(cwd=cwd)["echo"]
+    cmd = discover_commands(workspace=cwd)["echo"]
 
     assert render_command(cmd, "hi") == "hi / hi"

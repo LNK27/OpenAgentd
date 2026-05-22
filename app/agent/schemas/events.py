@@ -128,6 +128,24 @@ class RateLimitEvent(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ProviderStatusEvent(BaseModel):
+    """Provider retry/exhaustion/fallback status for the active model call."""
+
+    type: Literal["provider_status"] = "provider_status"
+    agent: str
+    status: Literal["retrying", "exhausted", "fallback"]
+    model: str | None = None
+    primary: str | None = None
+    fallback: str | None = None
+    attempt: int | None = None
+    max_attempts: int | None = None
+    delay_seconds: float | None = None
+    error_type: str | None = None
+    status_code: int | None = None
+    retry_after: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class ErrorEvent(BaseModel):
     """An unrecoverable error occurred."""
 

@@ -691,4 +691,29 @@ describe("InputBar — @-mention picker", () => {
     expect(textarea.value).toBe("@src/")
     expect(screen.queryByTestId("mention-chip")).toBeNull()
   })
+
+  it("colors file mentions and folder mentions distinctly", async () => {
+    // Files paint in --accent-blue-text, folders in --accent-orange-text.
+    // We assert the kind via ``data-mention-kind`` (stable contract for
+    // tests) and that the class names target different tokens, so a
+    // future palette tweak doesn't require an exact-color test rewrite.
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    // Insert one folder (``@src/``) and one file (``@docs/intro.md``).
+    await user.type(textarea, "look @src")
+    await user.keyboard("{Enter}")              // → "look @src/ "
+    await user.type(textarea, "and @docs/intro")
+    await user.keyboard("{Enter}")              // → "look @src/ and @docs/intro.md "
+
+    const chips = screen.getAllByTestId("mention-chip")
+    expect(chips).toHaveLength(2)
+
+    const [folderChip, fileChip] = chips
+    expect(folderChip.getAttribute("data-mention-kind")).toBe("directory")
+    expect(folderChip.className).toContain("--accent-orange-text")
+    expect(fileChip.getAttribute("data-mention-kind")).toBe("file")
+    expect(fileChip.className).toContain("--accent-blue-text")
+  })
 })

@@ -66,6 +66,30 @@ def test_converted_text_label_document_category():
     assert parts[0].text.startswith("[Document: report.pdf]")
 
 
+def test_converted_text_block_is_fenced_with_close_tag():
+    """Attachment content is wrapped in matched open + close tags so the
+    model knows where the file ends and stops re-Reading inlined files."""
+    file_att = {
+        "converted_text": "hello world",
+        "original_name": "notes.txt",
+        "category": "text",
+    }
+    file_parts = build_parts_from_metas("msg", [file_att])
+    assert file_parts[0].text == (
+        "[File: notes.txt]\nhello world\n[End file: notes.txt]"
+    )
+
+    doc_att = {
+        "converted_text": "report body",
+        "original_name": "spec.pdf",
+        "category": "document",
+    }
+    doc_parts = build_parts_from_metas("msg", [doc_att])
+    assert doc_parts[0].text == (
+        "[Document: spec.pdf]\nreport body\n[End document: spec.pdf]"
+    )
+
+
 # ---------------------------------------------------------------------------
 # slow path — image read from disk via stored ``path``
 # ---------------------------------------------------------------------------

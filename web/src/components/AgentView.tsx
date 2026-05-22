@@ -32,6 +32,7 @@ import { PendingMessageQueue } from './PendingMessageQueue'
 import { partitionTurns } from '@/utils/turns'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { useTeamStore } from '@/stores/useTeamStore'
+import { findCommittedMentions } from './InputBar.mentions'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
 const SCROLL_THRESHOLD = 40
@@ -66,6 +67,46 @@ const USER_COLLAPSE_CHARS = 700
 function shortModelName(modelId: string | null | undefined): string | null {
   if (!modelId) return null
   return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
+}
+
+/**
+ * Render user prose with ``@mention`` tokens syntax-highlighted.
+ *
+ * Matches the InputBar's overlay convention so a message looks the same
+ * after send as it did while composing:
+ *   - folders (token ends in ``/``)      → ``--accent-orange-text``
+ *   - files (everything else, default)   → ``--accent-blue-text``
+ *
+ * The slash heuristic is what the picker inserts; using it (rather than
+ * resolving against ``fileRefs``) keeps highlighting stable for old
+ * messages whose referenced paths may since have been renamed/removed.
+ * ``findCommittedMentions`` without refs falls back to syntax-only range
+ * detection — same code path the overlay relies on.
+ */
+function renderMentionSegments(content: string): React.ReactNode[] {
+  const ranges = findCommittedMentions(content, null)
+  if (ranges.length === 0) return [content]
+  const out: React.ReactNode[] = []
+  let cursor = 0
+  for (const r of ranges) {
+    if (r.start > cursor) out.push(content.slice(cursor, r.start))
+    const token = content.slice(r.start, r.end)
+    const isFolder = token.endsWith('/')
+    out.push(
+      <span
+        key={r.start}
+        data-mention-kind={isFolder ? 'directory' : 'file'}
+        className={
+          isFolder ? 'text-(--accent-orange-text)' : 'text-(--accent-blue-text)'
+        }
+      >
+        {token}
+      </span>,
+    )
+    cursor = r.end
+  }
+  if (cursor < content.length) out.push(content.slice(cursor))
+  return out
 }
 
 function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null }) {
@@ -140,7 +181,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
              </button>
            )}
-           <p className="break-words whitespace-pre-wrap">{visibleContent}</p>
+           <p className="break-words whitespace-pre-wrap">{renderMentionSegments(visibleContent)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
@@ -224,6 +265,29 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
           sessionId={sessionId}
         />
       )
+    }
+    case 'provider_status': {
+      const status = block.extra?.status
+      const model = block.extra?.model
+      const primary = block.extra?.primary
+      const fallback = block.extra?.fallback
+      const attempt = block.extra?.attempt
+      const maxAttempts = block.extra?.max_attempts
+      const delay = block.extra?.delay_seconds
+      const errorType = block.extra?.error_type
+      const statusCode = block.extra?.status_code
+      let message = 'Provider status updated.'
+      if (status === 'fallback') {
+        message = `Switching model from ${String(primary ?? 'primary')} to ${String(fallback ?? 'fallback')}.`
+      } else if (status === 'retrying') {
+        const delayText = typeof delay === 'number' ? ` Waiting ${delay.toFixed(1)}s.` : ''
+        const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
+        message = `Retrying ${String(model ?? 'model')} (${String(attempt ?? '?')}/${String(maxAttempts ?? '?')})${errorText}.${delayText}`
+      } else if (status === 'exhausted') {
+        const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
+        message = `${String(model ?? 'Model')} exhausted retry attempts${errorText}.`
+      }
+      return <p className="rounded-md border border-(--color-border) bg-(--bg-muted) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
     case 'tool':
       return (

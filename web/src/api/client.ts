@@ -585,8 +585,11 @@ export async function deleteSkill(name: string): Promise<SkillDeleteResponse> {
 
 // ── /commands ────────────────────────────────────────────────────────────────
 
-export async function listCommands(): Promise<CommandListResponse> {
-  const res = await fetch(`${API}/commands`)
+export async function listCommands(workspace?: string | null): Promise<CommandListResponse> {
+  const params = new URLSearchParams()
+  if (workspace) params.set('workspace', workspace)
+  const query = params.toString()
+  const res = await fetch(`${API}/commands${query ? `?${query}` : ''}`)
   if (!res.ok) throw new Error(`listCommands failed: ${res.status}`)
   return res.json()
 }
@@ -594,12 +597,16 @@ export async function listCommands(): Promise<CommandListResponse> {
 export async function renderCommand(
   name: string,
   arguments_: string,
+  workspace?: string | null,
 ): Promise<CommandRenderResponse> {
   // ``name`` may include slashes (nested folders); the segments are
   // already valid URL path chars, so we encode the whole id minus the
   // separator so e.g. ``git/commit`` survives intact.
   const encoded = name.split('/').map(encodeURIComponent).join('/')
-  const res = await fetch(`${API}/commands/${encoded}/render`, {
+  const params = new URLSearchParams()
+  if (workspace) params.set('workspace', workspace)
+  const query = params.toString()
+  const res = await fetch(`${API}/commands/${encoded}/render${query ? `?${query}` : ''}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ arguments: arguments_ }),

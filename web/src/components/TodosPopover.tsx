@@ -1,77 +1,51 @@
 /**
  * TodosPopover — task-list popover surfaced from the team-chat topbar.
  *
- * Trigger uses the ``TopbarAction`` primitive for visual consistency
- * with Files/Agents in the same row. The popover content follows the
- * paper-card chrome: ``--color-surface`` body, ``--color-border``
- * outline, ``rounded-md`` corners, mono-uppercase header to match
- * other panel titles in the app (Sidebar "Recent", etc.).
+ * Renders the agent's task list as a flat, scrollable checklist (no
+ * kanban columns, no priority badges). Each row is a status-aware
+ * checkbox + content line:
  *
- * Status icons are lucide outlines (``Check``/``X``/``Play``/``Circle``)
- * sized at 12px, colored by role:
- *   - completed  → ``--color-success``
- *   - cancelled  → ``--color-text-subtle``
- *   - in_progress → ``--color-accent``
- *   - pending    → ``--color-text-muted``
+ *   - pending    → empty square
+ *   - in_progress → empty square with a breathing pulse (animate-pulse)
+ *   - completed  → checked square, content struck through + dimmed
+ *   - cancelled  → empty square, content struck through + dimmed
  *
- * Priority badges drop the raw red/amber Tailwind colors in favor of
- * design tokens — ``--color-error`` (high), ``--color-warning``
- * (medium), ``--bg-key`` (low) — so the panel respects light/dark
- * theme without per-color overrides.
- *
- * Board view groups tasks by status and shows dependency / agent metadata so
- * team handoffs are visible without opening logs.
+ * Sort order keeps the user's eye on what matters right now:
+ *   in_progress → pending → completed → cancelled
  */
 
-import { Check, Circle, Link2, ListTodo, Play, UserRound, X } from 'lucide-react'
+import { ListTodo, Square, SquareCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { TopbarAction } from '@/components/ui/topbar-action'
 import type { TodoItem } from '@/api/types'
 
-// ── Status icon mapping ──────────────────────────────────────────────────────
+// ── Status → row style ──────────────────────────────────────────────────────
 
 const STATUS_ICON: Record<TodoItem['status'], LucideIcon> = {
-  completed: Check,
-  cancelled: X,
-  in_progress: Play,
-  pending: Circle,
+  completed: SquareCheck,
+  cancelled: Square,
+  in_progress: Square,
+  pending: Square,
 }
 
+// ``--color-accent`` resolves to ``--color-text`` in the dark palette, so
+// it can't be used for status hue — we'd lose the contrast against
+// regular text. ``--color-info`` (resolves to ``--accent-blue``) is
+// defined distinctly in both themes and reads as "in progress".
 const STATUS_ICON_COLOR: Record<TodoItem['status'], string> = {
   completed: 'text-(--color-success)',
   cancelled: 'text-(--color-text-subtle)',
-  in_progress: 'text-(--color-accent)',
+  in_progress: 'text-(--color-info)',
   pending: 'text-(--color-text-muted)',
 }
 
-const STATUS_COLUMNS: TodoItem['status'][] = [
-  'pending',
-  'in_progress',
-  'completed',
-  'cancelled',
-]
-
-const STATUS_LABEL: Record<TodoItem['status'], string> = {
-  pending: 'Pending',
-  in_progress: 'Working',
-  completed: 'Done',
-  cancelled: 'Cancelled',
-}
-
-const STATUS_COLUMN_ACCENT: Record<TodoItem['status'], string> = {
-  pending: 'text-(--color-text-muted)',
-  in_progress: 'text-(--color-accent)',
-  completed: 'text-(--color-success)',
-  cancelled: 'text-(--color-text-subtle)',
-}
-
-// ── Priority badge mapping ───────────────────────────────────────────────────
-
-const PRIORITY_BADGE_CLASS: Record<TodoItem['priority'], string> = {
-  high: 'bg-(--color-error)/10 text-(--color-error)',
-  medium: 'bg-(--color-warning)/10 text-(--color-warning)',
-  low: 'bg-(--bg-key) text-(--color-text-subtle)',
+// Sort priority for the flat list — most actionable first.
+const STATUS_ORDER: Record<TodoItem['status'], number> = {
+  in_progress: 0,
+  pending: 1,
+  completed: 2,
+  cancelled: 3,
 }
 
 function getAgentLabel(todo: TodoItem): string | null {
@@ -94,25 +68,27 @@ export function TodosPopover({
   todos,
   sessionId,
 }: TodosPopoverProps) {
-  const completedCount = todos.filter((t) => t.status === 'completed').length
+  // "Finished" includes cancelled — once a task leaves the active set
+  // (whether shipped or dropped) it no longer needs attention. This is
+  // also what the topbar progress badge reports so the two stay in sync.
+  const finishedCount = todos.filter(
+    (t) => t.status === 'completed' || t.status === 'cancelled',
+  ).length
   const hasInProgress = todos.some((t) => t.status === 'in_progress')
-  const todosByStatus = STATUS_COLUMNS.map((status) => ({
-    status,
-    todos: todos.filter((todo) => todo.status === status),
-  }))
+  const progressLabel =
+    todos.length > 0 ? `${finishedCount}/${todos.length}` : undefined
+  const sortedTodos = [...todos].sort(
+    (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status],
+  )
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      {/* base-ui composes via the ``render`` prop (not Radix's
-          ``asChild``). Passing the TopbarAction element here lets
-          base-ui forward its trigger props onto the primitive button
-          we already styled, so the topbar control matches Files /
-          Agents one-for-one. */}
       <PopoverTrigger
         render={
           <TopbarAction
             Icon={ListTodo}
             indicator={hasInProgress}
+            badge={progressLabel}
             title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
             aria-label="Task list"
           />
@@ -122,117 +98,74 @@ export function TodosPopover({
       <PopoverContent
         side="bottom"
         align="end"
-        // ``ring-0`` cancels the shadcn PopoverContent default
-        // ``ring-1 ring-foreground/10`` (a near-black hairline that
-        // clashes with the paper-card aesthetic). Outline is owned by
-        // the ``--color-border`` ring instead, matching the rest of
-        // the restyled surfaces.
-        className="w-[min(calc(100vw-1rem),64rem)] overflow-hidden rounded-md bg-(--color-surface) p-0 shadow-md ring-1 ring-(--color-border)"
+        // ``ring-0`` cancels the shadcn default; outline comes from the
+        // ``--color-border`` ring so the chrome matches Files / Agents.
+        className="w-[min(calc(100vw-1rem),24rem)] overflow-hidden rounded-md bg-(--color-surface) p-0 shadow-md ring-1 ring-(--color-border)"
       >
         {/* Header: mono-uppercase title + completion counter. */}
         <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-2">
           <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-(--color-text-muted)">
-            Task board
+            Tasks
           </span>
           {todos.length > 0 && (
             <span className="font-mono text-[10px] text-(--color-text-subtle)">
-              {completedCount}/{todos.length} done
+              {finishedCount}/{todos.length} done
             </span>
           )}
         </div>
 
-        <div className="scrollbar-none flex h-[min(76vh,36rem)] min-h-[28rem] flex-col overflow-x-auto overflow-y-hidden p-3">
-            <div className="grid min-h-0 min-w-[46rem] flex-1 grid-cols-4 divide-x divide-(--color-border)">
-              {todosByStatus.map(({ status, todos: columnTodos }) => {
-                const Icon = STATUS_ICON[status]
-                const iconColor = STATUS_ICON_COLOR[status]
-                return (
-                  <section
-                    key={status}
-                    aria-label={`${STATUS_LABEL[status]} tasks`}
-                    className="flex min-h-0 flex-col px-3 first:pl-0 last:pr-0"
+        {todos.length === 0 ? (
+          <p
+            role="status"
+            className="px-3 py-6 text-center font-(family-name:--font-hand) text-sm text-(--color-text-subtle)"
+          >
+            No tasks yet
+          </p>
+        ) : (
+          <ul
+            aria-label="Task list"
+            className="scrollbar-none max-h-[min(60vh,24rem)] overflow-y-auto py-1"
+          >
+            {sortedTodos.map((todo) => {
+              const Icon = STATUS_ICON[todo.status]
+              const isStruck =
+                todo.status === 'completed' || todo.status === 'cancelled'
+              const isInProgress = todo.status === 'in_progress'
+              const agent = getAgentLabel(todo)
+              return (
+                <li
+                  key={todo.task_id}
+                  className="flex items-start gap-2.5 px-3 py-1.5"
+                >
+                  <Icon
+                    size={14}
+                    aria-hidden="true"
+                    className={`mt-0.5 shrink-0 ${STATUS_ICON_COLOR[todo.status]} ${
+                      isInProgress ? 'animate-pulse' : ''
+                    }`}
+                  />
+                  <span
+                    className={`min-w-0 flex-1 text-xs leading-snug ${
+                      isStruck
+                        ? 'text-(--color-text-subtle) line-through'
+                        : 'text-(--color-text)'
+                    }`}
                   >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <Icon size={12} aria-hidden="true" className={iconColor} />
-                        <h3 className="truncate font-mono text-[10px] font-medium uppercase tracking-wider text-(--color-text-muted)">
-                          {STATUS_LABEL[status]}
-                        </h3>
-                      </div>
-                      <span className={`font-mono text-[9px] ${STATUS_COLUMN_ACCENT[status]}`}>
-                        {columnTodos.length}
-                      </span>
-                    </div>
-
-                    <div
-                      className={
-                        columnTodos.length === 0
-                          ? 'flex flex-1 items-center justify-center'
-                          : 'scrollbar-none min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-2'
-                      }
+                    {todo.content}
+                  </span>
+                  {agent && (
+                    <span
+                      className="mt-0.5 shrink-0 font-mono text-[9px] uppercase tracking-wide text-(--color-text-subtle)"
+                      title={`Assigned to ${agent}`}
                     >
-                      {columnTodos.length === 0 ? (
-                        <p className="text-center font-(family-name:--font-hand) text-sm text-(--color-text-subtle)">
-                          Nothing here
-                        </p>
-                      ) : (
-                        columnTodos.map((todo) => {
-                          const dependencies = todo.dependencies ?? []
-                          const agent = getAgentLabel(todo)
-                          const isDone =
-                            todo.status === 'completed' || todo.status === 'cancelled'
-                          return (
-                            <article
-                              key={todo.task_id}
-                              className="border-b border-(--color-border) pb-3 last:border-b-0 last:pb-0"
-                            >
-                              <div className="mb-1.5 flex items-start justify-between gap-2">
-                                <span className="font-mono text-[9px] uppercase tracking-wide text-(--color-text-muted)">
-                                  {todo.task_id}
-                                </span>
-                                <span
-                                  className={`shrink-0 rounded px-1 py-0.5 font-mono text-[9px] font-medium uppercase ${
-                                    PRIORITY_BADGE_CLASS[todo.priority]
-                                  }`}
-                                >
-                                  {todo.priority}
-                                </span>
-                              </div>
-
-                              <p
-                                className={`text-xs leading-snug ${
-                                  isDone
-                                    ? 'text-(--color-text-subtle) line-through'
-                                    : 'text-(--color-text)'
-                                }`}
-                              >
-                                {todo.content}
-                              </p>
-
-                              <div className="mt-2 space-y-1 font-mono text-[9px] uppercase tracking-wide text-(--color-text-muted)">
-                                <div className="flex items-center gap-1.5">
-                                  <UserRound size={10} aria-hidden="true" />
-                                  <span>{agent ?? 'Unassigned'}</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <Link2 size={10} aria-hidden="true" className="mt-0.5" />
-                                  <span>
-                                    {dependencies.length > 0
-                                      ? dependencies.join(', ')
-                                      : 'No dependencies'}
-                                  </span>
-                                </div>
-                              </div>
-                            </article>
-                          )
-                        })
-                      )}
-                    </div>
-                  </section>
-                )
-              })}
-            </div>
-        </div>
+                      {agent}
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </PopoverContent>
     </Popover>
   )

@@ -284,6 +284,67 @@ async def test_validate_and_persist_uses_provided_session_id(tmp_path):
     assert len(metas) == 1
 
 
+# ── _maybe_truncate_inline (head + tail window) ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_paperclip_upload_text_is_not_truncated(tmp_path):
+    """Explicit uploads leave ``truncate_inline_to`` ``None`` — the full
+    body reaches the prompt regardless of size."""
+    team = _make_team()
+    long_text = "x" * 50_000
+    att = RawAttachment(
+        filename="big.txt", content_type="text/plain", data=long_text.encode()
+    )
+    with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
+        _, metas = await validate_and_persist_attachments(team, [att])
+    assert metas[0]["converted_text"] == long_text
+    assert "Middle truncated" not in metas[0]["converted_text"]
+
+
+@pytest.mark.asyncio
+async def test_mention_text_is_head_tail_truncated_at_cap(tmp_path):
+    """A mention-sourced attachment passes ``truncate_inline_to`` so the
+    persistence step caps the inlined text with a head + tail window."""
+    team = _make_team()
+    # Use a distinguishable body so we can verify head/tail slices land
+    # on the right characters. 1000 chars total, cap 200 → 100 head + 100 tail.
+    body = ("A" * 500) + ("B" * 500)
+    att = RawAttachment(
+        filename="m.txt",
+        content_type="text/plain",
+        data=body.encode(),
+        truncate_inline_to=200,
+    )
+    with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
+        _, metas = await validate_and_persist_attachments(team, [att])
+    out = metas[0]["converted_text"]
+    # Head: first 100 chars (all 'A'). Tail: last 100 chars (all 'B').
+    assert out.startswith("A" * 100)
+    assert out.endswith("B" * 100)
+    # Middle marker reports the omitted char count and points at Read.
+    assert "Middle truncated" in out
+    assert "800 chars elided" in out
+    assert "Read tool" in out
+
+
+@pytest.mark.asyncio
+async def test_mention_text_below_cap_is_unchanged(tmp_path):
+    """The cap is only applied when the body exceeds it — short
+    mentions pass through verbatim."""
+    team = _make_team()
+    body = "short content"
+    att = RawAttachment(
+        filename="m.txt",
+        content_type="text/plain",
+        data=body.encode(),
+        truncate_inline_to=1000,
+    )
+    with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
+        _, metas = await validate_and_persist_attachments(team, [att])
+    assert metas[0]["converted_text"] == body
+
+
 # ── dispatch_user_message ─────────────────────────────────────────────────────
 
 
@@ -386,6 +447,38 @@ async def test_interrupt_team_cancels_working_members():
 
 
 @pytest.mark.asyncio
+async def test_interrupt_team_releases_queued_messages_before_stopping_stream():
+    idle = MagicMock()
+    idle.state = "idle"
+    idle.name = "idler"
+
+    team = MagicMock()
+    team.members = {}
+    team.all_members = [idle]
+    team.lead.session_id = None
+
+    with (
+        patch(
+            "app.services.chat_service.release_queued_user_messages",
+            new=AsyncMock(return_value=[object()]),
+        ) as release_queued,
+        patch(
+            "app.services.agent_service.stream_store.push_event", new=AsyncMock()
+        ) as push,
+        patch(
+            "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
+        ) as mark_done,
+    ):
+        names = await interrupt_team(
+            team, session_id="018f0000-0000-7000-8000-000000000001"
+        )
+
+    assert names == []
+    release_queued.assert_awaited_once()
+    push.assert_awaited_once()
+    mark_done.assert_awaited_once_with("018f0000-0000-7000-8000-000000000001")
+
+
 async def test_interrupt_team_marks_stream_done_even_when_no_members_working():
     idle = MagicMock()
     idle.state = "idle"

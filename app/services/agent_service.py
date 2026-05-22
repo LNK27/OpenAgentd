@@ -112,11 +112,17 @@ class RawAttachment:
     Transport adapters (HTTP route, channel adapter) build this from their
     native representation (``UploadFile``, Telegram ``Document``, etc.) and
     hand it to :func:`dispatch_user_message`.
+
+    ``truncate_inline_to`` caps the ``converted_text`` length when set —
+    used by implicit attachment surfaces (e.g. ``@mention`` auto-attach)
+    to bound prompt growth for large files. Explicit uploads leave this
+    ``None`` so the full content reaches the model.
     """
 
     filename: str
     content_type: str | None
     data: bytes
+    truncate_inline_to: int | None = None
 
 
 class AttachmentError(Exception):
@@ -272,17 +278,44 @@ async def _persist_attachment(
             except Exception:
                 meta["converted_text"] = f"[Unable to read file {safe_original_name}.]"
                 return meta
-        meta["converted_text"] = text
+        meta["converted_text"] = _maybe_truncate_inline(text, att.truncate_inline_to)
     elif category == "document":
         converted = await asyncio.to_thread(
             _convert_with_markitdown, data, mime, original_name
         )
-        meta["converted_text"] = (
+        body = (
             converted
             if converted is not None
             else f"[Unable to read file {safe_original_name}.]"
         )
+        meta["converted_text"] = _maybe_truncate_inline(body, att.truncate_inline_to)
     return meta
+
+
+def _maybe_truncate_inline(text: str, cap: int | None) -> str:
+    """Cap inlined attachment text with a head + tail window.
+
+    Returns ``text`` unchanged when ``cap`` is ``None`` (explicit upload)
+    or the body already fits. Otherwise keeps the first ``cap // 2``
+    chars and the last ``cap // 2`` chars, separated by a marker line
+    that tells the agent how many chars were elided and that the full
+    content is still reachable via its ``Read`` tool. Head + tail
+    preserves the highest-signal regions of most files — imports /
+    declarations at the top, exports / conclusions at the bottom —
+    where a head-only cut would discard the ending entirely.
+    """
+    if cap is None or len(text) <= cap:
+        return text
+    half = cap // 2
+    head = text[:half]
+    tail = text[-half:]
+    omitted = len(text) - len(head) - len(tail)
+    return (
+        f"{head}\n\n"
+        f"... [Middle truncated — {omitted:,} chars elided. "
+        f"Use the Read tool for full content.] ...\n\n"
+        f"{tail}"
+    )
 
 
 # ── Public entry points ──────────────────────────────────────────────────────
@@ -411,7 +444,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
     from app.agent.tools.builtin.todo import release_in_progress_for_actor
     from app.core.db import resolve_db_factory
     from app.core.paths import session_workspace_dir
-    from app.services.chat_service import save_message
+    from app.services.chat_service import release_queued_user_messages, save_message
 
     names: list[str] = []
     effective_session_id = session_id or getattr(team.lead, "session_id", None)
@@ -477,6 +510,25 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
         member.interrupt()
     names.extend(m.name for m in cancelled)
     if effective_session_id:
+        try:
+            db_factory = resolve_db_factory(team.lead.db_factory)
+            async with db_factory() as db:
+                released = await release_queued_user_messages(
+                    db, uuid.UUID(effective_session_id)
+                )
+                await db.commit()
+            if released:
+                logger.info(
+                    "team_interrupt_released_queued session_id={} count={}",
+                    effective_session_id,
+                    len(released),
+                )
+        except Exception as exc:
+            logger.warning(
+                "team_interrupt_release_queue_failed session_id={} error={}",
+                effective_session_id,
+                exc,
+            )
         await stream_store.push_event(
             effective_session_id,
             StreamEnvelope.from_parts(event="done", data={}),

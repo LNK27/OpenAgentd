@@ -36,6 +36,81 @@ if TYPE_CHECKING:
 # falling back / raising.
 MAX_RETRIES = 5
 
+
+async def _notify_provider_retry(
+    hooks: list[BaseAgentHook] | None,
+    ctx: RunContext | None,
+    state: AgentState | None,
+    *,
+    model: str,
+    attempt: int,
+    delay: float,
+    error_type: str,
+    status_code: int | None = None,
+    retry_after: int | None = None,
+) -> None:
+    if ctx is None or state is None:
+        return
+    for hook in hooks or []:
+        await hook.on_provider_retry(
+            ctx,
+            state,
+            model,
+            attempt,
+            MAX_RETRIES,
+            delay,
+            error_type,
+            status_code=status_code,
+            retry_after=retry_after,
+        )
+
+
+async def _notify_provider_exhausted(
+    hooks: list[BaseAgentHook] | None,
+    ctx: RunContext | None,
+    state: AgentState | None,
+    *,
+    model: str,
+    error_type: str,
+    status_code: int | None = None,
+) -> None:
+    if ctx is None or state is None:
+        return
+    for hook in hooks or []:
+        await hook.on_provider_exhausted(
+            ctx,
+            state,
+            model,
+            MAX_RETRIES,
+            error_type,
+            status_code=status_code,
+        )
+
+
+async def _notify_provider_fallback(
+    hooks: list[BaseAgentHook] | None,
+    ctx: RunContext | None,
+    state: AgentState | None,
+    *,
+    primary: str,
+    fallback: str,
+    error_type: str | None = None,
+    status_code: int | None = None,
+) -> None:
+    if ctx is None or state is None:
+        return
+    state.metadata["effective_model"] = fallback
+    state.metadata["provider_fallback"] = {
+        "primary": primary,
+        "fallback": fallback,
+        "reason": "primary_exhausted",
+        **({"error_type": error_type} if error_type else {}),
+        **({"status_code": status_code} if status_code is not None else {}),
+    }
+    for hook in hooks or []:
+        await hook.on_provider_fallback(ctx, state, primary, fallback)
+
+
 # Module-private timing knobs.
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _NON_RETRYABLE_429_MARKERS = (
@@ -176,6 +251,14 @@ async def stream_with_retry(
                         exc.response.status_code,
                         MAX_RETRIES,
                     )
+                    await _notify_provider_exhausted(
+                        hooks,
+                        ctx,
+                        state,
+                        model=provider_label,
+                        error_type="HTTPStatusError",
+                        status_code=exc.response.status_code,
+                    )
                     break
                 delay = min(
                     retry_after if retry_after > 0 else _BASE_DELAY * (3**attempt),
@@ -190,6 +273,17 @@ async def stream_with_retry(
                     delay,
                     retry_after,
                 )
+                await _notify_provider_retry(
+                    hooks,
+                    ctx,
+                    state,
+                    model=provider_label,
+                    attempt=attempt + 1,
+                    delay=delay,
+                    error_type="HTTPStatusError",
+                    status_code=exc.response.status_code,
+                    retry_after=retry_after,
+                )
                 if await _sleep_or_interrupted(delay, interrupt_event):
                     return
             except (httpx.ConnectError, httpx.ReadTimeout, TimeoutError) as exc:
@@ -202,6 +296,13 @@ async def stream_with_retry(
                         type(exc).__name__,
                         MAX_RETRIES,
                     )
+                    await _notify_provider_exhausted(
+                        hooks,
+                        ctx,
+                        state,
+                        model=provider_label,
+                        error_type=type(exc).__name__,
+                    )
                     break
                 delay = min(_BASE_DELAY * (3**attempt), _MAX_DELAY)
                 logger.warning(
@@ -211,6 +312,15 @@ async def stream_with_retry(
                     attempt + 1,
                     MAX_RETRIES,
                     delay,
+                )
+                await _notify_provider_retry(
+                    hooks,
+                    ctx,
+                    state,
+                    model=provider_label,
+                    attempt=attempt + 1,
+                    delay=delay,
+                    error_type=type(exc).__name__,
                 )
                 if await _sleep_or_interrupted(delay, interrupt_event):
                     return
@@ -222,6 +332,21 @@ async def stream_with_retry(
                 agent_name,
                 primary_label,
                 fallback_label,
+            )
+            error_type = type(last_exc).__name__ if last_exc is not None else None
+            status_code = (
+                last_exc.response.status_code
+                if isinstance(last_exc, httpx.HTTPStatusError)
+                else None
+            )
+            await _notify_provider_fallback(
+                hooks,
+                ctx,
+                state,
+                primary=primary_label,
+                fallback=fallback_label,
+                error_type=error_type,
+                status_code=status_code,
             )
 
     assert last_exc is not None

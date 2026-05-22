@@ -162,6 +162,7 @@ All events flow server→client. Schemas live in `app/agent/schemas/events.py`; 
 | `agent_status` | `AgentTeam` activation/done | `agent`, `status` (`idle`\|`working`\|`offline`\|`error`) — team only |
 | `queued_turn_start` | `AgentTeam` queued-message drain | `agent`, `message_ids` — marks queued user bubbles as active for the next turn |
 | `rate_limit` | `StreamPublisherHook.on_rate_limit` | `retry_after`, `attempt`, `max_attempts` |
+| `provider_status` | Retry/fallback loop via `StreamPublisherHook` | `agent`, `status` (`retrying`\|`exhausted`\|`fallback`), `model`, `primary`, `fallback`, `attempt`, `max_attempts`, `delay_seconds`, `error_type`, `status_code` |
 | `permission_asked` | `StreamPublisherHook` (permission system) | `request_id`, `session_id`, `tool`, `patterns` |
 | `title_update` | `TitleGenerationHook` after first turn | `session_id`, `title` |
 | `error` | route exception handler | `message` |

@@ -14,13 +14,13 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
-
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.tool_id_resolver import ToolIdResolver
 from app.services import memory_stream_store as stream_store
 from app.agent.schemas.events import (
     MessageEvent,
     PermissionAskedEvent,
+    ProviderStatusEvent,
     RateLimitEvent,
     ThinkingEvent,
     ToolCallEvent,
@@ -54,7 +54,11 @@ class StreamPublisherHook(BaseAgentHook):
     """
 
     def __init__(
-        self, session_id: str, agent_name: str, *, publish_reasoning: bool = True
+        self,
+        session_id: str,
+        agent_name: str,
+        *,
+        publish_reasoning: bool = True,
     ) -> None:
         self._session_id = session_id
         self._agent_name = agent_name
@@ -284,6 +288,68 @@ class StreamPublisherHook(BaseAgentHook):
                 retry_after=retry_after,
                 attempt=attempt,
                 max_attempts=max_attempts,
+            )
+        )
+
+    async def on_provider_retry(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        model: str,
+        attempt: int,
+        max_attempts: int,
+        delay_seconds: float,
+        error_type: str,
+        status_code: int | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        await self._push(
+            ProviderStatusEvent(
+                agent=self._agent_name,
+                status="retrying",
+                model=model,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                delay_seconds=delay_seconds,
+                error_type=error_type,
+                status_code=status_code,
+                retry_after=retry_after,
+            )
+        )
+
+    async def on_provider_exhausted(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        model: str,
+        max_attempts: int,
+        error_type: str,
+        status_code: int | None = None,
+    ) -> None:
+        await self._push(
+            ProviderStatusEvent(
+                agent=self._agent_name,
+                status="exhausted",
+                model=model,
+                max_attempts=max_attempts,
+                error_type=error_type,
+                status_code=status_code,
+            )
+        )
+
+    async def on_provider_fallback(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        primary: str,
+        fallback: str,
+    ) -> None:
+        await self._push(
+            ProviderStatusEvent(
+                agent=self._agent_name,
+                status="fallback",
+                primary=primary,
+                fallback=fallback,
             )
         )
 

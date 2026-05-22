@@ -759,7 +759,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // baseline of adjacent inline-block buttons. Together they make the
         // placeholder sit vertically centred against the 28px action buttons
         // both in Chrome (web build) and WKWebView (desktop build).
-        className="block w-full resize-none bg-transparent p-0 align-middle text-sm leading-relaxed text-(--color-text) placeholder-(--color-text-subtle) focus:outline-none disabled:opacity-50"
+        //
+        // ``text-transparent`` + ``caret-color`` hides the textarea's own
+        // glyphs so the syntax-highlight overlay (``MentionOverlay``) is
+        // the one painting visible text. The caret stays visible. The
+        // placeholder is exempt from ``text-transparent`` — it's owned by
+        // ``::placeholder`` and ``placeholder-(--color-text-subtle)``
+        // keeps it readable.
+        className="block w-full resize-none bg-transparent p-0 align-middle text-sm leading-relaxed text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
         // Cap matches the ``resize()`` ceiling above so the JS-driven height
         // and the CSS limit stay in lockstep.
         style={{ maxHeight: '120px' }}

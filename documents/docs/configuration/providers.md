@@ -18,6 +18,8 @@ A model is selected by setting `model: <prefix>:<model-id>` in an agent's `.md` 
 
 Provider setup replaces the seeded placeholder model without overwriting existing user-edited files.
 
+Provider construction is lazy-tolerant: a missing key, unavailable local daemon, or broken fallback provider does not prevent the app from starting. Agent load logs the unavailable provider and substitutes an unconfigured provider stub for the primary model, or disables the fallback model. The first attempted turn then surfaces an actionable provider-setup error in the UI instead of crashing startup.
+
 ## Registered prefixes
 
 Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are resolved from `{OPENAGENTD_CONFIG_DIR}/plugins/` after built-ins.
