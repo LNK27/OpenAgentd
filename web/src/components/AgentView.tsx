@@ -339,6 +339,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   }, [])
 
   const allBlocks = useMemo(() => [...blocks, ...currentBlocks], [blocks, currentBlocks])
+  const visibleBlocks = useMemo(
+    () => allBlocks.filter((block) => block.type !== 'compaction'),
+    [allBlocks],
+  )
   const totalLen = allBlocks.length
   const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
   const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
@@ -418,7 +422,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalLen, lastContent])
 
-  const isEmpty = totalLen === 0 && !isWorking
+  const isEmpty = visibleBlocks.length === 0 && !isWorking
 
   useEffect(() => {
     if (!isEmpty) return

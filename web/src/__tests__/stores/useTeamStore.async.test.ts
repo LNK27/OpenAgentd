@@ -105,6 +105,11 @@ const INITIAL_STATE = {
   hasMore: false,
   nextCursor: null,
   _leadRevertTime: null,
+  _workspace: null,
+  _loadingOlder: false,
+  _resolvedSessionReadyId: null,
+  _unloading: false,
+  cacheInvalidations: [],
 }
 
 function makeStream(overrides: object = {}) {
@@ -788,6 +793,53 @@ describe("sendMessage: queue behaviour", () => {
     useTeamStore.getState().newSession()
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
   })
+
+  it("marks a resolved empty session ready for one route restore skip", () => {
+    useTeamStore.setState({
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
+    })
+    useTeamStore.getState().beginResolvedSession("new-session", {
+      mode: "coding",
+      workspace: "/repo/project",
+      skipInitialRestore: true,
+    })
+
+    expect(useTeamStore.getState().consumeResolvedSessionReady("new-session", "/repo/project")).toBe(true)
+    expect(useTeamStore.getState()._resolvedSessionReadyId).toBeNull()
+    expect(useTeamStore.getState().consumeResolvedSessionReady("new-session", "/repo/project")).toBe(false)
+  })
+
+  it("does not mark restored sessions for a route restore skip by default", () => {
+    useTeamStore.setState({
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
+    })
+    useTeamStore.getState().beginResolvedSession("existing-session", {
+      mode: "coding",
+      workspace: "/repo/project",
+    })
+
+    expect(useTeamStore.getState().consumeResolvedSessionReady("existing-session", "/repo/project")).toBe(false)
+  })
+
+  it("does not skip restore when the resolved session workspace differs", () => {
+    useTeamStore.setState({
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
+    })
+    useTeamStore.getState().beginResolvedSession("new-session", {
+      mode: "coding",
+      workspace: "/repo/project",
+      skipInitialRestore: true,
+    })
+
+    expect(useTeamStore.getState().consumeResolvedSessionReady("new-session", "/repo/other")).toBe(false)
+    expect(useTeamStore.getState()._resolvedSessionReadyId).toBe("new-session")
+  })
 })
 
 // ── stopTeam ─────────────────────────────────────────────────────────────────
@@ -853,19 +905,36 @@ describe("connectStream", () => {
   })
 
   it("onError sets error and isConnected=false", () => {
-    mockTeamStream.mockImplementation(
-      (_sid: string, cbs: { onError?: (e: Error) => void }) => {
-        cbs.onError?.(new Error("stream error"))
-      }
-    )
-    useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true })
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true })
+    let callbacks!: { onError: (err: Error) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useTeamStore.getState().connectStream()
-
-    expect(useTeamStore.getState().error).toBe("stream error")
+    callbacks.onError(new Error("boom"))
+    expect(useTeamStore.getState().error).toBe("boom")
     expect(useTeamStore.getState().isConnected).toBe(false)
   })
 
-  it("onDone sets isConnected=false", () => {
+  it("ignores stream errors while the page is unloading", () => {
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true, _unloading: true })
+    let callbacks!: { onError: (err: Error) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
+    callbacks.onError(new Error("NetworkError when attempting to fetch resource"))
+    expect(useTeamStore.getState().error).toBeNull()
+    expect(useTeamStore.getState().isConnected).toBe(true)
+  })
+
+  it("ignores backend error events while the page is unloading", () => {
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true, _unloading: true })
+    let callbacks!: { onEvent: (type: string, data: unknown) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
+    callbacks.onEvent("error", { message: "Error in input stream" })
+    expect(useTeamStore.getState().error).toBeNull()
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
+  })
+
+  it("onDone sets isConnected=false and invalidates sessions", () => {
     mockTeamStream.mockImplementation(
       (_sid: string, cbs: { onDone?: () => void }) => {
         cbs.onDone?.()
@@ -875,6 +944,7 @@ describe("connectStream", () => {
     useTeamStore.getState().connectStream()
 
     expect(useTeamStore.getState().isConnected).toBe(false)
+    expect(useTeamStore.getState().cacheInvalidations).toContainEqual({ kind: "team_sessions" })
   })
 
   it("does not reconnect after onDone when queued messages are pending", () => {
@@ -944,9 +1014,9 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().leadName).toBe("lead")
   })
 
-  it("sets agentNames to lead only before a session is active", async () => {
+  it("sets agentNames including lead and members before a session is active", async () => {
     await useTeamStore.getState().loadTeamStatus()
-    expect(useTeamStore.getState().agentNames).toEqual(["lead"])
+    expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
   })
 
   it("sets agentNames including lead and members when a session is active", async () => {
@@ -983,11 +1053,11 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
   })
 
-  it("creates agent streams for the lead before a session is active", async () => {
+  it("creates agent streams for all agents before a session is active", async () => {
     await useTeamStore.getState().loadTeamStatus()
     const streams = useTeamStore.getState().agentStreams
     expect(streams["lead"]).toBeDefined()
-    expect(streams["worker"]).toBeUndefined()
+    expect(streams["worker"]).toBeDefined()
   })
 
   it("creates agent streams for all agents when a session is active", async () => {
@@ -998,10 +1068,10 @@ describe("loadTeamStatus", () => {
     expect(streams["worker"]).toBeDefined()
   })
 
-  it("sets model on the lead stream before a session is active", async () => {
+  it("sets model on each agent stream before a session is active", async () => {
     await useTeamStore.getState().loadTeamStatus()
     expect(useTeamStore.getState().agentStreams["lead"].model).toBe("gpt-4")
-    expect(useTeamStore.getState().agentStreams["worker"]).toBeUndefined()
+    expect(useTeamStore.getState().agentStreams["worker"].model).toBe("claude-3")
   })
 
   it("sets model on each agent stream when a session is active", async () => {
@@ -1128,6 +1198,32 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().leadName).toBe("lead")
   })
 
+  it("falls back to live lead when history has no agent_name", async () => {
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: null,
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState().leadName).toBe("lead")
+    expect(useTeamStore.getState().activeAgent).toBe("lead")
+    expect(useTeamStore.getState().agentNames).toEqual(["lead"])
+    expect(useTeamStore.getState().agentStreams.lead).toBeDefined()
+  })
+
   it("populates agentNames with lead and members", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
@@ -1238,6 +1334,33 @@ describe("loadSession", () => {
     })
     await useTeamStore.getState().loadSession("sess-1")
     expect(useTeamStore.getState().agentStreams["lead"].currentBlocks).toHaveLength(0)
+  })
+
+  it("marks the lead working when loaded session detail is still running", async () => {
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          running: true,
+          sub_sessions: [],
+          messages: [
+            makeMessageResponse({ id: "m1", role: "user", content: "resume task" }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
+    expect(useTeamStore.getState().agentStreams.lead.status).toBe("working")
   })
 
   it("sets activeAgent to lead when no activeAgent is set", async () => {

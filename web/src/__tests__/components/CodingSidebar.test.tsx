@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { findCodingWorkspaceId, loadLastCodingWorkspace } from '@/utils/workspace'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { loadLastCodingWorkspace } from '@/utils/workspace'
 import { useTeamStore } from '@/stores/useTeamStore'
 
 const navigate = mock(() => {})
@@ -14,7 +15,7 @@ const browseResponse = {
 }
 let validateError: Error | null = null
 const deleteSessionMutate = mock(() => {})
-let sessionsData: Array<{
+type TestSession = {
   id: string
   title: string | null
   agent_name: string | null
@@ -22,7 +23,14 @@ let sessionsData: Array<{
   updated_at: string | null
   mode?: string
   workspace?: string | null
-}> = []
+  running?: boolean
+}
+
+let sessionsData: TestSession[] = []
+let workspaceSessionsData: TestSession[] = []
+let workspaceHasNextPage = false
+let workspaceIsFetchingNextPage = false
+const fetchWorkspaceNextPage = mock(() => {})
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
@@ -71,6 +79,13 @@ mock.module('@/queries/useSessionsQuery', () => ({
     isFetching: false,
     refetch: mock(() => {}),
   }),
+  useCodingWorkspaceSessionsQuery: () => ({
+    data: { pages: [{ data: workspaceSessionsData }] },
+    isLoading: false,
+    hasNextPage: workspaceHasNextPage,
+    isFetchingNextPage: workspaceIsFetchingNextPage,
+    fetchNextPage: fetchWorkspaceNextPage,
+  }),
   useDeleteTeamSessionMutation: () => ({ mutate: deleteSessionMutate }),
 }))
 
@@ -78,9 +93,13 @@ describe('CodingSidebar workspace trust flow', () => {
   beforeEach(() => {
     localStorage.clear()
     sessionsData = []
+    workspaceSessionsData = []
+    workspaceHasNextPage = false
+    workspaceIsFetchingNextPage = false
     useTeamStore.setState({ isTeamWorking: false, sessionId: null })
     navigate.mockClear()
     deleteSessionMutate.mockClear()
+    fetchWorkspaceNextPage.mockClear()
     validateError = null
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
@@ -93,6 +112,18 @@ describe('CodingSidebar workspace trust flow', () => {
         }
         return new Response(JSON.stringify({ workspace: '/repo/project' }))
       }
+      if (url === '/api/team/sessions/resolve') {
+        return new Response(JSON.stringify({
+          id: 'resolved-session',
+          title: null,
+          agent_name: null,
+          mode: 'coding',
+          workspace: '/repo/project',
+          created_at: null,
+          updated_at: null,
+          created: true,
+        }))
+      }
       return new Response(null, { status: 404 })
     }) as typeof fetch
   })
@@ -104,9 +135,14 @@ describe('CodingSidebar workspace trust flow', () => {
 
   async function renderCodingSidebar() {
     const { CodingSidebar } = await import('@/components/CodingSidebar')
+    const queryClient = new QueryClient()
     let view: ReturnType<typeof render> | undefined
     await act(async () => {
-      view = render(<CodingSidebar openWorkspaceDialogKey={1} />)
+      view = render(
+        <QueryClientProvider client={queryClient}>
+          <CodingSidebar openWorkspaceDialogKey={1} />
+        </QueryClientProvider>,
+      )
       await Promise.resolve()
     })
     return view
@@ -114,9 +150,14 @@ describe('CodingSidebar workspace trust flow', () => {
 
   async function renderCodingSidebarForSessions(currentSessionId?: string) {
     const { CodingSidebar } = await import('@/components/CodingSidebar')
+    const queryClient = new QueryClient()
     let view: ReturnType<typeof render> | undefined
     await act(async () => {
-      view = render(<CodingSidebar currentSessionId={currentSessionId} workspace="/repo/project" />)
+      view = render(
+        <QueryClientProvider client={queryClient}>
+          <CodingSidebar currentSessionId={currentSessionId} workspace="/repo/project" />
+        </QueryClientProvider>,
+      )
       await Promise.resolve()
     })
     return view
@@ -124,6 +165,30 @@ describe('CodingSidebar workspace trust flow', () => {
 
   it('does not navigate or save the last workspace until the user trusts the validated directory', async () => {
     const user = userEvent.setup()
+    let resolveBody: unknown
+    globalThis.fetch = mock(async (input: unknown, init: unknown) => {
+      const url = String(input)
+      if (url.startsWith('/api/team/workspace/browse')) {
+        return new Response(JSON.stringify(browseResponse))
+      }
+      if (url.startsWith('/api/team/workspace/validate')) {
+        return new Response(JSON.stringify({ workspace: '/repo/project' }))
+      }
+      if (url === '/api/team/sessions/resolve') {
+        resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
+        return new Response(JSON.stringify({
+          id: 'resolved-session',
+          title: null,
+          agent_name: null,
+          mode: 'coding',
+          workspace: '/repo/project',
+          created_at: null,
+          updated_at: null,
+          created: true,
+        }))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
     await renderCodingSidebar()
 
     const openButton = await screen.findByRole('button', { name: /open this folder/i })
@@ -138,9 +203,15 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await waitFor(() => {
       expect(navigate).toHaveBeenCalledWith({
-        to: '/coding',
-        search: { w: findCodingWorkspaceId('/repo/project') },
+        to: '/coding/$sessionId',
+        params: { sessionId: 'resolved-session' },
       })
+    })
+    expect(resolveBody).toEqual({
+      mode: 'coding',
+      workspace: '/repo/project',
+      model: null,
+      thinking_level: null,
     })
     expect(loadLastCodingWorkspace()?.path).toBe('/repo/project')
   })
@@ -171,11 +242,23 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(loadLastCodingWorkspace()).toBeNull()
   })
 
-  it('shows a running indicator on the active coding session while the team is working', async () => {
+  it('shows a running indicator on every running coding session', async () => {
     sessionsData = [
       {
+        id: 'session-2',
+        title: 'Background running session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+      },
+    ]
+    workspaceSessionsData = [
+      {
         id: 'session-1',
-        title: 'Active session',
+        title: 'Selected idle session',
         agent_name: 'lead',
         created_at: '2026-05-13T00:00:00Z',
         updated_at: '2026-05-13T00:00:00Z',
@@ -184,21 +267,86 @@ describe('CodingSidebar workspace trust flow', () => {
       },
       {
         id: 'session-2',
-        title: 'Idle session',
+        title: 'Background running session',
         agent_name: 'lead',
         created_at: '2026-05-12T00:00:00Z',
         updated_at: '2026-05-12T00:00:00Z',
         mode: 'coding',
         workspace: '/repo/project',
+        running: true,
       },
     ]
-    useTeamStore.setState({ isTeamWorking: true, sessionId: 'session-1' })
 
     await renderCodingSidebarForSessions('session-1')
 
     expect(screen.getByLabelText('Session running')).toBeTruthy()
-    expect(screen.getByText('Active session')).toBeTruthy()
-    expect(screen.getByText('Idle session')).toBeTruthy()
+    expect(screen.getByText('Selected idle session')).toBeTruthy()
+    expect(screen.getByText('Background running session')).toBeTruthy()
+  })
+
+  it('keeps running sessions visible when a workspace is collapsed', async () => {
+    sessionsData = [
+      {
+        id: 'session-2',
+        title: 'Background running session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions(undefined)
+    await userEvent.setup().click(screen.getByLabelText('Collapse project'))
+
+    expect(screen.getByLabelText('Expand project')).toBeTruthy()
+    expect(screen.getByText('Background running session')).toBeTruthy()
+    expect(screen.getByLabelText('Workspace has running session')).toBeTruthy()
+    expect(screen.getByLabelText('Session running')).toBeTruthy()
+  })
+
+  it('does not create a new session when the current coding session is empty and idle', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: null,
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      isTeamWorking: false,
+      agentNames: ['lead'],
+      agentStreams: {
+        lead: {
+          blocks: [],
+          currentBlocks: [],
+          currentText: '',
+          currentThinking: '',
+          status: 'idle',
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
+          _completionBase: 0,
+          model: null,
+          lastError: null,
+        },
+      },
+    })
+    const fetchSpy = globalThis.fetch as unknown as ReturnType<typeof mock>
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('New session in project'))
+
+    expect(fetchSpy).not.toHaveBeenCalledWith('/api/team/sessions/resolve', expect.anything())
+    expect(navigate).not.toHaveBeenCalled()
   })
 
   it('does not show a running indicator for idle coding sessions', async () => {
@@ -213,10 +361,70 @@ describe('CodingSidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
+    workspaceSessionsData = sessionsData
 
     await renderCodingSidebarForSessions('session-1')
 
     expect(screen.queryByLabelText('Session running')).toBeNull()
+  })
+
+  it('loads more sessions at the bottom of a workspace session list', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'First page session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    workspaceHasNextPage = true
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByRole('button', { name: /load more/i }))
+
+    expect(fetchWorkspaceNextPage).toHaveBeenCalled()
+  })
+
+  it('selects another coding session after deleting the current one', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Delete me',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+      {
+        id: 'session-2',
+        title: 'Keep me',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Delete session Delete me'))
+    await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/coding/$sessionId',
+      params: { sessionId: 'session-2' },
+      replace: true,
+    })
+    expect(loadLastCodingWorkspace()?.path).toBe('/repo/project')
   })
 
   it('requires confirmation before deleting a coding session', async () => {
@@ -232,6 +440,7 @@ describe('CodingSidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
+    workspaceSessionsData = sessionsData
 
     await renderCodingSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('Delete session Delete me'))
@@ -243,6 +452,6 @@ describe('CodingSidebar workspace trust flow', () => {
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
     expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
-    expect(navigate).toHaveBeenCalledWith({ to: '/coding' })
+    expect(navigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
   })
 })

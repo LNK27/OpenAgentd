@@ -9,6 +9,7 @@
 import { readSSE, type SSECallbacks } from './sse'
 import type {
   SessionDetailResponse,
+  TeamSessionResolveResponse,
   SessionPageResponse,
   TeamHistoryResponse,
   TeamAgentsResponse,
@@ -189,10 +190,16 @@ export async function getCodingWorkspaceStatus(workspace: string): Promise<Works
   return res.json()
 }
 
-export async function listTeamSessions(before?: string | null, limit = 20): Promise<SessionPageResponse> {
+export async function listTeamSessions(
+  before?: string | null,
+  limit = 20,
+  filters?: { mode?: 'normal' | 'coding'; workspace?: string | null },
+): Promise<SessionPageResponse> {
   const params = new URLSearchParams()
   if (before) params.set('before', before)
   params.set('limit', String(limit))
+  if (filters?.mode) params.set('mode', filters.mode)
+  if (filters?.workspace) params.set('workspace', filters.workspace)
   const res = await fetch(`${API}/team/sessions?${params}`)
   if (!res.ok) throw new Error(`listTeamSessions failed: ${res.status}`)
   return res.json()
@@ -201,6 +208,29 @@ export async function listTeamSessions(before?: string | null, limit = 20): Prom
 export async function getTeamSession(id: string): Promise<SessionDetailResponse> {
   const res = await fetch(`${API}/team/sessions/${id}`)
   if (!res.ok) throw new Error(`getTeamSession failed: ${res.status}`)
+  return res.json()
+}
+
+export async function resolveTeamSession(options: {
+  mode?: string
+  workspace?: string | null
+  model?: string | null
+  thinkingLevel?: string | null
+  create?: boolean
+}): Promise<TeamSessionResolveResponse> {
+  const body: Record<string, string | boolean | null> = {
+    mode: options.mode ?? 'normal',
+  }
+  if (options.workspace !== undefined) body.workspace = options.workspace
+  if (options.model !== undefined) body.model = options.model
+  if (options.thinkingLevel !== undefined) body.thinking_level = options.thinkingLevel
+  if (options.create !== undefined) body.create = options.create
+  const res = await fetch(`${API}/team/sessions/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`resolveTeamSession failed: ${res.status}`)
   return res.json()
 }
 

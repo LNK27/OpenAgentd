@@ -11,6 +11,7 @@ import {
   Search,
   Settings,
   HelpCircle,
+  Loader2,
 } from 'lucide-react'
 import { isToday, isYesterday } from 'date-fns'
 import { useTeamSessionsQuery, useDeleteTeamSessionMutation } from '@/queries'
@@ -148,9 +149,20 @@ export function Sidebar({
 
   const confirmDelete = () => {
     if (!deleteTarget) return
+    const fallbackSession = deleteTarget.id === currentSessionId
+      ? normalSessions.find((session) => session.id !== deleteTarget.id)
+      : null
     deleteSession.mutate(deleteTarget.id)
     if (deleteTarget.id === currentSessionId) {
-      navigate({ to: '/cockpit' })
+      if (fallbackSession) {
+        navigate({
+          to: '/cockpit/$sessionId',
+          params: { sessionId: fallbackSession.id },
+          replace: true,
+        })
+      } else {
+        navigate({ to: '/cockpit', replace: true })
+      }
     }
     setDeleteTarget(null)
   }
@@ -427,6 +439,7 @@ interface SessionRowProps {
  */
 function SessionRow({ session, isActive, onSelect, onDelete }: SessionRowProps) {
   const isScheduled = Boolean(session.scheduled_task_name)
+  const isRunning = session.running === true
 
   return (
     <div className="group relative">
@@ -459,6 +472,11 @@ function SessionRow({ session, isActive, onSelect, onDelete }: SessionRowProps) 
             {isScheduled && (
               <span className="shrink-0 rounded px-1 py-px text-[10px] leading-tight bg-(--bg-key) text-(--color-text-subtle)">
                 sched
+              </span>
+            )}
+            {isRunning && (
+              <span className="shrink-0 text-(--color-accent)" aria-label="Session running">
+                <Loader2 size={11} className="animate-spin" aria-hidden="true" />
               </span>
             )}
           </div>

@@ -16,13 +16,13 @@
  * The 64 px icon rail from the previous design is gone — workspace
  * navigation now lives inline so the sidebar matches the cockpit's
  * single-column shape. ``activeWorkspace`` is the workspace driving
- * the current chat (loaded from the route's ``w=`` search param);
- * ``expandedWorkspaces`` is local UI state for which tree nodes are
+ * the current chat; ``expandedWorkspaces`` is local UI state for which tree nodes are
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -35,12 +35,12 @@ import {
   Settings,
   Trash2,
 } from 'lucide-react'
-import { useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries/useSessionsQuery'
-import { browseWorkspaces, validateWorkspace } from '@/api/client'
+import { useCodingWorkspaceSessionsQuery, useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries/useSessionsQuery'
+import { browseWorkspaces, resolveTeamSession, validateWorkspace } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
+import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { formatRelativeDate } from '@/utils/format'
 import {
-  codingSessionSearch,
   loadCodingWorkspaceEntries,
   loadCodingWorkspaces,
   removeCodingWorkspace,
@@ -77,6 +77,84 @@ interface CodingSidebarProps {
   onMobileClose?: () => void
 }
 
+function WorkspaceSessionList({
+  path,
+  currentSessionId,
+  runningSessions,
+  collapsed = false,
+  onSessionSelect,
+  onSessionDelete,
+}: {
+  path: string
+  currentSessionId?: string
+  runningSessions?: SessionResponse[]
+  collapsed?: boolean
+  onSessionSelect: (session: SessionResponse, workspacePath: string) => void
+  onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
+}) {
+  const sessions = useCodingWorkspaceSessionsQuery(path, !collapsed)
+  const workspaceSessions = collapsed
+    ? (runningSessions ?? [])
+    : (sessions.data?.pages.flatMap((page) => page.data) ?? [])
+
+  return (
+    <div className="space-y-0.5 pb-2 pl-4 pr-2">
+      {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && (
+        <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
+      )}
+      {workspaceSessions.map((session) => {
+        const isCurrent = session.id === currentSessionId
+        const isRunning = session.running === true
+        return (
+          <div key={session.id} className="group relative">
+            <button
+              type="button"
+              onClick={() => onSessionSelect(session, path)}
+              className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+                isCurrent
+                  ? 'bg-(--bg-key) text-(--color-text)'
+                  : 'text-(--color-text-2) hover:text-(--color-text)'
+              }`}
+            >
+              <p className="truncate font-medium">{session.title || 'Untitled'}</p>
+              <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
+                {formatRelativeDate(session.created_at)}
+              </p>
+              {isRunning && (
+                <span
+                  className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)"
+                  aria-label="Session running"
+                >
+                  <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => onSessionDelete(e, session)}
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
+              aria-label={`Delete session ${session.title || 'Untitled'}`}
+            >
+              <Trash2 size={11} />
+            </button>
+          </div>
+        )
+      })}
+      {!collapsed && sessions.hasNextPage && (
+        <button
+          type="button"
+          onClick={() => { void sessions.fetchNextPage() }}
+          disabled={sessions.isFetchingNextPage}
+          className="mt-1 flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key) disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {sessions.isFetchingNextPage && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
+          <span>{sessions.isFetchingNextPage ? 'Loading…' : 'Load more'}</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function CodingSidebar({
   currentSessionId,
   workspace,
@@ -94,9 +172,9 @@ export function CodingSidebar({
   // hamburger and Ctrl+B own that surface.
   void onCollapse
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
-  const isTeamWorking = useTeamStore((state) => state.isTeamWorking)
 
   const allSessions = sessions.data?.pages.flatMap((page) => page.data) ?? []
   const codingSessions = allSessions.filter(
@@ -205,12 +283,40 @@ export function CodingSidebar({
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)
   }, [pendingWorkspace, workspace])
 
-  const selectWorkspace = (path: string) => {
-    const entry = saveLastCodingWorkspace(path)
+  const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
+    saveLastCodingWorkspace(path)
     setPendingWorkspace(path)
     setWorkspaces(loadCodingWorkspaces())
-    useTeamStore.getState().newSession()
-    navigate({ to: '/coding', search: { w: entry.id } })
+    try {
+      const state = useTeamStore.getState()
+      const create = opts.create && !(
+        state.isEmptyIdleSession() &&
+        state.sessionId === currentSessionId &&
+        workspace === path
+      )
+      if (opts.create && !create) return
+      const session = await resolveTeamSession({
+        mode: 'coding',
+        workspace: path,
+        model: state.sessionModel,
+        thinkingLevel: state.sessionThinkingLevel,
+        create,
+      })
+      state.beginResolvedSession(session.id, {
+        mode: 'coding',
+        workspace: session.workspace ?? path,
+        model: session.model ?? state.sessionModel,
+        thinkingLevel: session.thinking_level ?? state.sessionThinkingLevel,
+        skipInitialRestore: create && session.created,
+      })
+      if (create && session.created) {
+        prependSession(queryClient, session)
+        prependWorkspaceSession(queryClient, path, session)
+      }
+      navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to create session')
+    }
   }
 
   // Remove a workspace from the sidebar. Sessions stay in the backend —
@@ -249,16 +355,14 @@ export function CodingSidebar({
     const workspaceToOpen = trustWorkspace
     setTrustWorkspace(null)
     setDialogOpen(false)
-    selectWorkspace(workspaceToOpen)
+    void selectWorkspace(workspaceToOpen)
   }
 
   const handleSessionSelect = (session: SessionResponse, workspacePath: string) => {
-    const search = codingSessionSearch(session.workspace, workspacePath)
-    if (!search) return
+    if (session.workspace ?? workspacePath) saveLastCodingWorkspace(session.workspace ?? workspacePath)
     navigate({
       to: '/coding/$sessionId',
       params: { sessionId: session.id },
-      search,
     })
     onMobileClose?.()
   }
@@ -270,8 +374,23 @@ export function CodingSidebar({
 
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
+    const fallbackSession = deleteTarget.id === currentSessionId
+      ? codingSessions.find((session) => session.id !== deleteTarget.id && session.workspace === deleteTarget.workspace)
+        ?? codingSessions.find((session) => session.id !== deleteTarget.id)
+      : null
     deleteSession.mutate(deleteTarget.id)
-    if (deleteTarget.id === currentSessionId) navigate({ to: '/coding' })
+    if (deleteTarget.id === currentSessionId) {
+      if (fallbackSession) {
+        if (fallbackSession.workspace) saveLastCodingWorkspace(fallbackSession.workspace)
+        navigate({
+          to: '/coding/$sessionId',
+          params: { sessionId: fallbackSession.id },
+          replace: true,
+        })
+      } else {
+        navigate({ to: '/coding', replace: true })
+      }
+    }
     setDeleteTarget(null)
   }
 
@@ -337,6 +456,8 @@ export function CodingSidebar({
           const isExpanded = expandedWorkspaces.has(path)
           const isPending = pendingWorkspace === path
           const workspaceSessions = codingSessions.filter((s) => s.workspace === path)
+          const runningSessions = workspaceSessions.filter((s) => s.running === true)
+          const hasRunningSession = runningSessions.length > 0
           return (
             <div key={path} className="relative">
               {/* Workspace row */}
@@ -353,13 +474,15 @@ export function CodingSidebar({
                   <span className={`truncate ${isActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
                     {workspaceLabel(path)}
                   </span>
-                  {isPending && (
-                    <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
+                  {(isPending || hasRunningSession) && (
+                    <span aria-label={hasRunningSession ? 'Workspace has running session' : undefined}>
+                      <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
+                    </span>
                   )}
                 </button>
                 <button
                   type="button"
-                  onClick={() => selectWorkspace(path)}
+                  onClick={() => { void selectWorkspace(path, { create: true }) }}
                   className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) group-hover:opacity-100"
                   aria-label={`New session in ${workspaceLabel(path)}`}
                   title={`New session in ${workspaceLabel(path)}`}
@@ -377,50 +500,16 @@ export function CodingSidebar({
                 </button>
               </div>
 
-              {/* Nested sessions — only when expanded */}
-              {isExpanded && (
-                <div className="space-y-0.5 pb-2 pl-4 pr-2">
-                  {workspaceSessions.length === 0 && (
-                    <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
-                  )}
-                  {workspaceSessions.map((session) => {
-                    const isCurrent = session.id === currentSessionId
-                    return (
-                      <div key={session.id} className="group relative">
-                        <button
-                          type="button"
-                          onClick={() => handleSessionSelect(session, path)}
-                          className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
-                            isCurrent
-                              ? 'bg-(--bg-key) text-(--color-text)'
-                              : 'text-(--color-text-2) hover:text-(--color-text)'
-                          }`}
-                        >
-                          <p className="truncate font-medium">{session.title || 'Untitled'}</p>
-                          <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
-                            {formatRelativeDate(session.created_at)}
-                          </p>
-                          {isCurrent && isTeamWorking && (
-                            <span
-                              className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)"
-                              aria-label="Session running"
-                            >
-                              <Loader2 size={11} className="animate-spin" aria-hidden="true" />
-                            </span>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleSessionDelete(e, session)}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
-                          aria-label={`Delete session ${session.title || 'Untitled'}`}
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
+              {/* Nested sessions — expanded list, or running sessions only when collapsed */}
+              {(isExpanded || hasRunningSession) && (
+                <WorkspaceSessionList
+                  path={path}
+                  currentSessionId={currentSessionId}
+                  runningSessions={runningSessions}
+                  collapsed={!isExpanded}
+                  onSessionSelect={handleSessionSelect}
+                  onSessionDelete={handleSessionDelete}
+                />
               )}
             </div>
           )

@@ -807,6 +807,8 @@ async def list_sessions_page(
     *,
     before: str | None = None,
     limit: int = 20,
+    mode: str | None = None,
+    workspace: str | None = None,
 ) -> tuple[list[ChatSession], str | None, bool]:
     """Return a cursor-paginated page of top-level sessions (newest-first).
 
@@ -817,6 +819,8 @@ async def list_sessions_page(
         db: Async database session.
         before: ISO 8601 ``created_at`` cursor — return sessions older than this.
         limit: Maximum number of sessions to return (1–100).
+        mode: Optional session mode filter.
+        workspace: Optional workspace filter for coding sessions.
 
     Returns:
         A tuple of ``(sessions, next_cursor, has_more)`` where ``next_cursor``
@@ -831,6 +835,11 @@ async def list_sessions_page(
         .where(col(ChatSession.parent_session_id).is_(None))
         .order_by(col(ChatSession.created_at).desc())
     )
+
+    if mode is not None:
+        stmt = stmt.where(col(ChatSession.mode) == mode)
+    if workspace is not None:
+        stmt = stmt.where(col(ChatSession.workspace) == workspace)
 
     if before:
         cursor_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
@@ -850,6 +859,28 @@ async def list_sessions_page(
             next_cursor = last_created.isoformat().replace("+00:00", "Z")
 
     return rows, next_cursor, has_more
+
+
+async def get_latest_top_level_session(
+    db: AsyncSession,
+    *,
+    mode: str,
+    workspace: str | None,
+) -> ChatSession | None:
+    """Return the newest top-level session for a mode/workspace pair."""
+    stmt = (
+        select(ChatSession)
+        .where(
+            col(ChatSession.parent_session_id).is_(None),
+            ChatSession.mode == mode,
+        )
+        .order_by(col(ChatSession.created_at).desc())
+    )
+    if workspace is None:
+        stmt = stmt.where(col(ChatSession.workspace).is_(None))
+    else:
+        stmt = stmt.where(ChatSession.workspace == workspace)
+    return (await db.exec(stmt.limit(1))).first()
 
 
 async def delete_session(db: AsyncSession, session_id: UUID) -> bool:

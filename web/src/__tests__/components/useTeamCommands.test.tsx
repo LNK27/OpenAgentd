@@ -94,7 +94,6 @@ describe("useTeamCommands — shortcut labels", () => {
     expect(byId(result.current, "workspace-files").shortcut).toBe("Ctrl+F")
     expect(byId(result.current, "wiki").shortcut).toBe("Ctrl+M")
     expect(byId(result.current, "scheduled-tasks").shortcut).toBe("Ctrl+S")
-    expect(byId(result.current, "focus-input").shortcut).toBe("Ctrl+I")
     expect(byId(result.current, "collapse-sidebar").shortcut).toBe("Ctrl+B")
   })
 })
@@ -150,20 +149,6 @@ describe("useTeamCommands — dispatchCtrlKey synthetic events", () => {
     expect(captured[0].key).toBe("s")
     expect(captured[0].ctrlKey).toBe(true)
     expect(captured[0].metaKey).toBe(false)
-  })
-
-  it("focus-input dispatches a CustomEvent (not a synthetic Ctrl+key)", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs()))
-    const customs: Event[] = []
-    const listener = (e: Event) => customs.push(e)
-    window.addEventListener("focus-chat-input", listener)
-    try {
-      byId(result.current, "focus-input").action()
-    } finally {
-      window.removeEventListener("focus-chat-input", listener)
-    }
-    expect(customs.length).toBe(1)
-    expect(customs[0].type).toBe("focus-chat-input")
   })
 
   it("dispatched events would trigger a Ctrl-only useKeyboardShortcuts handler", () => {
@@ -253,24 +238,23 @@ describe("useTeamCommands — coding mode swap", () => {
 //  Per-agent commands
 // ════════════════════════════════════════════════════════════════════════════
 describe("useTeamCommands — per-agent commands", () => {
-  it("emits one switch-<name> command per agent", () => {
+  it("emits switch-<name> commands for worker agents only", () => {
     const args = makeArgs({
       agentNames: ["alice", "bob", "charlie"],
       leadName: "alice",
     })
     const { result } = renderHook(() => useTeamCommands(args))
-    expect(result.current.find((c) => c.id === "switch-alice")).toBeDefined()
+    expect(result.current.find((c) => c.id === "switch-alice")).toBeUndefined()
     expect(result.current.find((c) => c.id === "switch-bob")).toBeDefined()
     expect(result.current.find((c) => c.id === "switch-charlie")).toBeDefined()
   })
 
-  it("marks the lead agent in the description", () => {
+  it("marks switchable agents as workers", () => {
     const args = makeArgs({
       agentNames: ["alice", "bob"],
       leadName: "alice",
     })
     const { result } = renderHook(() => useTeamCommands(args))
-    expect(byId(result.current, "switch-alice").description).toBe("Lead agent")
     expect(byId(result.current, "switch-bob").description).toBe("Worker agent")
   })
 

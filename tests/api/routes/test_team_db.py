@@ -72,11 +72,12 @@ def app_with_team(test_team):
     set_team(None)
 
 
-async def _create_team_session(db, session_id, agent_name="lead"):
+async def _create_team_session(db, session_id, agent_name="lead", **kwargs):
     """Helper to create a top-level (team lead) session in DB."""
     session = ChatSession(
         id=session_id,
         agent_name=agent_name,
+        **kwargs,
     )
     db.add(session)
     return session
@@ -140,6 +141,56 @@ class TestListTeamSessionsWithData:
         assert len(found) == 1
 
     @pytest.mark.asyncio
+    async def test_list_sessions_marks_running_sessions(self, app_with_team):
+        import app.core.db as _db
+        from app.services import memory_stream_store
+
+        running_id = uuid.uuid7()
+        idle_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, running_id)
+                await _create_team_session(db, idle_id)
+
+        await memory_stream_store.init_turn(str(running_id))
+        try:
+            client = TestClient(app_with_team)
+            resp = client.get("/api/team/sessions")
+            assert resp.status_code == 200
+            by_id = {s["id"]: s for s in resp.json()["data"]}
+
+            assert by_id[str(running_id)]["running"] is True
+            assert by_id[str(idle_id)]["running"] is False
+        finally:
+            await memory_stream_store.clear(str(running_id))
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_filters_coding_workspace(self, app_with_team):
+        import app.core.db as _db
+
+        workspace_id = uuid.uuid7()
+        other_workspace_id = uuid.uuid7()
+        normal_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(
+                    db, workspace_id, mode="coding", workspace="/repo/project"
+                )
+                await _create_team_session(
+                    db, other_workspace_id, mode="coding", workspace="/repo/other"
+                )
+                await _create_team_session(db, normal_id, mode="normal")
+
+        client = TestClient(app_with_team)
+        resp = client.get(
+            "/api/team/sessions",
+            params={"mode": "coding", "workspace": "/repo/project"},
+        )
+        assert resp.status_code == 200
+        ids = [s["id"] for s in resp.json()["data"]]
+        assert ids == [str(workspace_id)]
+
+    @pytest.mark.asyncio
     async def test_list_sessions_empty(self, app_with_team):
         """No team_lead sessions → empty data list, has_more=False."""
         client = TestClient(app_with_team)
@@ -167,6 +218,77 @@ class TestListTeamSessionsWithData:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["data"]) <= 2
+
+
+class TestResolveTeamSession:
+    def test_resolve_creates_normal_session(self, app_with_team):
+        client = TestClient(app_with_team)
+
+        resp = client.post("/api/team/sessions/resolve", json={"mode": "normal"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["created"] is True
+        assert data["mode"] == "normal"
+        assert "workspace" not in data
+
+    @pytest.mark.asyncio
+    async def test_resolve_reuses_latest_normal_session(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+
+        client = TestClient(app_with_team)
+        resp = client.post("/api/team/sessions/resolve", json={"mode": "normal"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["created"] is False
+        assert data["id"] == str(lead_id)
+
+    @pytest.mark.asyncio
+    async def test_resolve_can_force_create_normal_session(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+
+        client = TestClient(app_with_team)
+        resp = client.post(
+            "/api/team/sessions/resolve",
+            json={"mode": "normal", "create": True},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["created"] is True
+        assert data["id"] != str(lead_id)
+
+    def test_resolve_creates_coding_session(self, app_with_team, tmp_path):
+        client = TestClient(app_with_team)
+
+        resp = client.post(
+            "/api/team/sessions/resolve",
+            json={"mode": "coding", "workspace": str(tmp_path)},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["created"] is True
+        assert data["mode"] == "coding"
+        assert data["workspace"] == str(tmp_path.resolve())
+
+    def test_resolve_requires_workspace_for_coding(self, app_with_team):
+        client = TestClient(app_with_team)
+
+        resp = client.post("/api/team/sessions/resolve", json={"mode": "coding"})
+
+        assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------

@@ -20,9 +20,8 @@
  * that returning a freshly-built object on every render would trigger.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
-
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { AgentView } from '../AgentView'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
@@ -37,9 +36,10 @@ import { SchedulerPanel } from '../SchedulerPanel'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery, useTriggerDreamMutation } from '@/queries'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
-import { renderCommand } from '@/api/client'
+import { renderCommand, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { useUIStore } from '@/stores/useUIStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
@@ -65,13 +65,14 @@ import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment } fr
 import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
-import { saveCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { setTraySession } from '@/lib/tray'
 
 interface TeamChatViewProps {
   sessionId?: string
   mode?: 'normal' | 'coding'
   workspace?: string | null
+  codingSessionLoading?: boolean
 }
 
 async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
@@ -86,8 +87,9 @@ async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
   )
 }
 
-export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: TeamChatViewProps) {
+export function TeamChatView({ sessionId, mode = 'normal', workspace = null, codingSessionLoading = false }: TeamChatViewProps) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const { isMacOverlay } = usePlatform()
   // Manual drag pattern: a mousedown handler that only starts a drag
@@ -121,7 +123,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   const loadSession    = useTeamStore((s) => s.loadSession)
   const sendMessage    = useTeamStore((s) => s.sendMessage)
   const continueTeam   = useTeamStore((s) => s.continueTeam)
-  const newSession     = useTeamStore((s) => s.newSession)
+  const beginResolvedSession = useTeamStore((s) => s.beginResolvedSession)
+  const consumeResolvedSessionReady = useTeamStore((s) => s.consumeResolvedSessionReady)
   const cycleActiveAgent = useTeamStore((s) => s.cycleActiveAgent)
   const setActiveAgent   = useTeamStore((s) => s.setActiveAgent)
   const setSessionModelSettings = useTeamStore((s) => s.setSessionModelSettings)
@@ -171,6 +174,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
   // Lead capabilities — used to drive composer affordances (slash menu).
   const agentWorkspace = mode === 'coding' ? workspace : null
   const hasCodingWorkspace = mode !== 'coding' || Boolean(workspace)
+  const isCodingSessionLoading = mode === 'coding' && codingSessionLoading
   const { data: teamAgentsData, isLoading: teamAgentsLoading } = useTeamAgentsQuery(agentWorkspace, hasCodingWorkspace)
   const leadCapabilities: AgentCapabilitiesType | undefined = teamAgentsData?.agents
     ?.find((a) => a.is_lead)?.capabilities
@@ -203,6 +207,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
 
   useEffect(() => {
     if (hasCodingWorkspace) loadTeamStatus(agentWorkspace)
+    if (isCodingSessionLoading) return
     if (!sessionId) return
     const store = useTeamStore.getState()
     if (store.sessionId === sessionId && store.isConnected) return
@@ -229,10 +234,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     // dispatched, so replay + live events accumulate cleanly.
     let cancelled = false
     ;(async () => {
-      await loadSession(sessionId, agentWorkspace)
+      if (!consumeResolvedSessionReady(sessionId, agentWorkspace)) {
+        await loadSession(sessionId, agentWorkspace)
+      }
       if (cancelled) return
       const controller = connectStream()
       if (controller) abortRef.current = controller
+      requestAnimationFrame(() => inputRef.current?.focus())
     })()
 
     return () => {
@@ -240,22 +248,53 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
       abortRef.current?.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, agentWorkspace, hasCodingWorkspace])
+  }, [sessionId, agentWorkspace, hasCodingWorkspace, isCodingSessionLoading])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
+  const isEmptyIdleSession = useCallback(() => useTeamStore.getState().isEmptyIdleSession(), [])
+
   const handleNewSession = useCallback(() => {
+    if (isEmptyIdleSession()) {
+      requestAnimationFrame(() => inputRef.current?.focus())
+      return
+    }
     abortRef.current?.abort()
     abortRef.current = null
-    newSession()
-    if (mode === 'coding' && workspace) {
-      const entry = saveCodingWorkspace(workspace)
-      navigate({ to: '/coding', search: { w: entry.id } })
-    } else {
-      navigate({ to: mode === 'coding' ? '/coding' : '/cockpit' })
-    }
-    requestAnimationFrame(() => inputRef.current?.focus())
-  }, [mode, workspace, newSession, navigate])
+    ;(async () => {
+      try {
+        const session = await resolveTeamSession({
+          mode,
+          workspace: mode === 'coding' ? workspace : null,
+          model: sessionModel,
+          thinkingLevel: sessionThinkingLevel,
+          create: true,
+        })
+        beginResolvedSession(session.id, {
+          mode,
+          workspace: session.workspace ?? workspace,
+          model: session.model ?? sessionModel,
+          thinkingLevel: session.thinking_level ?? sessionThinkingLevel,
+          skipInitialRestore: session.created,
+        })
+        if (session.created) {
+          prependSession(queryClient, session)
+        }
+        if (mode === 'coding' && workspace) {
+          if (session.created) prependWorkspaceSession(queryClient, workspace, session)
+          saveLastCodingWorkspace(workspace)
+          navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
+        } else {
+          navigate({ to: '/cockpit/$sessionId', params: { sessionId: session.id } })
+        }
+        requestAnimationFrame(() => inputRef.current?.focus())
+      } catch (err) {
+        useTeamStore.setState((state) => {
+          state.error = err instanceof Error ? err.message : 'Failed to create session'
+        })
+      }
+    })()
+  }, [beginResolvedSession, isEmptyIdleSession, mode, navigate, queryClient, sessionModel, sessionThinkingLevel, workspace])
 
   const handleWorkspaceFiles = useCallback(() => {
     if (mode === 'coding') {
@@ -504,22 +543,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
     setActiveAgent,
     navigate,
   })
-  const paletteCommands = useMemo(
-    () => [
-      ...commands,
-      ...(commandsQ.data?.commands ?? []).map((c) => ({
-        id: `slash-${c.name}`,
-        group: 'Slash Commands',
-        label: `/${c.name}`,
-        description: c.description || `Custom command (${c.source})`,
-        action: () => {
-          inputRef.current?.setValue(`/${c.name} `)
-          inputRef.current?.focus()
-        },
-      })),
-    ],
-    [commands, commandsQ.data],
-  )
+  const paletteCommands = commands
 
   useKeyboardShortcuts({
     n: handleNewSession,
@@ -607,14 +631,22 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
             >
               <Menu size={16} aria-hidden="true" />
             </button>
-            {mode !== 'coding' && sessionTitle && (
+            {mode === 'coding' && workspace ? (
+              <span
+                className="ml-1 flex min-w-0 max-w-60 items-baseline gap-1 text-sm"
+                title={workspace}
+              >
+                <span className="shrink-0 text-(--color-text-muted)">Workspace:</span>
+                <span className="truncate font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
+              </span>
+            ) : mode !== 'coding' && sessionTitle ? (
               <span
                 className="ml-1 max-w-60 truncate text-sm font-semibold text-(--color-text)"
                 title={sessionTitle}
               >
                 {sessionTitle}
               </span>
-            )}
+            ) : null}
           </div>
 
           {/* Active-agent chip → dropdown of all members. Split view
@@ -766,6 +798,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               onContinue={continueTeam}
             />
           </div>
+        ) : isCodingSessionLoading ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
+            <div>
+              <h2 className="text-sm font-medium text-(--color-text)">Opening coding session…</h2>
+              <p className="mt-1 text-xs text-(--color-text-muted)">Loading the saved workspace for this session.</p>
+            </div>
+          </div>
         ) : mode === 'coding' && workspace && teamAgentsLoading ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
@@ -806,49 +846,48 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
               ) : undefined
             }
           />
-        ) : (
-          <div className="flex flex-1 select-none flex-col items-center justify-center gap-3">
-            <img src={OctobotMascot} className="opacity-25 grayscale" width={64} height={64} alt="Idle octobot" />
-            <p className="text-sm text-(--color-text-muted)">Select an agent above</p>
+        ) : mode === 'coding' && workspace ? (
+          <div className="flex flex-1 flex-col items-center justify-center py-16">
+            <WorkspaceInfoCard workspace={workspace} />
           </div>
-        )}
+        ) : null}
 
-        <FloatingInputBar
-          ref={inputRef}
-          boundsRef={mainColumnRef}
-          onSubmit={async (content, files) => {
-            const expanded = await expandUserCommand(content)
-            sendMessage(expanded, files, {
-              mode,
-              workspace,
-              model: selectedModel || null,
-              thinkingLevel: selectedThinkingLevel || null,
-            })
-          }}
-          onStop={() => useTeamStore.getState().stopTeam()}
-          onSlashCommand={handleSlashCommand}
-          slashCommands={slashCommands}
-          fileRefs={fileRefs}
-          isStreaming={isTeamWorking}
-          disabled={mode === 'coding' && !workspace}
-          autoFocus={!sessionId}
-          placeholder={
-            dreamMutation.isPending
-              ? 'Dream is running…'
-              : isTeamWorking
-                ? 'Team working… type to interrupt'
-                : mode === 'coding' && workspace
-                  ? `Coding in ${workspaceLabel(workspace)}`
-                  : mode === 'coding'
-                    ? 'Choose a workspace to start coding…'
+        {(mode !== 'coding' || workspace) && (
+          <FloatingInputBar
+            ref={inputRef}
+            boundsRef={mainColumnRef}
+            onSubmit={async (content, files) => {
+              const expanded = await expandUserCommand(content)
+              sendMessage(expanded, files, {
+                mode,
+                workspace,
+                model: selectedModel || null,
+                thinkingLevel: selectedThinkingLevel || null,
+              })
+            }}
+            onStop={() => useTeamStore.getState().stopTeam()}
+            onSlashCommand={handleSlashCommand}
+            slashCommands={slashCommands}
+            fileRefs={fileRefs}
+            isStreaming={isTeamWorking}
+            disabled={mode === 'coding' && isCodingSessionLoading}
+            autoFocus={!sessionId}
+            placeholder={
+              dreamMutation.isPending
+                ? 'Dream is running…'
+                : isTeamWorking
+                  ? 'Team working… type to interrupt'
+                  : mode === 'coding' && workspace
+                    ? `Coding in ${workspaceLabel(workspace)}`
                     : 'Message the team…'
-          }
-          capabilities={leadCapabilities}
-          voiceEnabled={voiceEnabled}
-          revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
-          revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
-          onRedo={() => { void useTeamStore.getState().redoTeam() }}
-        />
+            }
+            capabilities={leadCapabilities}
+            voiceEnabled={voiceEnabled}
+            revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
+            revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
+            onRedo={() => { void useTeamStore.getState().redoTeam() }}
+          />
+        )}
         </main>
         {mode === 'coding' && workspace && codingPanel !== null && (
           <CodingWorkspacePanel

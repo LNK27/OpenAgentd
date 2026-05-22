@@ -28,6 +28,8 @@ from app.api.schemas.sessions import (
     SessionDetailResponse,
     SessionPageResponse,
     SessionResponse,
+    TeamSessionResolveRequest,
+    TeamSessionResolveResponse,
 )
 from app.api.schemas.team import TeamHistoryMember, TeamHistoryResponse
 from app.models.chat import ChatSession
@@ -43,6 +45,7 @@ from app.services.chat_service import (
     cleanup_reverted_tail,
     delete_session,
     get_team_history,
+    get_latest_top_level_session,
     list_sessions_page,
     save_queued_user_message,
 )
@@ -580,15 +583,22 @@ async def list_team_sessions(
         description="ISO 8601 created_at cursor — return sessions older than this.",
     ),
     limit: int = Query(20, ge=1, le=100),
+    mode: str | None = Query(None),
+    workspace: str | None = Query(None),
 ) -> SessionPageResponse:
     """List team lead sessions newest-first, cursor-paginated by created_at.
 
     Pass ``before=<created_at_iso>`` (the ``next_cursor`` from the previous
     page) to retrieve the next batch.  Omit to start from the newest.
     """
+    if mode is not None and mode not in {"normal", "coding"}:
+        raise HTTPException(status_code=422, detail="Invalid mode")
+    if workspace is not None and mode != "coding":
+        raise HTTPException(status_code=422, detail="workspace requires mode=coding")
+
     try:
         sessions, next_cursor, has_more = await list_sessions_page(
-            db, before=before, limit=limit
+            db, before=before, limit=limit, mode=mode, workspace=workspace
         )
     except ValueError:
         raise HTTPException(
@@ -596,11 +606,63 @@ async def list_team_sessions(
             detail="Invalid 'before' cursor — expected ISO 8601 datetime.",
         )
 
+    running_session_ids = stream_store.running_session_ids()
     return SessionPageResponse(
-        data=[SessionResponse.model_validate(s) for s in sessions],
+        data=[
+            SessionResponse.model_validate(s).model_copy(
+                update={"running": str(s.id) in running_session_ids}
+            )
+            for s in sessions
+        ],
         next_cursor=next_cursor,
         has_more=has_more,
     )
+
+
+@router.post("/sessions/resolve", response_model=TeamSessionResolveResponse)
+async def resolve_team_session(
+    body: TeamSessionResolveRequest, db: DbSession
+) -> TeamSessionResolveResponse:
+    """Return the newest matching top-level session, creating one if absent."""
+    if body.mode not in {"normal", "coding"}:
+        raise HTTPException(
+            status_code=422, detail="mode must be 'normal' or 'coding'."
+        )
+    workspace = body.workspace
+    if body.mode == "normal":
+        workspace = None
+    elif not workspace:
+        raise HTTPException(
+            status_code=422, detail="workspace is required when mode='coding'."
+        )
+    else:
+        workspace = _validate_workspace_or_422(workspace)
+
+    model = body.model.strip() if body.model else None
+    thinking_level = body.thinking_level.strip() if body.thinking_level else None
+    if model and not await is_registered_model_id(model):
+        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
+
+    async with db.begin():
+        session = None
+        if not body.create:
+            session = await get_latest_top_level_session(
+                db, mode=body.mode, workspace=workspace
+            )
+        created = session is None
+        if session is None:
+            session = ChatSession(
+                mode=body.mode,
+                workspace=workspace,
+                model=model,
+                thinking_level=thinking_level,
+            )
+            db.add(session)
+            await db.flush()
+            await db.refresh(session)
+
+    data = SessionResponse.model_validate(session).model_dump()
+    return TeamSessionResolveResponse(**data, created=created)
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
@@ -612,7 +674,12 @@ async def get_team_session_detail(
     if history is None:
         raise HTTPException(status_code=404, detail="Session not found.")
 
-    lead_resp = SessionResponse.model_validate(history.lead_session)
+    lead_resp = SessionResponse.model_validate(history.lead_session).model_copy(
+        update={
+            "running": str(history.lead_session.id)
+            in stream_store.running_session_ids()
+        }
+    )
     return SessionDetailResponse(
         **lead_resp.model_dump(),
         messages=[_message_response(m) for m in history.lead_messages],
@@ -663,7 +730,12 @@ async def team_history(
     else:
         _require_team(team)
 
-    lead_resp = SessionResponse.model_validate(history.lead_session)
+    lead_resp = SessionResponse.model_validate(history.lead_session).model_copy(
+        update={
+            "running": str(history.lead_session.id)
+            in stream_store.running_session_ids()
+        }
+    )
     lead_detail = SessionDetailResponse(
         **lead_resp.model_dump(),
         messages=[_message_response(m) for m in history.lead_messages],

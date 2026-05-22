@@ -1,6 +1,6 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 import type { CacheInvalidation } from '@/stores/useTeamStore'
-import type { SessionPageResponse, WorkspaceGitDiffResponse } from '@/api/types'
+import type { SessionPageResponse, SessionResponse, WorkspaceGitDiffResponse } from '@/api/types'
 import { getCodingWorkspaceGitDiff } from '@/api/client'
 import { queryKeys } from '@/queries'
 
@@ -43,6 +43,9 @@ export function applyCacheInvalidations(
         break
       case 'team_agents':
         queryClient.invalidateQueries({ queryKey: queryKeys.teamAgents() })
+        break
+      case 'team_sessions':
+        queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
         break
     }
   }
@@ -123,6 +126,15 @@ function nextUntracked(
   return [...carry, ...(scoped ?? [])]
 }
 
+function isInfiniteSessionData(value: unknown): value is InfiniteData<SessionPageResponse> {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    'pages' in value &&
+    Array.isArray(value.pages),
+  )
+}
+
 export function patchSessionTitle(
   queryClient: Pick<QueryClient, 'setQueriesData'>,
   sessionId: string,
@@ -130,12 +142,56 @@ export function patchSessionTitle(
 ): void {
   queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
     { queryKey: queryKeys.team.sessions.all() },
-    (old) => old && {
-      ...old,
-      pages: old.pages.map((page) => ({
-        ...page,
-        data: page.data.map((s) => s.id === sessionId ? { ...s, title } : s),
-      })),
+    (old) => {
+      if (!isInfiniteSessionData(old)) return old
+      return {
+        ...old,
+        pages: old.pages.map((page) => ({
+          ...page,
+          data: page.data.map((s) => s.id === sessionId ? { ...s, title } : s),
+        })),
+      }
     },
+  )
+}
+
+function prependSessionToInfiniteData(
+  old: InfiniteData<SessionPageResponse> | undefined,
+  session: SessionResponse,
+): InfiniteData<SessionPageResponse> | undefined {
+  if (!isInfiniteSessionData(old)) return old
+  if (old.pages.some((page) => page.data.some((item) => item.id === session.id))) return old
+  const [first, ...rest] = old.pages
+  if (!first) return old
+  return {
+    ...old,
+    pages: [
+      {
+        ...first,
+        data: [session, ...first.data],
+      },
+      ...rest,
+    ],
+  }
+}
+
+export function prependSession(
+  queryClient: Pick<QueryClient, 'setQueryData'>,
+  session: SessionResponse,
+): void {
+  queryClient.setQueryData<InfiniteData<SessionPageResponse>>(
+    queryKeys.team.sessions.infinite(),
+    (old) => prependSessionToInfiniteData(old, session),
+  )
+}
+
+export function prependWorkspaceSession(
+  queryClient: Pick<QueryClient, 'setQueryData'>,
+  workspace: string,
+  session: SessionResponse,
+): void {
+  queryClient.setQueryData<InfiniteData<SessionPageResponse>>(
+    queryKeys.team.sessions.workspace(workspace),
+    (old) => prependSessionToInfiniteData(old, session),
   )
 }

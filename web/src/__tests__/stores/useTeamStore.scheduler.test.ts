@@ -388,7 +388,10 @@ describe("useTeamStore — scheduler invalidation", () => {
       tool_call_id: "tc-19",
       result: "ok",
     })
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([{ kind: "scheduler" }])
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "team_sessions" },
+      { kind: "scheduler" },
+    ])
   })
 
   it("scheduler event is queued before done event (and survives the done)", () => {
@@ -401,7 +404,11 @@ describe("useTeamStore — scheduler invalidation", () => {
     })
     useTeamStore.getState()._handleSSEEvent("done", {})
     // Event was queued during tool_end; done() does not clear the queue
-    // (only newSession() and the bridge drain do).
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([{ kind: "scheduler" }])
+    // (only newSession() and the bridge drain do). done also queues a
+    // session-list invalidation so running indicators clear.
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "scheduler" },
+      { kind: "team_sessions" },
+    ])
   })
 })

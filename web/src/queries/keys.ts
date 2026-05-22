@@ -7,6 +7,7 @@ export const queryKeys = {
     sessions: {
       all: () => ['team', 'sessions'] as const,
       infinite: () => ['team', 'sessions', 'infinite'] as const,
+      workspace: (workspace: string) => ['team', 'sessions', 'workspace', workspace] as const,
       list: (offset: number, limit: number) =>
         ['team', 'sessions', 'list', offset, limit] as const,
       detail: (id: string) => ['team', 'sessions', id] as const,

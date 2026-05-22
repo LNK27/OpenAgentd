@@ -56,6 +56,8 @@ Cockpit chat lists only global commands.
 
 ## Picker behaviour
 
+Slash commands live in the composer picker only; the command palette does not list custom slash commands.
+
 - **Built-in commands** (`/stop`, `/continue`, `/compact`, `/undo`, `/redo`, `/new`) execute immediately on pick.
   `/continue` resumes the last assistant response; `/compact` runs the session summarizer; `/undo` reverts the latest user turn, restores its workspace snapshot, and puts the text back in the composer; `/redo` restores all undone turns sequentially, replaying the workspace forward to the live tip.
 - **Discovered commands** insert `/<name> ` into the textarea so you

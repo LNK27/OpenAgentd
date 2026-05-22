@@ -6,7 +6,7 @@ import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { createSSEHandler } from './sse-reducer'
 import { useToastStore } from '@/stores/useToastStore'
-import type { TeamStore } from './types'
+import type { AgentStream, TeamStore } from './types'
 import type { MessageResponse } from '@/api/types'
 
 function revertBoundaryTime(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): number | null {
@@ -40,6 +40,64 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
 
 function effectiveLeadModel(state: TeamStore, leadName: string | null, requestedModel?: string | null): string | null {
   return requestedModel ?? state.sessionModel ?? (leadName ? state.agentStreams[leadName]?.model : null) ?? null
+}
+
+function hasVisibleBlocks(stream: AgentStream | undefined): boolean {
+  if (!stream) return false
+  return [...stream.blocks, ...stream.currentBlocks].some((block) => block.type !== 'compaction')
+}
+
+function resetSessionState(
+  state: TeamStore,
+  options: {
+    sessionId: string | null
+    model?: string | null
+    thinkingLevel?: string | null
+    mode?: string
+    workspace?: string | null
+  },
+) {
+  const leadName = state.leadName ?? state.agentNames[0] ?? null
+  state.sessionId = options.sessionId
+  state.sessionTitle = null
+  state.sessionModel = options.model ?? null
+  state.sessionThinkingLevel = options.thinkingLevel ?? null
+  state.isTeamWorking = false
+  state.isContinuing = false
+  state.isConnected = false
+  state.error = null
+  state.setupRequired = null
+  state._abortController = null
+  state._pendingMessages = []
+  state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
+  state.cacheInvalidations = []
+  state.hasMore = false
+  state.nextCursor = null
+  state._leadRevertTime = null
+  state._workspace = options.mode === 'coding' ? (options.workspace ?? null) : null
+  state._loadingOlder = false
+  state._resolvedSessionReadyId = null
+  state.agentNames = leadName ? [leadName] : []
+  state.liveAgentNames = leadName ? [leadName] : null
+  state.activeAgent = leadName ?? null
+
+  Object.keys(state.agentStreams).forEach((name) => {
+    if (name !== leadName) {
+      delete state.agentStreams[name]
+      return
+    }
+    state.agentStreams[name].blocks = []
+    state.agentStreams[name].currentBlocks = []
+    state.agentStreams[name].currentText = ''
+    state.agentStreams[name].currentThinking = ''
+    state.agentStreams[name].status = 'idle'
+    state.agentStreams[name].lastError = null
+    state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
+    state.agentStreams[name]._completionBase = 0
+    state.agentStreams[name].revertedCount = 0
+    state.agentStreams[name].revertedMessages = []
+    state.agentStreams[name]._revertedSuffix = []
+  })
 }
 
 export type {
@@ -115,52 +173,51 @@ export const useTeamStore = create<TeamStore>()(
     _leadRevertTime: null,
     _workspace: null,
     _loadingOlder: false,
+    _resolvedSessionReadyId: null,
+    _unloading: false,
 
     newSession: () => {
       get()._abortController?.abort()
       set((state) => {
-        const leadName = state.leadName ?? state.agentNames[0] ?? null
-        state.sessionId = null
-        state.sessionTitle = null
-        state.sessionModel = null
-        state.sessionThinkingLevel = null
-        state.isTeamWorking = false
-        state.isContinuing = false
-        state.isConnected = false
-        state.error = null
-        state.setupRequired = null
-        state._abortController = null
-        state._pendingMessages = []
-        state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
-        state.cacheInvalidations = []
-        state._pendingMessages = []
-        state.hasMore = false
-        state.nextCursor = null
-        state._leadRevertTime = null
-        state._workspace = null
-        state._loadingOlder = false
-        state.agentNames = leadName ? [leadName] : []
-        state.liveAgentNames = leadName ? [leadName] : null
-        state.activeAgent = leadName ?? null
-
-        Object.keys(state.agentStreams).forEach((name) => {
-          if (name !== leadName) {
-            delete state.agentStreams[name]
-            return
-          }
-          state.agentStreams[name].blocks = []
-          state.agentStreams[name].currentBlocks = []
-          state.agentStreams[name].currentText = ''
-          state.agentStreams[name].currentThinking = ''
-          state.agentStreams[name].status = 'idle'
-          state.agentStreams[name].lastError = null
-          state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
-          state.agentStreams[name]._completionBase = 0
-          state.agentStreams[name].revertedCount = 0
-          state.agentStreams[name].revertedMessages = []
-          state.agentStreams[name]._revertedSuffix = []
-        })
+        resetSessionState(state, { sessionId: null })
       })
+    },
+
+    beginResolvedSession: (sessionId, options) => {
+      get()._abortController?.abort()
+      set((state) => {
+        resetSessionState(state, {
+          sessionId,
+          model: options?.model,
+          thinkingLevel: options?.thinkingLevel,
+          mode: options?.mode,
+          workspace: options?.workspace,
+        })
+        if (options?.skipInitialRestore) state._resolvedSessionReadyId = sessionId
+      })
+    },
+
+    isEmptyIdleSession: () => {
+      const state = get()
+      if (!state.sessionId || state.isTeamWorking) return false
+      return state.agentNames.every((name) => !hasVisibleBlocks(state.agentStreams[name]))
+    },
+
+    consumeResolvedSessionReady: (sessionId, workspace) => {
+      const state = get()
+      const expectedWorkspace = workspace ?? null
+      if (
+        state.sessionId !== sessionId ||
+        state._resolvedSessionReadyId !== sessionId ||
+        state._workspace !== expectedWorkspace ||
+        !state.isEmptyIdleSession()
+      ) {
+        return false
+      }
+      set((draft) => {
+        draft._resolvedSessionReadyId = null
+      })
+      return true
     },
 
     sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null }) => {
@@ -486,6 +543,7 @@ export const useTeamStore = create<TeamStore>()(
           onEvent: (type, data) => {
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+            if (current._unloading && type === 'error') return
             current._handleSSEEvent(type, data)
           },
           onParseError: (err) => {
@@ -494,6 +552,7 @@ export const useTeamStore = create<TeamStore>()(
           onError: (err) => {
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+            if (current._unloading || abort.signal.aborted) return
             if (!current.isTeamWorking) {
               set((draft) => { draft.isConnected = false })
               return
@@ -503,7 +562,10 @@ export const useTeamStore = create<TeamStore>()(
           onDone: () => {
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
-            set((draft) => { draft.isConnected = false })
+            set((draft) => {
+              draft.isConnected = false
+              draft.cacheInvalidations.push({ kind: 'team_sessions' })
+            })
           },
         },
         abort.signal,
@@ -515,7 +577,7 @@ export const useTeamStore = create<TeamStore>()(
       try {
         const status = await teamStatus(workspace)
         if (status) {
-          const allAgents = get().sessionId ? [status.lead, ...status.members] : [status.lead]
+          const allAgents = [status.lead, ...status.members]
           const liveNames = allAgents.map((a) => a.name)
           set((draft) => {
             draft.leadName = status.lead.name
@@ -568,7 +630,7 @@ export const useTeamStore = create<TeamStore>()(
           draft.sessionId = sessionId
           draft.sessionModel = history.lead.model ?? null
           draft.sessionThinkingLevel = history.lead.thinking_level ?? null
-          draft.isTeamWorking = false
+          draft.isTeamWorking = history.lead.running === true
           draft.isContinuing = false
           draft.error = null
 
@@ -577,11 +639,11 @@ export const useTeamStore = create<TeamStore>()(
             stream.revertedMessages = []
           })
 
-          const leadName = history.lead.agent_name
+          const memberNames = history.members.map((m) => m.name)
+          const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName
           draft.leadName = leadName
           if (liveNames !== null) draft.liveAgentNames = liveNames
 
-          const memberNames = history.members.map((m) => m.name)
           const allNames = leadName ? [leadName, ...memberNames] : memberNames
           draft.agentNames = allNames
           const leadRevertTime = revertBoundaryTime(history.lead)
@@ -598,7 +660,7 @@ export const useTeamStore = create<TeamStore>()(
             leadStream.currentBlocks = []
             leadStream.currentText = ''
             leadStream.currentThinking = ''
-            leadStream.status = 'idle'
+            leadStream.status = history.lead.running === true ? 'working' : 'idle'
             const leadVisibleMsgs = messagesBeforeRevert(history.lead)
             const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
             leadStream.usage = leadUsage
@@ -645,6 +707,7 @@ export const useTeamStore = create<TeamStore>()(
           draft._leadRevertTime = revertBoundaryTime(history.lead)
           draft._workspace = workspace ?? null
           draft._loadingOlder = false
+          draft._resolvedSessionReadyId = null
         })
       } catch (err) {
         if (get()._sessionGeneration !== gen) return
@@ -719,7 +782,18 @@ export const useTeamStore = create<TeamStore>()(
 )
 
 useTeamStore.subscribe((state, prev) => {
-  if (state.error && state.error !== prev.error) {
+  if (state.error && state.error !== prev.error && !state._unloading) {
     useToastStore.getState().push({ tone: 'error', title: 'Agent error', description: state.error })
   }
 })
+
+if (typeof window !== 'undefined') {
+  const markUnloading = () => {
+    useTeamStore.setState((state) => {
+      state._unloading = true
+      state._abortController?.abort()
+    })
+  }
+  window.addEventListener('beforeunload', markUnloading)
+  window.addEventListener('pagehide', markUnloading)
+}

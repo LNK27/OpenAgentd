@@ -26,30 +26,39 @@ FastAPI backend running on `:4082`. All routes are served under the `/api` prefi
 | `GET` | `/api/team/workspace/git-diff/view` | `{workspace, is_git_repo, diff, truncated}` for the selected coding workspace |
 | `GET` | `/api/team/workspace/status` | `{workspace, name, is_git_repo, branch?, dirty?, head?}` — lightweight overview for the coding-mode empty state |
 | `GET` | `/api/team/sessions` | `SessionPageResponse` — cursor-paginated, newest-first |
-| `GET` | `/api/team/sessions/{id}` | `SessionDetailResponse` — includes `mode` and `workspace` for direct `/coding/{id}` loads |
+| `POST` | `/api/team/sessions/resolve` | `TeamSessionResolveResponse` — latest matching session or newly-created empty session |
+| `GET` | `/api/team/sessions/{id}` | `SessionDetailResponse` — includes `mode`, `workspace`, and `running` for direct `/coding/{id}` loads |
 | `DELETE` | `/api/team/sessions/{id}` | 204 — deletes the session row and uploads; coding workspace directories are kept |
 | `GET` | `/api/team/sessions/{id}/todos` | `TodosResponse` — current agent todo list for the session |
 
 ### GET /api/team/sessions — cursor pagination
 
-Sessions are returned newest-first, 20 per page by default.
+Sessions are returned newest-first, 20 per page by default. Filters are applied before cursor pagination.
 
 | Param | Type | Default | Notes |
 |-------|------|---------|-------|
 | `before` | ISO 8601 string | — | Cursor: return sessions with `created_at` **older than** this value. Omit for the first page. |
-| `limit` | int | `20` | Page size (1–100). |
+| `limit` | int | `20` | Page size (1–100). The `/coding` workspace sidebar requests 5 at a time. |
+| `mode` | `normal` \| `coding` | — | Optional mode filter. |
+| `workspace` | string | — | Optional resolved coding workspace filter. Use with `mode=coding` for per-workspace lists. |
 
-`SessionPageResponse`:
-
-```json
-{
-  "data": [ { "id": "…", "title": "…", "created_at": "…", "sub_sessions": [] } ],
-  "next_cursor": "2026-04-17T10:23:45.123456Z",
-  "has_more": true
-}
-```
+`SessionResponse` includes `mode`, `workspace`, `model`, `thinking_level`, and `running`. `running` is derived from the in-memory stream store and is present in list/detail/history responses.
 
 Pass `next_cursor` as `?before=…` to fetch the next page. `has_more: false` means you have reached the end. No `total` count — the cursor avoids a `COUNT(*)` on every page.
+
+### POST /api/team/sessions/resolve
+
+Resolves the active team session for normal or coding mode.
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `mode` | `normal` \| `coding` | `normal` | Session mode. |
+| `workspace` | string \| null | — | Required for coding mode; validated and stored as the resolved path. |
+| `model` | string \| null | — | Stored only when a new session is created. |
+| `thinking_level` | string \| null | — | Stored only when a new session is created. |
+| `create` | bool | `false` | When true, bypass latest-session lookup and create a fresh empty session. |
+
+Returns a `SessionResponse` plus `created`. The endpoint does not set `agent_name`; empty-session UIs must use their current lead fallback.
 
 ## Agent file management
 
@@ -301,7 +310,7 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 - One live team is kept per resolved workspace; multiple workspaces can run at the same time.
 - Concurrent sends to the same workspace are admitted by the lead's mailbox — if the lead is working, the new message is queued in its inbox and drained on the next LLM call; if the lead is idle, it starts a fresh activation. Same model as normal mode.
 - The workspace root's `AGENTS.md`, when present and under the size limit, is appended to the model system prompt.
-- The web UI enters coding mode at `/coding`; URLs carry a local browser workspace key (`w`), the last opened workspace is restored locally, and session rows store the resolved workspace for direct restores.
+- The web UI enters coding mode at `/coding`; the last opened workspace is restored locally. Persisted coding session routes use `/coding/{session_id}` without a workspace query param; the workspace is resolved from session detail.
 
 `GET /api/team/workspace/browse?path=...` supports the frontend folder picker. It lists readable child directories only; omit `path` to start at the server user's home directory. The frontend requires an explicit trust confirmation before opening a newly selected directory. The `/coding` workbench also uses workspace file listing and git diff endpoints to render an IDE-like project rail.
 
