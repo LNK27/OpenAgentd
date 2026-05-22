@@ -80,6 +80,7 @@ export function useTeamCommands({
   setActiveAgent,
   navigate,
 }: UseTeamCommandsArgs): Command[] {
+  const switchableAgentNames = agentNames.filter((name) => name !== leadName)
   const commands: Command[] = [
     { id: 'new-chat', group: 'Team', label: 'New Team Chat', description: 'Start a fresh team conversation', shortcut: 'Ctrl+N', action: handleNewSession },
     { id: 'dream-run', group: 'Team', label: 'Run Dream', description: 'Synthesise unprocessed sessions into wiki topics', action: handleDreamRun },
@@ -96,10 +97,10 @@ export function useTeamCommands({
       : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: 'Ctrl+B', action: () => dispatchCtrlKey('b') },
     { id: 'wiki',             group: 'View',       label: 'Wiki',              description: 'Browse and edit the agent wiki', shortcut: 'Ctrl+M', action: () => dispatchCtrlKey('m') },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: 'Ctrl+S', action: () => dispatchCtrlKey('s') },
-    ...agentNames.map((name) => ({
+    ...switchableAgentNames.map((name) => ({
       id: `switch-${name}`, group: 'Agents',
       label: `View ${name}`,
-      description: name === leadName ? 'Lead agent' : 'Worker agent',
+      description: 'Worker agent',
       action: () => {
         setViewMode('agent'); setActiveAgent(name)
       },

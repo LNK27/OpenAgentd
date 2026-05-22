@@ -238,24 +238,23 @@ describe("useTeamCommands — coding mode swap", () => {
 //  Per-agent commands
 // ════════════════════════════════════════════════════════════════════════════
 describe("useTeamCommands — per-agent commands", () => {
-  it("emits one switch-<name> command per agent", () => {
+  it("emits switch-<name> commands for worker agents only", () => {
     const args = makeArgs({
       agentNames: ["alice", "bob", "charlie"],
       leadName: "alice",
     })
     const { result } = renderHook(() => useTeamCommands(args))
-    expect(result.current.find((c) => c.id === "switch-alice")).toBeDefined()
+    expect(result.current.find((c) => c.id === "switch-alice")).toBeUndefined()
     expect(result.current.find((c) => c.id === "switch-bob")).toBeDefined()
     expect(result.current.find((c) => c.id === "switch-charlie")).toBeDefined()
   })
 
-  it("marks the lead agent in the description", () => {
+  it("marks switchable agents as workers", () => {
     const args = makeArgs({
       agentNames: ["alice", "bob"],
       leadName: "alice",
     })
     const { result } = renderHook(() => useTeamCommands(args))
-    expect(byId(result.current, "switch-alice").description).toBe("Lead agent")
     expect(byId(result.current, "switch-bob").description).toBe("Worker agent")
   })
 
