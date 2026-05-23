@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { FileCode, ArrowRight, Trash2, PlusCircle } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { FileCode, ArrowRight, Trash2, PlusCircle, ChevronRight } from 'lucide-react'
 import { diffLines, parseDiffMeta, parsePatchText, type DiffLine } from './diffUtils'
 
 interface SingleFileDiffProps {
@@ -12,6 +12,7 @@ interface SingleFileDiffProps {
 }
 
 function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1 }: SingleFileDiffProps) {
+  const [expanded, setExpanded] = useState(true)
   const linesWithNumbers = useMemo(() => {
     let oldLineNum = oldStart
     let newLineNum = newStart
@@ -40,7 +41,13 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1 
   return (
     <div className="flex flex-col border-b border-(--color-border) last:border-b-0">
       {/* File Header */}
-      <div className="flex items-center gap-2 bg-(--bg-key) px-3 py-1.5 font-mono text-xs font-semibold text-(--color-text-2)">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center gap-2 bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) transition-colors hover:text-(--color-accent) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+        aria-expanded={expanded}
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
+      >
         <Icon size={14} className={iconColor} />
         <span className="truncate">{path}</span>
         {moveTo && (
@@ -52,10 +59,16 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1 
         <span className="ml-auto text-[10px] font-normal text-(--color-text-muted) uppercase">
           {kind}
         </span>
-      </div>
+        <ChevronRight
+          size={13}
+          className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
+          aria-hidden
+        />
+      </button>
 
       {/* Diff Content */}
-      <div className="overflow-x-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
+      {expanded && (
+        <div className="overflow-x-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
         {linesWithNumbers.length === 0 ? (
           <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
             No content changes
@@ -84,7 +97,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1 
                 <div key={idx} className={`flex items-stretch ${lineBg} ${lineText}`}>
                   {/* Line Numbers */}
                   <div className="flex shrink-0 select-none border-r border-(--color-border)/40 text-right text-[10px] text-(--color-text-subtle)">
-                    <span className="w-9 pr-1.5 py-0.5">{line.num}</span>
+                    <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
                   </div>
                   {/* Code Line */}
                   <span className="select-none px-1.5 py-0.5 font-semibold opacity-60">{prefix}</span>
@@ -94,7 +107,8 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1 
             })}
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -163,7 +177,7 @@ export function DiffView({ toolName, args, result }: DiffViewProps) {
     }
 
     return (
-      <div className="flex flex-col gap-3 overflow-hidden rounded-md">
+      <div className="flex flex-col overflow-hidden rounded-md">
         {diffs.map((diff, idx) => (
           <SingleFileDiff
             key={idx}
