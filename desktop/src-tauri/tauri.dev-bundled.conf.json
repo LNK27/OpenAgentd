@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenAgentd (dev)",
+  "mainBinaryName": "OpenAgentd-dev",
+  "identifier": "com.openagentd.desktop.dev",
+  "bundle": {
+    "createUpdaterArtifacts": false
+  }
+}

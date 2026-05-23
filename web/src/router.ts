@@ -19,6 +19,7 @@ import { MultimodalSettingsPage } from './routes/settings.multimodal'
 import { DreamSettingsPage } from './routes/settings.dream'
 import { TitleGenerationSettingsPage } from './routes/settings.title-generation'
 import { VoiceSettingsPage } from './routes/settings.voice'
+import { NotificationSettingsPage } from './routes/settings.notifications'
 import { TelemetryPage } from './routes/telemetry'
 import { SchedulerPage } from './routes/scheduler'
 
@@ -171,6 +172,13 @@ const settingsVoiceRoute = createRoute({
   component: VoiceSettingsPage,
 })
 
+// /settings/notifications
+const settingsNotificationsRoute = createRoute({
+  getParentRoute: () => settingsLayoutRoute,
+  path: 'notifications',
+  component: NotificationSettingsPage,
+})
+
 // /telemetry — standalone observability page (span aggregates & latency)
 const telemetryRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -206,6 +214,7 @@ const routeTree = rootRoute.addChildren([
     settingsDreamRoute,
     settingsTitleGenerationRoute,
     settingsVoiceRoute,
+    settingsNotificationsRoute,
   ]),
   telemetryRoute,
   schedulerRoute,

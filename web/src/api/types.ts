@@ -196,6 +196,7 @@ export type SSEEventType =
   | 'agent_status'
   | 'queued_turn_start'
   | 'inbox'
+  | 'desktop_notification'
   | 'title_update'
   | 'summarization_start'
   | 'summarization_content'

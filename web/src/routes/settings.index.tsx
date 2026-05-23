@@ -9,6 +9,7 @@
  */
 import { Link } from '@tanstack/react-router'
 import {
+  Bell,
   ChevronRight,
   Info,
   Image,
@@ -46,6 +47,7 @@ interface CardProps {
     | '/settings/dream'
     | '/settings/title-generation'
     | '/settings/voice'
+    | '/settings/notifications'
   icon: LucideIcon
   title: string
   description: string
@@ -219,6 +221,14 @@ export function SettingsHubPage() {
                   description="Transcribe mic recordings locally and insert into the chat input"
                   count={null}
                   countLabel={voiceEnabled ? 'enabled' : 'disabled'}
+                />
+                <SettingsNavCard
+                  to="/settings/notifications"
+                  icon={Bell}
+                  title="Notifications"
+                  description="Control desktop notifications and send a test notification"
+                  count={null}
+                  countLabel=""
                 />
               </div>
             </section>

@@ -21,6 +21,7 @@
     "core:event:default",
     "core:resources:default",
     "dialog:default",
+    "notification:default",
     "opener:default",
     "log:default"
   ]

@@ -339,6 +339,7 @@ class AgentTeam:
                 return
 
             try:
+                await self._emit_completion_notification(session_id)
                 await stream_store.push_event(
                     session_id,
                     StreamEnvelope.from_event(DoneEvent()),
@@ -347,6 +348,60 @@ class AgentTeam:
             except Exception as exc:
                 logger.warning("team_emit_done_failed error={}", exc)
             logger.info("team_turn_done session_id={}", session_id)
+
+    async def _emit_completion_notification(self, session_id: str) -> None:
+        try:
+            session_uuid = UUID(session_id)
+        except ValueError:
+            return
+
+        title: str | None = None
+        mode: str | None = None
+        workspace: str | None = None
+        try:
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            async with db_factory() as db:
+                row = await db.get(ChatSession, session_uuid)
+                if row is not None:
+                    title = row.title
+                    mode = row.mode
+                    workspace = row.workspace
+        except Exception as exc:
+            logger.warning(
+                "team_completion_notification_metadata_failed session_id={} error={}",
+                session_id,
+                exc,
+            )
+
+        workspace_name = (
+            Path(workspace).name if mode == "coding" and workspace else None
+        )
+        notification_title = (
+            f"Session completed - {workspace_name}"
+            if workspace_name
+            else "Session completed"
+        )
+        title_text = title.strip() if title else ""
+        notification_body = title_text or f"Session {session_id[:8]}"
+        await stream_store.push_event(
+            session_id,
+            StreamEnvelope.from_parts(
+                "desktop_notification",
+                {
+                    "type": "desktop_notification",
+                    "kind": "assistant_done",
+                    "session_id": session_id,
+                    "title": notification_title,
+                    "body": notification_body,
+                    "metadata": {
+                        "session_id": session_id,
+                        "title": title,
+                        "mode": mode,
+                        "workspace": workspace,
+                    },
+                },
+            ),
+        )
 
     async def _try_activate_queued_after_lead_turn(self) -> None:
         """Wake the lead with queued user messages as soon as its loop ends.
@@ -584,6 +639,23 @@ class AgentTeam:
             await stream_store.init_turn(session_id)
         except Exception as exc:
             logger.warning("team_init_turn_failed error={}", exc)
+
+        if content.startswith("[Scheduled Task: "):
+            task_name = (
+                content.split("]", 1)[0].removeprefix("[Scheduled Task: ").strip()
+            )
+            await stream_store.push_event(
+                session_id,
+                StreamEnvelope.from_parts(
+                    "desktop_notification",
+                    {
+                        "type": "desktop_notification",
+                        "kind": "reminder_fired",
+                        "title": "Reminder fired",
+                        "body": task_name,
+                    },
+                ),
+            )
 
         # Mark that a turn is now active
         self._has_active_turn = True

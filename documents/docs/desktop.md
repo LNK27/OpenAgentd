@@ -113,6 +113,12 @@ The tray **Session** line below status mirrors the user's active context with li
 
 The frontend pushes the label via the `set_tray_session` Tauri command (see `web/src/lib/tray.ts`) whenever the active mode/workspace/session-title or the team's working flag changes; the command silently truncates labels longer than 60 characters so the tray menu width stays sane.
 
+## Notifications
+
+Native desktop notifications use `tauri-plugin-notification` and are controlled from **Settings → Notifications**. They are enabled by default, skipped while the desktop window is focused, and can be tested with a forced notification from that settings page.
+
+The backend emits `desktop_notification` SSE events for assistant completion and scheduled reminders, so completion notifications still fire even if the user has switched sessions. The frontend also emits a background-completion notification when a `bg` tool process exits or stops. Assistant completion text is session-centric: `Session completed` or `Session completed - <workspace>`, with the session title as the body when available.
+
 ## Updates
 
 The desktop bundle has exactly one update entry point: **OpenAgentd → Check for Updates…** in the menu bar. The entire flow lives in `desktop/src-tauri/src/main.rs` (`run_update_check`) and is driven by `tauri-plugin-updater` against the manifest published at `https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json`.
@@ -221,7 +227,9 @@ Optional `[audio,azure-doc-intel]` extras add ~80 MB.
 
 ```bash
 # Phase 2: Tauri build
-cd desktop && make icons      # one-time / on icon change
+cd desktop && make build-dev-app  # local .app; rebuilds web assets + sidecar first
+# or, for release artefacts:
+cd desktop && make icons          # one-time / on icon change
 cd src-tauri && cargo tauri build
 ```
 

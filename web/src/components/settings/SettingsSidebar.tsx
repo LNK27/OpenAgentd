@@ -21,6 +21,7 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import {
   BarChart3,
+  Bell,
   Info,
   Image,
   KeyRound,
@@ -53,6 +54,7 @@ type SidebarPath =
   | '/settings/dream'
   | '/settings/title-generation'
   | '/settings/voice'
+  | '/settings/notifications'
   | '/telemetry'
   | '/settings'
 
@@ -177,6 +179,12 @@ export function SettingsSidebar() {
         label: 'Voice',
         icon: Mic,
         matchPrefix: '/settings/voice',
+      },
+      {
+        to: '/settings/notifications',
+        label: 'Notifications',
+        icon: Bell,
+        matchPrefix: '/settings/notifications',
       },
     ],
     [
