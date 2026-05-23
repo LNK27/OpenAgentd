@@ -1,5 +1,45 @@
-import { X } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import { useTeamStore } from '@/stores/useTeamStore'
+
+const QUEUED_COLLAPSE_LINES = 10
+const QUEUED_COLLAPSE_CHARS = 700
+
+function QueuedMessageContent({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const lines = content.split('\n')
+  const needsCollapse = lines.length > QUEUED_COLLAPSE_LINES || content.length > QUEUED_COLLAPSE_CHARS
+  const visibleContent = needsCollapse && !expanded
+    ? lines.length > QUEUED_COLLAPSE_LINES
+      ? lines.slice(0, QUEUED_COLLAPSE_LINES).join('\n')
+      : `${content.slice(0, QUEUED_COLLAPSE_CHARS).trimEnd()}...`
+    : content
+
+  return (
+    <div className="relative overflow-hidden rounded-sm border border-(--color-border) bg-(--color-surface) px-4 py-3 text-sm leading-relaxed text-(--color-text) opacity-75 shadow-sm">
+      {needsCollapse && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          title={expanded ? 'Collapse' : 'Expand'}
+          className="absolute top-1.5 right-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
+        >
+          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+      )}
+      <p className="break-words whitespace-pre-wrap">{visibleContent}</p>
+      {needsCollapse && !expanded && (
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"
+          style={{
+            height: '2.4rem',
+            background: 'linear-gradient(to bottom, transparent 0%, var(--color-surface) 90%)',
+          }}
+        />
+      )}
+    </div>
+  )
+}
 
 export function PendingMessageQueue() {
   const allMessages = useTeamStore((s) => s._pendingMessages)
@@ -27,9 +67,7 @@ export function PendingMessageQueue() {
         <div key={msg.id} className="group flex justify-end">
           <div className="flex max-w-[78%] flex-col items-end gap-1.5">
             <div className="flex items-start gap-2">
-              <div className="relative overflow-hidden rounded-sm border border-(--color-border) bg-(--color-surface) px-4 py-3 text-sm leading-relaxed text-(--color-text) opacity-75 shadow-sm">
-                <p className="break-words whitespace-pre-wrap">{msg.content}</p>
-              </div>
+              <QueuedMessageContent content={msg.content} />
               <button
                 onClick={() => handleRemove(msg.id, msg.content)}
                 aria-label="Edit queued message"

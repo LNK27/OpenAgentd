@@ -69,6 +69,34 @@ describe("AgentView — AssistantFooter", () => {
     expect(screen.getByRole("button", { name: "Edit queued message" })).toBeTruthy()
   })
 
+  it("collapses long queued messages", async () => {
+    const user = userEvent.setup()
+    const longQueuedMessage = Array.from({ length: 11 }, (_, i) => `queued line ${i + 1}`).join("\n")
+    useTeamStore.setState({
+      sessionId: "session-a",
+      _pendingMessages: [
+        { id: "q1", sessionId: "session-a", content: longQueuedMessage },
+      ],
+    })
+
+    renderStream({
+      blocks: [makeUserBlock("u1", "start")],
+      currentBlocks: [makeTextBlock("a1", "streaming response")],
+      isWorking: true,
+    })
+
+    expect(screen.getByText(/queued line 10/)).toBeTruthy()
+    expect(screen.queryByText(/queued line 11/)).toBeNull()
+
+    const collapseButton = screen.getByRole("button", { name: "Expand" })
+    expect(collapseButton.getAttribute("aria-expanded")).toBe("false")
+
+    await user.click(collapseButton)
+
+    expect(screen.getByText(/queued line 11/)).toBeTruthy()
+    expect(collapseButton.getAttribute("aria-expanded")).toBe("true")
+  })
+
   describe("footer visibility", () => {
     it("does not render footer when isWorking=true even with text blocks", () => {
       const { container } = renderStream({
