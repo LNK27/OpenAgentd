@@ -121,15 +121,16 @@ The backend emits `desktop_notification` SSE events for assistant completion and
 
 ## Updates
 
-The desktop bundle has exactly one update entry point: **OpenAgentd → Check for Updates…** in the menu bar. The entire flow lives in `desktop/src-tauri/src/main.rs` (`run_update_check`) and is driven by `tauri-plugin-updater` against the manifest published at `https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json`.
+The desktop bundle checks the signed Tauri updater manifest at `https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json`.
 
-1. The menu item triggers `app.updater()?.check()`. If no update is available the user sees a native "You're up to date" dialog and nothing else happens.
-2. When an update is available, `format_update_prompt` renders the version, optional release notes (trimmed and truncated to ~1 KB so the dialog stays sane), and an estimated size. The user accepts via a native `MessageDialog` (`OkCancelCustom`, button text "Install & Restart").
-3. `update.download_and_install(...)` streams the artefact. Tray status flips to `Status: Downloading update… N/M MB` (throttled to whole-MB updates by `format_download_progress` so we don't spawn a Tauri command per chunk).
-4. Once the bytes are on disk and the minisign signature verifies, `shutdown_sidecar_now` cleanly terminates the Python sidecar **before** calling `tauri::process::restart`. This is mandatory: `restart` never raises `RunEvent::ExitRequested`, so the sidecar would otherwise be orphaned.
-5. Any error (network, signature, write permission) surfaces as a native error dialog; the tray status reverts to `Status: Running`.
+- Users can check manually from **OpenAgentd → Check for Updates…** or **Settings → About → Updates**.
+- The app also runs a silent check shortly after startup and every 6 hours while open.
+- Update UI is rendered in React as a bottom-right card. Native OS dialogs are not used for this flow.
+- Download and install are separate steps: the bundle downloads first, then the user chooses **Install and restart**.
+- Download progress is still mirrored in tray status. Downloaded updates are cached in the app cache dir so repeated checks can show the ready-to-install state instead of downloading again.
+- Release notes are fetched from the GitHub release and rendered in an in-app Markdown popup with a **View in GitHub** link.
 
-There is no in-page "Updates" UI and no `/api/settings/update*` HTTP surface. CLI/server installs upgrade via `openagentd upgrade` (or whichever package manager installed them — see [CLI reference](./cli.md)). The Rust update path is exercised by unit tests in the same file (`format_update_prompt`, `format_download_progress`, `dialog_result_is_accept`).
+On install, Rust verifies the updater signature, shuts down the Python sidecar, then calls `tauri::process::restart`. CLI/server installs still upgrade via `openagentd upgrade` or the package manager that installed them; see [CLI reference](./cli.md).
 
 ## Window chrome
 

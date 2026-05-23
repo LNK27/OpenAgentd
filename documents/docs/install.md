@@ -123,7 +123,9 @@ The `.deb` package works on Debian/Ubuntu derivatives: `sudo dpkg -i OpenAgentd_
 
 ### Auto-updates
 
-Pick **OpenAgentd → Check for Updates…** from the menu bar (or the system-tray icon's menu) to check the rolling [`latest-desktop/latest.json`](https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json) manifest. When a new version is offered, accepting the **Install** prompt downloads the new bundle, verifies its minisign signature, shuts down the Python sidecar, and restarts the app on the upgraded version. An invalid signature aborts the install with a native error dialog — no silent overwrites.
+Pick **OpenAgentd → Check for Updates…** from the menu bar, or use **Settings → About → Updates**, to check the rolling [`latest-desktop/latest.json`](https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json) manifest. OpenAgentd also checks silently after startup and every 6 hours while open.
+
+When a new version is available, the in-app update card downloads it first and then asks for **Install and restart**. The updater verifies the minisign signature before install, shuts down the Python sidecar, and restarts the app. Release notes open inside the app and link back to GitHub.
 
 Desktop notifications are managed in **Settings → Notifications**. They can be toggled off or tested there; OpenAgentd notifies for completed assistant turns, finished background tasks, and scheduled reminders.
 

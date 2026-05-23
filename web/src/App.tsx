@@ -1,11 +1,13 @@
 import { Suspense } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
+import { UpdateCard } from './components/UpdateCard'
 import { router } from './router'
 
 function App() {
   return (
     <Suspense fallback={<AppLoadingScreen />}>
       <RouterProvider router={router} />
+      <UpdateCard />
     </Suspense>
   )
 }

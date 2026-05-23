@@ -4,15 +4,17 @@
 mod sidecar;
 
 use anyhow::{anyhow, Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+use std::path::PathBuf;
 use std::time::Duration;
 use tauri::{
     menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
 };
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
+#[cfg(test)]
+use tauri_plugin_dialog::MessageDialogResult;
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::Mutex;
 
@@ -26,6 +28,7 @@ struct AppState {
     quitting: Arc<AtomicBool>,
     tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
     tray_session: Arc<Mutex<Option<MenuItem<Wry>>>>,
+    update_state: Arc<Mutex<Option<CachedUpdateState>>>,
     /// Current webview zoom factor, mutated by the View > Zoom menu
     /// items. Session-only — not persisted across restarts.
     zoom: Arc<Mutex<f64>>,
@@ -94,6 +97,41 @@ struct BackendReady {
 #[derive(Clone, Serialize)]
 struct BackendError {
     message: String,
+}
+
+#[derive(Clone)]
+struct CachedUpdateState {
+    version: String,
+    bytes_path: PathBuf,
+}
+
+#[derive(Clone, Serialize)]
+struct UpdateStatus {
+    status: String,
+    version: Option<String>,
+    current_version: String,
+    notes: Option<String>,
+    downloaded_bytes: Option<u64>,
+    total_bytes: Option<u64>,
+    message: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UpdateStatusRequest {
+    silent: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct ReleaseNotesResponse {
+    version: String,
+    url: String,
+    body: String,
+}
+
+#[derive(Deserialize)]
+struct GitHubRelease {
+    html_url: String,
+    body: Option<String>,
 }
 
 #[tauri::command]
@@ -269,7 +307,7 @@ fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_ZOOM_IN => adjust_zoom(app, ZOOM_STEP),
         MENU_ZOOM_OUT => adjust_zoom(app, 1.0 / ZOOM_STEP),
         MENU_ZOOM_RESET => set_zoom(app, ZOOM_DEFAULT),
-        MENU_CHECK_UPDATES => check_for_updates(app),
+        MENU_CHECK_UPDATES => request_update_check(app),
         MENU_QUIT => quit_app(app),
         _ => {}
     }
@@ -311,93 +349,206 @@ fn apply_zoom_to_main(app: &AppHandle, factor: f64) {
 
 /// Manual "Check for Updates…" flow triggered from the menu bar.
 ///
-/// Driven from Rust (not the webview) so the menu still works if the UI
-/// is wedged. All feedback is via native dialogs and the tray status.
-fn check_for_updates(app: &AppHandle) {
-    let handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        run_update_check(handle).await;
-    });
+/// The React shell owns updater UI. Rust keeps the menu working by focusing
+/// the main window and asking React to start a visible check.
+fn request_update_check(app: &AppHandle) {
+    show_main_window(app);
+    let _ = app.emit("updater-check-requested", ());
 }
 
-async fn run_update_check(app: AppHandle) {
-    let updater = match app.updater() {
-        Ok(u) => u,
-        Err(e) => {
-            show_update_error(&app, &format!("Updater unavailable: {e}"));
-            return;
-        }
-    };
+#[tauri::command]
+async fn updater_check(app: AppHandle, request: Option<UpdateStatusRequest>) -> Result<UpdateStatus, String> {
+    let silent = request.and_then(|r| r.silent).unwrap_or(false);
+    run_update_check(app, silent).await
+}
 
+#[tauri::command]
+async fn updater_download(app: AppHandle) -> Result<UpdateStatus, String> {
+    run_update_download(app).await
+}
+
+#[tauri::command]
+async fn updater_install(app: AppHandle) -> Result<(), String> {
+    run_update_install(app).await
+}
+
+#[tauri::command]
+async fn updater_release_notes(version: String) -> Result<ReleaseNotesResponse, String> {
+    fetch_release_notes(&version).await
+}
+
+async fn run_update_check(app: AppHandle, silent: bool) -> Result<UpdateStatus, String> {
+    let updater = app.updater().map_err(|e| format!("Updater unavailable: {e}"))?;
     match updater.check().await {
         Ok(Some(update)) => {
-            let message = format_update_prompt(
-                &update.version,
-                env!("CARGO_PKG_VERSION"),
-                update.body.as_deref(),
-            );
-
-            let accepted = ask_dialog(&app, "Update available", &message, "Install", "Later").await;
-            if !accepted {
-                return;
-            }
-
-            update_tray_status(&app, "Status: Downloading update…");
-            let mut downloaded: usize = 0;
-            let mut last_mb_announced: usize = 0;
-            let app_for_progress = app.clone();
-            let install_result = update
-                .download_and_install(
-                    move |chunk, total| {
-                        downloaded = downloaded.saturating_add(chunk);
-                        let mb = downloaded / (1024 * 1024);
-                        if mb > last_mb_announced {
-                            last_mb_announced = mb;
-                            update_tray_status(
-                                &app_for_progress,
-                                &format_download_progress(mb, total),
-                            );
-                        }
-                    },
-                    {
-                        let app_for_finish = app.clone();
-                        move || {
-                            update_tray_status(&app_for_finish, "Status: Installing update…");
-                        }
-                    },
-                )
-                .await;
-            if let Err(e) = install_result {
-                update_tray_status(&app, "Status: Running");
-                show_update_error(&app, &format!("Failed to install update: {e}"));
-                return;
-            }
-
-            // ``tauri::process::restart`` execs the new binary directly,
-            // skipping ``RunEvent::ExitRequested`` — so the sidecar must
-            // be shut down here or it leaks and races the new bundle for
-            // the handshake port.
-            update_tray_status(&app, "Status: Restarting…");
-            shutdown_sidecar_now(&app).await;
-
             let state: tauri::State<'_, AppState> = app.state();
-            state.quitting.store(true, Ordering::SeqCst);
-            tauri::process::restart(&app.env());
+            let cached = state.update_state.lock().await.clone();
+            let status = if cached.as_ref().is_some_and(|c| c.version == update.version && c.bytes_path.is_file()) {
+                UpdateStatus {
+                    status: "downloaded".into(),
+                    version: Some(update.version),
+                    current_version: env!("CARGO_PKG_VERSION").into(),
+                    notes: update.body,
+                    downloaded_bytes: None,
+                    total_bytes: None,
+                    message: None,
+                }
+            } else {
+                UpdateStatus {
+                    status: "available".into(),
+                    version: Some(update.version),
+                    current_version: env!("CARGO_PKG_VERSION").into(),
+                    notes: update.body,
+                    downloaded_bytes: None,
+                    total_bytes: None,
+                    message: None,
+                }
+            };
+            emit_update_status(&app, &status);
+            Ok(status)
         }
         Ok(None) => {
-            show_update_info(
-                &app,
-                "You're up to date",
-                &format!(
-                    "OpenAgentd {} is the latest version.",
-                    env!("CARGO_PKG_VERSION")
-                ),
-            );
+            let status = UpdateStatus {
+                status: "up_to_date".into(),
+                version: None,
+                current_version: env!("CARGO_PKG_VERSION").into(),
+                notes: None,
+                downloaded_bytes: None,
+                total_bytes: None,
+                message: if silent { None } else { Some("OpenAgentd is up to date.".into()) },
+            };
+            if !silent {
+                emit_update_status(&app, &status);
+            }
+            Ok(status)
         }
-        Err(e) => {
-            show_update_error(&app, &format!("Couldn't check for updates: {e}"));
-        }
+        Err(e) => Err(format!("Couldn't check for updates: {e}")),
     }
+}
+
+async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String> {
+    let updater = app.updater().map_err(|e| format!("Updater unavailable: {e}"))?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| format!("Couldn't check for updates: {e}"))?
+        .ok_or_else(|| "OpenAgentd is already up to date.".to_string())?;
+
+    update_tray_status(&app, "Status: Downloading update…");
+    let version = update.version.clone();
+    let mut downloaded: u64 = 0;
+    let app_for_progress = app.clone();
+    let bytes = update
+        .download(
+            move |chunk, total| {
+                downloaded = downloaded.saturating_add(chunk as u64);
+                let progress = UpdateStatus {
+                    status: "downloading".into(),
+                    version: Some(version.clone()),
+                    current_version: env!("CARGO_PKG_VERSION").into(),
+                    notes: None,
+                    downloaded_bytes: Some(downloaded),
+                    total_bytes: total,
+                    message: None,
+                };
+                emit_update_status(&app_for_progress, &progress);
+                update_tray_status(
+                    &app_for_progress,
+                    &format_download_progress((downloaded / (1024 * 1024)) as usize, total),
+                );
+            },
+            {
+                let app_for_finish = app.clone();
+                move || update_tray_status(&app_for_finish, "Status: Update downloaded")
+            },
+        )
+        .await
+        .map_err(|e| {
+            update_tray_status(&app, "Status: Running");
+            format!("Failed to download update: {e}")
+        })?;
+
+    let path = cached_update_path(&app, &update.version).map_err(|e| format!("Cache update: {e}"))?;
+    std::fs::write(&path, bytes).map_err(|e| format!("Write cached update: {e}"))?;
+    let state: tauri::State<'_, AppState> = app.state();
+    *state.update_state.lock().await = Some(CachedUpdateState {
+        version: update.version.clone(),
+        bytes_path: path,
+    });
+
+    let status = UpdateStatus {
+        status: "downloaded".into(),
+        version: Some(update.version),
+        current_version: env!("CARGO_PKG_VERSION").into(),
+        notes: None,
+        downloaded_bytes: None,
+        total_bytes: None,
+        message: None,
+    };
+    emit_update_status(&app, &status);
+    Ok(status)
+}
+
+async fn run_update_install(app: AppHandle) -> Result<(), String> {
+    let updater = app.updater().map_err(|e| format!("Updater unavailable: {e}"))?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| format!("Couldn't check for updates: {e}"))?
+        .ok_or_else(|| "OpenAgentd is already up to date.".to_string())?;
+    let state: tauri::State<'_, AppState> = app.state();
+    let cached = state
+        .update_state
+        .lock()
+        .await
+        .clone()
+        .ok_or_else(|| "Update has not been downloaded yet.".to_string())?;
+    if cached.version != update.version || !cached.bytes_path.is_file() {
+        return Err("Downloaded update is stale. Download the update again.".into());
+    }
+    let bytes = std::fs::read(&cached.bytes_path).map_err(|e| format!("Read cached update: {e}"))?;
+    update_tray_status(&app, "Status: Installing update…");
+    update.install(bytes).map_err(|e| {
+        update_tray_status(&app, "Status: Running");
+        format!("Failed to install update: {e}")
+    })?;
+
+    update_tray_status(&app, "Status: Restarting…");
+    shutdown_sidecar_now(&app).await;
+
+    state.quitting.store(true, Ordering::SeqCst);
+    tauri::process::restart(&app.env());
+}
+
+async fn fetch_release_notes(version: &str) -> Result<ReleaseNotesResponse, String> {
+    let tag = if version.starts_with('v') { version.to_string() } else { format!("v{version}") };
+    let url = format!("https://api.github.com/repos/lthoangg/openagentd/releases/tags/{tag}");
+    let release = reqwest::Client::new()
+        .get(&url)
+        .header(reqwest::header::USER_AGENT, "OpenAgentd updater")
+        .send()
+        .await
+        .map_err(|e| format!("Fetch release notes: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("Fetch release notes: {e}"))?
+        .json::<GitHubRelease>()
+        .await
+        .map_err(|e| format!("Read release notes: {e}"))?;
+    Ok(ReleaseNotesResponse {
+        version: version.to_string(),
+        url: release.html_url,
+        body: release.body.unwrap_or_else(|| "No release notes published for this version.".into()),
+    })
+}
+
+fn emit_update_status(app: &AppHandle, status: &UpdateStatus) {
+    let _ = app.emit("updater-status", status);
+}
+
+fn cached_update_path(app: &AppHandle, version: &str) -> Result<PathBuf> {
+    let dir = app.path().app_cache_dir()?.join("updater");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir.join(format!("openagentd-{version}.update")))
 }
 
 /// Cleanly stop the Python sidecar before a process re-exec.
@@ -413,29 +564,6 @@ async fn shutdown_sidecar_now(app: &AppHandle) {
     }
 }
 
-async fn ask_dialog(
-    app: &AppHandle,
-    title: &str,
-    message: &str,
-    ok_label: &str,
-    cancel_label: &str,
-) -> bool {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let ok = ok_label.to_string();
-    app.dialog()
-        .message(message)
-        .title(title)
-        .kind(MessageDialogKind::Info)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            ok_label.to_string(),
-            cancel_label.to_string(),
-        ))
-        .show_with_result(move |result| {
-            let _ = tx.send(dialog_result_is_accept(&result, &ok));
-        });
-    rx.await.unwrap_or(false)
-}
-
 /// Map a ``MessageDialogResult`` from an ``OkCancelCustom`` dialog to a
 /// simple accept/cancel boolean.
 ///
@@ -443,6 +571,7 @@ async fn ask_dialog(
 /// user pressed (rfd's behaviour, surfaced through tauri-plugin-dialog).
 /// Some platforms still report a plain ``Ok``/``Cancel`` for the bundled
 /// system dialog, so we accept either spelling of "yes".
+#[cfg(test)]
 fn dialog_result_is_accept(result: &MessageDialogResult, ok_label: &str) -> bool {
     match result {
         MessageDialogResult::Ok | MessageDialogResult::Yes => true,
@@ -456,6 +585,7 @@ fn dialog_result_is_accept(result: &MessageDialogResult, ok_label: &str) -> bool
 /// Release notes are truncated to ~600 characters with an ellipsis so a
 /// runaway changelog never produces a multi-screen modal. An empty/None
 /// body collapses the notes paragraph entirely.
+#[cfg(test)]
 fn format_update_prompt(new_version: &str, current_version: &str, body: Option<&str>) -> String {
     const MAX_NOTES_CHARS: usize = 600;
     let notes = body.unwrap_or_default().trim();
@@ -468,11 +598,11 @@ fn format_update_prompt(new_version: &str, current_version: &str, body: Option<&
     };
     if trimmed.is_empty() {
         format!(
-            "OpenAgentd {new_version} is available (you have {current_version}).\n\nDownload and install now?"
+            "OpenAgentd {new_version} is available (you have {current_version}).\n\nDownload now?"
         )
     } else {
         format!(
-            "OpenAgentd {new_version} is available (you have {current_version}).\n\n{trimmed}\n\nDownload and install now?"
+            "OpenAgentd {new_version} is available (you have {current_version}).\n\n{trimmed}\n\nDownload now?"
         )
     }
 }
@@ -490,22 +620,6 @@ fn format_download_progress(downloaded_mb: usize, total_bytes: Option<u64>) -> S
         }
         _ => format!("Status: Downloading {downloaded_mb} MB"),
     }
-}
-
-fn show_update_info(app: &AppHandle, title: &str, message: &str) {
-    app.dialog()
-        .message(message)
-        .title(title)
-        .kind(MessageDialogKind::Info)
-        .show(|_| {});
-}
-
-fn show_update_error(app: &AppHandle, message: &str) {
-    app.dialog()
-        .message(message)
-        .title("Update")
-        .kind(MessageDialogKind::Error)
-        .show(|_| {});
 }
 
 fn install_desktop_menus(app: &tauri::App) -> Result<()> {
@@ -843,6 +957,7 @@ fn main() {
         quitting: Arc::new(AtomicBool::new(false)),
         tray_status: Arc::new(Mutex::new(None)),
         tray_session: Arc::new(Mutex::new(None)),
+        update_state: Arc::new(Mutex::new(None)),
         zoom: Arc::new(Mutex::new(ZOOM_DEFAULT)),
     };
 
@@ -870,12 +985,21 @@ fn main() {
             backend_health,
             backend_logs_path,
             open_macos_microphone_settings,
-            set_tray_session
+            set_tray_session,
+            updater_check,
+            updater_download,
+            updater_install,
+            updater_release_notes
         ])
         .setup(|app| {
             install_desktop_menus(app)?;
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                let updater_handle = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    let _ = run_update_check(updater_handle, true).await;
+                });
                 if let Err(e) = start_backend_and_window(handle.clone()).await {
                     log::error!("failed to start backend: {e:#}");
                     update_tray_status(&handle, "Status: Error");
@@ -980,7 +1104,7 @@ mod tests {
         let prompt = format_update_prompt("1.2.0", "1.1.0", None);
         assert!(prompt.contains("1.2.0"));
         assert!(prompt.contains("1.1.0"));
-        assert!(prompt.contains("Download and install now?"));
+        assert!(prompt.contains("Download now?"));
         // Exactly one blank line between the version line and the call to
         // action — i.e. no orphan ``\n\n\n`` from an empty body.
         assert!(!prompt.contains("\n\n\n"));
@@ -1016,7 +1140,7 @@ mod tests {
         assert!(prompt.contains('…'));
         assert!(prompt.len() < 1000);
         assert!(prompt.contains("1.2.0"));
-        assert!(prompt.contains("Download and install now?"));
+        assert!(prompt.contains("Download now?"));
     }
 
     #[test]

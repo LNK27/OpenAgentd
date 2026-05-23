@@ -241,9 +241,9 @@ re-reads the file at construction). Workspace and memory roots remain
 exempt regardless of pattern matches.
 
 Application updates have no HTTP surface: desktop bundle users use the
-**OpenAgentd → Check for Updates…** menu item (driven by
-`tauri-plugin-updater`), and CLI/server users run `openagentd update`
-in the shell that launched the process.
+Tauri updater from **OpenAgentd → Check for Updates…** or
+**Settings → About → Updates**, and CLI/server users run
+`openagentd update` in the shell that launched the process.
 
 ## Permission endpoints
 
