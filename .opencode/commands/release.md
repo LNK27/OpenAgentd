@@ -68,9 +68,11 @@ gh pr create --title "<release PR title>" --body "<bullet-point release summary>
   - Update version files in lockstep to <version>.
   ```
 
-- Wait for CI:
+- Watch CI in-session until it completes. Do **not** create scheduled reminders or background follow-up tasks; keep polling directly in the current release workflow:
 
 ```bash
+gh pr checks <pr-number> --watch
+# or, if --watch is not suitable:
 gh pr checks <pr-number>
 ```
 
@@ -89,9 +91,9 @@ gh api repos/lthoangg/openagentd/pulls/<pr-number>/comments \
   - Use `--squash` only when the branch is a single logical change (e.g. metadata-only bump).
   - `--admin` is required when branch protection blocks solo-author PRs on `REVIEW_REQUIRED`; confirm with the user before using it.
 
-5. Release notes:
+5. Merge and release notes:
 
-- Generate after merge from `main`.
+- After CI is green and comments are handled, merge the PR, then generate notes from `main`.
 
 ```bash
 git checkout main && git pull --ff-only
@@ -214,7 +216,7 @@ auto-generated notes come from the PyPI workflow.
 # CLI / PyPI release (~90 seconds)
 gh workflow run release.yml --field confirm=release
 gh run list --workflow=release.yml --limit=3
-# Wait for status=completed conclusion=success before continuing.
+# Watch this workflow in-session until status=completed conclusion=success before continuing.
 ```
 
 7. GitHub release notes:
@@ -239,7 +241,7 @@ gh release view v<version> --repo lthoangg/openagentd | sed -n '/## Install/,/Fu
 # Desktop release (~20–25 minutes for the matrix build)
 gh workflow run release-desktop.yml --field confirm=release-desktop --field channel=stable
 gh run list --workflow=release-desktop.yml --limit=3
-# Wait for status=completed conclusion=success.
+# Watch this workflow in-session until status=completed conclusion=success.
 ```
 
 - After the desktop workflow succeeds, verify the release has both CLI and desktop artefacts and that the notes still contain the expected install section:
