@@ -323,9 +323,21 @@ class TestEditFileTool:
         f = tmp_path / "sample.txt"
         f.write_text("hello world\n")
         result = await _edit_file("sample.txt", "world", "python")
+        assert (
+            '@@ openagentd-diff-meta {"path":"sample.txt","old_start":1,"new_start":1}'
+            in result
+        )
         assert "Edit applied successfully" in result
         assert f"Resolved path: {f}" in result
         assert f.read_text() == "hello python\n"
+
+    async def test_reports_actual_start_line(self, sandbox):
+        _, tmp_path = sandbox
+        f = tmp_path / "sample.txt"
+        f.write_text("a\nb\nhello world\n", encoding="utf-8")
+        result = await _edit_file("sample.txt", "world", "python")
+        assert '"old_start":3' in result
+        assert '"new_start":3' in result
 
     async def test_file_not_found(self, sandbox):
         with pytest.raises(FileNotFoundError):

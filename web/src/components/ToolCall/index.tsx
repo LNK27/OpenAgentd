@@ -89,7 +89,9 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
 
   const { header, headerTitle, formattedArgs, language, suppressResult } =
     getToolDisplay(name, args)
-  const diffStats = (name === 'edit' || name === 'patch' || name === 'write') && args ? getDiffStats(name, args) : null
+  const diffStats = (name === 'edit' || name === 'patch' || name === 'write' || name === 'rm') && args
+    ? getDiffStats(name, args, result)
+    : null
   // Pending-state header comes from getToolDisplay's no-args branch
   // (e.g. ``recall`` → "Checking memory…", ``team_message`` →
   // "Preparing message…"). Tools without a custom pending header return
@@ -205,7 +207,7 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
           >
             <section className="surface-raised group relative mt-1 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
               {name === 'edit' || name === 'patch' || name === 'write' ? (
-                <DiffView toolName={name} args={args || ''} />
+                <DiffView toolName={name} args={args || ''} result={result} />
               ) : (
                 <>
                   {/* Args section — caption + copy sit above the content. */}

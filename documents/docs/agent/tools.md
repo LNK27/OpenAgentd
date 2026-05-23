@@ -147,11 +147,12 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 |------|------|-------------|
 | `read` | `read.py` | Read a file. Text files: up to 5 MB with optional `offset`/`limit` pagination; `offset` is 1-indexed and matches line numbers returned by `grep`. Images (PNG, JPG, GIF, WebP, ...): base64-encoded via `handlers.py` and returned as `ToolResult` with `ImageDataBlock` — gated by `state.capabilities.input.vision` (non-vision models get a text notice). Documents (PDF, DOCX, PPTX, XLSX, ...): converted to text via markitdown; failed PDFs fall back to raw bytes on vision models. |
 | `write` | `write.py` | Write or overwrite a file (creates directories as needed) |
-| `edit` | `edit.py` | Replace exact text in a file; fuzzy-matches whitespace/indentation |
+| `edit` | `edit.py` | Replace exact text in a file; fuzzy-matches whitespace/indentation; reports changed line metadata for inline diffs |
+| `patch` | `patch.py` | Apply file patch envelopes; reports per-file/per-hunk line metadata for inline diffs |
 | `ls` | `ls.py` | List directory contents with type indicators |
 | `grep` | `grep.py` | Regex content search across files; returns `file:line: content` |
 | `glob` | `glob.py` | Glob pattern search. `match='path'` (default) matches full relative path (supports `**`); `match='name'` matches filename only |
-| `rm` | `rm.py` | Permanently delete a file or directory; `recursive=true` for non-empty directories |
+| `rm` | `rm.py` | Permanently delete a file or directory; `recursive=true` for non-empty directories; file removals report deleted line metadata for inline diff stats |
 
 `read` returns raw text when called without pagination arguments. When `limit` is set, the result includes a `[start-end/total]` header and `offset=1` starts at the first line.
 

@@ -1,19 +1,24 @@
-import { useMemo } from 'react'
-import { FileCode, ArrowRight, Trash2, PlusCircle } from 'lucide-react'
-import { diffLines, parsePatchText, type DiffLine } from './diffUtils'
+import { useMemo, useState } from 'react'
+import { FileCode, ArrowRight, Trash2, PlusCircle, ChevronRight } from 'lucide-react'
+import { diffLines, parseDiffMeta, parsePatchText, type DiffLine } from './diffUtils'
 
 interface SingleFileDiffProps {
   path: string
   kind: 'add' | 'update' | 'delete'
   moveTo?: string
   lines: DiffLine[]
+  oldStart?: number
+  newStart?: number
 }
 
-function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
+function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1 }: SingleFileDiffProps) {
+  const [expanded, setExpanded] = useState(true)
   const linesWithNumbers = useMemo(() => {
-    let oldLineNum = 1
-    let newLineNum = 1
+    let oldLineNum = oldStart
+    let newLineNum = newStart
     return lines.map((line) => {
+      if (line.oldStart !== undefined) oldLineNum = line.oldStart
+      if (line.newStart !== undefined) newLineNum = line.newStart
       const num = line.type === 'removed' ? oldLineNum : newLineNum
       const r = {
         ...line,
@@ -23,7 +28,7 @@ function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
       if (line.type !== 'removed') newLineNum++
       return r
     })
-  }, [lines])
+  }, [lines, oldStart, newStart])
 
   const Icon = kind === 'add' ? PlusCircle : kind === 'delete' ? Trash2 : FileCode
   const iconColor =
@@ -36,7 +41,13 @@ function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
   return (
     <div className="flex flex-col border-b border-(--color-border) last:border-b-0">
       {/* File Header */}
-      <div className="flex items-center gap-2 bg-(--bg-key) px-3 py-1.5 font-mono text-xs font-semibold text-(--color-text-2)">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center gap-2 bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) transition-colors hover:text-(--color-accent) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+        aria-expanded={expanded}
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
+      >
         <Icon size={14} className={iconColor} />
         <span className="truncate">{path}</span>
         {moveTo && (
@@ -48,10 +59,16 @@ function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
         <span className="ml-auto text-[10px] font-normal text-(--color-text-muted) uppercase">
           {kind}
         </span>
-      </div>
+        <ChevronRight
+          size={13}
+          className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
+          aria-hidden
+        />
+      </button>
 
       {/* Diff Content */}
-      <div className="overflow-x-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
+      {expanded && (
+        <div className="overflow-x-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
         {linesWithNumbers.length === 0 ? (
           <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
             No content changes
@@ -80,7 +97,7 @@ function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
                 <div key={idx} className={`flex items-stretch ${lineBg} ${lineText}`}>
                   {/* Line Numbers */}
                   <div className="flex shrink-0 select-none border-r border-(--color-border)/40 text-right text-[10px] text-(--color-text-subtle)">
-                    <span className="w-9 pr-1.5 py-0.5">{line.num}</span>
+                    <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
                   </div>
                   {/* Code Line */}
                   <span className="select-none px-1.5 py-0.5 font-semibold opacity-60">{prefix}</span>
@@ -90,7 +107,8 @@ function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
             })}
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -98,9 +116,10 @@ function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
 interface DiffViewProps {
   toolName: string
   args: string
+  result?: string
 }
 
-export function DiffView({ toolName, args }: DiffViewProps) {
+export function DiffView({ toolName, args, result }: DiffViewProps) {
   const parsed = useMemo(() => {
     try {
       return JSON.parse(args)
@@ -108,6 +127,7 @@ export function DiffView({ toolName, args }: DiffViewProps) {
       return null
     }
   }, [args])
+  const diffMeta = useMemo(() => parseDiffMeta(result), [result])
 
   if (!parsed) {
     return <pre className="p-3 font-mono text-xs">{args}</pre>
@@ -121,7 +141,13 @@ export function DiffView({ toolName, args }: DiffViewProps) {
 
     return (
       <div className="overflow-hidden rounded-md">
-        <SingleFileDiff path={path} kind="update" lines={lines} />
+        <SingleFileDiff
+          path={path}
+          kind="update"
+          lines={lines}
+          oldStart={diffMeta?.old_start ?? 1}
+          newStart={diffMeta?.new_start ?? 1}
+        />
       </div>
     )
   }
@@ -140,7 +166,7 @@ export function DiffView({ toolName, args }: DiffViewProps) {
 
   if (toolName === 'patch') {
     const patchText = typeof parsed.patch_text === 'string' ? parsed.patch_text : ''
-    const diffs = parsePatchText(patchText)
+    const diffs = parsePatchText(patchText, diffMeta)
 
     if (diffs.length === 0) {
       return (
@@ -151,7 +177,7 @@ export function DiffView({ toolName, args }: DiffViewProps) {
     }
 
     return (
-      <div className="flex flex-col gap-3 overflow-hidden rounded-md">
+      <div className="flex flex-col overflow-hidden rounded-md">
         {diffs.map((diff, idx) => (
           <SingleFileDiff
             key={idx}
@@ -159,6 +185,8 @@ export function DiffView({ toolName, args }: DiffViewProps) {
             kind={diff.kind}
             moveTo={diff.moveTo}
             lines={diff.lines}
+            oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
+            newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
           />
         ))}
       </div>

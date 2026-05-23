@@ -1,6 +1,22 @@
 export interface DiffLine {
   type: 'added' | 'removed' | 'equal'
   value: string
+  oldStart?: number
+  newStart?: number
+}
+
+export interface DiffMeta {
+  path?: string
+  old_start?: number | null
+  new_start?: number | null
+  deleted_lines?: number | null
+  files?: Array<{
+    path: string
+    hunks: Array<{
+      old_start?: number | null
+      new_start?: number | null
+    }>
+  }>
 }
 
 export interface FileDiff {
@@ -8,6 +24,10 @@ export interface FileDiff {
   kind: 'add' | 'update' | 'delete'
   moveTo?: string
   lines: DiffLine[]
+  hunkStarts?: Array<{
+    oldStart: number
+    newStart: number
+  }>
 }
 
 // Simple LCS line-by-line diff algorithm
@@ -47,7 +67,19 @@ export function diffLines(oldStr: string, newStr: string): DiffLine[] {
   return result
 }
 
-export function parsePatchText(patchText: string): FileDiff[] {
+export function parseDiffMeta(result?: string): DiffMeta | null {
+  if (!result) return null
+  const firstLine = result.split('\n', 1)[0] ?? ''
+  const prefix = '@@ openagentd-diff-meta '
+  if (!firstLine.startsWith(prefix)) return null
+  try {
+    return JSON.parse(firstLine.slice(prefix.length)) as DiffMeta
+  } catch {
+    return null
+  }
+}
+
+export function parsePatchText(patchText: string, meta?: DiffMeta | null): FileDiff[] {
   const lines = patchText.replace(/\r\n/g, '\n').split('\n')
   if (lines.length > 0 && lines[lines.length - 1] === '') {
     lines.pop()
@@ -58,6 +90,21 @@ export function parsePatchText(patchText: string): FileDiff[] {
 
   const diffs: FileDiff[] = []
   let current: FileDiff | null = null
+  let currentHunkIndex = -1
+  let needsHunkStart = false
+
+  const pushCurrentLine = (line: DiffLine) => {
+    if (!current) return
+    if (needsHunkStart) {
+      const hunkStart = current.hunkStarts?.[currentHunkIndex]
+      if (hunkStart) {
+        line.oldStart = hunkStart.oldStart
+        line.newStart = hunkStart.newStart
+      }
+      needsHunkStart = false
+    }
+    current.lines.push(line)
+  }
 
   for (let i = 1; i < lines.length - 1; i++) {
     const line = lines[i]
@@ -66,14 +113,26 @@ export function parsePatchText(patchText: string): FileDiff[] {
         path: line.substring('*** Add File: '.length).trim(),
         kind: 'add',
         lines: [],
+        hunkStarts: meta?.files?.find((file) => file.path === line.substring('*** Add File: '.length).trim())?.hunks.map((hunk) => ({
+          oldStart: hunk.old_start ?? 1,
+          newStart: hunk.new_start ?? 1,
+        })),
       }
+      currentHunkIndex = 0
+      needsHunkStart = true
       diffs.push(current)
     } else if (line.startsWith('*** Update File: ')) {
       current = {
         path: line.substring('*** Update File: '.length).trim(),
         kind: 'update',
         lines: [],
+        hunkStarts: meta?.files?.find((file) => file.path === line.substring('*** Update File: '.length).trim())?.hunks.map((hunk) => ({
+          oldStart: hunk.old_start ?? 1,
+          newStart: hunk.new_start ?? 1,
+        })),
       }
+      currentHunkIndex = -1
+      needsHunkStart = false
       diffs.push(current)
     } else if (line.startsWith('*** Delete File: ')) {
       current = {
@@ -81,23 +140,26 @@ export function parsePatchText(patchText: string): FileDiff[] {
         kind: 'delete',
         lines: [],
       }
+      currentHunkIndex = -1
+      needsHunkStart = false
       diffs.push(current)
     } else if (current) {
       if (line.startsWith('*** Move to: ')) {
         current.moveTo = line.substring('*** Move to: '.length).trim()
       } else if (line.startsWith('@@')) {
-        // Hunk header, skip
+        currentHunkIndex += 1
+        needsHunkStart = true
       } else if (current.kind === 'add') {
         if (line.startsWith('+')) {
-          current.lines.push({ type: 'added', value: line.substring(1) })
+          pushCurrentLine({ type: 'added', value: line.substring(1) })
         }
       } else if (current.kind === 'update') {
         if (line.startsWith('+')) {
-          current.lines.push({ type: 'added', value: line.substring(1) })
+          pushCurrentLine({ type: 'added', value: line.substring(1) })
         } else if (line.startsWith('-')) {
-          current.lines.push({ type: 'removed', value: line.substring(1) })
+          pushCurrentLine({ type: 'removed', value: line.substring(1) })
         } else if (line.startsWith(' ')) {
-          current.lines.push({ type: 'equal', value: line.substring(1) })
+          pushCurrentLine({ type: 'equal', value: line.substring(1) })
         }
       }
     }
@@ -105,7 +167,7 @@ export function parsePatchText(patchText: string): FileDiff[] {
   return diffs
 }
 
-export function getDiffStats(toolName: string, args: string): { additions: number; deletions: number } | null {
+export function getDiffStats(toolName: string, args: string, result?: string): { additions: number; deletions: number } | null {
   try {
     const parsed = JSON.parse(args)
     if (!parsed) return null
@@ -141,6 +203,13 @@ export function getDiffStats(toolName: string, args: string): { additions: numbe
         }
       }
       return { additions, deletions }
+    }
+
+    if (toolName === 'rm') {
+      const meta = parseDiffMeta(result)
+      if (typeof meta?.deleted_lines === 'number') {
+        return { additions: 0, deletions: meta.deleted_lines }
+      }
     }
   } catch {
     // ignore

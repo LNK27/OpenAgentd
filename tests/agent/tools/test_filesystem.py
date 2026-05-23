@@ -407,8 +407,19 @@ async def test_remove_path_file(sandbox):
     f = tmp_path / "del.txt"
     f.write_text("bye")
     result = await _remove_path("del.txt")
+    assert '@@ openagentd-diff-meta {"path":"del.txt","deleted_lines":1}' in result
     assert "Removed file" in result
     assert f"Resolved path: {f}" in result
+    assert not f.exists()
+
+
+@pytest.mark.asyncio
+async def test_remove_path_binary_file_still_deletes(sandbox):
+    _, tmp_path = sandbox
+    f = tmp_path / "binary.bin"
+    f.write_bytes(b"\xff\xfe\n\x00")
+    result = await _remove_path("binary.bin")
+    assert '"deleted_lines":2' in result
     assert not f.exists()
 
 
