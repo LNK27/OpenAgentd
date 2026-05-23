@@ -80,7 +80,7 @@ These stats are calculated dynamically from the tool arguments using `getDiffSta
 When expanded, the args and/or result sections slide open below the header inside one codeblock-style container:
 
 - The container uses `surface-raised`, `rounded-md`, `border border-(--color-border)`, and `bg-(--bg-card)`, matching markdown codeblock chrome.
-- For file-modifying tools (`edit`, `patch`, and `write`), the raw arguments and results are hidden. Instead, an inline Git-like **Diff View** (`DiffView.tsx`) is rendered directly inside the container, filling it completely without nested borders or padding.
+- For file-modifying tools (`edit`, `patch`, and `write`), the raw arguments and results are hidden. Instead, an inline Git-like **Diff View** (`DiffView.tsx`) is rendered directly inside the container, filling it completely without nested borders or padding. Completed `edit` and `patch` calls use tool-result metadata to show line numbers from the affected file; multi-hunk patches reset numbering per hunk.
 - For other tools, each section has a header strip (`bg-(--bg-key)`, bottom divider) with an uppercase 10px mono label (`arguments` / `terminal` / `output` / `result`) and a copy button when applicable.
 - Result content is capped with `max-h-80 overflow-auto`; live and terminal output use their own scrollable max heights.
 

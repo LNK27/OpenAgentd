@@ -1,19 +1,23 @@
 import { useMemo } from 'react'
 import { FileCode, ArrowRight, Trash2, PlusCircle } from 'lucide-react'
-import { diffLines, parsePatchText, type DiffLine } from './diffUtils'
+import { diffLines, parseDiffMeta, parsePatchText, type DiffLine } from './diffUtils'
 
 interface SingleFileDiffProps {
   path: string
   kind: 'add' | 'update' | 'delete'
   moveTo?: string
   lines: DiffLine[]
+  oldStart?: number
+  newStart?: number
 }
 
-function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
+function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1 }: SingleFileDiffProps) {
   const linesWithNumbers = useMemo(() => {
-    let oldLineNum = 1
-    let newLineNum = 1
+    let oldLineNum = oldStart
+    let newLineNum = newStart
     return lines.map((line) => {
+      if (line.oldStart !== undefined) oldLineNum = line.oldStart
+      if (line.newStart !== undefined) newLineNum = line.newStart
       const num = line.type === 'removed' ? oldLineNum : newLineNum
       const r = {
         ...line,
@@ -23,7 +27,7 @@ function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
       if (line.type !== 'removed') newLineNum++
       return r
     })
-  }, [lines])
+  }, [lines, oldStart, newStart])
 
   const Icon = kind === 'add' ? PlusCircle : kind === 'delete' ? Trash2 : FileCode
   const iconColor =
@@ -98,9 +102,10 @@ function SingleFileDiff({ path, kind, moveTo, lines }: SingleFileDiffProps) {
 interface DiffViewProps {
   toolName: string
   args: string
+  result?: string
 }
 
-export function DiffView({ toolName, args }: DiffViewProps) {
+export function DiffView({ toolName, args, result }: DiffViewProps) {
   const parsed = useMemo(() => {
     try {
       return JSON.parse(args)
@@ -108,6 +113,7 @@ export function DiffView({ toolName, args }: DiffViewProps) {
       return null
     }
   }, [args])
+  const diffMeta = useMemo(() => parseDiffMeta(result), [result])
 
   if (!parsed) {
     return <pre className="p-3 font-mono text-xs">{args}</pre>
@@ -121,7 +127,13 @@ export function DiffView({ toolName, args }: DiffViewProps) {
 
     return (
       <div className="overflow-hidden rounded-md">
-        <SingleFileDiff path={path} kind="update" lines={lines} />
+        <SingleFileDiff
+          path={path}
+          kind="update"
+          lines={lines}
+          oldStart={diffMeta?.old_start ?? 1}
+          newStart={diffMeta?.new_start ?? 1}
+        />
       </div>
     )
   }
@@ -140,7 +152,7 @@ export function DiffView({ toolName, args }: DiffViewProps) {
 
   if (toolName === 'patch') {
     const patchText = typeof parsed.patch_text === 'string' ? parsed.patch_text : ''
-    const diffs = parsePatchText(patchText)
+    const diffs = parsePatchText(patchText, diffMeta)
 
     if (diffs.length === 0) {
       return (
@@ -159,6 +171,8 @@ export function DiffView({ toolName, args }: DiffViewProps) {
             kind={diff.kind}
             moveTo={diff.moveTo}
             lines={diff.lines}
+            oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
+            newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
           />
         ))}
       </div>

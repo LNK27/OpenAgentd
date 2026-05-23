@@ -35,6 +35,8 @@ async def test_patch_add_update_delete(sandbox_workspace):
     )
 
     assert "Patch applied successfully" in result
+    assert '"path":"modify.txt"' in result
+    assert '"old_start":2' in result
     assert (sandbox_workspace / "nested" / "new.txt").read_text(
         encoding="utf-8"
     ) == "created\n"
@@ -42,6 +44,35 @@ async def test_patch_add_update_delete(sandbox_workspace):
         encoding="utf-8"
     ) == "line1\nchanged\n"
     assert not (sandbox_workspace / "delete.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_patch_reports_old_and_new_start_after_prior_line_delta(
+    sandbox_workspace,
+):
+    (sandbox_workspace / "modify.txt").write_text(
+        "line1\nline2\nline3\nline4\n",
+        encoding="utf-8",
+    )
+
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: modify.txt
+@@
+-line1
++line1
++inserted
+@@
+-line4
++changed
+*** End Patch"""
+    )
+
+    assert '{"old_start":1,"new_start":1}' in result
+    assert '{"old_start":4,"new_start":5}' in result
+    assert (sandbox_workspace / "modify.txt").read_text(encoding="utf-8") == (
+        "line1\ninserted\nline2\nline3\nchanged\n"
+    )
 
 
 @pytest.mark.asyncio

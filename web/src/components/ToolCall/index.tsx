@@ -205,7 +205,7 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
           >
             <section className="surface-raised group relative mt-1 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
               {name === 'edit' || name === 'patch' || name === 'write' ? (
-                <DiffView toolName={name} args={args || ''} />
+                <DiffView toolName={name} args={args || ''} result={result} />
               ) : (
                 <>
                   {/* Args section — caption + copy sit above the content. */}

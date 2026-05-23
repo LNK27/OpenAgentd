@@ -7,6 +7,7 @@ whitespace-normalised → indentation-flexible → trimmed-boundary → multi-oc
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Annotated
 
@@ -39,9 +40,9 @@ def _levenshtein(a: str, b: str) -> int:
     return matrix[len(a)][len(b)]
 
 
-def replace_content(
+def replace_content_with_meta(
     content: str, old_string: str, new_string: str, replace_all: bool = False
-) -> str:
+) -> tuple[str, int | None]:
     """Apply old_string → new_string using a cascade of fuzzy matchers.
 
     Raises ValueError if no match found or multiple matches (when replace_all=False).
@@ -185,11 +186,14 @@ def replace_content(
                 continue
             not_found = False
             if replace_all:
-                return content.replace(search, new_string)
+                first_idx = content.find(search)
+                start_line = content.count("\n", 0, first_idx) + 1
+                return content.replace(search, new_string), start_line
             last_idx = content.rfind(search)
             if idx != last_idx:
                 continue
-            return content[:idx] + new_string + content[idx + len(search) :]
+            start_line = content.count("\n", 0, idx) + 1
+            return content[:idx] + new_string + content[idx + len(search) :], start_line
 
     if not_found:
         raise ValueError(
@@ -200,6 +204,16 @@ def replace_content(
         "Found multiple matches for oldString. "
         "Provide more surrounding context to make the match unique, or set replaceAll=true."
     )
+
+
+def replace_content(
+    content: str, old_string: str, new_string: str, replace_all: bool = False
+) -> str:
+    """Backward-compatible wrapper returning only the updated content."""
+    updated, _start_line = replace_content_with_meta(
+        content, old_string, new_string, replace_all
+    )
+    return updated
 
 
 async def _edit_file(
@@ -250,13 +264,26 @@ async def _edit_file(
         )
 
     content = resolved.read_text(encoding="utf-8")
-    new_content = replace_content(content, old_string, new_string, replace_all)
+    new_content, start_line = replace_content_with_meta(
+        content, old_string, new_string, replace_all
+    )
 
     encoded = new_content.encode("utf-8")
     resolved.write_bytes(encoded)
     logger.info("file_edited path={} bytes={}", resolved, len(encoded))
     notify_fs_change(resolved)
-    return f"Edit applied successfully to {rel}\nResolved path: {resolved}"
+    meta = json.dumps(
+        {
+            "path": path,
+            "old_start": start_line,
+            "new_start": start_line,
+        },
+        separators=(",", ":"),
+    )
+    return (
+        f"@@ openagentd-diff-meta {meta}\n"
+        f"Edit applied successfully to {rel}\nResolved path: {resolved}"
+    )
 
 
 edit_file = Tool(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -121,7 +122,15 @@ def _lines_to_text(lines: list[str]) -> str:
 
 
 def _apply_chunks(content: str, chunks: list[Chunk], path: str) -> str:
+    return _apply_chunks_with_meta(content, chunks, path)[0]
+
+
+def _apply_chunks_with_meta(
+    content: str, chunks: list[Chunk], path: str
+) -> tuple[str, list[dict[str, int]]]:
     next_content = content
+    line_delta = 0
+    hunks: list[dict[str, int]] = []
     for chunk in chunks:
         old = _lines_to_text(chunk.old)
         new = _lines_to_text(chunk.new)
@@ -132,8 +141,13 @@ def _apply_chunks(content: str, chunks: list[Chunk], path: str) -> str:
             raise ValueError(f"Could not find patch context in {path}.")
         if count > 1:
             raise ValueError(f"Patch context is ambiguous in {path}.")
+        idx = next_content.find(old)
+        new_start = next_content.count("\n", 0, idx) + 1
+        old_start = new_start - line_delta
+        hunks.append({"old_start": old_start, "new_start": new_start})
+        line_delta += len(chunk.new) - len(chunk.old)
         next_content = next_content.replace(old, new, 1)
-    return next_content
+    return next_content, hunks
 
 
 async def _patch_file(
@@ -145,7 +159,9 @@ async def _patch_file(
     """Apply a stripped-down patch envelope with add, update, delete, and move operations."""
     sandbox = get_sandbox()
     patches = _parse_patch(patch_text)
-    planned: list[tuple[FilePatch, Path, Path | None, bytes | None]] = []
+    planned: list[
+        tuple[FilePatch, Path, Path | None, bytes | None, dict[str, object] | None]
+    ] = []
 
     for patch in patches:
         resolved = sandbox.validate_path(patch.path)
@@ -153,7 +169,13 @@ async def _patch_file(
 
         if patch.kind == "add":
             planned.append(
-                (patch, resolved, None, _lines_to_text(patch.contents).encode("utf-8"))
+                (
+                    patch,
+                    resolved,
+                    None,
+                    _lines_to_text(patch.contents).encode("utf-8"),
+                    {"path": patch.path, "hunks": [{"old_start": 1, "new_start": 1}]},
+                )
             )
             continue
         if patch.kind == "delete":
@@ -165,7 +187,7 @@ async def _patch_file(
                 raise IsADirectoryError(
                     f"Path is a directory: {sandbox.display_path(resolved)}"
                 )
-            planned.append((patch, resolved, None, None))
+            planned.append((patch, resolved, None, None, None))
             continue
 
         if not resolved.exists():
@@ -175,11 +197,19 @@ async def _patch_file(
                 f"Path is a directory: {sandbox.display_path(resolved)}"
             )
         content = resolved.read_text(encoding="utf-8")
-        new_content = _apply_chunks(content, patch.chunks, patch.path)
-        planned.append((patch, resolved, target, new_content.encode("utf-8")))
+        new_content, hunks = _apply_chunks_with_meta(content, patch.chunks, patch.path)
+        planned.append(
+            (
+                patch,
+                resolved,
+                target,
+                new_content.encode("utf-8"),
+                {"path": patch.path, "hunks": hunks},
+            )
+        )
 
     changed: list[Path] = []
-    for patch, resolved, target, data in planned:
+    for patch, resolved, target, data, _meta in planned:
         if patch.kind == "delete":
             resolved.unlink()
             changed.append(resolved)
@@ -200,7 +230,16 @@ async def _patch_file(
         notify_fs_change(path)
     logger.info("patch_applied files={}", len(changed))
     summary = "\n".join(sandbox.display_path(path) for path in changed)
-    return f"Patch applied successfully. Updated paths:\n{summary}"
+    diff_meta = json.dumps(
+        {
+            "files": [meta for *_rest, meta in planned if meta is not None],
+        },
+        separators=(",", ":"),
+    )
+    return (
+        f"@@ openagentd-diff-meta {diff_meta}\n"
+        f"Patch applied successfully. Updated paths:\n{summary}"
+    )
 
 
 patch_file = Tool(
