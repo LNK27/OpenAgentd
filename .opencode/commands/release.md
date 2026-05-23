@@ -39,7 +39,7 @@ git status --short
   - `web/package.json` — frontend package version (informational; not published).
   - `desktop/src-tauri/tauri.conf.json` — drives **artefact filenames** (`OpenAgentd_<ver>_*.dmg`, `.msi`, `.deb`, `.AppImage`) and the About-panel version in the desktop app.
   - `desktop/src-tauri/Cargo.toml` — `env!("CARGO_PKG_VERSION")` in `main.rs` reads from here for the About panel; keep it equal to `tauri.conf.json` or the desktop build fails its version-consistency check.
-- **Why this matters:** `app/version.txt` drives the *tag name* the desktop workflow creates (`v<X.Y.Z>-desktop`), but the *bundled artefacts inside* read their version from `tauri.conf.json`. If you bump only the first four files, you'll ship a `v1.0.8-desktop` release containing `OpenAgentd_1.0.7_*.dmg` files. This actually happened on 1.0.8 — see the post-mortem commit in v1.0.8's history.
+- **Why this matters:** `app/version.txt` drives the *tag name* both release workflows use (`v<X.Y.Z>`), but the *bundled artefacts inside* read their version from `tauri.conf.json`. If you bump only the first four files, you'll ship a `v1.0.8` release containing `OpenAgentd_1.0.7_*.dmg` files. This actually happened on 1.0.8 — see the post-mortem commit in v1.0.8's history.
 - If `uv sync` or local tooling updates `desktop/src-tauri/Cargo.lock` for the desktop package version, include it in the release commit too.
 - Metadata-only title: `chore: bump version to <version>`.
 - User-facing change title: describe change, append range.
@@ -202,35 +202,24 @@ Sections:
 - Avoid marketing language.
 - Avoid restating section headings.
 
-6. Trigger release(s):
+6. Trigger CLI release:
 
 Both workflows publish into the **same** `v<X.Y.Z>` tag (introduced in
 1.0.9 — older releases used a separate `v<X.Y.Z>-desktop` tag). Whichever
 workflow runs first creates the release; the other appends artefacts via
 `gh release upload --clobber`. Run `release.yml` first so the canonical
-auto-generated notes come from the PyPI workflow, then trigger
-`release-desktop.yml` once it's green.
+auto-generated notes come from the PyPI workflow.
 
 ```bash
-# Step 6a: CLI / PyPI release (~90 seconds)
+# CLI / PyPI release (~90 seconds)
 gh workflow run release.yml --field confirm=release
 gh run list --workflow=release.yml --limit=3
 # Wait for status=completed conclusion=success before continuing.
-
-# Step 6b: Desktop release (~20–25 minutes for the matrix build)
-gh workflow run release-desktop.yml --field confirm=release-desktop --field channel=stable
-gh run list --workflow=release-desktop.yml --limit=3
-# Wait for status=completed conclusion=success.
 ```
-
-- Edit release notes only after **both** workflows finish. Until the
-  desktop workflow lands, the release will show only wheel/sdist, which
-  is fine and visible to PyPI users but confusing for download-page
-  visitors.
 
 7. GitHub release notes:
 
-- Replace generated notes.
+- Replace generated notes **after the CLI release succeeds and before triggering the desktop release**. This keeps the release page accurate as soon as the tag exists, even while desktop artefacts are still pending.
 
 ```bash
 git fetch --tags
@@ -242,4 +231,19 @@ gh release edit v<version> --repo lthoangg/openagentd --notes "<release notes>"
 
 ```bash
 gh release view v<version> --repo lthoangg/openagentd | sed -n '/## Install/,/Full changelog/p'
+```
+
+8. Trigger desktop release:
+
+```bash
+# Desktop release (~20–25 minutes for the matrix build)
+gh workflow run release-desktop.yml --field confirm=release-desktop --field channel=stable
+gh run list --workflow=release-desktop.yml --limit=3
+# Wait for status=completed conclusion=success.
+```
+
+- After the desktop workflow succeeds, verify the release has both CLI and desktop artefacts and that the notes still contain the expected install section:
+
+```bash
+gh release view v<version> --repo lthoangg/openagentd | sed -n '/asset:/p;/## Install/,/Full changelog/p'
 ```
