@@ -34,6 +34,9 @@ from app.agent.schemas.chat import (
     SystemMessage,
     HumanMessage,
     AssistantMessage,
+    ChatCompletionChunk,
+    ChatCompletionChunkChoice,
+    ChatCompletionDelta,
     ToolMessage,
 )
 from app.cli.commands.auth import _run_login
@@ -705,12 +708,12 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, tools, False, {})
         assert "tools" in body
 
-    def test_build_request_inherits_max_tokens_from_parent(self):
-        """build_request() includes max_tokens from parent class."""
+    def test_build_request_drops_max_tokens(self):
+        """Codex rejects max_output_tokens, so max_tokens has no wire field."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
         messages = [HumanMessage(content="Hello")]
         body = handler.build_request(messages, None, False, {"max_tokens": 1000})
-        assert body["max_output_tokens"] == 1000
+        assert "max_output_tokens" not in body
 
     def test_build_request_with_empty_system_message_content(self):
         """build_request() handles empty string SystemMessage content."""
@@ -722,6 +725,41 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, None, False, {})
         # Empty string is falsy, so it should not be included
         assert body["instructions"] == ""
+
+    @pytest.mark.asyncio
+    async def test_chat_uses_streaming_endpoint(self):
+        """chat() assembles chunks via stream because Codex requires stream=true."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        seen: dict[str, Any] = {}
+
+        async def fake_stream(messages, tools, merged):
+            seen["messages"] = messages
+            seen["tools"] = tools
+            seen["merged"] = merged
+            for text in ("Short", " title"):
+                yield ChatCompletionChunk(
+                    id="resp_1",
+                    created=1,
+                    model="gpt-5.4",
+                    choices=[
+                        ChatCompletionChunkChoice(
+                            index=0,
+                            delta=ChatCompletionDelta(content=text),
+                        )
+                    ],
+                )
+
+        handler.stream = fake_stream  # type: ignore[method-assign]
+
+        messages = [HumanMessage(content="Hello")]
+        result = await handler.chat(messages, None, {"max_tokens": 20})
+
+        assert result.content == "Short title"
+        assert seen == {
+            "messages": messages,
+            "tools": None,
+            "merged": {"max_tokens": 20},
+        }
 
 
 # ============================================================================

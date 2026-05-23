@@ -63,11 +63,39 @@ class _CodexResponsesHandler(ResponsesHandler):
 
         body = super().build_request(non_system, tools, stream, merged)
 
+        # ChatGPT's private Codex endpoint rejects the public Responses API
+        # token cap field (``max_output_tokens``).  Drop it here; callers may
+        # still pass ``max_tokens`` for provider compatibility, but Codex does
+        # not currently expose a supported wire equivalent.
+        body.pop("max_output_tokens", None)
+
         # instructions is required and must be non-empty
         body["instructions"] = "\n\n".join(system_parts)
         # Codex endpoint requires store=false explicitly
         body["store"] = False
         return body
+
+    async def chat(
+        self,
+        messages: list[ChatMessage],
+        tools: list[dict[str, Any]] | None,
+        merged: dict[str, Any],
+    ) -> AssistantMessage:
+        """Return a final message using Codex's required streaming endpoint."""
+        content = ""
+        reasoning = ""
+        async for chunk in self.stream(messages, tools, merged):
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                content += delta.content
+            if delta.reasoning_content:
+                reasoning += delta.reasoning_content
+        return AssistantMessage(
+            content=content or None,
+            reasoning_content=reasoning or None,
+        )
 
 
 def _load_token() -> tuple[str, str | None]:
