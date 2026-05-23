@@ -26,6 +26,7 @@ import { AssistantTurn } from './AssistantTurnFooter'
 import { partitionTurns } from '@/utils/turns'
 import { formatTokens, extractSleepPrefix, formatTime } from '@/utils/format'
 import { useTeamStore } from '@/stores/useTeamStore'
+import { findCommittedMentions } from './InputBar.mentions'
 import type { AgentStream } from '@/stores/useTeamStore'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
@@ -47,6 +48,46 @@ function isDirectUserBlock(block: ContentBlock): boolean {
 function shortModelName(modelId: string | null | undefined): string | null {
   if (!modelId) return null
   return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
+}
+
+/**
+ * Render user prose with ``@mention`` tokens syntax-highlighted.
+ *
+ * Matches the InputBar's overlay convention so a message looks the same
+ * after send as it did while composing:
+ *   - folders (token ends in ``/``)      → ``--accent-orange-text``
+ *   - files (everything else, default)   → ``--accent-blue-text``
+ *
+ * The slash heuristic is what the picker inserts; using it (rather than
+ * resolving against ``fileRefs``) keeps highlighting stable for old
+ * messages whose referenced paths may since have been renamed/removed.
+ * ``findCommittedMentions`` without refs falls back to syntax-only range
+ * detection — same code path the overlay relies on.
+ */
+function renderMentionSegments(content: string): React.ReactNode[] {
+  const ranges = findCommittedMentions(content, null)
+  if (ranges.length === 0) return [content]
+  const out: React.ReactNode[] = []
+  let cursor = 0
+  for (const r of ranges) {
+    if (r.start > cursor) out.push(content.slice(cursor, r.start))
+    const token = content.slice(r.start, r.end)
+    const isFolder = token.endsWith('/')
+    out.push(
+      <span
+        key={r.start}
+        data-mention-kind={isFolder ? 'directory' : 'file'}
+        className={
+          isFolder ? 'text-(--accent-orange-text)' : 'text-(--accent-blue-text)'
+        }
+      >
+        {token}
+      </span>,
+    )
+    cursor = r.end
+  }
+  if (cursor < content.length) out.push(content.slice(cursor))
+  return out
 }
 
 function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null }) {
@@ -121,7 +162,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
                {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
              </button>
            )}
-           <p className="break-words whitespace-pre-wrap">{visibleContent}</p>
+           <p className="break-words whitespace-pre-wrap">{renderMentionSegments(visibleContent)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
@@ -307,7 +348,11 @@ export function AgentPane({
       requestAnimationFrame(() => {
         const atBottom = isAtBottom()
         pinnedRef.current = atBottom
-        setShowScrollBtn(!atBottom)
+        // Me: only flip state when the boolean actually changes. Calling
+        // setState with the current value on every wheel tick still
+        // schedules a re-render, which can cascade through MarkdownBlock /
+        // ReactMarkdown and re-mount inline media elements mid-playback.
+        setShowScrollBtn((prev) => (prev === !atBottom ? prev : !atBottom))
       })
     }
     el.addEventListener('wheel', onUserScroll, { passive: true })
@@ -373,11 +418,7 @@ export function AgentPane({
                    <span className="text-[#458588]">cached {formatTokens(stream.usage.cachedTokens)}</span>
                  </>
                )}
-               {stream.model && <span className="text-[#3c3836]">·</span>}
              </>
-           )}
-           {stream.model && (
-             <span className="text-(--color-text-muted)">{stream.model}</span>
            )}
             <span aria-label={`Agent status: ${stream.status}`} className={`h-1.5 w-1.5 rounded-full ${
              isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
