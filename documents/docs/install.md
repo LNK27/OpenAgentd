@@ -127,7 +127,7 @@ Pick **OpenAgentd → Check for Updates…** from the menu bar, or use **Setting
 
 When a new version is available, the in-app update card downloads it first and then asks for **Install and restart**. The updater verifies the minisign signature before install, shuts down the Python sidecar, and restarts the app. Release notes open inside the app and link back to GitHub.
 
-Desktop notifications are managed in **Settings → Notifications**. They can be toggled off or tested there; OpenAgentd notifies for completed assistant turns, finished background tasks, and scheduled reminders.
+Desktop notifications are managed in **Settings → Notifications**. They can be toggled off, tested, or muted there; OpenAgentd notifies for completed assistant turns, finished background tasks, and scheduled reminders.
 
 Running OpenAgentd as a CLI server (outside the desktop bundle) instead? Use `openagentd update` from the same terminal that launched the process.
 

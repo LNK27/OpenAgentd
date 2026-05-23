@@ -8,6 +8,7 @@ let permissionGranted = true
 let permissionResult: 'granted' | 'denied' = 'granted'
 const mockRequestPermission = mock(async () => permissionResult)
 const mockNotify = mock(async () => undefined)
+const mockPlay = mock(async () => undefined)
 
 mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => ({ isTauri, os: 'macos', isMacOverlay: isTauri }),
@@ -48,6 +49,8 @@ beforeEach(() => {
   permissionResult = 'granted'
   mockRequestPermission.mockClear()
   mockNotify.mockClear()
+  mockPlay.mockClear()
+  globalThis.Audio = mock(() => ({ play: mockPlay })) as unknown as typeof Audio
 })
 
 describe('desktop notification worker', () => {
@@ -62,6 +65,7 @@ describe('desktop notification worker', () => {
         group: 'openagentd-assistant_done',
       },
     })
+    expect(mockPlay).toHaveBeenCalledTimes(1)
   })
 
   it('focused skip and forced send', async () => {
@@ -69,9 +73,19 @@ describe('desktop notification worker', () => {
 
     expect((await sendDesktopNotification(payload)).status).toBe('disabled')
     expect(mockNotify).not.toHaveBeenCalled()
+    expect(mockPlay).not.toHaveBeenCalled()
 
     expect((await sendDesktopNotification(payload, { force: true })).status).toBe('sent')
     expect(mockNotify).toHaveBeenCalledTimes(1)
+    expect(mockPlay).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips sound when notification sounds are disabled', async () => {
+    window.localStorage.setItem('oa-desktop-notifications-sound-enabled', 'false')
+
+    expect((await sendDesktopNotification(payload)).status).toBe('sent')
+    expect(mockNotify).toHaveBeenCalledTimes(1)
+    expect(mockPlay).not.toHaveBeenCalled()
   })
 
   it('unsupported runtime', async () => {

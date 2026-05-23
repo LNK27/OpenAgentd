@@ -3,8 +3,10 @@ import { ArrowLeft, Bell, BellRing } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import {
+  areDesktopNotificationSoundsEnabled,
   areDesktopNotificationsEnabled,
   sendDesktopNotification,
+  setDesktopNotificationSoundsEnabled,
   setDesktopNotificationsEnabled,
 } from '@/lib/desktop-notifications'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -14,12 +16,18 @@ import { Switch } from '@/components/ui/switch'
 export function NotificationSettingsPage() {
   const isMobile = useIsMobile()
   const [enabled, setEnabled] = useState(() => areDesktopNotificationsEnabled())
+  const [soundEnabled, setSoundEnabled] = useState(() => areDesktopNotificationSoundsEnabled())
   const [testing, setTesting] = useState(false)
   const [testMessage, setTestMessage] = useState<string | null>(null)
 
   const handleEnabledChange = (checked: boolean) => {
     setEnabled(checked)
     setDesktopNotificationsEnabled(checked)
+  }
+
+  const handleSoundEnabledChange = (checked: boolean) => {
+    setSoundEnabled(checked)
+    setDesktopNotificationSoundsEnabled(checked)
   }
 
   const handleTest = async () => {
@@ -79,6 +87,18 @@ export function NotificationSettingsPage() {
               OpenAgentd will notify you when an assistant finishes responding,
               a background task completes, or a reminder fires. Notifications
               are skipped while the app window is focused.
+            </p>
+
+            <label className="flex cursor-pointer items-center gap-3 text-sm">
+              <Switch
+                checked={soundEnabled}
+                onCheckedChange={handleSoundEnabledChange}
+                disabled={!enabled}
+              />
+              <span className="text-(--color-text)">Play sound</span>
+            </label>
+            <p className="text-xs text-(--color-text-muted)">
+              Play a short in-app sound when a desktop notification is sent.
             </p>
           </section>
 

@@ -14,8 +14,12 @@ mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
 }))
 
+let soundEnabled = true
+
 mock.module('@/lib/desktop-notifications', () => ({
+  areDesktopNotificationSoundsEnabled: () => soundEnabled,
   areDesktopNotificationsEnabled: () => enabled,
+  setDesktopNotificationSoundsEnabled: (next: boolean) => { soundEnabled = next },
   setDesktopNotificationsEnabled: (next: boolean) => { enabled = next },
   sendDesktopNotification: mockSendDesktopNotification,
 }))
@@ -24,6 +28,7 @@ import { NotificationSettingsPage } from '@/routes/settings.notifications'
 
 beforeEach(() => {
   enabled = true
+  soundEnabled = true
   mockSendDesktopNotification.mockReset()
   mockSendDesktopNotification.mockImplementation(() => Promise.resolve({ status: 'sent', message: 'Native notification sent.' }))
 })
@@ -32,10 +37,18 @@ describe('NotificationSettingsPage', () => {
   it('toggles desktop notifications', async () => {
     render(<NotificationSettingsPage />)
 
-    await userEvent.click(screen.getByRole('switch'))
+    await userEvent.click(screen.getByRole('switch', { name: /enabled/i }))
 
     expect(enabled).toBe(false)
     expect(screen.getByRole('button', { name: /send test notification/i }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('toggles notification sound', async () => {
+    render(<NotificationSettingsPage />)
+
+    await userEvent.click(screen.getByRole('switch', { name: /play sound/i }))
+
+    expect(soundEnabled).toBe(false)
   })
 
   it('sends only a forced native test notification', async () => {
