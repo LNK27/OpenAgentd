@@ -853,6 +853,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(log_plugin)
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         // Updater config (endpoint, pubkey, install mode) lives in
         // ``tauri.conf.json``'s ``plugins.updater`` block. ``process`` is

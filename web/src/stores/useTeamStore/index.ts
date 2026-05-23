@@ -542,8 +542,11 @@ export const useTeamStore = create<TeamStore>()(
         {
           onEvent: (type, data) => {
             const current = get()
-            if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             if (current._unloading && type === 'error') return
+            if (current.sessionId !== sessionId || current._sessionGeneration !== generation) {
+              if (type === 'desktop_notification') current._handleSSEEvent(type, data)
+              return
+            }
             current._handleSSEEvent(type, data)
           },
           onParseError: (err) => {

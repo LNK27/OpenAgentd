@@ -20,10 +20,31 @@ import {
   extractToolPaths,
   touchesWiki,
 } from './helpers'
+import { isBackgroundCompletion, sendDesktopNotification } from '@/lib/desktop-notifications'
 import type { CacheInvalidation, TeamStore } from './types'
 
 type Setter = (fn: (draft: TeamStore) => void) => void
 type Getter = () => TeamStore
+
+function compactSessionId(sessionId: string | null): string | null {
+  return sessionId ? sessionId.slice(0, 8) : null
+}
+
+function workspaceName(workspace: string | null): string | null {
+  if (!workspace) return null
+  return workspace.split('/').filter(Boolean).at(-1) ?? workspace
+}
+
+function sessionLabel(state: TeamStore): string {
+  const title = state.sessionTitle?.trim()
+  const id = compactSessionId(state.sessionId)
+  return title || (id ? `Session ${id}` : 'this session')
+}
+
+function codingWorkspaceSuffix(state: TeamStore): string {
+  const name = workspaceName(state._workspace)
+  return name ? ` - ${name}` : ''
+}
 
 function ensureAgent(draft: TeamStore, agent: string) {
   if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
@@ -138,6 +159,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const agent = d.agent as string
         const toolName = d.name as string
         const toolCallId = d.tool_call_id as string | undefined
+        const result = d.result as string | undefined
         if (!TODO_MUTATING_TOOLS.has(toolName)) {
           set((draft) => {
             ensureAgent(draft, agent)
@@ -145,8 +167,16 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               draft.agentStreams[agent].currentBlocks,
               toolName,
               toolCallId,
-              d.result as string | undefined,
+              result,
             )
+          })
+        }
+        if (isBackgroundCompletion(toolName, result)) {
+          const state = get()
+          void sendDesktopNotification({
+            kind: 'background_done',
+            title: `Background task completed${codingWorkspaceSuffix(state)}`,
+            body: sessionLabel(state),
           })
         }
         const events: CacheInvalidation[] = []
@@ -281,6 +311,17 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           )
           const queuedIds = new Set(queued.map((msg) => msg.id))
           draft._pendingMessages = draft._pendingMessages.filter((msg) => !queuedIds.has(msg.id))
+        })
+        break
+      }
+
+      case 'desktop_notification': {
+        const kind = d.kind as string
+        if (kind !== 'assistant_done' && kind !== 'background_done' && kind !== 'reminder_fired') break
+        void sendDesktopNotification({
+          kind,
+          title: d.title as string,
+          body: d.body as string,
         })
         break
       }

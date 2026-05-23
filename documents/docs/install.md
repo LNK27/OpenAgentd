@@ -125,6 +125,8 @@ The `.deb` package works on Debian/Ubuntu derivatives: `sudo dpkg -i OpenAgentd_
 
 Pick **OpenAgentd → Check for Updates…** from the menu bar (or the system-tray icon's menu) to check the rolling [`latest-desktop/latest.json`](https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json) manifest. When a new version is offered, accepting the **Install** prompt downloads the new bundle, verifies its minisign signature, shuts down the Python sidecar, and restarts the app on the upgraded version. An invalid signature aborts the install with a native error dialog — no silent overwrites.
 
+Desktop notifications are managed in **Settings → Notifications**. They can be toggled off or tested there; OpenAgentd notifies for completed assistant turns, finished background tasks, and scheduled reminders.
+
 Running OpenAgentd as a CLI server (outside the desktop bundle) instead? Use `openagentd update` from the same terminal that launched the process.
 
 ## Docker

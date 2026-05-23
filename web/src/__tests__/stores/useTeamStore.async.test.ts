@@ -56,6 +56,7 @@ const mockTeamHistory = mock(() =>
     next_cursor: null,
   })
 ) as any
+const mockSendDesktopNotification = mock(() => Promise.resolve()) as any
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -78,6 +79,11 @@ const mockTeamHistory = mock(() =>
   listTeamSessions: mock(() => Promise.resolve([])) as any,
   deleteTeamSession: mock(() => Promise.resolve()) as any,
   health: mock(() => Promise.resolve({ status: "ok" })) as any,
+}));
+(mock as any).module("@/lib/desktop-notifications", () => ({
+  isBackgroundCompletion: (toolName: string, result?: string) =>
+    toolName === "bg" && !!result && /PID \d+: (?:exited|stopped)/.test(result),
+  sendDesktopNotification: mockSendDesktopNotification,
 }))
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -157,6 +163,7 @@ beforeEach(() => {
   mockTeamStream.mockReset()
   mockTeamStatus.mockReset()
   mockTeamHistory.mockReset()
+  mockSendDesktopNotification.mockReset()
 
   // Restore sensible defaults
   mockPostTeamChat.mockImplementation(() =>
@@ -190,6 +197,7 @@ beforeEach(() => {
       next_cursor: null,
     })
   )
+  mockSendDesktopNotification.mockImplementation(() => Promise.resolve())
 })
 
 // ── toggleSidebar ─────────────────────────────────────────────────────────────
@@ -750,6 +758,91 @@ describe("sendMessage: queue behaviour", () => {
     expect(useTeamStore.getState().agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
       "second A",
     ])
+  })
+
+  it("notifies when the backend emits a desktop notification", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "working" as const }),
+      },
+    })
+
+    useTeamStore.getState()._handleSSEEvent("desktop_notification", {
+      kind: "reminder_fired",
+      title: "Reminder fired",
+      body: "follow_up",
+    })
+
+    expect(mockSendDesktopNotification).toHaveBeenCalledWith({
+      kind: "reminder_fired",
+      title: "Reminder fired",
+      body: "follow_up",
+    })
+  })
+
+  it("notifies when a background process completes through bg", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "working" as const }),
+      },
+    })
+
+    useTeamStore.getState()._handleSSEEvent("tool_end", {
+      agent: "lead",
+      name: "bg",
+      result: "PID 123: exited (code 0)\nFinal output:\nok",
+    })
+
+    expect(mockSendDesktopNotification).toHaveBeenCalledWith({
+      kind: "background_done",
+      title: "Background task completed",
+      body: "Session session-",
+    })
+  })
+
+  it("does not notify directly from done because backend owns completion notifications", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "working" as const }),
+      },
+      isTeamWorking: true,
+    })
+
+    useTeamStore.getState()._handleSSEEvent("done", {})
+
+    expect(mockSendDesktopNotification).not.toHaveBeenCalled()
+  })
+
+  it("includes session details in backend assistant completion notifications", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      sessionTitle: "Fix desktop notifications",
+      sessionModel: "openai:gpt-5.5",
+      _workspace: "/repo/openagentd",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "working" as const }),
+      },
+      isTeamWorking: true,
+    })
+
+    useTeamStore.getState()._handleSSEEvent("desktop_notification", {
+      kind: "assistant_done",
+      title: "Session completed - openagentd",
+      body: "Fix desktop notifications",
+    })
+
+    expect(mockSendDesktopNotification).toHaveBeenCalledWith({
+      kind: "assistant_done",
+      title: "Session completed - openagentd",
+      body: "Fix desktop notifications",
+    })
   })
 
   it("stores backend queued message ids returned while lead is working", async () => {

@@ -26,7 +26,7 @@
 # on the shell. Vite's HTTP proxy forwards ``/api/**`` and SSE streams
 # to :8000 transparently.
 
-.PHONY: sidecar sidecar-full icons dev dev-bundled build clean
+.PHONY: sidecar sidecar-full icons dev dev-bundled build-dev-app build clean
 
 ROOT       := $(abspath ..)
 BUNDLE     := sidecar-bundle
@@ -65,8 +65,28 @@ dev:
 # Dev with the bundled CPython sidecar — the closest thing to ``make build``
 # without producing a .dmg. Useful for testing handshake, token injection,
 # Job-Object cleanup, and the ``app.cli serve`` entry path.
-dev-bundled: sidecar
-	cd src-tauri && cargo tauri dev -c tauri.dev.conf.json
+#
+# The XDG roots are pinned to ``<repo>/.openagentd/...`` so the bundled
+# sidecar shares state (DB, config, wiki, workspace) with ``make dev`` at
+# the repo root. Without these overrides ``APP_ENV=development`` would
+# resolve them relative to the sidecar's cwd (``desktop/src-tauri/``).
+dev-bundled:
+	@$(MAKE) -C "$(ROOT)" build-web
+	@$(MAKE) sidecar
+	cd src-tauri && \
+		OPENAGENTD_APP_ENV=development \
+		OPENAGENTD_DATA_DIR="$(ROOT)/.openagentd/data" \
+		OPENAGENTD_CONFIG_DIR="$(ROOT)/.openagentd/config" \
+		OPENAGENTD_STATE_DIR="$(ROOT)/.openagentd/state" \
+		OPENAGENTD_CACHE_DIR="$(ROOT)/.openagentd/cache" \
+		OPENAGENTD_WORKSPACE_DIR="$(ROOT)/.openagentd/workspace" \
+		OPENAGENTD_WIKI_DIR="$(ROOT)/.openagentd/wiki" \
+		cargo tauri dev -c tauri.dev-bundled.conf.json
+
+build-dev-app:
+	@$(MAKE) -C "$(ROOT)" build-web
+	@$(MAKE) sidecar
+	cd src-tauri && cargo tauri build -c tauri.dev-bundled.conf.json --bundles app
 
 build:
 	cd src-tauri && cargo tauri build
