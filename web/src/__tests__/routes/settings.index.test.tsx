@@ -3,9 +3,8 @@
  *
  * Two contracts guarded here:
  *
- * 1. **No in-page updates UI.** The PyPI-backed self-update card was removed
- *    in favour of the menu-bar updater (desktop) and ``openagentd update``
- *    (CLI). Any text or button hinting at a re-introduction must fail loudly.
+ * 1. **Desktop updates UI.** The old PyPI-backed self-update card was removed;
+ *    the hub now exposes the desktop updater card for Tauri builds.
  *
  * 2. **Header version comes from ``/api/health``** and degrades gracefully
  *    when health is still loading.
@@ -136,33 +135,15 @@ afterEach(() => {
   isMobileFlag = false
 })
 
-// ── No-updates regression guard (the headline change) ───────────────────────
+// ── Desktop updates card ────────────────────────────────────────────────────
 
-describe('SettingsHubPage — no in-page updates', () => {
-  it('does not render an "Application update" heading', () => {
+describe('SettingsHubPage — desktop updates card', () => {
+  it('renders desktop update controls without the old Application update heading', () => {
     renderHub({ health: { status: 'ok', version: '1.2.3' } })
+
+    expect(screen.getByRole('heading', { name: /^updates$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /check for updates?/i })).toBeInTheDocument()
     expect(screen.queryByText(/application update/i)).toBeNull()
-  })
-
-  it('does not render a "Check for updates" button', () => {
-    renderHub({ health: { status: 'ok', version: '1.2.3' } })
-    expect(
-      screen.queryByRole('button', { name: /check for updates?/i }),
-    ).toBeNull()
-  })
-
-  it('does not render an "Updates" section header', () => {
-    renderHub({ health: { status: 'ok', version: '1.2.3' } })
-    // The old SectionHeader had the literal text "Updates" (uppercased via
-    // CSS); after deletion no element should contain that exact heading.
-    const matches = screen.queryAllByText(/^Updates$/i)
-    expect(matches).toHaveLength(0)
-  })
-
-  it('does not render an "Install" button', () => {
-    // The update card's call-to-action was a primary button labelled
-    // "Install". Make sure no other unrelated change re-introduces it.
-    renderHub({ health: { status: 'ok', version: '1.2.3' } })
     expect(screen.queryByRole('button', { name: /^install$/i })).toBeNull()
   })
 })
