@@ -885,6 +885,8 @@ export type ProviderInfo = {
   oauth_command: string
   docs_url: string
   is_configured: boolean
+  is_saved: boolean
+  is_reachable?: boolean | null
 }
 
 export type ProvidersListBody = {
