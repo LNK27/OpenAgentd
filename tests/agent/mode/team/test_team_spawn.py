@@ -738,6 +738,8 @@ async def test_counter_reconciliation_reads_db(tmp_path):
     try:
         sid = str(uuid.uuid7())
         await team.handle_user_message("hi", session_id=sid)
+        if team.lead._active_task is not None:
+            await team.lead._active_task
         lead_uuid = uuid.UUID(sid)
 
         # Pre-create executor#7 under this lead.
