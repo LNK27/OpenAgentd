@@ -152,7 +152,7 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 | `ls` | `ls.py` | List directory contents with type indicators |
 | `grep` | `grep.py` | Regex content search across files; returns `file:line: content` |
 | `glob` | `glob.py` | Glob pattern search. `match='path'` (default) matches full relative path (supports `**`); `match='name'` matches filename only |
-| `rm` | `rm.py` | Permanently delete a file or directory; `recursive=true` for non-empty directories |
+| `rm` | `rm.py` | Permanently delete a file or directory; `recursive=true` for non-empty directories; file removals report deleted line metadata for inline diff stats |
 
 `read` returns raw text when called without pagination arguments. When `limit` is set, the result includes a `[start-end/total]` header and `offset=1` starts at the first line.
 

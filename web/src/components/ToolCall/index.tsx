@@ -89,7 +89,9 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
 
   const { header, headerTitle, formattedArgs, language, suppressResult } =
     getToolDisplay(name, args)
-  const diffStats = (name === 'edit' || name === 'patch' || name === 'write') && args ? getDiffStats(name, args) : null
+  const diffStats = (name === 'edit' || name === 'patch' || name === 'write' || name === 'rm') && args
+    ? getDiffStats(name, args, result)
+    : null
   // Pending-state header comes from getToolDisplay's no-args branch
   // (e.g. ``recall`` → "Checking memory…", ``team_message`` →
   // "Preparing message…"). Tools without a custom pending header return

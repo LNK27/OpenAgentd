@@ -167,6 +167,21 @@ describe("ToolCall — web_search display", () => {
   })
 })
 
+describe("ToolCall — diff stats", () => {
+  it("shows deleted line count for rm from result metadata", () => {
+    const args = JSON.stringify({ path: "src/old.txt" })
+    const result = [
+      '@@ openagentd-diff-meta {"path":"src/old.txt","deleted_lines":3}',
+      'Removed file: src/old.txt',
+      'Resolved path: /tmp/src/old.txt',
+    ].join("\n")
+
+    render(<ToolCall name="rm" args={args} done={true} result={result} />)
+
+    expect(screen.getByText("-3")).toBeTruthy()
+  })
+})
+
 describe("ToolCall — file search display", () => {
   it("hides glob args already shown in the header", async () => {
     const user = userEvent.setup()

@@ -9,6 +9,7 @@ export interface DiffMeta {
   path?: string
   old_start?: number | null
   new_start?: number | null
+  deleted_lines?: number | null
   files?: Array<{
     path: string
     hunks: Array<{
@@ -166,7 +167,7 @@ export function parsePatchText(patchText: string, meta?: DiffMeta | null): FileD
   return diffs
 }
 
-export function getDiffStats(toolName: string, args: string): { additions: number; deletions: number } | null {
+export function getDiffStats(toolName: string, args: string, result?: string): { additions: number; deletions: number } | null {
   try {
     const parsed = JSON.parse(args)
     if (!parsed) return null
@@ -202,6 +203,13 @@ export function getDiffStats(toolName: string, args: string): { additions: numbe
         }
       }
       return { additions, deletions }
+    }
+
+    if (toolName === 'rm') {
+      const meta = parseDiffMeta(result)
+      if (typeof meta?.deleted_lines === 'number') {
+        return { additions: 0, deletions: meta.deleted_lines }
+      }
     }
   } catch {
     // ignore

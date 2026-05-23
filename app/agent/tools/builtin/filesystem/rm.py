@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
+from pathlib import Path
 from typing import Annotated
 
 from loguru import logger
@@ -12,6 +14,14 @@ from pydantic import Field
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
+
+
+def _count_lines_for_removed_file(path: Path) -> int | None:
+    try:
+        data = path.read_bytes().replace(b"\r\n", b"\n")
+    except OSError:
+        return None
+    return len(data.split(b"\n"))
 
 
 async def _remove_path(
@@ -35,10 +45,18 @@ async def _remove_path(
         raise FileNotFoundError(f"Path not found: {rel}")
 
     if resolved.is_file() or resolved.is_symlink():
+        line_count = _count_lines_for_removed_file(resolved)
+        meta_payload: dict[str, str | int] = {"path": path}
+        if line_count is not None:
+            meta_payload["deleted_lines"] = line_count
+        meta = json.dumps(meta_payload, separators=(",", ":"))
         resolved.unlink()
         logger.info("file_removed path={}", resolved)
         notify_fs_change(resolved)
-        return f"Removed file: {rel}\nResolved path: {resolved}"
+        return (
+            f"@@ openagentd-diff-meta {meta}\n"
+            f"Removed file: {rel}\nResolved path: {resolved}"
+        )
 
     # Me path is directory
     if recursive:
