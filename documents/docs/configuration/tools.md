@@ -23,8 +23,8 @@ All filesystem tools output paths **relative to the sandbox workspace root**. Ab
 | `write` | Write or overwrite a file. |
 | `edit` | Replace exact text in a file (fuzzy-matches whitespace / indentation). |
 | `ls` | List directory contents. |
-| `grep` | Regex content search across files. |
-| `glob` | Glob pattern search. `match='path'` (default) for full-path patterns like `src/**/*.ts`; `match='name'` for filename-only like `*.py`. |
+| `grep` | Regex content search across files; skips dotpaths, common generated directories, and root `.gitignore` matches. |
+| `glob` | Glob pattern search. `match='path'` (default) for full-path patterns like `src/**/*.ts`; `match='name'` for filename-only like `*.py`. Skips dotpaths, common generated directories, and root `.gitignore` matches. |
 | `rm` | Permanently delete a file or directory (`recursive=true` for non-empty dirs). |
 
 ### Shell

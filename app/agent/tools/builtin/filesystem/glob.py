@@ -11,6 +11,11 @@ from typing import Annotated
 from pydantic import Field
 
 from app.agent.sandbox import get_sandbox
+from app.agent.tools.builtin.filesystem._ignore import (
+    _SKIPPED_DIR_NAMES,
+    is_gitignored,
+    load_gitignore_rules,
+)
 from app.agent.tools.registry import Tool
 
 
@@ -42,16 +47,33 @@ async def _glob_files(
     resolved = sandbox.validate_path(directory)
     if not resolved.is_dir():
         raise NotADirectoryError(f"Not a directory: {sandbox.display_path(resolved)}")
+    gitignore_rules = load_gitignore_rules(resolved)
 
     if match == "name":
 
         def _scan_name() -> list[str]:
             hits: list[str] = []
             for root, dirs, files in os.walk(resolved):
-                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                current = Path(root)
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not d.startswith(".")
+                    and d not in _SKIPPED_DIR_NAMES
+                    and not is_gitignored(
+                        (current / d).relative_to(resolved).as_posix(),
+                        is_dir=True,
+                        rules=gitignore_rules,
+                    )
+                ]
                 for fname in files:
+                    if fname.startswith("."):
+                        continue
+                    rel = (current / fname).relative_to(resolved).as_posix()
+                    if is_gitignored(rel, is_dir=False, rules=gitignore_rules):
+                        continue
                     if fnmatch.fnmatch(fname, pattern):
-                        hits.append(sandbox.display_path(Path(root) / fname))
+                        hits.append(sandbox.display_path(current / fname))
                         if len(hits) >= max_results:
                             return hits
             return hits
@@ -62,12 +84,18 @@ async def _glob_files(
         def _scan_path() -> list[str]:
             hits: list[str] = []
             for m in sorted(resolved.glob(pattern)):
-                if m.is_file() and not any(
-                    p.startswith(".") for p in m.relative_to(resolved).parts
-                ):
-                    hits.append(sandbox.display_path(m))
-                    if len(hits) >= max_results:
-                        break
+                if not m.is_file():
+                    continue
+                rel = m.relative_to(resolved)
+                if any(part.startswith(".") for part in rel.parts):
+                    continue
+                if any(part in _SKIPPED_DIR_NAMES for part in rel.parts[:-1]):
+                    continue
+                if is_gitignored(rel.as_posix(), is_dir=False, rules=gitignore_rules):
+                    continue
+                hits.append(sandbox.display_path(m))
+                if len(hits) >= max_results:
+                    break
             return hits
 
         matches = await asyncio.to_thread(_scan_path)

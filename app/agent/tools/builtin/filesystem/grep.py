@@ -12,6 +12,11 @@ from typing import Annotated
 from pydantic import Field
 
 from app.agent.sandbox import get_sandbox
+from app.agent.tools.builtin.filesystem._ignore import (
+    _SKIPPED_DIR_NAMES,
+    is_gitignored,
+    load_gitignore_rules,
+)
 from app.agent.tools.registry import Tool
 
 # Me cap regex pattern length — prevents catastrophically complex patterns
@@ -43,6 +48,7 @@ async def _grep_files(
     resolved = sandbox.validate_path(directory)
     if not resolved.is_dir():
         raise NotADirectoryError(f"Not a directory: {sandbox.display_path(resolved)}")
+    gitignore_rules = load_gitignore_rules(resolved)
 
     # Me reject patterns that are too long — prevents crafted ReDoS payloads
     if len(pattern) > _MAX_PATTERN_LEN:
@@ -58,19 +64,35 @@ async def _grep_files(
     def _scan() -> list[str]:
         hits: list[str] = []
         for root, dirs, files in os.walk(resolved):
-            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            current = Path(root)
+            dirs[:] = [
+                d
+                for d in dirs
+                if not d.startswith(".")
+                and d not in _SKIPPED_DIR_NAMES
+                and not is_gitignored(
+                    (current / d).relative_to(resolved).as_posix(),
+                    is_dir=True,
+                    rules=gitignore_rules,
+                )
+            ]
             for fname in files:
+                if fname.startswith("."):
+                    continue
                 if not fnmatch.fnmatch(fname, include):
                     continue
-                fpath = Path(root) / fname
+                fpath = current / fname
+                rel = fpath.relative_to(resolved).as_posix()
+                if is_gitignored(rel, is_dir=False, rules=gitignore_rules):
+                    continue
                 try:
                     text = fpath.read_text(encoding="utf-8")
                 except (UnicodeDecodeError, OSError):
                     continue
-                rel = sandbox.display_path(fpath)
+                display_path = sandbox.display_path(fpath)
                 for lineno, line in enumerate(text.splitlines(), start=1):
                     if compiled.search(line):
-                        hits.append(f"{rel}:{lineno}: {line[:200]}")
+                        hits.append(f"{display_path}:{lineno}: {line[:200]}")
                         if len(hits) >= max_results:
                             return hits
         return hits

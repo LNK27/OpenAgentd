@@ -23,8 +23,14 @@ import mimetypes
 import os
 import subprocess
 import uuid
-from fnmatch import fnmatchcase
 from pathlib import Path
+
+from app.agent.tools.builtin.filesystem._ignore import (
+    _SKIPPED_DIR_NAMES,
+    is_gitignored as _shared_is_gitignored,
+    load_gitignore_rules as _shared_load_gitignore_rules,
+    matches_gitignore_pattern as _shared_matches_gitignore_pattern,
+)
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -168,55 +174,18 @@ async def get_workspace_media(session_id: str, file_path: str) -> FileResponse:
 _MAX_FILES_LISTED = 500
 _MAX_GIT_DIFF_CHARS = 512 * 1024
 _MAX_UNTRACKED_DIFF_BYTES = 256 * 1024
-_SKIPPED_DIR_NAMES = frozenset(
-    {"node_modules", "dist", "build", ".venv", "venv", "__pycache__"}
-)
 
 
 def _load_gitignore_rules(root: Path) -> list[tuple[str, bool]]:
-    gitignore = root / ".gitignore"
-    if not gitignore.is_file():
-        return []
-    try:
-        lines = gitignore.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
-        return []
-
-    rules: list[tuple[str, bool]] = []
-    for line in lines:
-        pattern = line.strip()
-        if not pattern or pattern.startswith("#"):
-            continue
-        include = pattern.startswith("!")
-        if include:
-            pattern = pattern[1:].strip()
-        if pattern:
-            rules.append((pattern, include))
-    return rules
+    return _shared_load_gitignore_rules(root)
 
 
 def _matches_gitignore_pattern(pattern: str, rel: str, *, is_dir: bool) -> bool:
-    directory_only = pattern.endswith("/")
-    pattern = pattern.strip("/") if directory_only else pattern.lstrip("/")
-    if not pattern:
-        return False
-
-    if directory_only:
-        return rel == pattern if is_dir else rel.startswith(f"{pattern}/")
-
-    if "/" in pattern:
-        return fnmatchcase(rel, pattern) or fnmatchcase(rel, f"{pattern}/*")
-
-    parts = rel.split("/")
-    return any(fnmatchcase(part, pattern) for part in parts)
+    return _shared_matches_gitignore_pattern(pattern, rel, is_dir=is_dir)
 
 
 def _is_gitignored(rel: str, *, is_dir: bool, rules: list[tuple[str, bool]]) -> bool:
-    ignored = False
-    for pattern, include in rules:
-        if _matches_gitignore_pattern(pattern, rel, is_dir=is_dir):
-            ignored = not include
-    return ignored
+    return _shared_is_gitignored(rel, is_dir=is_dir, rules=rules)
 
 
 @router.get("/{session_id}/files", response_model=WorkspaceFilesResponse)

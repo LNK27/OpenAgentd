@@ -323,6 +323,21 @@ class TestGrepFiles:
         result = await grep_files.arun(pattern="SECRET_KEY", directory=".")
         assert "No matches" in result
 
+    async def test_grep_respects_gitignore_and_common_generated_dirs(self, workspace):
+        (workspace / ".gitignore").write_text("ignored.py\n", encoding="utf-8")
+        (workspace / "ignored.py").write_text("SECRET_KEY = 'ignored'\n")
+
+        node_modules = workspace / "node_modules"
+        node_modules.mkdir()
+        (node_modules / "dep.py").write_text("SECRET_KEY = 'dep'\n")
+
+        pycache = workspace / "__pycache__"
+        pycache.mkdir()
+        (pycache / "cache.py").write_text("SECRET_KEY = 'cache'\n")
+
+        result = await grep_files.arun(pattern="SECRET_KEY", directory=".")
+        assert "No matches" in result
+
 
 # ---------------------------------------------------------------------------
 # _grep_files: internal unit tests
@@ -394,6 +409,23 @@ class TestGlobFiles:
             (workspace / f"file_{i}.txt").write_text(f"content {i}")
         result = await glob_files.arun(pattern="*.txt", directory=".", max_results=3)
         assert len(result.strip().split("\n")) == 3
+
+    async def test_glob_respects_gitignore_and_common_generated_dirs(self, workspace):
+        (workspace / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+        (workspace / "ignored.txt").write_text("ignored")
+
+        node_modules = workspace / "node_modules"
+        node_modules.mkdir()
+        (node_modules / "dep.txt").write_text("dep")
+
+        pycache = workspace / "__pycache__"
+        pycache.mkdir()
+        (pycache / "cache.txt").write_text("cache")
+
+        result = await glob_files.arun(pattern="**/*.txt", directory=".")
+        assert "ignored.txt" not in result
+        assert "dep.txt" not in result
+        assert "cache.txt" not in result
 
 
 # ---------------------------------------------------------------------------

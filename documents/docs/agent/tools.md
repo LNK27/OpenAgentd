@@ -150,8 +150,8 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 | `edit` | `edit.py` | Replace exact text in a file; fuzzy-matches whitespace/indentation; reports changed line metadata for inline diffs |
 | `patch` | `patch.py` | Apply file patch envelopes; reports per-file/per-hunk line metadata for inline diffs |
 | `ls` | `ls.py` | List directory contents with type indicators |
-| `grep` | `grep.py` | Regex content search across files; returns `file:line: content` |
-| `glob` | `glob.py` | Glob pattern search. `match='path'` (default) matches full relative path (supports `**`); `match='name'` matches filename only |
+| `grep` | `grep.py` | Regex content search across files; returns `file:line: content`; skips dotpaths, common generated directories, and root `.gitignore` matches |
+| `glob` | `glob.py` | Glob pattern search. `match='path'` (default) matches full relative path (supports `**`); `match='name'` matches filename only; skips dotpaths, common generated directories, and root `.gitignore` matches |
 | `rm` | `rm.py` | Permanently delete a file or directory; `recursive=true` for non-empty directories; file removals report deleted line metadata for inline diff stats |
 
 `read` returns raw text when called without pagination arguments. When `limit` is set, the result includes a `[start-end/total]` header and `offset=1` starts at the first line.
