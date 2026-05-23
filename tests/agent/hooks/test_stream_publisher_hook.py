@@ -8,6 +8,7 @@ import pytest
 
 from app.agent.hooks.stream_publisher import StreamPublisherHook
 from app.agent.schemas.chat import (
+    AssistantMessage,
     ChatCompletionChunk,
     ChatCompletionChunkChoice,
     ChatCompletionDelta,
@@ -50,6 +51,46 @@ def _make_chunk(
     return ChatCompletionChunk(
         id="c1", created=1000, model="mock", choices=[choice], usage=usage
     )
+
+
+# ---------------------------------------------------------------------------
+# model timing
+# ---------------------------------------------------------------------------
+
+
+class TestModelTiming:
+    @pytest.mark.asyncio
+    async def test_after_model_persists_duration_in_response_extra(self):
+        hook = _make_hook()
+        response = AssistantMessage(content="answer")
+
+        with patch("app.agent.hooks.stream_publisher.time") as mock_time:
+            mock_time.monotonic.side_effect = [20.0, 21.234]
+            await hook.before_model(MagicMock(), MagicMock(), MagicMock())
+            await hook.after_model(MagicMock(), MagicMock(), response)
+
+        assert response.extra == {"duration_ms": 1234.0}
+
+    @pytest.mark.asyncio
+    async def test_after_model_preserves_existing_extra_fields(self):
+        hook = _make_hook()
+        response = AssistantMessage(content="answer", extra={"usage": {"input": 1}})
+
+        with patch("app.agent.hooks.stream_publisher.time") as mock_time:
+            mock_time.monotonic.side_effect = [5.0, 5.25]
+            await hook.before_model(MagicMock(), MagicMock(), MagicMock())
+            await hook.after_model(MagicMock(), MagicMock(), response)
+
+        assert response.extra == {"usage": {"input": 1}, "duration_ms": 250.0}
+
+    @pytest.mark.asyncio
+    async def test_after_model_without_before_model_leaves_extra_unchanged(self):
+        hook = _make_hook()
+        response = AssistantMessage(content="answer", extra={"usage": {"input": 1}})
+
+        await hook.after_model(MagicMock(), MagicMock(), response)
+
+        assert response.extra == {"usage": {"input": 1}}
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +313,7 @@ class TestWrapToolCall:
         assert delta.data["sequence"] == 1
 
     @pytest.mark.asyncio
-    async def test_tool_end_carries_result(self):
+    async def test_tool_end_carries_result_and_persists_duration_metadata(self):
         hook = _make_hook()
         pushed = []
 
@@ -286,15 +327,22 @@ class TestWrapToolCall:
         tool_call.function = MagicMock()
         tool_call.function.name = "my_tool"
         tool_call.function.arguments = "{}"
+        state = MagicMock()
+        state.metadata = {"keep": "me"}
 
         async def mock_handler(ctx, state, tc):
             return "the result"
 
         with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            await hook.wrap_tool_call(MagicMock(), MagicMock(), tool_call, mock_handler)
+            with patch("app.agent.hooks.stream_publisher.time") as mock_time:
+                mock_time.monotonic.side_effect = [10.0, 10.456]
+                await hook.wrap_tool_call(MagicMock(), state, tool_call, mock_handler)
 
         end_event = next(e for e in pushed if e.event == "tool_end")
         assert end_event.data["result"] == "the result"
+        assert end_event.data["metadata"]["duration_ms"] == 456.0
+        assert state.metadata["keep"] == "me"
+        assert state.metadata["_tool_duration_ms"]["int-id"] == 456.0
 
     @pytest.mark.asyncio
     async def test_tool_end_passes_full_result(self):

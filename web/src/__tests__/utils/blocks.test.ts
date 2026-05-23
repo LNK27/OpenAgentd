@@ -88,14 +88,18 @@ describe("appendText", () => {
 // ---------------------------------------------------------------------------
 
 describe("initTool", () => {
-  it("adds pending tool block", () => {
+  it("adds pending tool block with realtime start timestamp", () => {
+    const before = Date.now();
     const result = initTool([], "web_search", "tc1");
+    const after = Date.now();
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("tool");
     expect(result[0].toolName).toBe("web_search");
     expect(result[0].toolDone).toBe(false);
     expect(result[0].toolCallId).toBe("tc1");
     expect(result[0].toolArgs).toBeUndefined();
+    expect(result[0].startedAt).toBeGreaterThanOrEqual(before);
+    expect(result[0].startedAt).toBeLessThanOrEqual(after);
   });
 
   it("appends to existing blocks", () => {
@@ -176,13 +180,14 @@ describe("addTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("completeTool", () => {
-  it("marks tool done by toolCallId", () => {
+  it("marks tool done by toolCallId and stores duration", () => {
     const blocks: ContentBlock[] = [
       { id: "t1", type: "tool", content: "", toolName: "web_search", toolDone: false, toolCallId: "tc1" },
     ];
-    const result = completeTool(blocks, "web_search", "tc1", "results");
+    const result = completeTool(blocks, "web_search", "tc1", "results", 456);
     expect(result[0].toolDone).toBe(true);
     expect(result[0].toolResult).toBe("results");
+    expect(result[0].durationMs).toBe(456);
   });
 
   it("falls back to name when toolCallId not matched", () => {

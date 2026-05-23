@@ -218,6 +218,9 @@ export interface ContentBlock {
   toolCallId?: string   // for matching tool results
   toolOutput?: string   // live output streamed before tool_end
   toolResult?: string   // the role:"tool" response content
+  durationMs?: number   // completed tool duration from SSE/session logs
+  startedAt?: number    // client timestamp for realtime elapsed display
+  responseDurationMs?: number // assistant response duration shown in turn footer
   /** Variant-specific metadata. ``user`` inbox blocks carry ``from_agent``;
    *  ``compaction`` blocks carry ``state: 'compacting' | 'compacted'`` and
    *  optional ``error: true``. Keeping this generic avoids one typed field

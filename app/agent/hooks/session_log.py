@@ -41,11 +41,11 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from app.agent.hooks.base import BaseAgentHook
-from app.agent.schemas.chat import HumanMessage
+from app.agent.schemas.chat import HumanMessage, ToolCall
 from app.core.logging_config import SESSION_LOG_DIR
 
 if TYPE_CHECKING:
-    from app.agent.state import AgentState, ModelRequest, RunContext
+    from app.agent.state import AgentState, ModelRequest, RunContext, ToolCallHandler
     from app.agent.schemas.chat import AssistantMessage, ChatCompletionChunk
 
 
@@ -82,6 +82,8 @@ class SessionLogHook(BaseAgentHook):
         self._path_created = False
         self._run_start: float = 0.0
         self._iteration: int = 0
+        self._model_start: float = 0.0
+        self._tool_starts: dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -158,6 +160,7 @@ class SessionLogHook(BaseAgentHook):
         request: "ModelRequest | None" = None,
     ) -> None:
         self._iteration += 1
+        self._model_start = time.monotonic()
 
         # Role summary for this model call
         role_counts: dict[str, int] = {}
@@ -175,6 +178,11 @@ class SessionLogHook(BaseAgentHook):
     async def after_model(
         self, ctx: "RunContext", state: "AgentState", response: "AssistantMessage"
     ) -> None:
+        duration_ms = (
+            round((time.monotonic() - self._model_start) * 1000, 3)
+            if self._model_start
+            else None
+        )
         self._write(
             "assistant_message",
             content=response.content,
@@ -182,6 +190,7 @@ class SessionLogHook(BaseAgentHook):
             has_tool_calls=bool(response.tool_calls),
             tool_call_count=len(response.tool_calls) if response.tool_calls else 0,
             tool_names=[tc.function.name for tc in (response.tool_calls or [])],
+            duration_ms=duration_ms,
         )
 
     async def on_model_delta(
@@ -199,3 +208,39 @@ class SessionLogHook(BaseAgentHook):
                 tool_use_tokens=getattr(chunk.usage, "tool_use_tokens", None),
                 model=chunk.model,
             )
+
+    async def wrap_tool_call(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        tool_call: "ToolCall",
+        handler: "ToolCallHandler",
+    ) -> str:
+        tool_name = tool_call.function.name
+        started = time.monotonic()
+        tool_call_id = tool_call.id
+        self._tool_starts[tool_call_id] = started
+
+        try:
+            result = await handler(ctx, state, tool_call)
+        except Exception:
+            self._tool_starts.pop(tool_call_id, None)
+            raise
+
+        duration_ms = round((time.monotonic() - started) * 1000, 3)
+        self._tool_starts.pop(tool_call_id, None)
+        self._write(
+            "tool_call",
+            tool_call_id=tool_call_id,
+            name=tool_name,
+            arguments=tool_call.function.arguments,
+            duration_ms=duration_ms,
+        )
+        self._write(
+            "tool_result",
+            tool_call_id=tool_call_id,
+            name=tool_name,
+            result=_truncate(result),
+            duration_ms=duration_ms,
+        )
+        return result

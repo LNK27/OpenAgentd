@@ -21,15 +21,24 @@ export interface AssistantTurnFooterProps {
   onContinue?: () => void
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`
+  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
+}
+
 export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   // Me lastTurnText walks back to the previous user block; pass the turn directly
   const textContent = lastTurnText(turnBlocks)
   const lastBlock = turnBlocks[turnBlocks.length - 1]
   const timestamp = lastBlock?.timestamp
+  const responseDurationMs = [...turnBlocks]
+    .reverse()
+    .find((b) => typeof b.responseDurationMs === 'number')
+    ?.responseDurationMs
   const canContinue = Boolean(onContinue && (textContent || turnBlocks.some((b) => b.type === 'tool')))
 
-  if (!textContent && !timestamp && !canContinue) return null
+  if (!textContent && !timestamp && !canContinue && responseDurationMs === undefined) return null
 
   const handleCopy = async () => {
     try {
@@ -67,6 +76,11 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
         </button>
       )}
       {timestamp && <span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>}
+      {responseDurationMs !== undefined && (
+        <span className="font-mono text-(--color-text-subtle) text-xs" title="Response duration">
+          {formatDuration(responseDurationMs)}
+        </span>
+      )}
     </div>
   )
 }

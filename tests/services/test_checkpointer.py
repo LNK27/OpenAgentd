@@ -258,6 +258,37 @@ class TestSQLiteCheckpointerSync:
         assert any(m.content == "tool result" for m in messages)
 
     @pytest.mark.asyncio
+    async def test_sync_persists_tool_message_extra_duration(self):
+        """Tool duration metadata must survive reload via SessionMessage.extra."""
+        import app.core.db as _db
+        from app.services.chat_service import get_messages
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        ctx = _ctx(str(sid))
+        state = AgentState(
+            messages=[
+                ToolMessage(
+                    content="tool result",
+                    tool_call_id="tc1",
+                    name="search",
+                    extra={"duration_ms": 456.0},
+                )
+            ]
+        )
+
+        await cp.sync(ctx, state)
+
+        async with _db.async_session_factory() as db:
+            messages = await get_messages(db, sid)
+        tool_message = next(m for m in messages if m.tool_call_id == "tc1")
+        assert tool_message.extra == {"duration_ms": 456.0}
+
+    @pytest.mark.asyncio
     async def test_sync_skips_human_and_system_messages(self):
         """HumanMessage and SystemMessage are not persisted by checkpointer."""
         import app.core.db as _db

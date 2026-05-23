@@ -299,11 +299,13 @@ Writes verbose structured JSONL to `{OPENAGENTD_STATE_DIR}/logs/sessions/{sessio
 |-------------|------|--------|
 | `agent_start` | `before_agent` | trigger message, context message count, role distribution, tools |
 | `model_call` | `before_model` | iteration, context message count, role distribution |
-| `assistant_message` | `after_model` | content, reasoning (truncated to 2 000 chars), `has_tool_calls`, `tool_call_count`, `tool_names` |
+| `assistant_message` | `after_model` | content, reasoning (truncated to 2 000 chars), `has_tool_calls`, `tool_call_count`, `tool_names`, `duration_ms` |
+| `tool_call` | `wrap_tool_call` | tool name, arguments, `tool_call_id`, `duration_ms` |
+| `tool_result` | `wrap_tool_call` | tool name, truncated result, `tool_call_id`, `duration_ms` |
 | `usage` | `on_model_delta` (when chunk carries usage) | prompt/completion/total/cached/thoughts/tool-use tokens, model |
 | `agent_done` | `after_agent` | content, elapsed seconds, iterations, total tokens |
 
-Per-tool events (`tool_start`, `tool_done`, `tool_error`, `tool_cancelled`) are written to the **app log** by the loop itself (`agent_loop/`), not by `SessionLogHook`. See [`logging.md`](../logging.md) for the full event catalogue.
+`StreamPublisherHook` also persists response/tool durations into message `extra.duration_ms` so the UI can show them after reload.
 
 ```python
 hook = SessionLogHook(session_id=session_id, agent_name=agent_name)

@@ -156,7 +156,7 @@ All events flow server→client. Schemas live in `app/agent/schemas/events.py`; 
 | `tool_call` | `StreamPublisherHook.on_model_delta` | `agent`, `tool_call_id`, `name` — first delta, no args yet |
 | `tool_start` | `StreamPublisherHook.wrap_tool_call` | `agent`, `tool_call_id`, `name`, `arguments` — full args, execution beginning |
 | `tool_output_delta` | Running tools via injected output callback | `agent`, `tool_call_id`, `name`, `text`, `stream`, `sequence` — live-only output chunk |
-| `tool_end` | `StreamPublisherHook.wrap_tool_call` | `agent`, `tool_call_id`, `name`, `result` — execution done |
+| `tool_end` | `StreamPublisherHook.wrap_tool_call` | `agent`, `tool_call_id`, `name`, `result`, `metadata.duration_ms` — execution done |
 | `usage` | `StreamPublisherHook` after each model call + `after_agent` turn total | `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `thoughts_tokens` |
 | `inbox` | `TeamInboxHook.before_model` | `agent`, `text`, `from_agent` — peer message injected into LLM context |
 | `agent_status` | `AgentTeam` activation/done | `agent`, `status` (`idle`\|`working`\|`offline`\|`error`) — team only |

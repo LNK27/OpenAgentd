@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agent.state import AgentState, RunContext
 from app.agent.hooks.session_log import SessionLogHook, _truncate
-from app.agent.schemas.chat import HumanMessage
+from app.agent.schemas.chat import FunctionCall, HumanMessage, ToolCall
 
 
 # ---------------------------------------------------------------------------
@@ -130,18 +131,22 @@ class TestSessionLogHook:
         hook = SessionLogHook(session_id="s1", agent_name="bot")
         ctx = _make_ctx("s1", "bot")
         state = _make_state()
+        hook._model_start = 100.0
         with patch.object(hook, "_write") as mock_write:
             msg = AssistantMessage(content="response text")
-            await hook.after_model(ctx, state, msg)
+            with patch("app.agent.hooks.session_log.time") as mock_time:
+                mock_time.monotonic.return_value = 100.125
+                await hook.after_model(ctx, state, msg)
             mock_write.assert_called_once()
             args = mock_write.call_args
             assert args[0][0] == "assistant_message"
             assert args[1]["content"] == "response text"
             assert args[1]["has_tool_calls"] is False
             assert args[1]["tool_call_count"] == 0
+            assert args[1]["duration_ms"] == 125.0
 
     async def test_after_model_with_tool_calls(self):
-        from app.agent.schemas.chat import AssistantMessage, FunctionCall, ToolCall
+        from app.agent.schemas.chat import AssistantMessage
 
         hook = SessionLogHook(session_id="s1", agent_name="bot")
         ctx = _make_ctx("s1", "bot")
@@ -190,6 +195,67 @@ class TestSessionLogHook:
         with patch.object(hook, "_write") as mock_write:
             await hook.on_model_delta(ctx, state, chunk)
             mock_write.assert_not_called()
+
+    async def test_wrap_tool_call_logs_tool_call_and_result_with_duration(self):
+        hook = SessionLogHook(session_id="s1", agent_name="bot")
+        ctx = _make_ctx("s1", "bot")
+        state = _make_state()
+        tc = ToolCall(
+            id="tc1",
+            function=FunctionCall(name="web_search", arguments='{"q": "x"}'),
+        )
+        handler = AsyncMock(return_value="search results")
+
+        with patch.object(hook, "_write") as mock_write:
+            with patch("app.agent.hooks.session_log.time") as mock_time:
+                mock_time.monotonic.side_effect = [10.0, 10.25]
+                result = await hook.wrap_tool_call(ctx, state, tc, handler)
+
+        assert result == "search results"
+        assert mock_write.call_count == 2
+        first = mock_write.call_args_list[0]
+        second = mock_write.call_args_list[1]
+        assert first.args[0] == "tool_call"
+        assert first.kwargs["tool_call_id"] == "tc1"
+        assert first.kwargs["name"] == "web_search"
+        assert first.kwargs["duration_ms"] == 250.0
+        assert second.args[0] == "tool_result"
+        assert second.kwargs["tool_call_id"] == "tc1"
+        assert second.kwargs["duration_ms"] == 250.0
+        assert second.kwargs["result"] == "search results"
+
+    async def test_duration_ms_is_written_to_jsonl(self, tmp_path):
+        from app.agent.schemas.chat import AssistantMessage
+
+        hook = SessionLogHook(session_id="s1", agent_name="bot")
+        hook._log_dir = tmp_path / "logs" / "s1"
+        hook._path = hook._log_dir / "bot.jsonl"
+        ctx = _make_ctx("s1", "bot")
+        state = _make_state()
+        tc = ToolCall(
+            id="tc1",
+            function=FunctionCall(name="web_search", arguments='{"q": "x"}'),
+        )
+        handler = AsyncMock(return_value="search results")
+
+        with patch("app.agent.hooks.session_log.time") as mock_time:
+            mock_time.monotonic.side_effect = [
+                100.0,  # before_model start
+                100.125,  # after_model end
+                100.5,  # tool start
+                100.75,  # tool end
+            ]
+            await hook.before_model(ctx, state)
+            await hook.after_model(ctx, state, AssistantMessage(content="response"))
+            await hook.wrap_tool_call(ctx, state, tc, handler)
+
+        lines = [json.loads(line) for line in hook._path.read_text().splitlines()]
+        assistant_event = next(e for e in lines if e["event"] == "assistant_message")
+        tool_call_event = next(e for e in lines if e["event"] == "tool_call")
+        tool_result_event = next(e for e in lines if e["event"] == "tool_result")
+        assert assistant_event["duration_ms"] == 125.0
+        assert tool_call_event["duration_ms"] == 250.0
+        assert tool_result_event["duration_ms"] == 250.0
 
     def test_ensure_dir_creates_directory(self, tmp_path):
         """_ensure_dir creates the log directory on first call."""

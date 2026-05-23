@@ -66,6 +66,7 @@ export function initTool(
   blocks: ContentBlock[],
   name: string,
   toolCallId?: string,
+  durationMs?: number,
 ): ContentBlock[] {
   // Me skip if already have block with same id — reconnect replay dedup
   if (toolCallId && blocks.some((b) => b.type === 'tool' && b.toolCallId === toolCallId)) {
@@ -81,6 +82,8 @@ export function initTool(
       toolArgs: undefined,
       toolDone: false,
       toolCallId,
+      durationMs,
+      startedAt: Date.now(),
     },
   ]
 }
@@ -92,6 +95,7 @@ export function addTool(
   name: string,
   args?: string,
   toolCallId?: string,
+  durationMs?: number,
 ): ContentBlock[] {
   const result = [...blocks]
   // Find existing block by toolCallId first, then by name (no-args-yet pending)
@@ -104,7 +108,12 @@ export function addTool(
     ) {
       // Me skip if args already set — reconnect replay dedup
       if (block.toolArgs !== undefined && block.toolArgs !== null) return result
-      result[i] = { ...block, toolArgs: args }
+      result[i] = {
+        ...block,
+        toolArgs: args,
+        durationMs: durationMs ?? block.durationMs,
+        startedAt: block.startedAt ?? Date.now(),
+      }
       return result
     }
   }
@@ -119,6 +128,8 @@ export function addTool(
       toolArgs: args,
       toolDone: false,
       toolCallId,
+      durationMs,
+      startedAt: Date.now(),
     },
   ]
 }
@@ -128,6 +139,7 @@ export function completeTool(
   name: string,
   toolCallId?: string,
   toolResult?: string,
+  durationMs?: number,
 ): ContentBlock[] {
   const result = [...blocks]
 
@@ -138,7 +150,12 @@ export function completeTool(
       if (block.type === 'tool' && block.toolCallId === toolCallId) {
         // Me skip if already done — reconnect replay dedup
         if (block.toolDone) return result
-        result[i] = { ...block, toolDone: true, toolResult }
+        result[i] = {
+          ...block,
+          toolDone: true,
+          toolResult,
+          durationMs: durationMs ?? block.durationMs,
+        }
         return result
       }
     }
@@ -148,7 +165,12 @@ export function completeTool(
   for (let i = result.length - 1; i >= 0; i--) {
     const block = result[i]
     if (block.type === 'tool' && block.toolName === name && !block.toolDone) {
-      result[i] = { ...block, toolDone: true, toolResult }
+      result[i] = {
+        ...block,
+        toolDone: true,
+        toolResult,
+        durationMs: durationMs ?? block.durationMs,
+      }
       return result
     }
   }

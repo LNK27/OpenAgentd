@@ -215,7 +215,7 @@ describe("parseTeamBlocks", () => {
     expect(parseTeamBlocks(msgs)).toHaveLength(1);
   });
 
-  it("links tool_call to tool result via tool_call_id", () => {
+  it("links tool_call to tool result via tool_call_id and restores persisted duration", () => {
     const t = new Date().toISOString();
     const msgs = [
       makeMsg({
@@ -228,6 +228,7 @@ describe("parseTeamBlocks", () => {
         role: "tool",
         content: "result data",
         tool_call_id: "tc1",
+        extra: { duration_ms: 321 },
         created_at: t,
       }),
     ];
@@ -236,6 +237,34 @@ describe("parseTeamBlocks", () => {
     expect(toolBlock).toBeDefined();
     expect(toolBlock?.toolDone).toBe(true);
     expect(toolBlock?.toolResult).toBe("result data");
+    expect(toolBlock?.durationMs).toBe(321);
+  });
+
+  it("does not restore invalid tool durations", () => {
+    const t = new Date().toISOString();
+    const msgs = [
+      makeMsg({
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "tc1", type: "function", function: { name: "search", arguments: "{}" } },
+          { id: "tc2", type: "function", function: { name: "read", arguments: "{}" } },
+          { id: "tc3", type: "function", function: { name: "write", arguments: "{}" } },
+        ],
+        created_at: t,
+      }),
+      makeMsg({ role: "tool", content: "string", tool_call_id: "tc1", extra: { duration_ms: "321" } as unknown as MessageResponse["extra"], created_at: t }),
+      makeMsg({ role: "tool", content: "missing", tool_call_id: "tc2", extra: {}, created_at: t }),
+      makeMsg({ role: "tool", content: "null", tool_call_id: "tc3", extra: null, created_at: t }),
+    ];
+
+    const blocks = parseTeamBlocks(msgs).filter((b) => b.type === "tool");
+
+    expect(blocks).toHaveLength(3);
+    for (const block of blocks) {
+      expect(block.toolDone).toBe(true);
+      expect(block.durationMs).toBeUndefined();
+    }
   });
 
   it("sorts messages by created_at asc", () => {
@@ -269,13 +298,29 @@ describe("parseApiMessages", () => {
     expect(result[0].blocks).toEqual([]);
   });
 
-  it("converts assistant message to role:assistant with text block", () => {
-    const msgs = [makeMsg({ role: "assistant", content: "my answer" })];
+  it("converts assistant message to role:assistant with text block and response duration", () => {
+    const msgs = [makeMsg({ role: "assistant", content: "my answer", extra: { duration_ms: 1234 } })];
     const result = parseApiMessages(msgs);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("assistant");
     const textBlock = result[0].blocks.find((b) => b.type === "text");
     expect(textBlock?.content).toBe("my answer");
+    expect(textBlock?.responseDurationMs).toBe(1234);
+  });
+
+  it("does not restore invalid assistant response durations", () => {
+    const msgs = [
+      makeMsg({ role: "assistant", content: "string", extra: { duration_ms: "1234" } as unknown as MessageResponse["extra"] }),
+      makeMsg({ role: "assistant", content: "missing", extra: {} }),
+      makeMsg({ role: "assistant", content: "null", extra: null }),
+    ];
+
+    const result = parseApiMessages(msgs);
+
+    for (const message of result) {
+      const textBlock = message.blocks.find((b) => b.type === "text");
+      expect(textBlock?.responseDurationMs).toBeUndefined();
+    }
   });
 
   it("converts reasoning_content to thinking block", () => {
@@ -298,7 +343,7 @@ describe("parseApiMessages", () => {
     expect(toolBlock?.toolDone).toBe(false);
   });
 
-  it("links tool result to tool block via tool_call_id", () => {
+  it("links tool result to tool block via tool_call_id and restores persisted duration", () => {
     const t = new Date().toISOString();
     const msgs = [
       makeMsg({
@@ -307,12 +352,45 @@ describe("parseApiMessages", () => {
         tool_calls: [{ id: "tc1", type: "function", function: { name: "search", arguments: "{}" } }],
         created_at: t,
       }),
-      makeMsg({ role: "tool", content: "result!", tool_call_id: "tc1", created_at: t }),
+      makeMsg({
+        role: "tool",
+        content: "result!",
+        tool_call_id: "tc1",
+        extra: { duration_ms: 654 },
+        created_at: t,
+      }),
     ];
     const result = parseApiMessages(msgs);
     const toolBlock = result[0].blocks.find((b) => b.type === "tool");
     expect(toolBlock?.toolDone).toBe(true);
     expect(toolBlock?.toolResult).toBe("result!");
+    expect(toolBlock?.durationMs).toBe(654);
+  });
+
+  it("does not restore invalid tool durations", () => {
+    const t = new Date().toISOString();
+    const msgs = [
+      makeMsg({
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "tc1", type: "function", function: { name: "search", arguments: "{}" } },
+          { id: "tc2", type: "function", function: { name: "read", arguments: "{}" } },
+        ],
+        created_at: t,
+      }),
+      makeMsg({ role: "tool", content: "string", tool_call_id: "tc1", extra: { duration_ms: "654" } as unknown as MessageResponse["extra"], created_at: t }),
+      makeMsg({ role: "tool", content: "missing", tool_call_id: "tc2", extra: {}, created_at: t }),
+    ];
+
+    const result = parseApiMessages(msgs);
+    const toolBlocks = result[0].blocks.filter((b) => b.type === "tool");
+
+    expect(toolBlocks).toHaveLength(2);
+    for (const block of toolBlocks) {
+      expect(block.toolDone).toBe(true);
+      expect(block.durationMs).toBeUndefined();
+    }
   });
 
   it("renders summary messages as a compaction divider assistant message", () => {

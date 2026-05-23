@@ -12,6 +12,7 @@ speaking when multiple members are active simultaneously.
 from __future__ import annotations
 
 import contextlib
+import time
 from typing import TYPE_CHECKING
 
 from app.agent.hooks.base import BaseAgentHook
@@ -33,7 +34,7 @@ from app.services.stream_envelope import AnyStreamEvent, StreamEnvelope
 
 if TYPE_CHECKING:
     from app.agent.schemas.chat import AssistantMessage, ChatCompletionChunk, ToolCall
-    from app.agent.state import AgentState, RunContext, ToolCallHandler
+    from app.agent.state import AgentState, ModelRequest, RunContext, ToolCallHandler
 
 
 class StreamPublisherHook(BaseAgentHook):
@@ -64,6 +65,7 @@ class StreamPublisherHook(BaseAgentHook):
         self._agent_name = agent_name
         self._publish_reasoning = publish_reasoning
         self._resolver = ToolIdResolver()
+        self._model_started: float | None = None
         # Me track per-turn usage for turn-total summary
         self._total_prompt = 0
         self._total_completion = 0
@@ -78,6 +80,24 @@ class StreamPublisherHook(BaseAgentHook):
         with contextlib.suppress(Exception):
             await stream_store.push_event(
                 self._session_id, StreamEnvelope.from_event(event)
+            )
+
+    async def before_model(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        request: "ModelRequest",
+    ) -> None:
+        self._model_started = time.monotonic()
+
+    async def after_model(
+        self, ctx: "RunContext", state: "AgentState", response: "AssistantMessage"
+    ) -> None:
+        if self._model_started is not None:
+            response.extra = dict(response.extra or {})
+            response.extra["duration_ms"] = round(
+                (time.monotonic() - self._model_started) * 1000,
+                3,
             )
 
     async def on_model_delta(
@@ -229,6 +249,7 @@ class StreamPublisherHook(BaseAgentHook):
             permission_service._on_ask = original_on_ask
 
         # ── Execute tool ──────────────────────────────────────────────
+        started = time.monotonic()
         await self._push(
             ToolStartEvent(
                 agent=self._agent_name,
@@ -264,6 +285,8 @@ class StreamPublisherHook(BaseAgentHook):
         finally:
             callbacks.pop(tool_call.id, None)
 
+        duration_ms = round((time.monotonic() - started) * 1000, 3)
+        state.metadata.setdefault("_tool_duration_ms", {})[tool_call.id] = duration_ms
         end_tc_id = self._resolver.resolve_end(tool_call.id)
         await self._push(
             ToolEndEvent(
@@ -271,6 +294,7 @@ class StreamPublisherHook(BaseAgentHook):
                 tool_call_id=end_tc_id,
                 name=fn_name,
                 result=result or None,
+                metadata={"duration_ms": duration_ms},
             )
         )
         return result
