@@ -99,6 +99,48 @@ class TestDeepSeekProviderInit:
 
 
 # ============================================================================
+# Wire-field-name override (DeepSeek-specific)
+# ============================================================================
+
+
+class TestDeepSeekWireFieldName:
+    """DeepSeek's API only accepts the legacy ``max_tokens`` field.
+
+    The shared OpenAI handler now defaults to ``max_completion_tokens``
+    (required by OpenAI's reasoning models since 2024-09).  DeepSeek's
+    Chat Completions endpoint as of 2026-Q2 documents only
+    ``max_tokens`` — sending ``max_completion_tokens`` is silently
+    dropped, producing unbounded responses.
+
+    The provider injects a ``CompletionsHandler`` subclass that flips
+    the ``uses_max_completion_tokens`` class flag to ``False`` so the
+    legacy field name stays on the wire.  These tests pin that
+    behaviour.
+    """
+
+    def test_handler_uses_legacy_max_tokens_field(self):
+        """The wire body must carry ``max_tokens``, not the new field."""
+        from app.agent.schemas.chat import HumanMessage
+
+        p = DeepSeekProvider(
+            api_key="ds-test-key", model="deepseek-v4-pro", max_tokens=512
+        )
+        body = p._completions.build_request(
+            [HumanMessage(content="hi")],
+            None,
+            stream=False,
+            merged=p._merged_kwargs(),
+        )
+        assert body["max_tokens"] == 512
+        assert "max_completion_tokens" not in body
+
+    def test_handler_subclass_flag_is_false(self):
+        """The class-level flag is what gates the field-name choice."""
+        p = DeepSeekProvider(api_key="ds-test-key", model="deepseek-v4-pro")
+        assert p._completions.uses_max_completion_tokens is False
+
+
+# ============================================================================
 # Provider factory — deepseek branch
 # ============================================================================
 

@@ -288,12 +288,43 @@ class TestCompletionsHandler:
         assert body["top_p"] == 0.9
 
     def test_build_request_with_max_tokens(self, handler):
-        """Include max_tokens in request."""
+        """``max_tokens`` from the caller routes to ``max_completion_tokens``.
+
+        OpenAI's reasoning-capable models (o-series, gpt-5*, gpt-5.4*)
+        reject the legacy ``max_tokens`` field with a 400
+        ``unsupported_parameter`` error.  The handler maps the canonical
+        caller-side name (``max_tokens``) to the wire field name OpenAI
+        actually accepts (``max_completion_tokens``).  The legacy field
+        must NOT appear in the body — sending both raises an
+        ``unsupported_parameter`` error too.
+        """
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(
+            messages, tools=None, stream=False, merged={"max_tokens": 1000}
+        )
+        assert body["max_completion_tokens"] == 1000
+        assert "max_tokens" not in body
+
+    def test_build_request_max_tokens_uses_legacy_field_when_flag_off(self):
+        """Subclasses can flip the flag to keep ``max_tokens`` on the wire.
+
+        Deepseek's API still requires the legacy ``max_tokens`` name as
+        of 2026-Q2 — verify the override mechanism works so
+        ``_DeepSeekCompletionsHandler`` (and any future legacy-only
+        OpenAI-compatible endpoints) can downgrade cleanly.
+        """
+        from app.agent.providers.openai.completions import CompletionsHandler
+
+        class _LegacyHandler(CompletionsHandler):
+            uses_max_completion_tokens = False
+
+        handler = _LegacyHandler("deepseek-v4-pro", "https://api.deepseek.com/v1", {})
         messages = [HumanMessage(content="Hello")]
         body = handler.build_request(
             messages, tools=None, stream=False, merged={"max_tokens": 1000}
         )
         assert body["max_tokens"] == 1000
+        assert "max_completion_tokens" not in body
 
     def test_build_request_streaming_includes_stream_options(self, handler):
         """Streaming request includes stream_options."""

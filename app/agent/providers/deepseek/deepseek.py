@@ -31,8 +31,24 @@ from __future__ import annotations
 from typing import Any
 
 from app.agent.providers.openai import OpenAIProvider
+from app.agent.providers.openai.completions import CompletionsHandler
 
 DEEPSEEK_API_BASE = "https://api.deepseek.com/v1"
+
+
+class _DeepSeekCompletionsHandler(CompletionsHandler):
+    """DeepSeek's /chat/completions accepts ``max_tokens`` only.
+
+    The shared OpenAI handler defaults to ``max_completion_tokens`` (the
+    field name OpenAI's reasoning models require since 2024-09).  As of
+    2026-Q2 the DeepSeek API reference at
+    https://api-docs.deepseek.com/api/create-chat-completion documents
+    only ``max_tokens`` — sending ``max_completion_tokens`` is silently
+    dropped, causing unbounded responses.  Pin this subclass to the
+    legacy field name until DeepSeek catches up.
+    """
+
+    uses_max_completion_tokens = False
 
 
 class DeepSeekProvider(OpenAIProvider):
@@ -68,3 +84,8 @@ class DeepSeekProvider(OpenAIProvider):
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )
+
+    def _make_completions_handler(
+        self, model: str, base_url: str, headers: dict[str, str]
+    ) -> CompletionsHandler:
+        return _DeepSeekCompletionsHandler(model, base_url, headers)

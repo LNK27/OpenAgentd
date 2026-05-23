@@ -63,9 +63,21 @@ class OpenAIChatRequest(BaseModel):
     tools: list[OpenAITool] | None = None
     temperature: float | None = None
     top_p: float | None = None
-    # max_tokens is the legacy param; newer models (o-series) prefer max_completion_tokens.
-    # We keep max_tokens here for broadest compatibility — callers can override via model_kwargs.
+    # OpenAI's reasoning-capable models (o-series, gpt-5*, gpt-5.4*) reject
+    # the legacy ``max_tokens`` field with a 400 ``unsupported_parameter`` —
+    # they require ``max_completion_tokens`` instead.  Both fields are
+    # declared optional and mutually exclusive at the request-build layer
+    # (``CompletionsHandler.build_request`` picks one based on the
+    # ``uses_max_completion_tokens`` class flag, which OpenAI subclasses
+    # may flip to retain legacy ``max_tokens`` semantics — see
+    # ``providers/xai`` and ``providers/deepseek``).
+    #
+    # We do NOT collapse to a single canonical field because the OpenAI
+    # docs explicitly state ``max_tokens`` is deprecated for new models
+    # but kept for backwards compatibility, and several OpenAI-compatible
+    # endpoints (xAI Grok, Deepseek) only accept the legacy name.
     max_tokens: int | None = None
+    max_completion_tokens: int | None = None
     stream: bool = False
     stream_options: OpenAIStreamOptions | None = None
 

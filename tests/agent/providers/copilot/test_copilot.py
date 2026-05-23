@@ -305,11 +305,18 @@ class TestBuildCompletionsRequest:
         assert body["temperature"] == 0.5
 
     def test_max_tokens_passed(self):
+        """Copilot's gateway accepts the same field name as OpenAI's
+        Chat Completions API — ``max_completion_tokens``.  The caller
+        still uses the canonical ``max_tokens`` argument; the handler
+        translates to the wire-field name (see
+        ``CompletionsHandler.uses_max_completion_tokens``).
+        """
         p = _make_provider(max_tokens=100)
         body = p._completions.build_request(
             [HumanMessage(content="hi")], None, stream=False, merged=p._merged_kwargs()
         )
-        assert body["max_tokens"] == 100
+        assert body["max_completion_tokens"] == 100
+        assert "max_tokens" not in body
 
     def test_thinking_level_maps_to_reasoning_effort(self):
         p = CopilotProvider(

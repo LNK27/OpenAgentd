@@ -46,6 +46,20 @@ if TYPE_CHECKING:
 class CompletionsHandler:
     """Handles all interaction with /v1/chat/completions."""
 
+    # OpenAI's reasoning-capable models (o-series, gpt-5*, gpt-5.4*) reject
+    # the legacy ``max_tokens`` field — they require ``max_completion_tokens``.
+    # The Chat Completions API accepts ``max_completion_tokens`` on every
+    # current OpenAI model (including legacy gpt-4o/gpt-3.5), so we default
+    # to the new field for the native OpenAI provider.
+    #
+    # OpenAI-compatible endpoints that still require the legacy field
+    # (xAI Grok, Deepseek as of 2026-Q2) flip this to ``False`` in their
+    # provider subclass — see ``providers/xai`` and ``providers/deepseek``.
+    #
+    # Class-level flag rather than per-instance so subclassing remains
+    # the single override point; callers don't toggle field names ad-hoc.
+    uses_max_completion_tokens: bool = True
+
     def __init__(self, model: str, base_url: str, headers: dict[str, str]) -> None:
         self.model = model
         self.base_url = base_url
@@ -180,13 +194,25 @@ class CompletionsHandler:
         stream: bool,
         merged: dict[str, Any],
     ) -> dict[str, Any]:
+        # Route the caller's ``max_tokens`` to whichever field name the
+        # downstream API expects.  Callers up the stack use the canonical
+        # ``max_tokens`` name (defined on ``LLMProviderBase.chat``); the
+        # handler is the *only* layer that knows whether the wire field
+        # should be ``max_tokens`` (legacy) or ``max_completion_tokens``
+        # (reasoning-capable OpenAI models — see class docstring).
+        max_tokens_value = merged.get("max_tokens")
         req = OpenAIChatRequest(
             model=self.model,
             messages=self.convert_messages(messages),
             tools=self.convert_tools(tools),
             temperature=merged.get("temperature"),
             top_p=merged.get("top_p"),
-            max_tokens=merged.get("max_tokens"),
+            max_tokens=(
+                max_tokens_value if not self.uses_max_completion_tokens else None
+            ),
+            max_completion_tokens=(
+                max_tokens_value if self.uses_max_completion_tokens else None
+            ),
             stream=stream,
             stream_options=OpenAIStreamOptions(include_usage=True) if stream else None,
         )
