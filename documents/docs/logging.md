@@ -339,7 +339,8 @@ Emitted multiple times during streaming as token counts update:
   "reasoning": "The user is asking for...",   // Thinking content (max 2000 chars)
   "has_tool_calls": false,                    // Boolean
   "tool_call_count": 0,                       // Number of tool calls
-  "tool_names": []                            // Names of tools to be called
+  "tool_names": [],                           // Names of tools to be called
+  "duration_ms": 2330.4                       // Model response duration
 }
 ```
 
@@ -356,8 +357,9 @@ Logged for each tool call in the response:
   "agent": "...",
   "event": "tool_call",
   "name": "web_search",                       // Tool name
-  "args": {...},                              // Parsed arguments (up to 5000 chars)
-  "tool_call_id": "call_abc123"               // LLM's call ID
+  "arguments": "{...}",                       // Raw arguments
+  "tool_call_id": "call_abc123",              // LLM's call ID
+  "duration_ms": 456.0                        // Execution duration
 }
 ```
 
@@ -371,8 +373,8 @@ Logged for each tool call in the response:
   "event": "tool_result",
   "name": "web_search",                       // Tool name
   "result": "...",                            // Output (max 5000 chars, truncated with "…[+N]")
-  "result_length": 4521,                      // Actual length
-  "tool_call_id": "call_abc123"               // Matching call ID
+  "tool_call_id": "call_abc123",              // Matching call ID
+  "duration_ms": 456.0                        // Execution duration
 }
 ```
 

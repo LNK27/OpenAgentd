@@ -356,7 +356,7 @@ class SQLiteCheckpointer(Checkpointer):
                             msg.exclude_from_context,
                         )
                     elif isinstance(msg, ToolMessage):
-                        row = await save_message(db, UUID(sid), msg)
+                        row = await save_message(db, UUID(sid), msg, extra=msg.extra)
                         msg.db_id = row.id
                         logger.debug(
                             "checkpointer_saved_tool session_id={} db_id={} tool={}",

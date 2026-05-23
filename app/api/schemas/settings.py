@@ -57,6 +57,12 @@ class ProviderInfo(BaseModel):
     docs_url: str = ""
     # State the UI uses to decide whether to render "Connected" or a CTA.
     is_configured: bool = False
+    # Static credential/config presence, before reachability probes. This lets
+    # the UI distinguish "not set up" from "saved but currently unreachable".
+    is_saved: bool = False
+    # True when live model discovery reached the provider. False means saved
+    # credentials/tokens exist, but the provider could not be reached now.
+    is_reachable: bool | None = None
 
 
 class ProvidersListBody(BaseModel):

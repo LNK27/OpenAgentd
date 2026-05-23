@@ -30,14 +30,24 @@ def isolated_config(tmp_path: Path):
 
 
 @pytest.fixture(autouse=True)
-def _reset_local_reachable_cache():
-    """Clear the daemon-reachability cache between tests.
+def _reset_local_reachable_cache(monkeypatch: pytest.MonkeyPatch):
+    """Clear daemon-reachability cache and avoid live model discovery in tests.
 
     The cache is module-level state; without resetting it a test that
     happens to ping a daemon successfully (or hit a cached failure)
-    would leak that result into unrelated tests.
+    would leak that result into unrelated tests. Provider listing also
+    checks live model discovery before showing Connected; default that
+    probe to a deterministic success so focused tests can opt into
+    fallback/unreachable states explicitly.
     """
+
+    async def _available(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return ["test-model"]
+
     settings_routes._local_reachable_cache.clear()
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _available
+    )
     yield
     settings_routes._local_reachable_cache.clear()
 

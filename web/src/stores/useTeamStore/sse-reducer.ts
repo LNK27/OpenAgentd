@@ -97,9 +97,14 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           ensureAgent(draft, agent)
           const stream = draft.agentStreams[agent]
+          const hadText = stream.currentBlocks.some((b) => b.type === 'text')
           stream.currentBlocks = appendText(
             stream.currentBlocks, text
           )
+          if (!hadText) {
+            const last = stream.currentBlocks[stream.currentBlocks.length - 1]
+            if (last?.type === 'text' && !last.startedAt) last.startedAt = Date.now()
+          }
           if (text) {
             stream._completionEstimated = (stream._completionEstimated ?? 0) + (text.length / 4)
             const newEstimatedVal = Math.round(stream._completionEstimated)
@@ -120,6 +125,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             draft.agentStreams[agent].currentBlocks,
             d.name as string,
             d.tool_call_id as string | undefined,
+            typeof d.duration_ms === 'number' ? d.duration_ms : undefined,
           )
         })
         break
@@ -135,6 +141,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             d.name as string,
             d.arguments as string | undefined,
             d.tool_call_id as string | undefined,
+            typeof d.duration_ms === 'number' ? d.duration_ms : undefined,
           )
         })
         break
@@ -160,6 +167,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const toolName = d.name as string
         const toolCallId = d.tool_call_id as string | undefined
         const result = d.result as string | undefined
+        const metadata = d.metadata as Record<string, unknown> | undefined
+        const durationMs = typeof d.duration_ms === 'number'
+          ? d.duration_ms
+          : typeof metadata?.duration_ms === 'number'
+            ? metadata.duration_ms
+            : undefined
         if (!TODO_MUTATING_TOOLS.has(toolName)) {
           set((draft) => {
             ensureAgent(draft, agent)
@@ -168,6 +181,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               toolName,
               toolCallId,
               result,
+              durationMs,
             )
           })
         }
@@ -366,9 +380,19 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           Object.keys(draft.agentStreams).forEach((name) => {
             const stream = draft.agentStreams[name]
             if (stream.currentBlocks.length > 0) {
-              const stamped = stream.currentBlocks.map((b) =>
-                b.timestamp ? b : { ...b, timestamp: completedAt },
-              )
+              const durationMs = stream.currentBlocks.some((b) => b.type === 'text')
+                ? Math.max(
+                    0,
+                    ...stream.currentBlocks
+                      .filter((b) => b.type === 'text' && b.startedAt)
+                      .map((b) => completedAt.getTime() - (b.startedAt ?? completedAt.getTime())),
+                  )
+                : undefined
+              const stamped = stream.currentBlocks.map((b) => ({
+                ...b,
+                timestamp: b.timestamp ?? completedAt,
+                responseDurationMs: b.type === 'text' ? b.responseDurationMs ?? durationMs : b.responseDurationMs,
+              }))
               stream.blocks = [...stream.blocks, ...stamped]
               stream.currentBlocks = []
             }

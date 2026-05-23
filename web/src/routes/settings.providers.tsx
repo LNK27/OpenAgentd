@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
 import {
+  AlertCircle,
   ArrowLeft,
   CheckCircle2,
   Copy,
@@ -67,6 +68,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [verifiedKey, setVerifiedKey] = useState('')
+  const [hasReachabilityFailure, setHasReachabilityFailure] = useState(false)
   const [oauthOpen, setOauthOpen] = useState(false)
   const [modelsExpanded, setModelsExpanded] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
@@ -124,7 +126,9 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
       // Write into the shared query cache so the derived ``models`` /
       // ``modelSource`` above pick it up without a parallel local state.
       queryClient.setQueryData(queryKeys.settings.providerModels(provider.id), listed)
-      if (listed.source === 'provider' && listed.models.length > 0) {
+      const reachedProvider = listed.source === 'provider' && listed.models.length > 0
+      setHasReachabilityFailure(!reachedProvider)
+      if (reachedProvider) {
         setVerifiedKey(trimmedKey)
         setModelsExpanded(true)
         push({
@@ -136,12 +140,13 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
         // Provider was unreachable → backend fell back to catalog defaults.
         // Don't mark the key verified; user should retry.
         push({
-          tone: 'info',
-          title: 'Provider unreachable',
-          description: 'Showing curated defaults. Check your key and try again.',
+          tone: 'error',
+          title: 'Failed',
+          description: 'Provider is unreachable.',
         })
       }
     } catch (err) {
+      setHasReachabilityFailure(true)
       push({
         tone: 'error',
         title: 'Could not list models',
@@ -178,6 +183,8 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
   }
 
   const listing = modelsMutation.isPending || autoModelsQ.isFetching
+  const isConfiguredButUnreachable =
+    hasReachabilityFailure || provider.is_reachable === false || (provider.is_saved && !provider.is_configured)
 
   return (
     <Card size="sm" className="rounded-md border-(--color-border) bg-(--bg-card)">
@@ -191,12 +198,17 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
           <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted)">
             {providerKindLabel(provider.kind)}
           </span>
-          {provider.is_configured && (
+          {isConfiguredButUnreachable ? (
+            <span className="inline-flex items-center gap-1 rounded-md bg-(--color-error-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-error)">
+              <AlertCircle size={12} aria-hidden="true" />
+              Failed
+            </span>
+          ) : provider.is_configured ? (
             <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-success)">
               <CheckCircle2 size={12} aria-hidden="true" />
               Connected
             </span>
-          )}
+          ) : null}
           <div className="flex-1" />
           {provider.docs_url && (
             <Button type="button" size="sm" variant="ghost" onClick={() => void openExternalUrl(provider.docs_url)}>

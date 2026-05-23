@@ -49,6 +49,7 @@ Shell: Run unit tests [chevron]
 - **Tool label** — humanized from the backend name (`generate_image` → `Generate Image`), rendered bold in mono text.
 - **Summary** — optional per-tool `ReactNode` from `getToolDisplay()`, rendered after `: ` in normal weight. When no custom summary exists, only the tool label is shown.
 - **Chevron** (`ChevronRight`, 13px, `--color-text-muted`) — rendered only when the block has expandable details; rotates 90° when expanded. It sits after the summary so the label and details affordance read as one phrase.
+- **Duration** — running rows show a client-side elapsed timer; completed rows show persisted `duration_ms`, restored after reload.
 - **Running state** — running rows pulse the header text; completed/failed state is represented by the result content rather than extra header badges.
 
 The whole header is a `<button>` so the entire phrase is the click target. Rows with no details use `cursor-default` and do not show a chevron.

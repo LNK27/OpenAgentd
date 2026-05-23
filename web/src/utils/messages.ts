@@ -41,9 +41,18 @@ function assistantBlocks(
     blocks.push({ id: generateBlockId(), type: 'thinking', content: msg.reasoning_content, timestamp })
   }
 
+  const extra = msg.extra as { duration_ms?: number } | null
+  const responseDurationMs = typeof extra?.duration_ms === 'number' ? extra.duration_ms : undefined
+
   // Me text before tools — LLM emits content first, then tool_calls
   if (msg.content) {
-    blocks.push({ id: generateBlockId(), type: 'text', content: msg.content, timestamp })
+    blocks.push({
+      id: generateBlockId(),
+      type: 'text',
+      content: msg.content,
+      timestamp,
+      responseDurationMs,
+    })
   }
 
   for (const tool of (msg.tool_calls ?? []).filter((t) => t.function?.name !== 'todo_manage')) {
@@ -119,7 +128,12 @@ export function parseApiMessages(msgs: MessageResponse[]): ChatMessage[] {
 
     if (msg.role === 'tool' && msg.tool_call_id) {
       const block = pendingToolBlocks.get(msg.tool_call_id)
-      if (block) { block.toolResult = msg.content || ''; block.toolDone = true }
+      const extra = msg.extra as { duration_ms?: number } | null
+      if (block) {
+        block.toolResult = msg.content || ''
+        block.toolDone = true
+        if (typeof extra?.duration_ms === 'number') block.durationMs = extra.duration_ms
+      }
       continue
     }
 
@@ -220,7 +234,12 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
 
     if (msg.role === 'tool' && msg.tool_call_id) {
       const block = pendingToolBlocks.get(msg.tool_call_id)
-      if (block) { block.toolResult = msg.content || ''; block.toolDone = true }
+      const extra = msg.extra as { duration_ms?: number } | null
+      if (block) {
+        block.toolResult = msg.content || ''
+        block.toolDone = true
+        if (typeof extra?.duration_ms === 'number') block.durationMs = extra.duration_ms
+      }
       continue
     }
 

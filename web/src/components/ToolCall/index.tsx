@@ -32,6 +32,8 @@ interface ToolCallProps {
   done?: boolean
   liveOutput?: string
   result?: string // tool response content
+  durationMs?: number
+  startedAt?: number
 }
 
 function isFailedResult(result: string | undefined): boolean {
@@ -69,12 +71,18 @@ function formatToolLabel(name: string): string {
     .join(' ')
 }
 
-export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps) {
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`
+  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
+}
+
+export function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const [copiedArgs, setCopiedArgs] = useState(false)
   const [copiedResult, setCopiedResult] = useState(false)
   const liveOutputRef = useRef<HTMLPreElement>(null)
+  const [now, setNow] = useState(() => Date.now())
 
   // Determine status: start (name only) → running (args) → success/failed (result)
   const isPending = args === undefined || args === null
@@ -104,6 +112,12 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
   const isShellTerminal = isShell && Boolean(formattedArgs)
   const shellResult = isShell ? formatShellResult(shownResult) : null
   const shellOutput = shellResult?.body ?? shownLiveOutput
+
+  useEffect(() => {
+    if (done || !startedAt) return
+    const id = window.setInterval(() => setNow(Date.now()), 100)
+    return () => window.clearInterval(id)
+  }, [done, startedAt])
 
   useEffect(() => {
     const el = liveOutputRef.current
@@ -142,6 +156,7 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
   const toolLabel = formatToolLabel(displayName)
   const title = headerTitle ? `${toolLabel}: ${headerTitle}` : toolLabel
   const headerClassName = `min-w-0 truncate font-mono text-(--color-text) ${state === 'running' ? 'animate-pulse text-(--color-marker-orange)' : ''}`
+  const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
   return (
     <div className="tool-row-enter my-2">
@@ -184,6 +199,12 @@ export function ToolCall({ name, args, done, liveOutput, result }: ToolCallProps
             </span>
           )}
         </span>
+
+        {elapsedMs !== undefined && (
+          <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)" title="Duration">
+            {formatDuration(elapsedMs)}
+          </span>
+        )}
 
         {hasDetails && (
           <ChevronRight

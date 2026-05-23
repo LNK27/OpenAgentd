@@ -73,6 +73,18 @@ describe("ToolCall — header", () => {
     const btn = screen.getByRole("button")
     expect(btn).toBeTruthy()
   })
+
+  it("displays persisted duration_ms when done", () => {
+    render(<ToolCall name="read" args='{"path":"x"}' done={true} durationMs={1234} />)
+    expect(screen.getByText("1.2s")).toBeTruthy()
+  })
+
+  it("displays realtime elapsed counting while running", async () => {
+    render(<ToolCall name="read" args='{"path":"x"}' done={false} startedAt={Date.now() - 1500} />)
+    await waitFor(() => {
+      expect(screen.getByText(/1\.[5-9]s|2\.0s/)).toBeTruthy()
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------

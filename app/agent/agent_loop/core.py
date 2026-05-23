@@ -466,6 +466,7 @@ class Agent(Generic[TContext]):
             )
 
             cancelled = interrupt_event is not None and interrupt_event.is_set()
+            tool_durations = state.metadata.pop("_tool_duration_ms", {})
             for item in results:
                 if isinstance(item, BaseException):
                     logger.error("tool_gather_error error={}", item)
@@ -474,6 +475,8 @@ class Agent(Generic[TContext]):
                 tool_msg = ToolMessage(
                     content=result, tool_call_id=tc.id, name=tc.function.name
                 )
+                if tc.id in tool_durations:
+                    tool_msg.extra = {"duration_ms": tool_durations[tc.id]}
                 # Attach multimodal parts if the tool returned a ToolResult
                 if tc.id in multimodal_parts:
                     tool_msg.parts = multimodal_parts[tc.id]

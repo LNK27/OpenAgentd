@@ -277,6 +277,8 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
           done={block.toolDone}
           liveOutput={block.toolOutput}
           result={block.toolResult}
+          durationMs={block.durationMs}
+          startedAt={block.startedAt}
         />
       )
     case 'text': {

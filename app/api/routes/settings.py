@@ -275,6 +275,10 @@ async def _local_provider_reachable(entry: "ProviderEntry") -> bool:
     return reachable
 
 
+async def _empty_models() -> list[str]:
+    return []
+
+
 async def _provider_is_reachable(entry: "ProviderEntry") -> bool:
     """Configuration check including a daemon probe for daemon providers.
 
@@ -308,13 +312,27 @@ async def list_providers() -> ProvidersListBody:
     from app.agent.providers.model_discovery import filter_agent_model_ids
 
     entries = all_providers()
+    saved_states = [_provider_is_configured(entry) for entry in entries]
     reachability = await asyncio.gather(
         *(_provider_is_reachable(entry) for entry in entries),
         return_exceptions=False,
     )
+    from app.agent.providers.model_discovery import discover_provider_models
+
+    discovery_results = await asyncio.gather(
+        *(
+            discover_provider_models(entry, overrides=_provider_saved_overrides(entry))
+            if is_configured
+            else _empty_models()
+            for entry, is_configured in zip(entries, reachability, strict=True)
+        ),
+        return_exceptions=False,
+    )
 
     out: list[ProviderInfo] = []
-    for entry, is_configured in zip(entries, reachability, strict=True):
+    for entry, is_saved, is_configured, live_models in zip(
+        entries, saved_states, reachability, discovery_results, strict=True
+    ):
         out.append(
             ProviderInfo(
                 id=entry["id"],
@@ -329,7 +347,9 @@ async def list_providers() -> ProvidersListBody:
                 ),
                 oauth_command=entry.get("oauth_command", ""),
                 docs_url=entry.get("docs_url", ""),
-                is_configured=is_configured,
+                is_configured=is_configured and bool(live_models),
+                is_saved=is_saved,
+                is_reachable=bool(live_models) if is_configured else None,
             )
         )
     has_any = any(p.is_configured for p in out)
