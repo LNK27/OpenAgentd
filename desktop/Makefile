@@ -41,6 +41,9 @@ sidecar:
 		--python-version "$(PYVER)" \
 		$(if $(EXTRAS),--extras "$(EXTRAS)",)
 
+open:
+	@open "src-tauri/target/release/bundle/macos/OpenAgentd (dev).app"
+
 sidecar-full:
 	@$(MAKE) sidecar EXTRAS="audio,azure-doc-intel"
 
