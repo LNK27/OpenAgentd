@@ -2,7 +2,7 @@
 title: LLM Providers
 description: Every provider registered in build_provider — keys, model IDs, vision defaults, OAuth flows.
 status: stable
-updated: 2026-05-21
+updated: 2026-05-23
 ---
 
 # LLM Providers
@@ -93,6 +93,8 @@ Standard Gemini APIs. `_sanitize_schema()` strips JSON-Schema fields Gemini does
 Chat Completions by default. Setting any non-`none` `thinking_level` automatically routes through the **Responses API** (`/v1/responses`) because Chat Completions doesn't accept `reasoning_effort` alongside function tools. Override via `model_kwargs.responses_api: true/false`.
 
 When routed to `/v1/responses`, `temperature` and `top_p` are silently ignored (the API doesn't accept them); `max_tokens` maps to `max_output_tokens`.
+
+On Chat Completions, callers still use the provider-agnostic `max_tokens` setting. The OpenAI-compatible handler serializes it to the upstream field name: OpenAI/Copilot/xAI use `max_completion_tokens`; DeepSeek keeps legacy `max_tokens`.
 
 ### `anthropic`
 
