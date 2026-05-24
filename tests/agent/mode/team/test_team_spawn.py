@@ -99,6 +99,11 @@ def _status_events(push_mock: AsyncMock) -> list[tuple[str, str]]:
     return events
 
 
+async def _wait_for_lead_idle(team: AgentTeam) -> None:
+    if team.lead._active_task is not None:
+        await team.lead._active_task
+
+
 def _build_dynamic_team(
     tmp_path: Path,
     blueprints: dict[str, dict | None],
@@ -403,6 +408,7 @@ class TestCounter:
             # First session: spawn three.
             sid1 = str(uuid.uuid7())
             await team.handle_user_message("a", session_id=sid1)
+            await _wait_for_lead_idle(team)
             for _ in range(3):
                 await team.spawn("executor")
             assert sorted(team.members) == [
@@ -414,6 +420,7 @@ class TestCounter:
             # Switch to a fresh lead session — counters should reset.
             sid2 = str(uuid.uuid7())
             await team.handle_user_message("b", session_id=sid2)
+            await _wait_for_lead_idle(team)
             # Old spawned ``blueprint#N`` instances are dropped on session
             # change because they have no DB rows under the new lead.
             assert team.members == {}
@@ -432,6 +439,7 @@ class TestCounter:
         sid = str(uuid.uuid7())
         try:
             await team1.handle_user_message("hi", session_id=sid)
+            await _wait_for_lead_idle(team1)
             for _ in range(3):
                 await team1.spawn("executor")
             for n in (1, 2, 3):
@@ -446,6 +454,7 @@ class TestCounter:
             # Re-bind the lead to the same session id so counter
             # reconciliation reads our existing rows.
             await team2.handle_user_message("hi again", session_id=sid)
+            await _wait_for_lead_idle(team2)
             m = await team2.spawn("executor")
             # max(existing #N) was 3 → next is 4.
             assert m.name == "executor#4"
