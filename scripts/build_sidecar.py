@@ -13,9 +13,10 @@ Layout produced under ``<out>/``::
         pydantic/
         …
 
-The Tauri shell points ``PYTHONHOME`` at ``sidecar-bundle/python`` and
-``PYTHONPATH`` at ``sidecar-bundle/site-packages``, then runs
-``python -m app.cli serve --handshake --generate-token --parent-pid …``.
+The Tauri shell runs a tiny bootstrap that adds
+``sidecar-bundle/site-packages`` with ``site.addsitedir()`` so platform
+``.pth`` files are processed, then runs
+``app/cli/__main__.py serve --handshake --generate-token --parent-pid …``.
 
 We deliberately do NOT use ``uv tool install`` — that produces an
 isolated venv with absolute paths inside it, which won't survive being
@@ -304,8 +305,16 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
     if not cli_entry.is_file():
         raise SystemExit(f"smoke test: missing CLI entry at {cli_entry}")
 
+    bootstrap = (
+        "import sys, runpy, site; "
+        "_site = sys.argv.pop(1); "
+        "_entry = sys.argv.pop(1); "
+        "site.addsitedir(_site); "
+        "sys.argv[0] = _entry; "
+        "runpy.run_path(_entry, run_name='__main__')"
+    )
     proc = subprocess.Popen(
-        [str(python_bin), str(cli_entry), "serve",
+        [str(python_bin), "-c", bootstrap, str(site_packages), str(cli_entry), "serve",
          "--host", "127.0.0.1", "--port", "0",
          "--handshake", "--generate-token"],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
