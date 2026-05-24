@@ -232,22 +232,10 @@ jobs:
       - name: Build Python sidecar bundle
         shell: bash
         run: |
-          # The smoke test spawns the sidecar and waits for its
-          # handshake on stdout. On Windows GitHub-hosted runners it
-          # has been hanging past 30+ minutes — likely a stdout pipe
-          # buffering issue rather than a real failure mode. Disable
-          # the smoke test on Windows; macOS + Linux still run it and
-          # exercise the same bundle layout. Track restoration in
-          # documents/techdebts/distribution-coverage.md.
-          smoke_flag=""
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            smoke_flag="--no-smoke"
-          fi
           python3 scripts/build_sidecar.py \
             --root . \
             --out desktop/sidecar-bundle \
-            --python-version 3.14 \
-            $smoke_flag
+            --python-version 3.14
 
       - name: Import Apple signing certificate
         if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE != ''

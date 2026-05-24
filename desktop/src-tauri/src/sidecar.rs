@@ -118,10 +118,10 @@ impl Sidecar {
         // source — that would break on directories containing quotes.
         // ``sys.argv`` is then rewritten to look like a normal
         // ``python <entry> serve …`` invocation before ``runpy``.
-        let bootstrap = "import sys, runpy; \
+        let bootstrap = "import sys, runpy, site; \
              _site = sys.argv.pop(1); \
              _entry = sys.argv.pop(1); \
-             sys.path.insert(0, _site); \
+             site.addsitedir(_site); \
              sys.argv[0] = _entry; \
              runpy.run_path(_entry, run_name='__main__')";
 
