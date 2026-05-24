@@ -90,6 +90,7 @@ interface FloatingInputBarProps {
   autoFocus?: boolean
   capabilities?: AgentCapabilities
   voiceEnabled?: boolean
+  voiceUnavailableReason?: string | null
   revertedCount?: number
   revertedMessages?: Array<{ role: string; content: string }>
   onRedo?: () => void

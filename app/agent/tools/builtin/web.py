@@ -5,7 +5,6 @@ from typing import Annotated, Any, Literal
 import httpx
 from ddgs import DDGS
 from loguru import logger
-from markitdown import MarkItDown, StreamInfo
 from pydantic import Field
 
 from app.agent.tools.registry import tool
@@ -165,7 +164,14 @@ async def web_fetch(
             return content_bytes.decode("utf-8", errors="replace")
 
         # For all other types (html, text, pdf, etc.) let MarkItDown convert.
+        # ``markitdown`` is imported lazily because it pulls native libraries
+        # (``onnxruntime`` via ``magika``) whose DLL load can fail on some
+        # Windows hosts. Keeping the import inside the tool body means the
+        # backend always starts; only ``web_fetch`` calls that actually need
+        # conversion are affected when the native runtime is missing.
         def _convert() -> str:
+            from markitdown import MarkItDown, StreamInfo
+
             md = MarkItDown()
             result = md.convert_stream(
                 BytesIO(content_bytes),

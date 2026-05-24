@@ -61,6 +61,11 @@ export function VoiceSettingsPage() {
   const { data, isLoading, error } = useSpeechConfigQuery()
   const updateMut = useUpdateSpeechConfigMutation()
   const push = useToastStore((s) => s.push)
+  const availability = data?.availability
+  const unavailableReason =
+    availability?.local === 'unavailable'
+      ? availability.reason || 'The local speech runtime is unavailable on this machine.'
+      : null
 
   const [form, setForm] = useState<VoiceForm>(DEFAULT_FORM)
   const [sourceRaw, setSourceRaw] = useState<SpeechConfig | null>(null)
@@ -146,6 +151,24 @@ export function VoiceSettingsPage() {
               role="alert"
             >
               <span>{error instanceof Error ? error.message : String(error)}</span>
+            </div>
+          )}
+
+          {unavailableReason && (
+            <div
+              className="space-y-2 rounded-xl border border-(--color-warning)/30 bg-(--color-warning-subtle) p-4 text-sm text-(--color-text)"
+              role="status"
+            >
+              <p className="font-medium">Voice runtime unavailable</p>
+              <p className="text-xs leading-relaxed text-(--color-text-muted)">
+                OpenAgentd can still run normally, but local voice transcription is disabled because the bundled speech runtime could not load.
+              </p>
+              <p className="break-words rounded-md bg-(--bg-key) p-2 font-mono text-[11px] text-(--color-text-muted)">
+                {unavailableReason}
+              </p>
+              <p className="text-xs text-(--color-text-muted)">
+                On Windows, install the Microsoft Visual C++ Redistributable, check Defender exclusions for <code className="font-mono">C:\\Program Files\\OpenAgentd</code>, and verify your CPU supports AVX2. See the troubleshooting guide for details.
+              </p>
             </div>
           )}
 

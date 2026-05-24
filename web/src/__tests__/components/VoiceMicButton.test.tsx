@@ -150,6 +150,20 @@ describe('VoiceMicButton — disabled state', () => {
       'Voice mode is disabled. Enable it in settings to use voice input.'
     )
   })
+
+  it('shows unavailable runtime reason when voice cannot load locally', () => {
+    render(
+      <VoiceMicButton
+        voiceEnabled={true}
+        unavailableReason="DLL load failed while importing onnxruntime"
+        onTranscript={() => {}}
+      />
+    )
+    const btn = screen.getByLabelText('Voice runtime unavailable') as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    expect(btn.getAttribute('title')).toContain('Voice runtime unavailable')
+    expect(btn.getAttribute('title')).toContain('DLL load failed')
+  })
 })
 
 describe('VoiceMicButton — idle state', () => {

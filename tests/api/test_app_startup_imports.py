@@ -1,0 +1,48 @@
+"""Regression: importing the FastAPI app must not pull in optional native deps.
+
+On some Windows hosts ``onnxruntime`` (transitively imported by
+``faster_whisper`` and ``markitdown``) fails its DLL initialization routine.
+Any module that imports those packages at top level therefore kills the
+sidecar before it can serve the handshake, leaving the desktop tray stuck on
+``Status: Error``.
+
+These imports must stay strictly lazy.  The check runs in a fresh subprocess
+because the broader test suite legitimately imports speech-related modules in
+other tests, polluting :data:`sys.modules` for in-process assertions.
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+
+import pytest
+
+_FORBIDDEN_MODULES = (
+    "faster_whisper",
+    "onnxruntime",
+    "ctranslate2",
+    "av",
+    "markitdown",
+)
+
+
+@pytest.mark.parametrize("module", _FORBIDDEN_MODULES)
+def test_app_import_does_not_load_optional_native_dep(module: str) -> None:
+    """``import app.api.app`` must not transitively import ``module``."""
+    script = (
+        "import sys\n"
+        "import app.api.app  # noqa: F401\n"
+        f"assert {module!r} not in sys.modules, "
+        f"'app.api.app eagerly imported {module}'\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"app.api.app leaked optional native dep {module!r}.\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )

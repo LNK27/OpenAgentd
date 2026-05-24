@@ -172,4 +172,27 @@ describe('VoiceSettingsPage', () => {
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByText('Could not load voice config')).toBeTruthy()
   })
+
+  it('shows unavailable runtime guidance when local speech cannot load', async () => {
+    server.use(
+      http.get('http://localhost/api/speech/config', () =>
+        HttpResponse.json({
+          enabled: true,
+          model: 'local:base',
+          language: 'auto',
+          max_file_mb: 25,
+          availability: {
+            local: 'unavailable',
+            reason: 'DLL load failed while importing onnxruntime',
+          },
+        }),
+      ),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('Voice runtime unavailable')).toBeTruthy()
+    expect(screen.getByText('DLL load failed while importing onnxruntime')).toBeTruthy()
+    expect(screen.getByText(/Visual C\+\+ Redistributable/i)).toBeTruthy()
+  })
 })

@@ -74,6 +74,12 @@ interface InputBarProps {
    */
   voiceEnabled?: boolean
   /**
+   * When set, the bundled speech runtime can't load on this host. The mic
+   * button stays disabled and surfaces this reason in its tooltip so users
+   * understand why voice is off even though it's enabled in settings.
+   */
+  voiceUnavailableReason?: string | null
+  /**
    * When true, render the slim collapsed action strip instead of the full
    * pill. The strip keeps file, voice, chat, and send/stop controls visible.
    * Clicking the chat affordance calls `onUnminimize` so the parent can swap
@@ -124,6 +130,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   filesBelow = false,
   renderDragHandle,
   voiceEnabled = false,
+  voiceUnavailableReason = null,
   minimized = false,
   onUnminimize,
   onFocus,
@@ -644,6 +651,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         voiceEnabled={voiceEnabled}
         onTranscript={handleVoiceTranscript}
         disabled={disabled}
+        unavailableReason={voiceUnavailableReason}
       />
     </div>
   )

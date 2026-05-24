@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-import io
-import threading
-
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from faster_whisper import WhisperModel
 from loguru import logger
 
 from app.agent.speech._config import (
@@ -16,9 +11,15 @@ from app.agent.speech._config import (
     save_speech_config,
 )
 from app.api.schemas.speech import (
+    SpeechAvailability,
     SpeechConfigBody,
     SpeechConfigResponse,
     TranscribeResponse,
+)
+from app.services.speech_transcription import (
+    SpeechUnavailableError,
+    probe_local_runtime,
+    transcribe_local,
 )
 
 router = APIRouter()
@@ -30,12 +31,14 @@ _ACCEPTED_AUDIO_PREFIXES = ("audio/",)
 # Fallback public model name used in the disabled-voice response.
 _DISABLED_MODEL = "local:base"
 
-# ── WhisperModel cache ────────────────────────────────────────────────────────
-# Loading model weights is expensive (~seconds). Cache the instance
-# process-wide so repeated calls reuse the same loaded model.
-# Key: (model_name, device, compute_type).
-_whisper_cache: dict[tuple[str, str, str], WhisperModel] = {}
-_whisper_lock = threading.Lock()  # guards first-load initialisation per key
+
+def _current_availability() -> SpeechAvailability:
+    """Run the cached local-runtime probe and shape it for the API response."""
+    available, reason = probe_local_runtime()
+    return SpeechAvailability(
+        local="available" if available else "unavailable",
+        reason=None if available else reason,
+    )
 
 
 @router.get("/config")
@@ -44,8 +47,11 @@ async def get_speech_config() -> SpeechConfigResponse:
 
     Always returns the persisted values so Settings → Voice can round-trip
     edits even while voice is disabled.  Falls back to defaults only when the
-    file or ``voice`` section is absent.
+    file or ``voice`` section is absent.  The ``availability`` block lets the
+    UI hide or warn about voice when the bundled local runtime cannot load
+    on this machine (typical on some Windows hosts).
     """
+    availability = _current_availability()
     raw = load_raw_voice_section()
     if raw is None:
         return SpeechConfigResponse(
@@ -53,12 +59,14 @@ async def get_speech_config() -> SpeechConfigResponse:
             model=_DISABLED_MODEL,
             language="auto",
             max_file_mb=25,
+            availability=availability,
         )
     return SpeechConfigResponse(
         enabled=bool(raw.get("enabled", False)),
         model=str(raw.get("model", _DISABLED_MODEL)),
         language=str(raw.get("language", "auto")),
         max_file_mb=int(raw.get("max_file_mb", 25)) or 25,
+        availability=availability,
     )
 
 
@@ -87,6 +95,7 @@ async def update_speech_config(body: SpeechConfigBody) -> SpeechConfigResponse:
         model=body.model,
         language=body.language,
         max_file_mb=body.max_file_mb,
+        availability=_current_availability(),
     )
 
 
@@ -136,7 +145,16 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscribeResponse:
 
     # ── Dispatch to provider ──────────────────────────────────────────────────
     if cfg.provider == "local":
-        text = await _transcribe_local(audio_bytes, cfg.model, cfg.language)
+        try:
+            text = await transcribe_local(audio_bytes, cfg.model, cfg.language)
+        except SpeechUnavailableError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Local voice transcription is unavailable on this machine. "
+                    f"Runtime error: {exc}"
+                ),
+            ) from exc
     else:
         raise HTTPException(
             status_code=501,
@@ -154,33 +172,3 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscribeResponse:
         len(text),
     )
     return TranscribeResponse(text=text)
-
-
-async def _transcribe_local(audio_bytes: bytes, model: str, language: str) -> str:
-    """Transcribe using faster-whisper (bundled by default).
-
-    The ``WhisperModel`` instance is cached process-wide to avoid reloading
-    weights on every request — first-call latency is ~seconds, subsequent
-    calls are sub-second.
-    """
-    cache_key = (model, "cpu", "int8")
-
-    def _run() -> str:
-        wmodel = _whisper_cache.get(cache_key)
-        if wmodel is None:
-            with _whisper_lock:
-                # Re-check inside the lock — another thread may have loaded it.
-                wmodel = _whisper_cache.get(cache_key)
-                if wmodel is None:
-                    wmodel = WhisperModel(model, device="cpu", compute_type="int8")
-                    _whisper_cache[cache_key] = wmodel
-
-        whisper_language = None if language == "auto" else language
-        segments, _ = wmodel.transcribe(
-            io.BytesIO(audio_bytes),
-            language=whisper_language,
-            beam_size=5,
-        )
-        return "".join(seg.text for seg in segments).strip()
-
-    return await asyncio.to_thread(_run)

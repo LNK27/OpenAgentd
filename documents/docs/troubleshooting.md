@@ -44,6 +44,30 @@ Go to **Settings → About → Updates**, click **Cancel**, then try again. If i
 
 Open **Settings → Notifications**, enable notifications, and send a test notification. Also check the OS permission at **System Settings → Notifications → OpenAgentd**.
 
+### Voice input shows "unavailable" on Windows
+
+Voice transcription bundles a native runtime (`onnxruntime` via `faster_whisper`). If its DLLs can't load, OpenAgentd disables voice instead of failing at startup and **Settings → Voice** reports the runtime as unavailable. The three common causes:
+
+1. **Missing Microsoft Visual C++ Redistributable.** `onnxruntime` requires the 2015–2022 x64 redistributable. Install it from an elevated PowerShell:
+
+   ```powershell
+   winget install --id Microsoft.VCRedist.2015+.x64 -e
+   ```
+
+   Reboot, then restart OpenAgentd.
+
+2. **Windows Defender or third-party AV quarantined a bundled DLL.** Add an exclusion for the install directory (default `C:\Program Files\OpenAgentd`) under **Windows Security → Virus & threat protection → Manage settings → Exclusions → Add an exclusion → Folder**, then reinstall to restore any missing files.
+
+3. **CPU lacks AVX/AVX2.** `onnxruntime` builds for Windows require AVX2. Check from PowerShell:
+
+   ```powershell
+   Get-CimInstance Win32_Processor | Select-Object Name, Caption
+   ```
+
+   On unsupported CPUs, leave voice off; text-only usage is unaffected.
+
+Voice continues to work end-to-end on macOS and Linux without any extra setup.
+
 ## CLI / server (developers)
 
 These troubleshooting steps apply if you're running OpenAgentd as a CLI or server (`openagentd`). If you installed the desktop app, see the Desktop app section above.
