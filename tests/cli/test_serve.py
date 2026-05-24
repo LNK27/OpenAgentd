@@ -11,6 +11,9 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
+import sys
+import time
 from contextlib import redirect_stdout
 from types import SimpleNamespace
 
@@ -136,3 +139,58 @@ class TestPidAlive:
         # Probabilistically not in use; if it is, the test is flaky but
         # not in a way that matters for this assertion's intent.
         assert _pid_alive(2_147_483_640) is False
+
+    def test_live_external_child_is_alive_without_being_killed(self):
+        """Regression test for the 1.22.5 Windows bug.
+
+        On Windows, ``os.kill(pid, 0)`` is NOT a "probe if alive" call —
+        CPython implements it as ``TerminateProcess(pid, 0)``. That meant
+        the previous ``_pid_alive`` would silently kill the desktop sidecar's
+        parent watcher target. This test spawns a real child, asserts
+        ``_pid_alive`` returns True for it, and then verifies the child
+        is still running afterwards.
+        """
+        # ``python -c "import time; time.sleep(30)"`` is portable and
+        # avoids shell quirks on Windows ``cmd``.
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            # Give the child a beat to actually be schedulable.
+            time.sleep(0.1)
+            assert _pid_alive(proc.pid) is True
+            # The crucial regression assertion: the probe must not have
+            # killed the child. ``poll()`` returns None while running.
+            time.sleep(0.1)
+            assert proc.poll() is None, (
+                "_pid_alive killed the target process — this is the "
+                "Windows-only bug fixed in 1.22.6"
+            )
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+
+    def test_exited_child_is_dead(self):
+        """``_pid_alive`` must return False once the target has exited.
+
+        On Windows this exercises the ``GetExitCodeProcess`` branch — a
+        handle to an exited process is still openable (zombie-like state),
+        but the exit code is no longer ``STILL_ACTIVE``.
+        """
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import sys; sys.exit(0)"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        proc.wait(timeout=5)
+        # Small grace period for the OS to reflect the exit on Windows.
+        time.sleep(0.1)
+        assert _pid_alive(proc.pid) is False

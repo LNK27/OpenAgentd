@@ -108,17 +108,62 @@ def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_serve)
 
 
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # PID exists but we can't signal it — still alive enough for our purposes.
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    _kernel32.OpenProcess.restype = wintypes.HANDLE
+    _kernel32.GetExitCodeProcess.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.DWORD),
+    )
+    _kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    _kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    _kernel32.CloseHandle.restype = wintypes.BOOL
+
+    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    _STILL_ACTIVE = 259
+
+    def _pid_alive(pid: int) -> bool:
+        """Return True iff ``pid`` is a live process on Windows.
+
+        ``os.kill(pid, 0)`` is NOT a "probe if alive" call on Windows —
+        CPython implements it as ``TerminateProcess(pid, 0)``, which would
+        kill the target (or our own sidecar) instead of just checking
+        existence. We use the Win32 API directly:
+
+        - ``OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)`` — minimal right
+          that any user-mode process can obtain against another process
+          owned by the same user without elevation.
+        - ``GetExitCodeProcess`` — returns ``STILL_ACTIVE`` (259) for a
+          running process; any other value means the process has exited
+          and the exit code has been observed.
+        """
+        handle = _kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            if not _kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == _STILL_ACTIVE
+        finally:
+            _kernel32.CloseHandle(handle)
+else:
+
+    def _pid_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # PID exists but we can't signal it — still alive enough for our purposes.
+            return True
+        except OSError:
+            return False
         return True
-    except OSError:
-        return False
-    return True
 
 
 def _start_parent_watch(
@@ -139,7 +184,17 @@ def _start_parent_watch(
     def _watch() -> None:
         while True:
             if not _pid_alive(parent_pid):
-                # Parent died — don't leak the backend.
+                # Parent died — don't leak the backend.  Log first so that
+                # ``backend.log`` retains *something* if the watch ever
+                # fires by mistake (e.g. a future bug in ``_pid_alive``);
+                # a silent self-kill made the Windows ``_pid_alive`` bug
+                # fixed in 1.22.6 painful to diagnose.
+                print(
+                    f"parent-watch: parent pid {parent_pid} no longer alive; "
+                    "sending SIGTERM to self",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 try:
                     os.kill(os.getpid(), signal.SIGTERM)
                 except OSError:
