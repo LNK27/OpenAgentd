@@ -56,7 +56,6 @@ import json
 import os
 import secrets
 import signal
-import socket
 import sys
 import threading
 from typing import Any
@@ -158,22 +157,14 @@ def _start_parent_watch(
     t.start()
 
 
-def _bind_socket(host: str, port: int) -> socket.socket:
-    """Pre-bind a socket so we know the chosen port before uvicorn starts.
-
-    Uvicorn accepts a pre-bound socket via the ``fd`` parameter on its
-    ``Config``. By binding ourselves first we can read ``getsockname()``
-    before the server even starts serving — which is exactly what the
-    handshake needs.
-
-    No ``SO_REUSEADDR`` — that's a restart-in-place flag and here it
-    would just create a small window in which another process could
-    sneak onto the same port between bind and listen.
-    """
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((host, port))
-    s.set_inheritable(True)
-    return s
+def _server_port(server: Any, fallback: int) -> int:
+    """Return the actual TCP port bound by uvicorn after startup."""
+    for srv in getattr(server, "servers", []) or []:
+        for sock in getattr(srv, "sockets", []) or []:
+            addr = sock.getsockname()
+            if isinstance(addr, tuple) and len(addr) >= 2:
+                return int(addr[1])
+    return fallback
 
 
 def _emit_handshake(*, port: int, token: str | None, version: str) -> None:
@@ -215,15 +206,10 @@ def cmd_serve(args: argparse.Namespace) -> None:
     if args.parent_pid is not None:
         _start_parent_watch(args.parent_pid)
 
-    # Pre-bind so we can read the chosen port.
-    sock = _bind_socket(args.host, args.port)
-    bound_port = sock.getsockname()[1]
-
-    # When ``fd=`` is set uvicorn re-creates the socket from that fd and
-    # ignores ``host``/``port`` — pass only what's meaningful.
     config = uvicorn.Config(
         "app.server:app",
-        fd=sock.fileno(),
+        host=args.host,
+        port=args.port,
         log_config=None,  # let loguru handle it
         access_log=False,
     )
@@ -251,14 +237,10 @@ def cmd_serve(args: argparse.Namespace) -> None:
                     await serve_task
                     return
                 await asyncio.sleep(0.05)
-            _emit_handshake(port=bound_port, token=token, version=VERSION)
+            _emit_handshake(
+                port=_server_port(server, args.port), token=token, version=VERSION
+            )
         await serve_task
 
     # Run in this thread; KeyboardInterrupt / SIGTERM propagate naturally.
-    try:
-        asyncio.run(_serve_and_handshake())
-    finally:
-        try:
-            sock.close()
-        except OSError:
-            pass
+    asyncio.run(_serve_and_handshake())

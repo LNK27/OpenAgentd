@@ -12,12 +12,13 @@ import io
 import json
 import os
 from contextlib import redirect_stdout
+from types import SimpleNamespace
 
 from app.cli.commands.serve import (
-    _bind_socket,
     _configure_desktop_token,
     _emit_handshake,
     _pid_alive,
+    _server_port,
 )
 from app.cli.main import build_parser
 
@@ -54,22 +55,23 @@ class TestParserWiring:
         assert args.parent_pid == 12345
 
 
-class TestBindSocket:
-    def test_port_zero_picks_ephemeral(self):
-        sock = _bind_socket("127.0.0.1", 0)
-        try:
-            host, port = sock.getsockname()[:2]
-            assert host == "127.0.0.1"
-            assert 1024 < port < 65536
-        finally:
-            sock.close()
+class TestServerPort:
+    def test_reads_uvicorn_bound_port(self):
+        sock = SimpleNamespace(getsockname=lambda: ("127.0.0.1", 54321))
+        uvicorn_server = SimpleNamespace(servers=[SimpleNamespace(sockets=[sock])])
 
-    def test_inheritable_flag_set(self):
-        sock = _bind_socket("127.0.0.1", 0)
-        try:
-            assert sock.get_inheritable() is True
-        finally:
-            sock.close()
+        assert _server_port(uvicorn_server, fallback=0) == 54321
+
+    def test_falls_back_when_socket_unavailable(self):
+        uvicorn_server = SimpleNamespace(servers=[])
+
+        assert _server_port(uvicorn_server, fallback=8000) == 8000
+
+    def test_ignores_non_tcp_socket_address(self):
+        sock = SimpleNamespace(getsockname=lambda: "not-a-tcp-address")
+        uvicorn_server = SimpleNamespace(servers=[SimpleNamespace(sockets=[sock])])
+
+        assert _server_port(uvicorn_server, fallback=8000) == 8000
 
 
 class TestHandshakeFormat:
