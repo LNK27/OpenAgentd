@@ -1023,11 +1023,28 @@ export async function submitOAuthCallback(providerId: string, code: string): Pro
 
 // ── /speech ──────────────────────────────────────────────────────────────────
 
+export type SpeechAvailability = {
+  /** Status of the bundled local speech runtime on this host. */
+  local: 'available' | 'unavailable'
+  /**
+   * Human-readable reason when `local === 'unavailable'`. Typically the
+   * captured ``ImportError`` from the native runtime (e.g. ``onnxruntime``
+   * DLL load failure on Windows). ``null`` when the runtime works.
+   */
+  reason: string | null
+}
+
 export type SpeechConfig = {
   enabled: boolean
   model: string
   language: string
   max_file_mb: number
+  /**
+   * Optional — present from backend v1.22.3+. Lets the UI surface a clean
+   * "unavailable" state when the bundled native runtime can't load on this
+   * machine, instead of failing at first use.
+   */
+  availability?: SpeechAvailability
 }
 
 export async function getSpeechConfig(): Promise<SpeechConfig> {

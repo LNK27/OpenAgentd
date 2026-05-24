@@ -56,6 +56,7 @@ interface Seed {
   providersTotal?: number
   sandboxPatterns?: number
   voiceEnabled?: boolean
+  voiceUnavailable?: boolean
 }
 
 function renderHub(seed: Seed = {}) {
@@ -99,7 +100,12 @@ function renderHub(seed: Seed = {}) {
     })
   }
   if (seed.voiceEnabled !== undefined) {
-    queryClient.setQueryData(queryKeys.speech.config(), { enabled: seed.voiceEnabled })
+    queryClient.setQueryData(queryKeys.speech.config(), {
+      enabled: seed.voiceEnabled,
+      availability: seed.voiceUnavailable
+        ? { local: 'unavailable', reason: 'onnxruntime failed to load' }
+        : { local: 'available', reason: null },
+    })
   }
 
   const result = render(
@@ -263,5 +269,20 @@ describe('SettingsHubPage — mobile nav', () => {
       .find((el) => el.getAttribute('href') === '/settings/voice')
     expect(voiceLink).toBeDefined()
     expect(voiceLink!.textContent).toMatch(/disabled/i)
+  })
+
+  it('voice card shows unavailable when the local speech runtime cannot load', () => {
+    isMobileFlag = true
+    renderHub({
+      health: { status: 'ok', version: '1.2.3' },
+      voiceEnabled: true,
+      voiceUnavailable: true,
+    })
+
+    const voiceLink = screen
+      .getAllByRole('link')
+      .find((el) => el.getAttribute('href') === '/settings/voice')
+    expect(voiceLink).toBeDefined()
+    expect(voiceLink!.textContent).toMatch(/unavailable/i)
   })
 })

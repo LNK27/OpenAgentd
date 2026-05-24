@@ -26,10 +26,20 @@ interface VoiceMicButtonProps {
   onTranscript: (text: string) => void
   /** Whether the rest of the input bar is disabled. */
   disabled?: boolean
+  /**
+   * When set, the bundled speech runtime can't load on this host (common
+   * on some Windows machines where ``onnxruntime`` DLLs fail to initialise).
+   * Voice input is forced off and the tooltip surfaces the underlying
+   * reason so users can fix it (see Settings → Voice for guidance).
+   */
+  unavailableReason?: string | null
 }
 
 const DISABLED_TOOLTIP =
   'Voice mode is disabled. Enable it in settings to use voice input.'
+
+const UNAVAILABLE_TOOLTIP =
+  'Voice runtime unavailable on this machine. See Settings → Voice for help.'
 
 async function handleDesktopMicrophoneDenied(): Promise<void> {
   const { ask } = await import('@tauri-apps/plugin-dialog')
@@ -56,7 +66,11 @@ export function VoiceMicButton({
   voiceEnabled,
   onTranscript,
   disabled = false,
+  unavailableReason = null,
 }: VoiceMicButtonProps) {
+  // Treat an unavailable runtime as "not enabled" for all interaction logic;
+  // only the tooltip changes so the user knows *why*.
+  const effectiveEnabled = voiceEnabled && !unavailableReason
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -154,16 +168,21 @@ export function VoiceMicButton({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const isEffectivelyDisabled = !voiceEnabled || disabled || voiceState === 'transcribing'
+  const isEffectivelyDisabled = !effectiveEnabled || disabled || voiceState === 'transcribing'
 
   let icon: React.ReactNode
   let label: string
   let title: string
 
-  if (!voiceEnabled) {
+  if (!effectiveEnabled) {
     icon = <MicOff size={14} />
-    label = 'Voice input disabled'
-    title = DISABLED_TOOLTIP
+    if (unavailableReason) {
+      label = 'Voice runtime unavailable'
+      title = `${UNAVAILABLE_TOOLTIP}\n\n${unavailableReason}`
+    } else {
+      label = 'Voice input disabled'
+      title = DISABLED_TOOLTIP
+    }
   } else if (voiceState === 'transcribing') {
     icon = <Loader2 size={14} className="animate-spin" />
     label = 'Transcribing…'

@@ -181,9 +181,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const selectedModel = sessionModel ?? ''
   const selectedThinkingLevel = sessionThinkingLevel ?? ''
 
-  // Voice input — enabled flag from /api/speech/config.
+  // Voice input — enabled flag + local runtime availability from /api/speech/config.
   const { data: speechConfig } = useSpeechConfigQuery()
-  const voiceEnabled = speechConfig?.enabled ?? false
+  const voiceUnavailableReason =
+    speechConfig?.availability?.local === 'unavailable'
+      ? speechConfig.availability.reason || 'The local speech runtime is unavailable on this machine.'
+      : null
+  const voiceEnabled = Boolean(speechConfig?.enabled && !voiceUnavailableReason)
 
   // Workspace file/folder list for the InputBar's @-mention picker. Fetched
   // lazily — the query is keyed on workspace/session so coding and normal
@@ -883,6 +887,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             }
             capabilities={leadCapabilities}
             voiceEnabled={voiceEnabled}
+            voiceUnavailableReason={voiceUnavailableReason}
             revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
             revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
             onRedo={() => { void useTeamStore.getState().redoTeam() }}

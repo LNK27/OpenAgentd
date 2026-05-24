@@ -248,7 +248,9 @@ export function SettingsHubPage() {
   const mcpCount = mcpQ.data?.servers.length ?? null
   const connectedProvidersCount = providersQ.data?.providers.filter((provider) => provider.is_configured).length ?? null
   const sandboxCount = sandboxQ.data?.denied_patterns.length ?? null
-  const voiceEnabled = speechQ.data?.enabled ?? false
+  const voiceUnavailable = speechQ.data?.availability?.local === 'unavailable'
+  const voiceEnabled = Boolean(speechQ.data?.enabled && !voiceUnavailable)
+  const voiceLabel = voiceUnavailable ? 'unavailable' : voiceEnabled ? 'enabled' : 'disabled'
   const version = healthQ.data?.version
 
   return (
@@ -356,7 +358,7 @@ export function SettingsHubPage() {
                   title="Voice input"
                   description="Transcribe mic recordings locally and insert into the chat input"
                   count={null}
-                  countLabel={voiceEnabled ? 'enabled' : 'disabled'}
+                  countLabel={voiceLabel}
                 />
                 <SettingsNavCard
                   to="/settings/notifications"
