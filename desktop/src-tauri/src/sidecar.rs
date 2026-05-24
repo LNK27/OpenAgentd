@@ -18,6 +18,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -58,6 +59,16 @@ impl Sidecar {
 
         let python_bin = resolve_python_bin(&sidecar_root)
             .with_context(|| format!("locate python binary under {}", sidecar_root.display()))?;
+        // On Windows, strip Tauri's ``\\?\`` extended-length prefix.
+        // ``CreateProcessW`` accepts it, but some child-process bootstrap
+        // paths (notably python-build-standalone launchers and shim ``.exe``s)
+        // mis-parse it as a UNC share name and bail before the child's
+        // stderr is wired up — leaving us with an empty ``backend.log`` and
+        // ``sidecar exited before handshake`` in the Tauri log.  No-op on
+        // macOS/Linux, where the helper is not defined and the path is used
+        // as-is.
+        #[cfg(windows)]
+        let python_bin = strip_unc_prefix(&python_bin);
 
         let log_dir = app
             .path()
@@ -150,13 +161,33 @@ impl Sidecar {
         let app_env = std::env::var("OPENAGENTD_APP_ENV")
             .unwrap_or_else(|_| "production".to_string());
 
+        // Open backend.log up-front and hand it to the child as stderr.
+        // ``Stdio::from(File)`` causes the kernel to write child stderr
+        // directly into the file with no intermediate buffer in our process,
+        // so a Python crash within the first millisecond still leaves a
+        // useful traceback on disk.  The previous design piped stderr and
+        // copied bytes in a background task; if the child died before the
+        // task was scheduled, ``backend.log`` ended up empty and we had
+        // nothing to debug from.
+        let stderr_log = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .with_context(|| format!("open backend log at {}", log_path.display()))?;
+        // Clone the file handle so we can also append our own diagnostic
+        // lines from this side (e.g. the spawn banner) without racing the
+        // child for the write cursor.
+        let stderr_for_child = stderr_log
+            .try_clone()
+            .context("clone backend log handle for child stderr")?;
+
         cmd.arg("--parent-pid")
             .arg(parent_pid.to_string())
             .env("PYTHONUNBUFFERED", "1")
             .env("APP_ENV", app_env)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::from(stderr_for_child));
 
         // Path resolution is delegated to the Python backend
         // (app.core.paths). It already resolves the XDG-spec directories
@@ -206,13 +237,13 @@ impl Sidecar {
             .stdout
             .take()
             .ok_or_else(|| anyhow!("sidecar stdout missing"))?;
-        // Pipe stderr to the log file in the background.
-        if let Some(stderr) = child.stderr.take() {
-            let log_path_clone = log_path.clone();
-            tokio::spawn(async move {
-                pipe_to_log(stderr, log_path_clone).await;
-            });
-        }
+        // Stderr was wired directly to ``backend.log`` via ``Stdio::from(File)``
+        // above (see ``stderr_for_child``); there is nothing to drain here.
+        // Keep ``stderr_log`` alive for the rest of this function — dropping
+        // it would close one of the two duplicated file descriptors, which
+        // is harmless but also pointless.  We let it drop naturally at the
+        // end of ``spawn_with_desktop_token``.
+        drop(stderr_log);
 
         Ok(Sidecar {
             child,
@@ -339,12 +370,28 @@ fn resolve_python_bin(sidecar_root: &Path) -> Result<PathBuf> {
     ))
 }
 
-async fn pipe_to_log<R>(stream: R, log_path: PathBuf)
-where
-    R: tokio::io::AsyncRead + Unpin,
-{
-    let reader = BufReader::new(stream);
-    pipe_lines_to_log(reader, log_path).await;
+/// Drop a Windows ``\\?\`` extended-length prefix from *path*, if present.
+///
+/// Tauri's resource resolver canonicalises paths through Windows APIs that
+/// sometimes return the verbatim form (``\\?\C:\Program Files\...``).
+/// ``CreateProcessW`` accepts it, but some launcher ``.exe``s shipped
+/// inside Python distributions mis-parse it as a UNC share name and exit
+/// before their stderr is even wired up.  Returning the un-prefixed path
+/// keeps everything compatible.
+///
+/// Windows-only — never invoked from macOS or Linux builds.
+#[cfg(windows)]
+fn strip_unc_prefix(path: &Path) -> PathBuf {
+    const VERBATIM: &str = r"\\?\";
+    let s = path.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(VERBATIM) {
+        // ``\\?\UNC\server\share`` is a UNC path; preserve the share form.
+        if let Some(unc) = rest.strip_prefix("UNC\\") {
+            return PathBuf::from(format!(r"\\{unc}"));
+        }
+        return PathBuf::from(rest);
+    }
+    path.to_path_buf()
 }
 
 async fn pipe_lines_to_log<R>(mut reader: BufReader<R>, log_path: PathBuf)
@@ -487,5 +534,38 @@ fn resume_primary_thread(child: &Child) -> Result<()> {
                 return Err(anyhow!("no thread found for pid {}", pid));
             }
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::strip_unc_prefix;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn strip_local_path_verbatim_prefix() {
+        let stripped = strip_unc_prefix(Path::new(r"\\?\C:\Program Files\OpenAgentd\python.exe"));
+        assert_eq!(
+            stripped,
+            PathBuf::from(r"C:\Program Files\OpenAgentd\python.exe")
+        );
+    }
+
+    #[test]
+    fn strip_unc_share_verbatim_prefix() {
+        let stripped = strip_unc_prefix(Path::new(r"\\?\UNC\server\share\python.exe"));
+        assert_eq!(stripped, PathBuf::from(r"\\server\share\python.exe"));
+    }
+
+    #[test]
+    fn unprefixed_local_path_is_unchanged() {
+        let p = Path::new(r"C:\Program Files\OpenAgentd\python.exe");
+        assert_eq!(strip_unc_prefix(p), p.to_path_buf());
+    }
+
+    #[test]
+    fn unprefixed_unc_path_is_unchanged() {
+        let p = Path::new(r"\\server\share\python.exe");
+        assert_eq!(strip_unc_prefix(p), p.to_path_buf());
     }
 }
