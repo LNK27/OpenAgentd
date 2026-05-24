@@ -55,6 +55,8 @@ OPENAGENTD_SKILLS = [
 class BuiltinMemberProfile(TypedDict):
     description: str
     tools: list[str]
+    skills: list[str]
+    mcp: list[str]
     prompt: str
 
 
@@ -75,6 +77,8 @@ BUILTIN_MEMBER_PROFILES: dict[str, dict[str, BuiltinMemberProfile]] = {
                 "shell",
                 "web_fetch",
             ],
+            "skills": [],
+            "mcp": [],
             "prompt": """You are "executor".
 
 Your mode is **making things**. You take a plan or a brief and turn it into a concrete artifact: a file written, a command run, a build completed, a document produced. The deliverable is tangible and saved to the shared workspace.
@@ -103,6 +107,8 @@ Be specific: which files you touched, which commands you ran, what the outcome w
                 "grep",
                 "shell",
             ],
+            "skills": [],
+            "mcp": [],
             "prompt": """You are "explorer".
 
 Your mode is **reconnaissance**. Gather information from the web, filesystem, code, and documents, then return it in a shape teammates can use.
@@ -117,22 +123,6 @@ Your mode is **reconnaissance**. Gather information from the web, filesystem, co
 ## Output format
 
 Structure findings with headings, bullets, or tables. End with a short synthesis answering the original question.""",
-        },
-        "consultant": {
-            "description": "Thinks before acting. Reads deeply, weighs trade-offs, returns a clear recommendation. Use for hard decisions, reviews, and anything where getting it wrong costs more than getting it slow.",
-            "tools": ["date", "read", "ls", "glob", "grep"],
-            "prompt": """You are "consultant".
-
-Your mode is **deep reasoning**. You are called in when a decision needs careful thought: architecture, debugging, design review, choosing between options, or assessing risk.
-
-You deliver analysis, not artifacts.
-
-## Output format
-
-1. **Assessment** — current state and what the problem actually is.
-2. **Recommendation** — concrete: what to do, in what order.
-3. **Rationale** — why this over the alternative(s).
-4. **Risks** — what could go wrong and what to verify after.""",
         },
     },
     "coding": {
@@ -151,43 +141,9 @@ You deliver analysis, not artifacts.
                 "shell",
                 "write",
             ],
+            "skills": [],
+            "mcp": [],
             "prompt": "You are **coder**.\n\nYour job is to make the requested code change with the smallest correct diff and verify it.",
-        },
-        "architect": {
-            "description": "Reviews plans, designs, and diffs. Weighs trade-offs against the codebase and recommends the simplest safe path. Read-only.",
-            "tools": ["date", "read", "ls", "glob", "grep", "web_fetch", "web_search"],
-            "prompt": "You are **architect**.\n\nYour job is judgment, not implementation. Use codebase evidence to evaluate options, identify risks, and recommend the simplest safe path. You do not edit files or run mutating commands.",
-        },
-        "designer": {
-            "description": "UI/UX for the web frontend. Designs and implements accessible, consistent interfaces using the project's design tokens and component system.",
-            "tools": [
-                "date",
-                "edit",
-                "glob",
-                "grep",
-                "ls",
-                "patch",
-                "read",
-                "shell",
-                "web_fetch",
-                "write",
-            ],
-            "prompt": "You are **designer**.\n\nYour job is the user-facing surface: layout, hierarchy, states, motion, and accessibility. You write real frontend code, not mockups.",
-        },
-        "qa": {
-            "description": 'Writes and runs tests, reproduces bugs, and verifies behavior. Owns the "make it pass" loop.',
-            "tools": [
-                "date",
-                "edit",
-                "glob",
-                "grep",
-                "ls",
-                "patch",
-                "read",
-                "shell",
-                "write",
-            ],
-            "prompt": "You are **qa**.\n\nYour job is verification. Turn requirements and bug reports into tests that fail for the right reason, then confirm they pass after the fix.",
         },
     },
 }
@@ -279,6 +235,28 @@ def apply_builtin_extra_prompt(base_prompt: str, extra_prompt: str) -> str:
     return f"{base_prompt}\n\n## User extra prompt\n\n{extra}"
 
 
+def _looks_like_legacy_first_party_prompt(extra_prompt: str, *, name: str) -> bool:
+    """Return whether *extra_prompt* is an old shipped full prompt.
+
+    Existing installs can already contain pre-built-in seed bodies. Those should
+    not become user extras just because the versioned base moved into code.
+    The checks are intentionally narrow to first-party prompt openings.
+    """
+    extra = _normalise_extra_prompt(extra_prompt)
+    legacy_openings = {
+        "openagentd": "You are **OpenAgentd**",
+        "executor": 'You are "executor".',
+        "explorer": 'You are "explorer".',
+        "consultant": 'You are "consultant".',
+        "coder": "You are **coder**.",
+        "architect": "You are **architect**.",
+        "designer": "You are **designer**.",
+        "qa": "You are **qa**.",
+    }
+    opening = legacy_openings.get(name)
+    return bool(opening and extra.startswith(opening))
+
+
 def apply_openagentd_extra_prompt(mode: str, extra_prompt: str) -> str:
     """Return the built-in OpenAgentd prompt plus user-authored extra text.
 
@@ -288,4 +266,13 @@ def apply_openagentd_extra_prompt(mode: str, extra_prompt: str) -> str:
     duplicating the built-in text.
     """
     base = openagentd_prompt_for_mode(mode)
+    if _looks_like_legacy_first_party_prompt(extra_prompt, name="openagentd"):
+        return base
     return apply_builtin_extra_prompt(base, extra_prompt)
+
+
+def apply_member_extra_prompt(name: str, base_prompt: str, extra_prompt: str) -> str:
+    """Return built-in member prompt plus user-authored extra text."""
+    if _looks_like_legacy_first_party_prompt(extra_prompt, name=name):
+        return base_prompt
+    return apply_builtin_extra_prompt(base_prompt, extra_prompt)

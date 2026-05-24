@@ -47,7 +47,7 @@
 
 **Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view, resume interrupted work with `/continue`, or switch to a single unified view.
 
-**Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/executor`, `coding/explorer`, `coding/consultant`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works.
+**Use it as a coding cockpit.** Coding mode ships with a workspace-aware pair (`coding/openagentd`, `coding/coder`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works.
 
 ![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
@@ -189,18 +189,17 @@ Add any MCP server to expose more tools without writing code.
 
 ## Agents and teams
 
-OpenAgentd ships with one lead agent and three member blueprints:
+OpenAgentd ships with a compact cockpit team:
 
 | Agent | Role | Specialty |
 |---|---|---|
 | **openagentd** | Lead | Coordinates the team, receives user messages, spawns members, delegates |
-| **consultant** | Member blueprint | Architecture reviews, debugging, design decisions (high thinking) |
 | **executor** | Member blueprint | File creation, builds, shell commands, tangible artifacts |
 | **explorer** | Member blueprint | Web research, codebase exploration, information gathering |
 
-Configure your team by editing `.md` files in your config directory. Exactly one agent must have `role: lead`; the rest are member blueprints. The lead uses `team_manage` to spawn/dismiss live instances (`executor#1`, `explorer#1`), `team_message` to delegate and collect results, and `team_configure` to grant or revoke a member's skills, tools, or MCP servers without restarting.
+Configure your team by editing `.md` files in your config directory. Exactly one agent must have `role: lead`; the rest are member blueprints. The lead uses `team_manage` to spawn/dismiss live instances (`executor#1`, `explorer#1`), `team_message` to delegate and collect results, and `team_configure` to grant or revoke a live member's skills, tools, or MCP servers without restarting.
 
-Fresh installs also seed a separate coding team under `agents/coding/`. Open `/coding` to select a server-local project folder and start workspace-aware sessions; Settings shows those agents as `coding/openagentd`, `coding/executor`, `coding/explorer`, and `coding/consultant`.
+Fresh installs also seed a separate coding team under `agents/coding/`. Open `/coding` to select a server-local project folder and start workspace-aware sessions; Settings shows those agents as `coding/openagentd` and `coding/coder`.
 
 ![OpenAgentd agent architecture — loop, hooks, tools, providers, memory, and team mode](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/openagentd-agent-architecture.png)
 

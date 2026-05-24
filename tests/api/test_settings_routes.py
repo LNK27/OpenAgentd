@@ -507,6 +507,7 @@ def test_install_seed_defaults_calls_seed_installer(
             agents_written=["openagentd.md"],
             skills_written=["self-healing"],
             configs_written=["mcp.json"],
+            agents_removed=["consultant.md"],
             source="local",
         )
     )
@@ -524,6 +525,7 @@ def test_install_seed_defaults_calls_seed_installer(
         "agents_written": ["openagentd.md"],
         "skills_written": ["self-healing"],
         "configs_written": ["mcp.json"],
+        "agents_removed": ["consultant.md"],
         "source": "local",
     }
     install_seed.assert_called_once_with(

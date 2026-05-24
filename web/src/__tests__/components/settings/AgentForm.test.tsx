@@ -141,7 +141,7 @@ mcp:
 You are openagentd.
 `
 
-function renderForm(initial = SAMPLE_RAW) {
+function renderForm(initial = SAMPLE_RAW, agentPath?: string) {
   // Mocks are typed loosely; the real callbacks are typed via the AgentForm
   // prop signature so this is purely a spy.
   const onChange = mock(() => {})
@@ -149,6 +149,7 @@ function renderForm(initial = SAMPLE_RAW) {
   render(
     <AgentForm
       initial={initial}
+      agentPath={agentPath}
       onChange={onChange}
       mode="form"
       onModeChange={onModeChange}
@@ -209,6 +210,20 @@ describe('AgentForm — Capabilities card', () => {
     renderForm()
     // Sample has one server selected (context7), two available.
     expect(screen.getByText(/1 selected of 2 available/i)).toBeTruthy()
+  })
+
+  it('treats coding built-in members as additive profiles based on path', () => {
+    renderForm(`---
+name: coder
+role: member
+model: openai:gpt-5.4
+---
+<!-- Add extra prompt text below. -->
+`, 'coding/coder')
+
+    expect(screen.getByText('Built-in OpenAgentd profile')).toBeTruthy()
+    expect(screen.getByText('Extra prompt')).toBeTruthy()
+    expect(screen.getByText(/Built-in tools are always included/i)).toBeTruthy()
   })
 
   it('renders the existing mcp selection as a chip', () => {

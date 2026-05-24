@@ -136,6 +136,62 @@ async def test_list_includes_coding_agents(fs_dirs, client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_list_uses_effective_builtin_summary(fs_dirs, client: AsyncClient):
+    agents_dir, _ = fs_dirs
+    (agents_dir / "openagentd.md").write_text(
+        """\
+---
+name: openagentd
+role: lead
+model: zai:glm-5-turbo
+---
+<!-- Add extra prompt text below. -->
+"""
+    )
+
+    res = await client.get("/api/agents")
+
+    assert res.status_code == 200
+    row = res.json()["agents"][0]
+    assert row["description"] is not None
+    assert "shell" in row["tools"]
+    assert row["mcp"] == []
+    assert "self-healing" in row["skills"]
+
+
+@pytest.mark.asyncio
+async def test_list_effective_builtin_summary_dedupes_user_extras(
+    fs_dirs, client: AsyncClient
+):
+    agents_dir, _ = fs_dirs
+    (agents_dir / "openagentd.md").write_text(
+        """\
+---
+name: openagentd
+role: lead
+model: zai:glm-5-turbo
+tools:
+  - shell
+  - wiki_search
+skills:
+  - self-healing
+  - custom-skill
+---
+Extra prompt.
+"""
+    )
+
+    res = await client.get("/api/agents")
+
+    assert res.status_code == 200
+    row = res.json()["agents"][0]
+    assert row["tools"].count("shell") == 1
+    assert row["tools"].count("wiki_search") == 1
+    assert row["skills"].count("self-healing") == 1
+    assert row["skills"].count("custom-skill") == 1
+
+
+@pytest.mark.asyncio
 async def test_list_surfaces_invalid_file(fs_dirs, client: AsyncClient):
     agents_dir, _ = fs_dirs
     (agents_dir / "bad.md").write_text("no frontmatter here")
@@ -192,6 +248,8 @@ async def test_get_coding_agent(fs_dirs, client: AsyncClient):
     body = res.json()
     assert body["name"] == "coding/openagentd"
     assert body["config"]["name"] == "openagentd"
+    assert "shell" in body["config"]["tools"]
+    assert "generate_image" not in body["config"]["tools"]
 
 
 @pytest.mark.asyncio

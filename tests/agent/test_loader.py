@@ -584,6 +584,52 @@ def test_openagentd_file_can_add_tools_and_skills(tmp_path):
     assert "self-healing" in team.lead.agent.skills
 
 
+def test_openagentd_builtin_and_user_capabilities_are_deduped(tmp_path):
+    """User overrides are additive, but duplicate built-ins should not duplicate."""
+    from app.agent.loader import load_team_from_dir
+
+    d = _make_agents_dir(
+        tmp_path,
+        [
+            {
+                "name": "openagentd",
+                "role": "lead",
+                "model": "zai:glm-5-turbo",
+                "tools": ["shell", "wiki_search"],
+                "skills": ["self-healing", "custom-skill"],
+            },
+        ],
+    )
+    factory, _ = _make_provider_factory()
+    team = load_team_from_dir(d, provider_factory=factory)
+    assert team is not None
+    assert list(team.lead.agent._tools).count("shell") == 1
+    assert list(team.lead.agent._tools).count("wiki_search") == 1
+    assert team.lead.agent.skills.count("self-healing") == 1
+    assert team.lead.agent.skills.count("custom-skill") == 1
+
+
+def test_openagentd_user_description_overrides_builtin_description(tmp_path):
+    """The code-owned description is only the fallback for first-party profiles."""
+    from app.agent.loader import load_team_from_dir
+
+    d = _make_agents_dir(
+        tmp_path,
+        [
+            {
+                "name": "openagentd",
+                "role": "lead",
+                "model": "zai:glm-5-turbo",
+                "description": "My local lead.",
+            },
+        ],
+    )
+    factory, _ = _make_provider_factory()
+    team = load_team_from_dir(d, provider_factory=factory)
+    assert team is not None
+    assert team.lead.agent.description == "My local lead."
+
+
 def test_builtin_member_profile_uses_code_defaults_with_extra(tmp_path):
     from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
     from app.agent.loader import rebuild_agent_from_disk
@@ -607,6 +653,32 @@ def test_builtin_member_profile_uses_code_defaults_with_extra(tmp_path):
     assert "Prefer Markdown deliverables." in agent.system_prompt
     assert "shell" in agent._tools
     assert "wiki_search" in agent._tools
+
+
+def test_builtin_member_profiles_are_curated_to_default_agents():
+    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
+
+    assert set(BUILTIN_MEMBER_PROFILES["normal"]) == {"executor", "explorer"}
+    assert set(BUILTIN_MEMBER_PROFILES["coding"]) == {"coder"}
+
+
+def test_builtin_member_user_description_overrides_code_default(tmp_path):
+    from app.agent.loader import rebuild_agent_from_disk
+
+    f = _write_agent_md(
+        tmp_path / "executor.md",
+        {
+            "name": "executor",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "description": "Project-specific executor.",
+        },
+        "Extra execution rule.",
+    )
+    factory, _ = _make_provider_factory()
+    agent = rebuild_agent_from_disk(f, provider_factory=factory)
+    assert agent.description == "Project-specific executor."
+    assert "Extra execution rule." in agent.system_prompt
 
 
 def test_coding_builtin_member_profile_is_mode_scoped(tmp_path):
@@ -652,6 +724,49 @@ def test_openagentd_coding_lead_uses_coding_builtin_prompt(tmp_path):
     assert "Lead coding agent" in team.lead.agent.description
     assert "shell" in team.lead.agent._tools
     assert "generate_image" not in team.lead.agent._tools
+
+
+def test_openagentd_legacy_seed_prompt_is_not_appended(tmp_path):
+    from app.agent.builtin_prompts import NORMAL_OPENAGENTD_PROMPT
+    from app.agent.loader import load_team_from_dir
+
+    legacy_body = """You are **OpenAgentd** — a personal AI assistant running on the user's own machine.
+
+Old shipped prompt body that should be replaced by the code-owned base prompt.
+"""
+    d = _make_agents_dir(
+        tmp_path,
+        [
+            {
+                "name": "openagentd",
+                "role": "lead",
+                "model": "zai:glm-5-turbo",
+                "_body": legacy_body,
+            },
+        ],
+    )
+    factory, _ = _make_provider_factory()
+    team = load_team_from_dir(d, provider_factory=factory)
+    assert team is not None
+    assert team.lead.agent.system_prompt.startswith(NORMAL_OPENAGENTD_PROMPT)
+    assert "## User extra prompt" not in team.lead.agent.system_prompt
+    assert "Old shipped prompt body" not in team.lead.agent.system_prompt
+
+
+def test_builtin_member_legacy_seed_prompt_is_not_appended(tmp_path):
+    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
+    from app.agent.loader import rebuild_agent_from_disk
+
+    f = _write_agent_md(
+        tmp_path / "executor.md",
+        {"name": "executor", "role": "member", "model": "zai:glm-5-turbo"},
+        'You are "executor".\n\nOld shipped executor prompt body.',
+    )
+    factory, _ = _make_provider_factory()
+    agent = rebuild_agent_from_disk(f, provider_factory=factory)
+    assert (
+        agent.system_prompt == BUILTIN_MEMBER_PROFILES["normal"]["executor"]["prompt"]
+    )
 
 
 def test_load_team_from_dir_degrades_when_lead_provider_missing_key(tmp_path):

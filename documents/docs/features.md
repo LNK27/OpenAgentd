@@ -105,15 +105,15 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 - **Lead agent + member blueprints** `[since v1.0]` — exactly one `role: lead`
   agent; any number of `role: member` blueprints in `agents/`. Lead drives
   every conversation.
-- **Live member spawning** `[since v1.0]` — `team_manage` spawns `executor#1`,
-  `explorer#1`, `consultant#1` on demand. Dismissing only removes the live
-  instance; the blueprint stays. Re-spawning restores the same instance's
-  history within the current lead session.
+- **Live member spawning** `[since v1.0]` — `team_manage` spawns live instances
+  such as `executor#1`, `explorer#1`, or `coder#1` on demand. Dismissing only
+  removes the live instance; the blueprint stays. Re-spawning restores the same
+  instance's history within the current lead session.
 - **`team_message` peer delegation** `[since v1.0]` — async mailbox between
   agents. Lead delegates with `team_message`; the recipient's next turn drains
   its inbox.
-- **`team_configure`** `[since v1.0]` — grant or revoke a member's skills, tools,
-  or MCP servers at runtime without restarting.
+- **`team_configure`** `[since v1.0]` — grant or revoke a live member's skills,
+  tools, or MCP servers at runtime without editing blueprint files or restarting.
 - **Split-pane live view** `[since v1.0]` — each active agent gets its own pane,
   streamed independently. See live whose turn is current, who's idle.
 - **Unified team view** `[since v1.0]` — single chronological transcript across
@@ -134,13 +134,14 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   lead agent's model and thinking level for the current chat. History keeps
   the model used for each user turn.
 - **Coding team variant** `[since v1.0]` — `agents/coding/` ships a separate
-  team (`coding/openagentd`, `coding/executor`, `coding/explorer`,
-  `coding/consultant`) tuned for workspace-aware sessions.
+  compact team (`coding/openagentd`, `coding/coder`) tuned for workspace-aware
+  sessions.
 - **Built-in first-party agent profiles** `[v1.23.0]` — the default `openagentd`
   lead and shipped member blueprints keep their core prompts, tools, skills, and
   descriptions versioned in code for normal and coding modes; seed/user `.md`
   files remain lightweight extension points for model knobs, extra capabilities,
-  and extra prompt text.
+  and extra prompt text. Seed install also removes obsolete untouched
+  first-party files from older curated sets while preserving custom files.
 
 ---
 

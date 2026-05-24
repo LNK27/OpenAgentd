@@ -22,7 +22,7 @@ Each agent is a single `.md` file with **YAML frontmatter** (config) and a **Mar
 | `{OPENAGENTD_CONFIG_DIR}/speech.yaml` | Voice / speech config. |
 | `{OPENAGENTD_CONFIG_DIR}/mcp.json` | MCP client config — see [`agent/tools.md`](../agent/tools.md#mcp-servers-appagentmcp). |
 
-The Settings UI lists both normal and coding agents. Coding agents appear with names like `coding/openagentd`; their frontmatter `name:` remains the filename stem.
+The Settings UI lists both normal and coding agents. Coding agents appear with names like `coding/openagentd`; their frontmatter `name:` remains the filename stem. Current first-party seeds are `openagentd`, `explorer`, `executor`, plus `coding/openagentd` and `coding/coder`. Seed install prunes obsolete untouched first-party files from older installs; custom files are kept.
 
 ## Example
 
@@ -48,7 +48,7 @@ skills:
 You are openagentd. Be concise and direct.
 ```
 
-The Markdown body (everything after the closing `---`) is the system prompt.
+The Markdown body (everything after the closing `---`) is the system prompt. For built-in first-party profiles (`openagentd` and shipped members), the body is treated as extra prompt text appended to the code-owned base prompt; old seed prompt bodies are ignored to avoid duplication.
 
 ## Frontmatter fields
 
@@ -60,9 +60,9 @@ All from `AgentConfig` in `app/agent/loader.py`. Field types match the Pydantic 
 | `role` | No | `Literal["lead", "member"]` | Default `member`. Exactly one file per team directory must be `lead`. |
 | `description` | No | `str` | Short intro — surfaced on `GET /api/agents` and in teammates' system prompts. |
 | `model` | Yes | `str` | `provider:model` string (see [`providers.md`](./providers.md)). |
-| `tools` | No | `list[str]` | Built-in tool names (see [`tools.md`](./tools.md)). |
-| `mcp` | No | `list[str]` | MCP server names from `mcp.json`; the agent gets every tool that server exposes. |
-| `skills` | No | `list[str]` | Skill names to advertise in the system prompt (see [`skills.md`](./skills.md)). |
+| `tools` | No | `list[str]` | Extra built-in tool names (see [`tools.md`](./tools.md)). For first-party profiles, this list is additive on top of code-owned defaults. |
+| `mcp` | No | `list[str]` | Extra MCP server names from `mcp.json`; the agent gets every tool that server exposes. For first-party profiles, this list is additive. |
+| `skills` | No | `list[str]` | Extra skill names to advertise in the system prompt (see [`skills.md`](./skills.md)). For first-party profiles, this list is additive. |
 | `temperature` | No | `float` | Sampling temperature. |
 | `thinking_level` | No | `"low"\|"medium"\|"high"` | Extended-reasoning effort. See [`providers.md`](./providers.md#thinking-thinking_level). |
 | `fallback_model` | No | `str` | `provider:model` used after primary retry exhaustion, or immediately for quota-style 429s. |
@@ -93,7 +93,7 @@ Two equivalent paths:
 
 ## Authoring rule
 
-Keep prompt bodies **tool-agnostic**. Don't hardcode tool names like `` `shell` `` or `` `web_search` `` in the prompt body. The `tools:` list is the source of truth — it can shrink at runtime via `team_configure` ([`agent/teams.md`](../agent/teams.md)) or via direct edits, and a prompt that names tools that no longer exist drives weak models to hallucinate. Describe intent ("prefer in-place edits over rewriting whole files") instead of tool names.
+Keep prompt bodies **tool-agnostic**. Don't hardcode tool names like `` `shell` `` or `` `web_search` `` in the prompt body. Runtime capabilities can change via `team_configure` ([`agent/teams.md`](../agent/teams.md)) or config edits, and a prompt that names tools that no longer exist drives weak models to hallucinate. Describe intent ("prefer in-place edits over rewriting whole files") instead of tool names.
 
 ## Importing from other systems
 

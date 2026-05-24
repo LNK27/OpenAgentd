@@ -307,6 +307,7 @@ export interface AgentSummary {
   description: string | null
   model: string | null
   tools: string[]
+  mcp: string[]
   skills: string[]
   valid: boolean
   error: string | null

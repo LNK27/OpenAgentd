@@ -264,7 +264,7 @@ def _build_agent(
         system_prompt = apply_openagentd_extra_prompt(mode, cfg.system_prompt)
     elif cfg.role == "member":
         from app.agent.builtin_prompts import (
-            apply_builtin_extra_prompt,
+            apply_member_extra_prompt,
             builtin_member_profile,
         )
 
@@ -273,8 +273,10 @@ def _build_agent(
             built_in_prompt = profile["prompt"]
             cfg.description = cfg.description or profile["description"]
             cfg.tools = [*profile["tools"], *cfg.tools]
-            system_prompt = apply_builtin_extra_prompt(
-                built_in_prompt, cfg.system_prompt
+            cfg.skills = [*profile["skills"], *cfg.skills]
+            cfg.mcp = [*profile["mcp"], *cfg.mcp]
+            system_prompt = apply_member_extra_prompt(
+                cfg.name, built_in_prompt, cfg.system_prompt
             )
 
     if cfg.skills:
@@ -299,14 +301,16 @@ def _build_agent(
 
     seen: set[str] = {t.name for t in tools}
     cfg.tools = list(dict.fromkeys(cfg.tools))
+    cfg.mcp = list(dict.fromkeys(cfg.mcp))
     for tool_name in cfg.tools:
         if tool_name in ("skill", "todo_manage", "schedule_task", "note"):
             continue
         if tool_name not in tool_registry:
-            # Soft-skip: dynamic capability management (team_configure) and
-            # disabled-then-rebuild flows can leave a name in frontmatter
-            # that no longer resolves. Log and continue so the agent still
-            # loads; team_configure validates up-front to prevent typos.
+            # Soft-skip: settings/self-healing edits and disabled-then-rebuild
+            # flows can leave a name in frontmatter briefly after the
+            # underlying tool/MCP server disappears between loads. Runtime
+            # team_configure validates up-front and only mutates live instances.
+
             logger.warning(
                 "agent_unknown_tool agent={} tool={} available={}",
                 cfg.name,
@@ -322,7 +326,7 @@ def _build_agent(
     # MCP servers: each entry grants the agent access to *all* tools exposed
     # by that server. Unknown / not-ready servers are warn-and-skip so the
     # agent still loads when an MCP server is disabled, mid-restart, or
-    # removed from mcp.json after being granted via team_configure.
+    # removed from mcp.json while still referenced by config.
     if cfg.mcp:
         from app.agent.mcp import mcp_manager
 
@@ -517,9 +521,15 @@ def load_team_from_dir(
             )
         if cfg.name in blueprints:
             raise ValueError(f"Duplicate member name '{cfg.name}' in '{path.name}'.")
+        description = cfg.description
+        if description is None:
+            from app.agent.builtin_prompts import builtin_member_profile
+
+            profile = builtin_member_profile(mode, cfg.name)
+            description = profile["description"] if profile is not None else cfg.name
         blueprints[cfg.name] = MemberBlueprint(
             name=cfg.name,
-            description=cfg.description or cfg.name,
+            description=description,
             source_path=path,
         )
 
@@ -533,9 +543,9 @@ def load_team_from_dir(
     db_factory = resolve_db_factory(db_factory)
 
     # Unknown tools / MCP servers in frontmatter are warn-and-skipped by
-    # ``_build_agent`` so dynamic capability changes (team_configure, mcp.json
-    # edits) never break agent load. ``team_configure`` validates names
-    # up-front to prevent typos from being persisted in the first place.
+    # ``_build_agent`` so stale config entries or mcp.json edits never break
+    # agent load. Runtime ``team_configure`` validates names up-front before
+    # mutating live members.
 
     # Build the lead.  Members are NOT built — they are described by their
     # blueprints on the team and built on demand by ``AgentTeam.spawn``.

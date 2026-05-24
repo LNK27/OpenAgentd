@@ -21,9 +21,9 @@ under `{OPENAGENTD_CONFIG_DIR}/`. No code changes, no restarts. Agent
 | Target | File | Typical request |
 |--------|------|-----------------|
 | Agent model / params | `{OPENAGENTD_CONFIG_DIR}/agents/{name}.md` frontmatter | "switch to gpt-5", "use Claude", "lower temperature", "turn on high thinking", "add a fallback model" |
-| Agent tools | same file, `tools:` list | "give yourself shell access", "let yourself browse the web" |
-| Agent skills | same file, `skills:` list | "enable the plugin-installer skill for yourself" |
-| Agent MCP tools | same file, `mcp:` list (bulk) or `tools:` list (selective) | "let yourself use the filesystem MCP", "remove the github MCP from yourself" — see "MCP tools on agents" below |
+| Agent tools | same file, `tools:` list | Additive local overrides on top of any built-in first-party profile tools. "give yourself shell access", "let yourself browse the web" |
+| Agent skills | same file, `skills:` list | Additive local overrides on top of any built-in first-party profile skills. "enable the plugin-installer skill for yourself" |
+| Agent MCP tools | same file, `mcp:` list (bulk) or `tools:` list (selective) | Additive local overrides on top of any built-in first-party profile MCP servers/tools. "let yourself use the filesystem MCP", "remove the github MCP from yourself" — see "MCP tools on agents" below |
 | Image / video generation | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | "generate images with Gemini instead", "switch to Veo for video", "make images higher quality", "use 1080p video" |
 | New skills | `{OPENAGENTD_CONFIG_DIR}/skills/{name}/SKILL.md` | "install a skill for reviewing pull requests" — **delegate to `skill-installer`** |
 
@@ -33,24 +33,27 @@ source code, adding built-in tools, touching files outside
 config directory — pass the absolute config path to `read` / `write` / `edit`
 rather than relative names.
 
-## Fast path — member capability edits via `team_manage`
+## Runtime member capability changes
 
-When the change is **just** adding or removing one `tool` / `skill` / `mcp`
-entry on a **member** (not the lead), prefer the runtime tool over the
-read → diff → edit workflow below:
+For a **temporary, live member-instance** capability change, use the lead-only
+runtime tool instead of this skill:
 
 ```
 team_configure(member="<handle>", action="add"|"remove", kind="skill"|"tool"|"mcp", name="<value>")
 ```
 
-It validates the capability name against the live registry, rejects
-protected names (`skill`, `team_message`, `todo_manage`, `schedule_task`,
-`note`), is idempotent, and rewrites the member's frontmatter
-atomically. Active on the member's next turn — same drift detection.
+`team_configure` validates the capability name against the live registry,
+rejects protected names (`skill`, `team_message`, `todo_manage`,
+`schedule_task`, `note`), and is idempotent. It does **not** edit root or
+blueprint `.md` files; changes are session/instance-local and may be reset by
+respawn or config drift reload.
 
-Use the manual workflow below for everything `team_manage` cannot do:
+Use this self-healing workflow for persistent root/blueprint config changes:
 
-- Edits to the **lead's own** `.md` (lead is not a manageable target).
+- Adding persistent first-party extras to `tools:` / `skills:` / `mcp:` in an agent `.md` file.
+- Removing user-added extras from an agent `.md` file.
+- Explaining that built-in first-party capabilities cannot be removed through `.md` overrides; `.md` files are additive only.
+- Edits to the **lead's own** `.md` (lead is not a manageable target for `team_configure`).
 - Multi-field changes (e.g. model + temperature + tools in one diff).
 - Anything outside `tools` / `skills` / `mcp` — `model`, `temperature`,
   `thinking_level`, `fallback_model`, system prompt body. (Summarisation
@@ -199,8 +202,8 @@ Only these keys are valid. Reject any request to invent new ones.
 | `fallback_model` | same format as `model` |
 | `temperature` | float, typically `0.0`–`1.0` |
 | `thinking_level` | `none` \| `low` \| `medium` \| `high` |
-| `tools` | subset of built-ins: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `wiki_search`, `generate_image`, `generate_video`, plus `mcp_<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`note`, `schedule_task`, `todo_manage`) are also injected automatically. |
-| `skills` | names of subdirectories under `{OPENAGENTD_CONFIG_DIR}/skills/` |
+| `tools` | extra tools layered on top of any built-in first-party profile tools: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `wiki_search`, `generate_image`, `generate_video`, plus `mcp_<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`note`, `schedule_task`, `todo_manage`) are also injected automatically. |
+| `skills` | extra skills layered on top of any built-in first-party profile skills; names of discovered skill directories (project/global OpenAgentd, opencode-compatible, or bundled read-only skills) |
 | `responses_api` | `true` to force OpenAI Responses API |
 
 Validation invariants to preserve:
@@ -208,8 +211,7 @@ Validation invariants to preserve:
 - Exactly one file in `agents/` has `role: lead`. Never change `role`.
 - `model` must contain a `:` separator.
 - Tool names must match the built-in registry (see table above).
-- If a skill is listed but its directory doesn't exist, startup fails — verify
-  before adding.
+- If a skill is listed but not discoverable, the agent still loads but logs `skill_not_found` and omits that skill's instructions — verify before adding.
 
 ## `multimodal.yaml` — schema
 
@@ -284,11 +286,13 @@ Rules:
 ## MCP tools on agents
 
 MCP servers are managed by `mcp-installer` (it edits `mcp.json`). This
-skill wires the resulting tools onto a specific agent.
+skill wires the resulting tools onto a specific agent. For first-party
+built-in profiles, `mcp:` and selective `mcp_*` tools in the `.md` are
+additive local overrides; they do not replace built-in capabilities.
 
-> **Member target?** Use `team_configure(member="<handle>", action="add"|"remove", kind="mcp", name="<server>")`
-> — see the *Fast path* section above. The recipes below are for
-> lead-target edits and for selective `tools:` entries.
+> **Temporary live member target?** Use `team_configure(member="<handle>", action="add"|"remove", kind="mcp", name="<server>")`
+> — see the runtime section above. The recipes below are for persistent
+> agent `.md` edits, including lead targets and selective `tools:` entries.
 
 Two ways:
 

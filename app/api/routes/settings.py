@@ -570,5 +570,6 @@ async def install_seed_defaults(body: SeedInstallRequest) -> SeedInstallResponse
         agents_written=result.agents_written,
         skills_written=result.skills_written,
         configs_written=result.configs_written,
+        agents_removed=result.agents_removed,
         source=result.source,
     )

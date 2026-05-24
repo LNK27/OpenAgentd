@@ -7,23 +7,17 @@ built-in tools, or MCP servers for a live member.
 The split keeps the lead's mental model simple: ``team_manage`` controls who
 is online, while ``team_configure`` controls what an online member can do.
 
-Capability mutations are persisted by rewriting the target member's ``.md``
-frontmatter; the existing config-drift hot-reload
-(``TeamMemberBase._refresh_agent_from_disk``) picks up the change at the start
-of the member's next turn.
+Capability mutations apply only to the live member instance in the current
+team/session. They are intentionally not persisted to blueprint ``.md`` files;
+self-healing/manual settings edits own durable root config changes.
 
-Validation runs *before* writing so typos can never be persisted into
-``.md``. Resolution at agent-load time is soft (``loader.py`` warns and
-skips unknown names) so the team stays robust if the underlying
-registry shifts after a grant.
+Validation runs before mutating the live instance so typos fail loudly.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
-import yaml
 from loguru import logger
 from pydantic import Field
 
@@ -35,8 +29,8 @@ if TYPE_CHECKING:
 
 # Tools the lead must not be able to touch on a member: they are either
 # always-on (``skill``), runtime-injected (``team_message``), or lead-only
-# (``todo_manage``, ``schedule_task``, ``note``). Listing them in member
-# frontmatter would either no-op or be silently ignored — surface the
+# (``todo_manage``, ``schedule_task``, ``note``). Granting or revoking them
+# at runtime would either no-op or break protocol invariants — surface the
 # mistake instead.
 _PROTECTED_TOOL_NAMES = frozenset(
     {"skill", "team_message", "todo_manage", "schedule_task", "note"}
@@ -54,11 +48,11 @@ _MANAGE_DESCRIPTION = (
 
 
 _CONFIGURE_DESCRIPTION = (
-    "Manage a team member's capabilities (skills, built-in tools, MCP servers) "
-    "at runtime. Use this to grant a member a specialised capability just-in-time "
-    "for a task, then revoke it when the work is done — keeps members focused. "
-    "Action 'list' inspects current capabilities; 'add' / 'remove' edit the "
-    "member's config file and the member auto-reloads on its next turn."
+    "Manage a live team member's capabilities (skills, built-in tools, MCP servers). "
+    "Use this to grant a member a specialised capability just-in-time for a task, "
+    "then revoke it when the work is done — keeps members focused. Action 'list' "
+    "inspects current capabilities; 'add' / 'remove' affect the current live member "
+    "only. Use self-healing/settings edits for persistent blueprint/root changes."
 )
 
 
@@ -246,32 +240,13 @@ def make_team_configure_tool(team: "AgentTeam") -> Tool:
                 f"(The lead '{team.lead.name}' cannot be configured.)"
             )
 
-        source = target.agent.source_path
-        if source is None:
-            return (
-                f"Member '{member}' has no source .md file (in-memory agent); "
-                "team_configure requires a file-backed agent."
-            )
-
         # ── action: list ──────────────────────────────────────────────
         if action == "list":
-            # Read the on-disk frontmatter rather than the live agent so the
-            # output reflects pending changes that the member hasn't reloaded
-            # yet — which is what the lead actually needs to see.
-            from app.agent.loader import parse_agent_md
-
-            try:
-                cfg = parse_agent_md(Path(source))
-            except Exception as exc:
-                # Malformed frontmatter (bad YAML, schema violation, missing
-                # closing ---). Surface as a user-visible error instead of
-                # crashing the LLM turn.
-                return f"Failed to read '{member}': {exc}"
             return (
-                f"Capabilities for '{member}' (from {Path(source).name}):\n"
-                f"- skills: {sorted(cfg.skills)}\n"
-                f"- tools:  {sorted(cfg.tools)}\n"
-                f"- mcp:    {sorted(cfg.mcp)}"
+                f"Capabilities for live member '{member}' in this session:\n"
+                f"- skills: {sorted(target.agent.skills)}\n"
+                f"- tools:  {sorted(target.agent._tools)}\n"
+                f"- mcp:    {sorted(target.agent.mcp_servers)}"
             )
 
         # ── add / remove require kind + name ──────────────────────────
@@ -288,24 +263,12 @@ def make_team_configure_tool(team: "AgentTeam") -> Tool:
         if validation_error:
             return validation_error
 
-        # ── mutate frontmatter on disk ────────────────────────────────
-        try:
-            changed, message = _mutate_md_frontmatter(
-                Path(source),
-                action=action,
-                kind=kind,
-                name=name,
-            )
-        except Exception as exc:
-            logger.warning(
-                "team_configure_write_failed member={} action={} kind={} name={} error={}",
-                member,
-                action,
-                kind,
-                name,
-                exc,
-            )
-            return f"Failed to update '{member}': {exc}"
+        changed, message = _mutate_live_member_capability(
+            target,
+            action=action,
+            kind=kind,
+            name=name,
+        )
 
         if not changed:
             return message  # already-present / not-present, no write
@@ -318,8 +281,8 @@ def make_team_configure_tool(team: "AgentTeam") -> Tool:
             name,
         )
         return (
-            f"{message} Member '{member}' will reload on its next turn "
-            "(or now, if idle)."
+            f"{message} This affects only live member '{member}' in the current "
+            "team session. Use self-healing/settings to persist blueprint changes."
         )
 
     return Tool(
@@ -375,59 +338,62 @@ def _validate_capability(kind: str, name: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Frontmatter mutation
+# Live capability mutation
 # ---------------------------------------------------------------------------
 
 
-_FRONTMATTER_KEYS = {"skill": "skills", "tool": "tools", "mcp": "mcp"}
-
-
-def _mutate_md_frontmatter(
-    path: Path,
+def _mutate_live_member_capability(
+    target,
     *,
     action: Literal["add", "remove"],
     kind: str,
     name: str,
 ) -> tuple[bool, str]:
-    """Add or remove *name* from the appropriate list in *path*'s frontmatter.
+    """Add/remove one capability on the live member instance only."""
+    agent = target.agent
 
-    Returns ``(changed, human_message)``. ``changed=False`` means the file
-    was not written because the target was already in the desired state
-    (idempotent).
-
-    The body after the closing ``---`` is preserved verbatim. YAML key
-    order and comments inside the frontmatter are *not* preserved — these
-    files are machine-managed config; if humans add comments they should
-    keep them in the body.
-    """
-    from app.agent.loader import _FRONTMATTER_RE
-
-    text = path.read_text(encoding="utf-8")
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        raise ValueError(f"Agent file '{path}' is missing YAML frontmatter.")
-
-    raw_meta = yaml.safe_load(m.group(1)) or {}
-    body = m.group(2)
-
-    key = _FRONTMATTER_KEYS[kind]
-    current: list[str] = list(raw_meta.get(key) or [])
+    if kind == "skill":
+        current = agent.skills
+    elif kind == "mcp":
+        current = agent.mcp_servers
+    elif kind == "tool":
+        current = list(agent._tools)
+    else:
+        return False, f"Unknown kind '{kind}'. Use 'skill', 'tool', or 'mcp'."
 
     if action == "add":
         if name in current:
-            return False, f"'{name}' is already in {key} for this member."
-        current.append(name)
+            return False, f"'{name}' is already enabled for this live member."
+        if kind == "tool":
+            from app.agent.loader import _default_tool_registry
+
+            registry = _default_tool_registry()
+            tool = registry.get(name)
+            if tool is None:
+                return False, f"Tool '{name}' is no longer available."
+            agent._tools[name] = tool
+        elif kind == "mcp":
+            from app.agent.mcp import mcp_manager
+
+            server_tools = mcp_manager.get_tools_for_server(name)
+            agent.mcp_servers.append(name)
+            for tool in server_tools or []:
+                agent._tools.setdefault(tool.name, tool)
+        else:
+            agent.skills.append(name)
     else:  # remove
         if name not in current:
-            return False, f"'{name}' is not in {key} for this member."
-        current = [n for n in current if n != name]
-
-    raw_meta[key] = current
-
-    new_yaml = yaml.safe_dump(raw_meta, sort_keys=False, allow_unicode=True).rstrip()
-    new_text = f"---\n{new_yaml}\n---\n{body}"
-    path.write_text(new_text, encoding="utf-8")
+            return False, f"'{name}' is not enabled for this live member."
+        if kind == "tool":
+            agent._tools.pop(name, None)
+        elif kind == "mcp":
+            agent.mcp_servers = [n for n in agent.mcp_servers if n != name]
+            prefix = f"mcp_{name}_"
+            for tool_name in [n for n in agent._tools if n.startswith(prefix)]:
+                agent._tools.pop(tool_name, None)
+        else:
+            agent.skills = [n for n in agent.skills if n != name]
 
     verb = "Added" if action == "add" else "Removed"
     preposition = "to" if action == "add" else "from"
-    return True, f"{verb} {kind} '{name}' {preposition} {key}."
+    return True, f"{verb} {kind} '{name}' {preposition} live member capabilities."

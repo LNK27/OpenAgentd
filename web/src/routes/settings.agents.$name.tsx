@@ -96,6 +96,7 @@ export function AgentEditorPage() {
           {data && (
             <AgentForm
               initial={data.content}
+              agentPath={name}
               onChange={setDraft}
               disabled={updateMut.isPending}
               isNew={false}

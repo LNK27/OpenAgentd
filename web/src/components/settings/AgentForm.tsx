@@ -52,6 +52,8 @@ export interface AgentFormValue {
 
 interface Props {
   initial: string
+  /** Agent file path from the API route, e.g. "openagentd" or "coding/coder". */
+  agentPath?: string
   /** Fires on every keystroke with the up-to-date raw content. */
   onChange: (raw: string) => void
   /** Disabled when the caller is mid-save / validation. */
@@ -74,6 +76,7 @@ const THINKING_LEVELS: Array<{ value: string; label: string }> = [
 
 export function AgentForm({
   initial,
+  agentPath,
   onChange,
   disabled,
   isNew,
@@ -192,6 +195,7 @@ export function AgentForm({
           skillOptions={skillOptions}
           mcpOptions={mcpOptions}
           modelOptions={modelOptions}
+          agentPath={agentPath}
           updateFromForm={updateFromForm}
         />
       ) : (
@@ -256,6 +260,7 @@ function FormFields({
   skillOptions,
   mcpOptions,
   modelOptions,
+  agentPath,
   updateFromForm,
 }: {
   fm: AgentFrontmatter
@@ -266,6 +271,7 @@ function FormFields({
   skillOptions: MultiSelectOption[]
   mcpOptions: MultiSelectOption[]
   modelOptions: { id: string; provider: string; model: string; vision: boolean }[]
+  agentPath?: string
   updateFromForm: (next: AgentFrontmatter, nextBody: string) => void
 }) {
   // Temperature has a pending state (e.g. "0." while typing) that we need
@@ -293,8 +299,7 @@ function FormFields({
   const fallbackError = validateModel(fm.fallback_model ?? '', {
     validValues: validModelIds,
   })
-  const isBuiltInOpenAgentd = fm.name === 'openagentd' && fm.role === 'lead'
-  const hasBuiltInProfile = isBuiltInOpenAgentd || isBuiltInMember(fm.name, fm.role)
+  const hasBuiltInProfile = isBuiltInProfile(fm.name, fm.role, agentPath)
 
   const onTempChange = (next: string) => {
     setTempRaw(next)
@@ -551,18 +556,23 @@ function FormFields({
   )
 }
 
-const BUILT_IN_MEMBER_NAMES = new Set([
-  'executor',
-  'explorer',
-  'consultant',
-  'coding/coder',
-  'coding/architect',
-  'coding/designer',
-  'coding/qa',
-])
+const NORMAL_BUILT_IN_MEMBERS = new Set(['executor', 'explorer'])
+const CODING_BUILT_IN_MEMBERS = new Set(['coder'])
 
-function isBuiltInMember(name?: string, role?: string | null): boolean {
-  return role === 'member' && !!name && BUILT_IN_MEMBER_NAMES.has(name)
+function isBuiltInProfile(
+  name?: string,
+  role?: string | null,
+  agentPath?: string,
+): boolean {
+  if (!name || !role) return false
+  const path = agentPath ?? name
+  const isCoding = path.startsWith('coding/')
+  const basename = path.split('/').pop() ?? name
+  if (role === 'lead') return basename === 'openagentd'
+  if (role !== 'member') return false
+  return isCoding
+    ? CODING_BUILT_IN_MEMBERS.has(basename)
+    : NORMAL_BUILT_IN_MEMBERS.has(basename)
 }
 
 // ── Model combobox ──────────────────────────────────────────────────────────
