@@ -1,3 +1,17 @@
 fn main() {
-    tauri_build::build()
+    tauri_build::try_build(
+        tauri_build::Attributes::new().app_manifest(
+            tauri_build::AppManifest::new().commands(&[
+                "backend_health",
+                "backend_logs_path",
+                "open_macos_microphone_settings",
+                "set_tray_session",
+                "updater_check",
+                "updater_download",
+                "updater_install",
+                "updater_release_notes",
+            ]),
+        ),
+    )
+    .expect("failed to build Tauri application");
 }
