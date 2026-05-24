@@ -1097,6 +1097,7 @@ class AgentTeam:
             bp.source_path,
             provider_factory=self._provider_factory,
             extra_tools=self._extra_tools,
+            mode=self.mode,
         )
         # The blueprint name on disk is e.g. ``executor``; the runtime name
         # (mailbox key, DB ``agent_name``) is the instance handle.

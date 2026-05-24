@@ -96,6 +96,7 @@ def _serialize_blueprint(team_obj, bp) -> dict:
         bp.source_path,
         provider_factory=team_obj._provider_factory,
         extra_tools=team_obj._extra_tools,
+        mode=team_obj.mode,
     )
     payload = _serialize_agent(agent)
     payload["live_instances"] = team_obj.live_instances_for_blueprint(bp.name)

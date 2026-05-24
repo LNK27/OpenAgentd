@@ -439,7 +439,8 @@ class TeamMemberBase(abc.ABC):
             return
 
         try:
-            new_agent = rebuild_agent_from_disk(source)
+            mode = self._team.mode if self._team is not None else "normal"
+            new_agent = rebuild_agent_from_disk(source, mode=mode)
         except Exception as exc:
             logger.warning(
                 "agent_config_refresh_failed name={} error={}",

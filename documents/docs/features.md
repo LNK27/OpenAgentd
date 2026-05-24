@@ -136,6 +136,11 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 - **Coding team variant** `[since v1.0]` — `agents/coding/` ships a separate
   team (`coding/openagentd`, `coding/executor`, `coding/explorer`,
   `coding/consultant`) tuned for workspace-aware sessions.
+- **Built-in first-party agent profiles** `[v1.23.0]` — the default `openagentd`
+  lead and shipped member blueprints keep their core prompts, tools, skills, and
+  descriptions versioned in code for normal and coding modes; seed/user `.md`
+  files remain lightweight extension points for model knobs, extra capabilities,
+  and extra prompt text.
 
 ---
 

@@ -293,6 +293,8 @@ function FormFields({
   const fallbackError = validateModel(fm.fallback_model ?? '', {
     validValues: validModelIds,
   })
+  const isBuiltInOpenAgentd = fm.name === 'openagentd' && fm.role === 'lead'
+  const hasBuiltInProfile = isBuiltInOpenAgentd || isBuiltInMember(fm.name, fm.role)
 
   const onTempChange = (next: string) => {
     setTempRaw(next)
@@ -311,6 +313,15 @@ function FormFields({
 
   return (
     <div className="flex flex-col gap-4">
+      {hasBuiltInProfile && (
+        <div className="rounded-lg border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm text-(--color-text-muted)">
+          <p className="font-medium text-(--color-text)">Built-in OpenAgentd profile</p>
+          <p className="mt-1">
+            OpenAgentd provides the default description, tools, skills, and prompt in code. Values saved here are additive overrides, so versioned built-ins can improve without overwriting your file.
+          </p>
+        </div>
+      )}
+
       {/* Identity ─────────────────────────────────────────────── */}
       <Card size="sm">
         <CardHeader>
@@ -458,14 +469,19 @@ function FormFields({
         <CardHeader>
           <CardTitle>Capabilities</CardTitle>
           <CardDescription>
-            Tools the agent may invoke, MCP servers it has access to, and
-            skills it can load on demand.
+            {hasBuiltInProfile
+              ? 'Add extra tools, MCP servers, and skills on top of the built-in profile.'
+              : 'Tools the agent may invoke, MCP servers it has access to, and skills it can load on demand.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <Field
             label="Tools"
-            hint={`${(fm.tools ?? []).length} selected of ${toolOptions.length} available.`}
+            hint={
+              hasBuiltInProfile
+                ? `${(fm.tools ?? []).length} extra selected. Built-in tools are always included.`
+                : `${(fm.tools ?? []).length} selected of ${toolOptions.length} available.`
+            }
           >
             <MultiSelect
               options={toolOptions}
@@ -494,7 +510,11 @@ function FormFields({
 
           <Field
             label="Skills"
-            hint={`${(fm.skills ?? []).length} selected of ${skillOptions.length} available.`}
+            hint={
+              hasBuiltInProfile
+                ? `${(fm.skills ?? []).length} extra selected. Built-in skills are always included when this profile has them.`
+                : `${(fm.skills ?? []).length} selected of ${skillOptions.length} available.`
+            }
           >
             <MultiSelect
               options={skillOptions}
@@ -509,9 +529,11 @@ function FormFields({
       {/* System prompt ─────────────────────────────────────────── */}
       <Card size="sm">
         <CardHeader>
-          <CardTitle>System prompt</CardTitle>
+          <CardTitle>{hasBuiltInProfile ? 'Extra prompt' : 'System prompt'}</CardTitle>
           <CardDescription>
-            The instructions placed at the top of every conversation with this agent.
+            {hasBuiltInProfile
+              ? 'Additional instructions appended after the built-in prompt.'
+              : 'The instructions placed at the top of every conversation with this agent.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -527,6 +549,20 @@ function FormFields({
       </Card>
     </div>
   )
+}
+
+const BUILT_IN_MEMBER_NAMES = new Set([
+  'executor',
+  'explorer',
+  'consultant',
+  'coding/coder',
+  'coding/architect',
+  'coding/designer',
+  'coding/qa',
+])
+
+function isBuiltInMember(name?: string, role?: string | null): boolean {
+  return role === 'member' && !!name && BUILT_IN_MEMBER_NAMES.has(name)
 }
 
 // ── Model combobox ──────────────────────────────────────────────────────────

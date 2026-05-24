@@ -246,11 +246,39 @@ def _build_agent(
     provider_factory: ProviderFactory,
     *,
     source_path: Path | None = None,
+    mode: str = "normal",
 ) -> Agent:
     """Construct one Agent.  ``source_path`` enables drift detection."""
     system_prompt = cfg.system_prompt
+    if cfg.role == "lead" and cfg.name == "openagentd":
+        from app.agent.builtin_prompts import (
+            OPENAGENTD_SKILLS,
+            apply_openagentd_extra_prompt,
+            openagentd_description_for_mode,
+            openagentd_tools_for_mode,
+        )
+
+        cfg.description = cfg.description or openagentd_description_for_mode(mode)
+        cfg.tools = [*openagentd_tools_for_mode(mode), *cfg.tools]
+        cfg.skills = [*OPENAGENTD_SKILLS, *cfg.skills]
+        system_prompt = apply_openagentd_extra_prompt(mode, cfg.system_prompt)
+    elif cfg.role == "member":
+        from app.agent.builtin_prompts import (
+            apply_builtin_extra_prompt,
+            builtin_member_profile,
+        )
+
+        profile = builtin_member_profile(mode, cfg.name)
+        if profile is not None:
+            built_in_prompt = profile["prompt"]
+            cfg.description = cfg.description or profile["description"]
+            cfg.tools = [*profile["tools"], *cfg.tools]
+            system_prompt = apply_builtin_extra_prompt(
+                built_in_prompt, cfg.system_prompt
+            )
 
     if cfg.skills:
+        cfg.skills = list(dict.fromkeys(cfg.skills))
         system_prompt += _build_skills_section(cfg.skills)
 
     from app.agent.tools.builtin.schedule import schedule_task as _schedule_task_tool
@@ -270,6 +298,7 @@ def _build_agent(
         tools += [_todo_manage, _schedule_task, _note]
 
     seen: set[str] = {t.name for t in tools}
+    cfg.tools = list(dict.fromkeys(cfg.tools))
     for tool_name in cfg.tools:
         if tool_name in ("skill", "todo_manage", "schedule_task", "note"):
             continue
@@ -511,7 +540,7 @@ def load_team_from_dir(
     # Build the lead.  Members are NOT built — they are described by their
     # blueprints on the team and built on demand by ``AgentTeam.spawn``.
     lead_agent = _build_agent(
-        lead_cfg, tool_registry, provider_factory, source_path=lead_path
+        lead_cfg, tool_registry, provider_factory, source_path=lead_path, mode=mode
     )
     lead_member = TeamLead(lead_agent, db_factory=db_factory)
 
@@ -542,6 +571,7 @@ def rebuild_agent_from_disk(
     *,
     provider_factory: ProviderFactory | None = None,
     extra_tools: dict[str, Tool] | None = None,
+    mode: str = "normal",
 ) -> Agent:
     """Re-parse one agent ``.md`` and return a fresh :class:`Agent`.
 
@@ -557,4 +587,6 @@ def rebuild_agent_from_disk(
     if provider_factory is None:
         provider_factory = build_provider
 
-    return _build_agent(cfg, tool_registry, provider_factory, source_path=source_path)
+    return _build_agent(
+        cfg, tool_registry, provider_factory, source_path=source_path, mode=mode
+    )

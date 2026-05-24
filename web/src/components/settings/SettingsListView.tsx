@@ -36,12 +36,14 @@ import { cn } from '@/lib/utils'
 export interface ListViewRow {
   /** Stable key per row. */
   key: string
-  /** Route target rendered as a `<Link>`. */
-  to: string
+  /** Route target rendered as a `<Link>`. Omit for non-clickable group rows. */
+  to?: string
   /** Path params for parameterised routes (e.g. `{ name }`). */
   params?: Record<string, string>
   /** Whether the row is selected in the URL (controls highlight). */
-  active: boolean
+  active?: boolean
+  /** Render as a non-clickable group header. */
+  kind?: 'item' | 'group'
   /** Main label of the card. */
   title: string
   /** Optional secondary inline tag (e.g. role badge). */
@@ -210,10 +212,18 @@ export function SettingsListView({
 // ─── Card ──────────────────────────────────────────────────────────────────
 
 function ListCardLink({ row }: { row: ListViewRow }) {
+  if (row.kind === 'group') {
+    return (
+      <div className="px-1 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-(--color-text-muted)">
+        {row.title}
+      </div>
+    )
+  }
+
   return (
     <Link
       to={row.to}
-      params={row.params}
+      params={row.params as never}
       aria-current={row.active ? 'page' : undefined}
       className={cn(
         'group flex items-start gap-3 rounded-lg border bg-(--bg-card) px-4 py-3 transition-colors',
