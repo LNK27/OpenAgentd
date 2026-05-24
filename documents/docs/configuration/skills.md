@@ -38,11 +38,10 @@ the upstream or builtin copy:
 | 5 | bundled OpenAgentd skills | Read-only operational fallback shipped with the app |
 
 `{cwd}` is the working directory the OpenAgentd server was launched from.
-Opencode skills are read-only from OpenAgentd's perspective: the CRUD API
-(`POST/PUT/DELETE /api/skills`) only writes into `{OPENAGENTD_CONFIG_DIR}/skills/`,
-so the web UI's editable list shows just that root. Skills from the other
-four roots are visible to the agent but not editable in the UI — edit them
-where they live.
+The Settings UI can create, edit, and delete skills in
+`{OPENAGENTD_CONFIG_DIR}/skills/`. Bundled and opencode skills are read-only
+from OpenAgentd's perspective: they may appear in listings, but delete/edit
+controls are disabled or rejected. Edit those skills where they live.
 
 `SKILL.md` follows this layout:
 
@@ -84,7 +83,7 @@ The `skill` tool itself is **always injected** into every agent — do not list 
 
 ## Builtin skills
 
-OpenAgentd ships these read-only operational skills inside the app package. A user or project skill with the same `name` overrides the builtin copy.
+OpenAgentd ships these read-only operational skills inside the app package. They cannot be deleted from Settings or the skills API. A user or project skill with the same `name` overrides the builtin copy.
 
 | Name | Purpose |
 |------|---------|
