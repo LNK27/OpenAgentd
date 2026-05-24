@@ -23,6 +23,15 @@
     "dialog:default",
     "notification:default",
     "opener:default",
-    "log:default"
+    "log:default",
+    "updater:default",
+    "allow-backend-health",
+    "allow-backend-logs-path",
+    "allow-open-macos-microphone-settings",
+    "allow-set-tray-session",
+    "allow-updater-check",
+    "allow-updater-download",
+    "allow-updater-install",
+    "allow-updater-release-notes"
   ]
 }

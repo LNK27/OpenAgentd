@@ -9,9 +9,9 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 
-**Your on-machine multi-agent system.** A long-running local service with a web cockpit, persistent memory, and a team of agents that coordinate to get real work done. Everything stays on your hardware.
+**The desktop cockpit for local AI agents.** A double-click app that runs a team of AI agents on your machine, with a real UI to watch every step. Persistent memory, 15 providers, your keys. Open source.
 
-[Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md) · [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md)
+[Features](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) · [Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md) · [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md)
 
 ![OpenAgentd annotated multi-agent cockpit](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-hero-annotated.png)
 
@@ -57,7 +57,7 @@
 
 **Track work as a board.** `todo_manage` gives the lead and members a shared task board with assignment, claims, dependencies, priorities, and live UI updates.
 
-**See exactly what the agent is doing.** Built-in OTel dashboard — token usage, latency, trace waterfall. No third-party SaaS, all local.
+**See exactly what the agent is doing.** Built-in telemetry dashboard — token usage, latency, trace waterfall. No third-party SaaS, all local.
 
 **Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config, or override the lead model/thinking level per session from Session Settings.
 
@@ -65,17 +65,18 @@
 
 ## Why OpenAgentd
 
-|                      | **openagentd**                        | **opencode**        | **openclaw**      | **hermes-agent**     |
-|----------------------|---------------------------------------|---------------------|-------------------|----------------------|
-| **UI**               | Web cockpit                           | Terminal            | Messaging apps    | Messaging / CLI      |
-| **Memory**           | 3-tier wiki, cross-session, editable  | Session only        | Session only      | Cross-session (FTS5) |
-| **Image / video**    | Multi-provider images + native video  | —                   | Via plugins       | Images, no video     |
-| **Hot-reload**       | Everything, no restart                | Restart required    | Partial           | MCP only             |
-| **Self-modification**| Agent edits its own config            | —                   | Partial           | Persona + skills     |
-| **Telemetry**        | Built-in OTel dashboard               | —                   | —                 | —                    |
-| **Embed / API**      | First-class REST + SSE                | Protocol only       | Channel-shaped    | Channel-shaped       |
+Coding agents (Claude Code, Codex CLI, Cursor, Windsurf, Aider, opencode) all run agents with tools now. The real difference is **the shape of the workflow they fit into** — terminal session, IDE window, or a desktop cockpit.
 
-Full breakdown: [`documents/docs/comparison.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md).
+|                            | **openagentd**                              | **Claude Code**             | **Codex CLI**         | **Cursor / Windsurf**     |
+|----------------------------|---------------------------------------------|-----------------------------|-----------------------|---------------------------|
+| **Surface**                | Desktop app + web cockpit                   | Terminal (CLI)              | Terminal (CLI)        | IDE (VS Code fork)        |
+| **Multi-agent**            | Lead + workers, split-pane live view        | Sub-agents (sequential)     | —                     | —                         |
+| **Watch live**             | Tool inspector + diffs + per-call timing    | Terminal text               | Terminal text         | Inline in editor          |
+| **`/undo` across chat**    | Restores workspace files from any prior turn| —                           | —                     | Editor undo only          |
+| **Providers**              | 15 — bring your own keys                    | Anthropic only              | OpenAI only           | A few, subscription       |
+| **License / cost**         | Apache 2.0, your keys                       | Proprietary + sub           | Proprietary + sub     | $20/mo+ subscription      |
+
+Full capability matrix (incl. Aider + opencode): [`documents/docs/comparison.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md). Canonical feature catalogue with version-cited ship dates: [`documents/docs/features.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md).
 
 ---
 
@@ -164,7 +165,7 @@ Switch models with a single line in your agent's `.md` config file. Every provid
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
 | GitHub Copilot | `copilot:gpt-5.4-mini` | `openagentd auth copilot` |
 | OpenAI Codex | `codex:gpt-5.5` | `openagentd auth codex` |
-| 9Router (local) | `router9:cc/claude-sonnet-4-5` | `ROUTER9_API_KEY` (optional `ROUTER9_BASE_URL`) |
+| Router9 (local) | `router9:cc/claude-sonnet-4-5` | `ROUTER9_API_KEY` (optional `ROUTER9_BASE_URL`) |
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional `CLIPROXY_BASE_URL`) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
@@ -340,7 +341,8 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 
 | Section | Contents |
 |---------|----------|
-| [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | pip, uv, Homebrew, Docker, source |
+| [**Features**](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) | **Canonical, version-cited catalogue of every user-visible feature.** Source of truth for slides, docs, and comparisons. |
+| [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | Desktop app first (macOS/Windows/Linux); CLI/uv/pipx/pip, Docker, source. |
 | [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs |
 | [CLI reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/cli.md) | Every `openagentd` subcommand |
 | [Configuration overview](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md) | Hub — links into the focused subpages below |
@@ -351,8 +353,8 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | [Built-in tools](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/tools.md) | Filesystem, shell, web, multimodal, memory |
 | [Skills](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/skills.md) | `SKILL.md` format, builtin skill catalog |
 | [Sandbox & permissions](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/sandbox.md) | Denylist paths, user `sandbox.yaml`, permission services |
-| [Comparison](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent |
-| [Troubleshooting](https://github.com/lthoangg/openagentd/blob/main/documents/docs/troubleshooting.md) | Common install and runtime issues |
+| [Comparison](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md) | How OpenAgentd compares to Claude Code, Codex CLI, Cursor/Windsurf, Aider, opencode |
+| [Troubleshooting](https://github.com/lthoangg/openagentd/blob/main/documents/docs/troubleshooting.md) | Common desktop-app and CLI/server issues |
 
 ### Architecture & internals
 

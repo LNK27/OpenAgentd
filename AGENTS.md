@@ -1,6 +1,6 @@
 # OpenAgentd — Agent Instructions
 
-On-machine AI assistant: FastAPI backend + React web UI.
+The desktop cockpit for local AI agents — Tauri 2 desktop shell wrapping a FastAPI backend + React web UI. Apache 2.0, ships as `openagentd` (CLI + sidecar) on every platform. Canonical feature catalogue: [`documents/docs/features.md`](documents/docs/features.md) — check there before claiming the product does (or doesn't) something.
 
 ## Tech stack
 
@@ -53,3 +53,14 @@ cd web && bun run lint && bun run test              # if frontend changed
 ## Documentation
 
 Start at [`documents/docs/index.md`](documents/docs/index.md) — it groups every doc by audience (getting-started / architecture / operations / frontend / contributing). Tracked tech debt: [`documents/techdebts/`](documents/techdebts/).
+
+## When shipping a feature
+
+Update in this order so docs stay coherent:
+
+1. [`documents/docs/features.md`](documents/docs/features.md) — add a one-line entry under the right pillar with the `[vX.Y.Z]` tag. This is the canonical record.
+2. [`README.md`](README.md) — refresh "What you get" / comparison table only if the change is user-visible and pitch-worthy.
+3. [`documents/docs/comparison.md`](documents/docs/comparison.md) — add a row if it's a capability that differentiates against Claude Code / Codex CLI / Cursor / Aider / opencode.
+4. Deeper doc under `documents/docs/` (e.g. `agent/teams.md`) — link it back from the `features.md` entry.
+
+When removing a feature, mark it *(deprecated)* in `features.md` for at least one release before deleting.
