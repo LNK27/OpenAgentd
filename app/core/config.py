@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from pydantic import model_validator
@@ -155,7 +156,10 @@ class Settings(BaseSettings):
     # Empty string means "derive from OPENAGENTD_CONFIG_DIR" → ``{CONFIG_DIR}/skills``.
     SKILLS_DIR: str = ""
 
-    # User-defined plugin directories — colon-separated absolute paths.
+    # User-defined plugin directories — absolute paths separated by the OS
+    # path separator (``:`` on POSIX, ``;`` on Windows — same convention as
+    # ``PATH`` / ``PYTHONPATH``).  Splitting on a hardcoded ``:`` would corrupt
+    # Windows paths like ``C:\Users\..\plugins`` into ``["C", "\\Users\\..."]``.
     # Empty string means "derive from CONFIG_DIR" (→ ``{CONFIG_DIR}/plugins``).
     # CONFIG_DIR itself is per-environment (project-local in dev, ``~/.config/openagentd``
     # in production) so a single dir is enough — no separate "global" dir needed.
@@ -220,7 +224,8 @@ class Settings(BaseSettings):
             self.SKILLS_DIR = str(config / "skills")
 
         # Plugins directory — defaults to ``{CONFIG_DIR}/plugins``.  Set the
-        # env var to a colon-separated list to load from extra paths (rare).
+        # env var to an :data:`os.pathsep`-separated list to load from extra
+        # paths (rare).
         if not self.OPENAGENTD_PLUGINS_DIRS:
             self.OPENAGENTD_PLUGINS_DIRS = str(config / "plugins")
 
@@ -233,11 +238,20 @@ class Settings(BaseSettings):
     def plugin_dirs(self) -> list[Path]:
         """Return the configured plugin directories as ``Path`` objects.
 
+        Entries are split on :data:`os.pathsep` (``:`` on POSIX, ``;`` on
+        Windows — same convention as ``PATH`` / ``PYTHONPATH``).  Splitting
+        on a hardcoded ``:`` would corrupt Windows paths whose drive letter
+        is followed by ``:`` (e.g. ``C:\\Users\\…\\plugins``) and cause the
+        first entry to become the bare string ``"C"``, which breaks
+        directory creation at startup.
+
         Empty entries are dropped; non-existent directories are kept (the
         loader skips them).  Order is preserved — earlier directories
         win on duplicate filenames.
         """
-        return [Path(p) for p in self.OPENAGENTD_PLUGINS_DIRS.split(":") if p.strip()]
+        return [
+            Path(p) for p in self.OPENAGENTD_PLUGINS_DIRS.split(os.pathsep) if p.strip()
+        ]
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue]
