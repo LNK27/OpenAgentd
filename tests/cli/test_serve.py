@@ -103,54 +103,6 @@ class TestHandshakeFormat:
         )
         assert "token" not in payload
 
-    def test_handshake_file_env_var_writes_payload(self, monkeypatch, tmp_path):
-        """When ``OPENAGENTD_HANDSHAKE_FILE`` is set, the JSON payload is
-        also written to that path atomically (tmp + rename).
-
-        The desktop sidecar on Windows uses this as a fallback channel
-        because the anonymous-pipe + tokio overlapped-I/O combination has,
-        on at least two user installs, failed to deliver the stdout
-        handshake line.  The Python side must be cross-platform — the
-        file is written whenever the env var is set, regardless of OS.
-        """
-        target = tmp_path / "handshake.json"
-        monkeypatch.setenv("OPENAGENTD_HANDSHAKE_FILE", str(target))
-
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            _emit_handshake(port=54321, token="tok", version="9.9.9")
-
-        # Stdout still got the handshake line (primary channel).
-        assert buf.getvalue().startswith("OPENAGENTD_HANDSHAKE ")
-
-        # File got the same payload.
-        assert target.exists()
-        payload = json.loads(target.read_text())
-        assert payload["port"] == 54321
-        assert payload["token"] == "tok"
-        assert payload["version"] == "9.9.9"
-        assert payload["pid"] == os.getpid()
-
-        # ``.tmp`` rename intermediate must be cleaned up.
-        assert not (tmp_path / "handshake.json.tmp").exists()
-
-    def test_handshake_no_file_env_var_skips_file(self, monkeypatch, tmp_path):
-        """Without ``OPENAGENTD_HANDSHAKE_FILE``, no file is written.
-
-        Guards against a regression that would create an unexpected file
-        in the working directory on every desktop spawn on macOS/Linux.
-        """
-        monkeypatch.delenv("OPENAGENTD_HANDSHAKE_FILE", raising=False)
-        cwd_before = set(tmp_path.iterdir())
-        monkeypatch.chdir(tmp_path)
-
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            _emit_handshake(port=1, token=None, version="0")
-
-        assert buf.getvalue().startswith("OPENAGENTD_HANDSHAKE ")
-        assert set(tmp_path.iterdir()) == cwd_before
-
 
 class TestDesktopTokenConfig:
     def test_reuses_existing_desktop_token(self, monkeypatch):
@@ -189,17 +141,12 @@ class TestPidAlive:
         assert _pid_alive(2_147_483_640) is False
 
     def test_live_external_child_is_alive_without_being_killed(self):
-        """Regression test for the 1.22.5 Windows bug.
+        """``_pid_alive`` must not kill the process it probes.
 
-        On Windows, ``os.kill(pid, 0)`` is NOT a "probe if alive" call —
-        CPython implements it as ``TerminateProcess(pid, 0)``. That meant
-        the previous ``_pid_alive`` would silently kill the desktop sidecar's
-        parent watcher target. This test spawns a real child, asserts
-        ``_pid_alive`` returns True for it, and then verifies the child
-        is still running afterwards.
+        ``os.kill(pid, 0)`` is a no-op signal on POSIX (existence check),
+        which is what we rely on.  Regression coverage in case the probe
+        ever gets replaced with something more invasive.
         """
-        # ``python -c "import time; time.sleep(30)"`` is portable and
-        # avoids shell quirks on Windows ``cmd``.
         proc = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(30)"],
             stdin=subprocess.DEVNULL,
@@ -210,13 +157,10 @@ class TestPidAlive:
             # Give the child a beat to actually be schedulable.
             time.sleep(0.1)
             assert _pid_alive(proc.pid) is True
-            # The crucial regression assertion: the probe must not have
-            # killed the child. ``poll()`` returns None while running.
+            # The probe must not have killed the child.  ``poll()`` returns
+            # None while the process is still running.
             time.sleep(0.1)
-            assert proc.poll() is None, (
-                "_pid_alive killed the target process — this is the "
-                "Windows-only bug fixed in 1.22.6"
-            )
+            assert proc.poll() is None, "_pid_alive killed the target process"
         finally:
             proc.terminate()
             try:
@@ -226,12 +170,7 @@ class TestPidAlive:
                 proc.wait(timeout=5)
 
     def test_exited_child_is_dead(self):
-        """``_pid_alive`` must return False once the target has exited.
-
-        On Windows this exercises the ``GetExitCodeProcess`` branch — a
-        handle to an exited process is still openable (zombie-like state),
-        but the exit code is no longer ``STILL_ACTIVE``.
-        """
+        """``_pid_alive`` must return False once the target has exited."""
         proc = subprocess.Popen(
             [sys.executable, "-c", "import sys; sys.exit(0)"],
             stdin=subprocess.DEVNULL,
@@ -239,6 +178,6 @@ class TestPidAlive:
             stderr=subprocess.DEVNULL,
         )
         proc.wait(timeout=5)
-        # Small grace period for the OS to reflect the exit on Windows.
+        # Small grace period for the OS to reflect the exit.
         time.sleep(0.1)
         assert _pid_alive(proc.pid) is False

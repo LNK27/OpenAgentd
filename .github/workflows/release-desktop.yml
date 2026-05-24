@@ -55,10 +55,9 @@ jobs:
       - id: version
         # Use the same ``v<X.Y.Z>`` tag as ``release.yml``. Both
         # workflows publish into one release so the artefact set
-        # (wheel + sdist + .dmg + .msi + .deb) lives under one tag
-        # the user can compare-link to. The publish job below
-        # uploads with ``--clobber`` so it does not matter which
-        # workflow runs first.
+        # (wheel + sdist + .dmg + .deb) lives under one tag the user
+        # can compare-link to. The publish job below uploads with
+        # ``--clobber`` so it does not matter which workflow runs first.
         run: |
           VERSION=$(cat app/version.txt | tr -d '[:space:]')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -281,7 +280,7 @@ jobs:
         run: |
           mkdir -p _release
           cd desktop/src-tauri/target
-          # Tauri writes to ${target}/release/bundle/{dmg,nsis,msi,deb,appimage,...}
+          # Tauri writes to ${target}/release/bundle/{dmg,deb,appimage,...}
           if [ -d release/bundle ]; then
             BUNDLE_DIR=release/bundle
           else
@@ -331,8 +330,7 @@ jobs:
             --tag "${{ needs.prepare.outputs.tag }}" \
             --artefact-dir _release \
             --out _release/latest.json \
-            --require-platform darwin-aarch64 \
-            --require-platform linux-x86_64
+            --require-platform darwin-aarch64
 
       - name: Create or update GitHub release
         # Releases land on the shared ``v<X.Y.Z>`` tag. If

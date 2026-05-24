@@ -5,7 +5,7 @@ Layout produced under ``<out>/``::
 
     sidecar-bundle/
       python/                ← python-build-standalone interpreter
-        bin/python3          (POSIX)  /  python.exe (Windows)
+        bin/python3
         lib/python3.14/
       site-packages/         ← openagentd + dependencies
         app/                 ← our package (incl. _web_dist/)
@@ -35,9 +35,9 @@ Usage::
         --root ./ --out ./desktop/sidecar-bundle \\
         --python-version 3.14 [--extras office,audio]
 
-CI uses this same script on each runner (macos-14, windows-latest,
-ubuntu-22.04). The output is consumed by the Tauri bundler via the
-``bundle.resources`` entry in ``tauri.conf.json``.
+CI uses this same script on each runner (macos-26, ubuntu-22.04). The
+output is consumed by the Tauri bundler via the ``bundle.resources``
+entry in ``tauri.conf.json``.
 """
 
 from __future__ import annotations
@@ -76,8 +76,6 @@ def detect_target_triple() -> str:
     machine = platform.machine().lower()
     if system == "Darwin":
         return "aarch64-apple-darwin" if machine in ("arm64", "aarch64") else "x86_64-apple-darwin"
-    if system == "Windows":
-        return "aarch64-pc-windows-msvc" if machine.startswith("arm") else "x86_64-pc-windows-msvc-shared"
     if system == "Linux":
         if machine in ("aarch64", "arm64"):
             return "aarch64-unknown-linux-gnu"
@@ -100,7 +98,7 @@ def fetch_python(version: str, out: Path) -> Path:
     # under ``out``. As of uv 0.5+ the layout is:
     #
     #   <out>/cpython-<version>-<triple>/        ← real install root
-    #     bin/python3.14                         (POSIX) or python.exe (Windows)
+    #     bin/python3.14
     #     lib/python3.14/
     #     ...
     #   <out>/cpython-<major>-<triple>           ← *symlink* to the versioned dir
@@ -128,15 +126,11 @@ def _find_python_binary(root: Path, version: str) -> Path | None:
     Walks ``root`` looking for the canonical executable name(s) and
     returns the first hit that is a *real file* (not a broken symlink).
     """
-    names: list[str]
-    if os.name == "nt":
-        names = ["python.exe"]
-    else:
-        # ``python3.X`` is the canonical name in python-build-standalone;
-        # ``python3`` is a symlink to it. Prefer the versioned name so
-        # the rest of the script doesn't follow a symlink it then has to
-        # rewrite during normalisation.
-        names = [f"python{version}", "python3"]
+    # ``python3.X`` is the canonical name in python-build-standalone;
+    # ``python3`` is a symlink to it. Prefer the versioned name so the
+    # rest of the script doesn't follow a symlink it then has to rewrite
+    # during normalisation.
+    names = [f"python{version}", "python3"]
     for name in names:
         for candidate in root.rglob(name):
             # ``is_file()`` follows symlinks — we want both that the
@@ -155,7 +149,7 @@ def normalise_python_dir(install_root: Path, target: Path, python_bin: Path) -> 
     """Move uv's install tree to a flat ``target/`` directory.
 
     ``python_bin`` is the resolved (symlink-free) path to the interpreter
-    inside ``install_root``. The Python install root is ``python_bin``'s
+    inside ``install_root``. The install root is ``python_bin``'s
     grandparent (``bin/python`` → install root). We move *that* directory
     to ``target`` so the layout becomes::
 
@@ -165,24 +159,11 @@ def normalise_python_dir(install_root: Path, target: Path, python_bin: Path) -> 
 
     Returns the new path of the python binary inside ``target``.
     """
-    if os.name == "nt":
-        # On Windows the binary lives directly in the install root.
-        source = python_bin.parent
-    else:
-        # POSIX: <install_root>/bin/python3.X → parent.parent is the root.
-        source = python_bin.parent.parent
+    # <install_root>/bin/python3.X → parent.parent is the root.
+    source = python_bin.parent.parent
 
-    # Sanity check: the source must actually contain bin/ (or python.exe).
-    if os.name == "nt":
-        if not (source / "python.exe").is_file():
-            raise SystemExit(
-                f"resolved install root {source} missing python.exe"
-            )
-    else:
-        if not (source / "bin").is_dir():
-            raise SystemExit(
-                f"resolved install root {source} missing bin/"
-            )
+    if not (source / "bin").is_dir():
+        raise SystemExit(f"resolved install root {source} missing bin/")
 
     if target.exists():
         shutil.rmtree(target)
@@ -194,20 +175,15 @@ def normalise_python_dir(install_root: Path, target: Path, python_bin: Path) -> 
     shutil.move(str(source), str(target))
 
     # Compute the new binary path inside ``target`` and verify.
-    if os.name == "nt":
-        new_bin = target / "python.exe"
-    else:
-        new_bin = target / "bin" / python_bin.name
-        if not new_bin.is_file():
-            # Fall back to ``python3`` if the rglob picked the versioned
-            # name on Linux but only ``python3`` exists at the target.
-            alt = target / "bin" / "python3"
-            if alt.is_file():
-                new_bin = alt
+    new_bin = target / "bin" / python_bin.name
     if not new_bin.is_file():
-        raise SystemExit(
-            f"normalisation moved tree but binary not at {new_bin}"
-        )
+        # Fall back to ``python3`` if the rglob picked the versioned
+        # name but only ``python3`` exists at the target.
+        alt = target / "bin" / "python3"
+        if alt.is_file():
+            new_bin = alt
+    if not new_bin.is_file():
+        raise SystemExit(f"normalisation moved tree but binary not at {new_bin}")
     return new_bin
 
 
@@ -273,15 +249,10 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
     import urllib.request
 
     smoke_root = site_packages.parent / "_smoke"
-    # PYTHONHOME must point at the python-build-standalone install root
-    # — the directory containing ``Lib/`` (Windows) or ``lib/`` (POSIX).
-    # On POSIX the interpreter lives at ``<root>/bin/python3.X`` so the
-    # root is parent.parent. On Windows it lives at ``<root>/python.exe``
-    # so the root is just parent.
-    if os.name == "nt":
-        python_home = python_bin.parent
-    else:
-        python_home = python_bin.parent.parent
+    # PYTHONHOME must point at the python-build-standalone install root —
+    # the directory containing ``lib/``. The interpreter lives at
+    # ``<root>/bin/python3.X`` so the root is parent.parent.
+    python_home = python_bin.parent.parent
     env = {
         **os.environ,
         "PYTHONHOME": str(python_home),
@@ -314,26 +285,6 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         "runpy.run_path(_entry, run_name='__main__')"
     )
 
-    if os.name == "nt":
-        # Sanity-check that the Windows-only ``.pth`` bootstrap (the v1.22.2
-        # regression) still works before the full handshake. This is fast
-        # and gives a clean failure signal if the sidecar can't even import
-        # its core deps; without it, an import failure would hide behind
-        # the 60s handshake timeout below.
-        run(
-            [
-                str(python_bin),
-                "-c",
-                "import sys, site; "
-                "site.addsitedir(sys.argv[1]); "
-                "import pywintypes; "
-                "import app.cli; "
-                "print('smoke test: windows imports ok')",
-                str(site_packages),
-            ],
-            env=env,
-        )
-
     smoke_cmd = [str(python_bin), "-c", bootstrap, str(site_packages), str(cli_entry), "serve",
                  "--host", "127.0.0.1", "--port", "0",
                  "--handshake", "--generate-token"]
@@ -342,18 +293,17 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         smoke_cmd,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         env=env, text=True,
-        # Cross-platform process group so the smoke test can hard-kill
-        # the child (and any uvicorn worker it spawns) on timeout.
-        start_new_session=(os.name != "nt"),
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,  # type: ignore[attr-defined]
+        # New process group so the smoke test can hard-kill the child
+        # (and any uvicorn worker it spawns) on timeout.
+        start_new_session=True,
     )
 
     # Read output from background threads so the main thread can
     # enforce a real wall-clock timeout. ``subprocess.Popen.stdout`` is
     # buffered and blocking; without this scaffold, a child that goes
-    # quiet hangs the smoke test indefinitely (observed on Windows GHA
-    # runners). Drain stderr too so native/runtime warnings don't fill the
-    # pipe and so timeouts include a useful tail for debugging.
+    # quiet hangs the smoke test indefinitely. Drain stderr too so
+    # native/runtime warnings don't fill the pipe and so timeouts include
+    # a useful tail for debugging.
     import queue as _queue
     import threading as _threading
 
@@ -465,10 +415,7 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
             print(f"smoke test: protected endpoint returned {e.code} (acceptable)")
     finally:
         if proc.poll() is None:
-            if os.name == "nt":
-                proc.terminate()
-            else:
-                proc.send_signal(_signal.SIGTERM)
+            proc.send_signal(_signal.SIGTERM)
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:

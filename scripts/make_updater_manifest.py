@@ -13,10 +13,6 @@ The Tauri updater hits the URL configured in ``tauri.conf.json``'s
           "signature": "<contents of .sig file>",
           "url": "https://.../OpenAgentd.app.tar.gz"
         },
-        "windows-x86_64": {
-          "signature": "<.sig contents>",
-          "url": "https://.../OpenAgentd_0.6.0_x64-setup.exe"
-        },
         "linux-x86_64": {
           "signature": "<.sig contents>",
           "url": "https://.../OpenAgentd_0.6.0_amd64.AppImage"
@@ -47,8 +43,6 @@ from pathlib import Path
 # .AppImage on Linux, not the .dmg / .deb.
 PLATFORM_RULES: list[tuple[str, str]] = [
     (".app.tar.gz", "darwin-aarch64"),
-    ("-setup.exe", "windows-x86_64"),
-    (".msi", "windows-x86_64"),
     (".AppImage", "linux-x86_64"),
 ]
 
