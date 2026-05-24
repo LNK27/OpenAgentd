@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 
 import { useCreateAgentMutation } from '@/queries'
+import { Button } from '@/components/ui/button'
 import { useToastStore } from '@/stores/useToastStore'
 import { ApiValidationError } from '@/api/client'
 import { AgentForm } from '@/components/settings/AgentForm'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { validateAgentDraft } from '@/components/settings/schema'
+
+type AgentMode = 'normal' | 'coding'
 
 const TEMPLATE = `---
 name: new_agent
@@ -28,8 +31,11 @@ You are "new_agent" — a helpful team member.
 `
 
 export function NewAgentPage() {
+  const search = useSearch({ strict: false }) as { mode?: string }
+  const initialMode: AgentMode = search.mode === 'coding' ? 'coding' : 'normal'
   const [draft, setDraft] = useState(TEMPLATE)
   const [name, setName] = useState('new_agent')
+  const [agentMode, setAgentMode] = useState<AgentMode>(initialMode)
   const createMut = useCreateAgentMutation()
   const push = useToastStore((s) => s.push)
   const navigate = useNavigate()
@@ -56,13 +62,14 @@ export function NewAgentPage() {
       return
     }
     try {
-      await createMut.mutateAsync({ name, content: draft })
+      const agentName = agentMode === 'coding' ? `coding/${name}` : name
+      await createMut.mutateAsync({ name: agentName, content: draft })
       push({
         tone: 'success',
-        title: `Created "${name}"`,
+        title: `Created "${agentName}"`,
         description: 'Active on next turn.',
       })
-      navigate({ to: '/settings/agents/$name', params: { name } })
+      navigate({ to: '/settings/agents/$name', params: { name: agentName } })
     } catch (err) {
       const msg = err instanceof ApiValidationError ? err.message : String(err)
       setSaveError(msg)
@@ -87,6 +94,32 @@ export function NewAgentPage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl p-6">
+          <div className="mb-4 rounded-lg border border-(--color-border) bg-(--bg-card) px-4 py-3">
+            <p className="text-xs font-medium text-(--color-text)">Create in</p>
+            <div className="mt-2 flex gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant={agentMode === 'normal' ? 'default' : 'outline'}
+                onClick={() => setAgentMode('normal')}
+              >
+                Normal
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant={agentMode === 'coding' ? 'default' : 'outline'}
+                onClick={() => setAgentMode('coding')}
+              >
+                Coding
+              </Button>
+            </div>
+            <p className="mt-2 text-[11px] text-(--color-text-muted)">
+              {agentMode === 'coding'
+                ? `Will create coding/${name}.md for coding sessions.`
+                : `Will create ${name}.md for normal sessions.`}
+            </p>
+          </div>
           <AgentForm
             initial={TEMPLATE}
             onChange={handleDraftChange}

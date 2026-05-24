@@ -351,13 +351,13 @@ team_manage(action="dismiss", members=["executor#1", "explorer#1"])
 team_configure(member: str, action: "add"|"remove"|"list", kind: "skill"|"tool"|"mcp" | None, name: str | None) -> str
 ```
 
-The lead grants or revokes a member's capabilities at runtime by rewriting that member's `.md` frontmatter. The existing drift-detection hot-reload (see [Live config — drift detection](#live-config--drift-detection-no-team-reload)) picks up the change at the start of the member's next turn — no restart, no team rebuild.
+The lead grants or revokes a live member's capabilities at runtime. Changes affect the current live member only; they do not rewrite blueprint/root `.md` files and can be reset by respawn or config drift reload. Use settings or the `self-healing` skill for persistent root/blueprint config changes.
 
-- `member` must be a regular member (the lead is not a manageable target).
+- `member` must be a regular live member (the lead is not a manageable target).
 - `kind` + `name` are required for `add` / `remove`, ignored by `list`.
-- Validation runs **before** any disk write: unknown skill / tool / MCP server names, plus protected tool names (`skill`, `team_message`, `todo_manage`, `schedule_task`, `note`), are rejected with a clear error string.
-- `add` and `remove` are idempotent — already-present / not-present cases return a message and skip the write.
-- `list` reads from disk, so it reflects pending mutations the member hasn't reloaded yet.
+- Validation runs **before** mutation: unknown skill / tool / MCP server names, plus protected tool names (`skill`, `team_message`, `todo_manage`, `schedule_task`, `note`), are rejected with a clear error string.
+- `add` and `remove` are idempotent — already-present / not-present cases return a message and skip mutation.
+- `list` reads the live member's current runtime capabilities.
 
 Members do not have `team_configure` themselves. The protocol prompts in `app/agent/mode/team/member.py` enforce a lead-as-translator pattern:
 
@@ -370,9 +370,7 @@ Two related protocol invariants in the same file:
 - **Members must verify before claiming.** After a tool call, members must read the result and never report success on a tool error. After mutating state (file write, etc.) the protocol asks for a cheap follow-up read (`ls`, `read`) before reporting completion. Catches LLM hallucination after a failed tool call.
 - **Lead must sanity-check claims before promising "done".** When a member reports it wrote a file at path X, lead is instructed to verify with a cheap read when feasible.
 
-> **Robustness contract:** `_build_agent` in `app/agent/loader.py` warn-and-skips unknown tool / MCP names instead of raising. This makes it safe to mutate frontmatter even if the underlying registry shifts after a grant (e.g. an MCP server is later removed from `mcp.json`). The member rebuild succeeds; the missing capability is dropped and logged. `team_configure` validates up-front so typos are never persisted in the first place.
-
-> **Frontmatter formatting:** the rewrite uses `yaml.safe_dump` — YAML key order and any comments inside the frontmatter are not preserved. Bodies (after the closing `---`) are preserved verbatim. Treat agent `.md` files as machine-managed config.
+> **Robustness contract:** `_build_agent` in `app/agent/loader.py` warn-and-skips unknown tool / MCP names instead of raising. This keeps blueprint loads resilient if a user-added override references a capability that later disappears (for example, an MCP server removed from `mcp.json`). `team_configure` validates up-front against the live registry so typos are rejected before mutating the live member.
 
 ---
 

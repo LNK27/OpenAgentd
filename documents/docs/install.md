@@ -157,7 +157,7 @@ Run the setup wizard once:
 openagentd init
 ```
 
-`init` asks for a provider, model, API key when needed, and installs the default agent team and editable config. Existing files are never overwritten, so re-running `init` is safe.
+`init` asks for a provider, model, API key when needed, and installs the default agent team and editable config. Existing files are not overwritten. Obsolete untouched first-party agent files from older installs may be removed; custom files are kept.
 
 Config is written to `~/.config/openagentd/` (XDG standard). The desktop app and CLI share this same config directory. The database and logs go to `~/.local/share/openagentd/` and `~/.local/state/openagentd/`.
 

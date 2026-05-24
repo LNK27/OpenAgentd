@@ -7,7 +7,8 @@ What ships
   coding mode. ``model: __PROVIDER_MODEL__`` is rewritten to the
   provider:model the user picked in ``init``. Existing files are preserved,
   except this placeholder token may be replaced in-place after first-run
-  desktop seeding.
+  desktop seeding. First-party files removed from the curated seed set are
+  pruned only when they still look like untouched legacy seed files.
 - ``skills/`` — optional user-editable skills. Core operational skills ship
   as read-only builtins under ``app/agent/builtin_skills`` instead.
 - Top-level config files: ``mcp.json`` plus generated ``settings.yaml``,
@@ -44,6 +45,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+
+import yaml
 
 from app.core.version import VERSION
 
@@ -90,6 +93,13 @@ voice:
   max_file_mb: 25
 """
 
+_REMOVED_FIRST_PARTY_AGENT_FILES: dict[str, str] = {
+    "agents/consultant.md": "consultant",
+    "agents/coding/architect.md": "architect",
+    "agents/coding/designer.md": "designer",
+    "agents/coding/qa.md": "qa",
+}
+
 
 @dataclass(slots=True)
 class SeedResult:
@@ -98,6 +108,7 @@ class SeedResult:
     agents_written: list[str]
     skills_written: list[str]
     configs_written: list[str]  # top-level mcp.json/multimodal.yaml/etc.
+    agents_removed: list[str]
     source: str  # "local", "tag:v0.1.0", or "branch:main"
 
 
@@ -248,6 +259,7 @@ def _install_from_local(
     agents_written: list[str] = []
     skills_written: list[str] = []
     configs_written: list[str] = []
+    agents_removed = _prune_removed_first_party_agents(config_dir)
 
     from app.core.runtime_settings import ensure_runtime_settings
 
@@ -279,6 +291,7 @@ def _install_from_local(
         agents_written=sorted(agents_written),
         skills_written=sorted(skills_written),
         configs_written=sorted(configs_written),
+        agents_removed=agents_removed,
         source="local",
     )
 
@@ -295,6 +308,7 @@ def _install_from_github(
     agents_written: list[str] = []
     skills_written: list[str] = []
     configs_written: list[str] = []
+    agents_removed = _prune_removed_first_party_agents(config_dir)
 
     from app.core.runtime_settings import ensure_runtime_settings
 
@@ -345,6 +359,7 @@ def _install_from_github(
         agents_written=sorted(agents_written),
         skills_written=sorted(skills_written),
         configs_written=sorted(configs_written),
+        agents_removed=agents_removed,
         source=source,
     )
 
@@ -423,6 +438,37 @@ def _replace_placeholder_if_needed(target: Path, provider_model: str) -> bool:
         text.replace(PROVIDER_MODEL_TOKEN, provider_model), encoding="utf-8"
     )
     return True
+
+
+def _prune_removed_first_party_agents(config_dir: Path) -> list[str]:
+    """Remove obsolete first-party seed files if they are still untouched."""
+    removed: list[str] = []
+    for rel, expected_name in _REMOVED_FIRST_PARTY_AGENT_FILES.items():
+        path = config_dir / rel
+        if not path.exists() or not _is_prunable_legacy_agent(path, expected_name):
+            continue
+        path.unlink()
+        removed.append(str(Path(*Path(rel).parts[1:])))
+    return sorted(removed)
+
+
+def _is_prunable_legacy_agent(path: Path, expected_name: str) -> bool:
+    from app.agent.loader import _FRONTMATTER_RE
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return False
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        return False
+    raw_meta = yaml.safe_load(match.group(1)) or {}
+    body = match.group(2).strip()
+    if raw_meta.get("name") != expected_name or raw_meta.get("role") != "member":
+        return False
+    return not body or body.startswith(
+        (f"You are **{expected_name}**.", f'You are "{expected_name}".')
+    )
 
 
 def _record(

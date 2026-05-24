@@ -65,20 +65,66 @@ def _parse_summary(name: str, content: str) -> AgentSummary:
             description=None,
             model=None,
             tools=[],
+            mcp=[],
             skills=[],
             valid=False,
             error=str(exc),
         )
+    mode = _mode_for_agent_path(name)
+    effective = _effective_config(cfg, mode=mode)
     return AgentSummary(
         name=name,
-        role=cfg.role,
-        description=cfg.description,
-        model=cfg.model,
-        tools=cfg.tools,
-        skills=cfg.skills,
+        role=effective.role,
+        description=effective.description,
+        model=effective.model,
+        tools=effective.tools,
+        mcp=effective.mcp,
+        skills=effective.skills,
         valid=True,
         error=None,
     )
+
+
+def _mode_for_agent_path(name: str) -> str:
+    return "coding" if Path(name).parts[:1] == ("coding",) else "normal"
+
+
+def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
+    """Return config with built-in first-party defaults applied.
+
+    This mirrors runtime merging for metadata/capability fields without
+    changing the raw saved file. Prompts are intentionally left as saved body in
+    API config; callers edit extras, not the expanded runtime prompt.
+    """
+    data = cfg.model_copy(deep=True)
+    implicit_tools = ["skill"]
+    if data.role == "lead":
+        implicit_tools += ["todo_manage", "schedule_task", "note"]
+    data.tools = [*implicit_tools, *data.tools]
+    if data.role == "lead" and data.name == "openagentd":
+        from app.agent.builtin_prompts import (
+            OPENAGENTD_SKILLS,
+            openagentd_description_for_mode,
+            openagentd_tools_for_mode,
+        )
+
+        data.description = data.description or openagentd_description_for_mode(mode)
+        data.tools = list(
+            dict.fromkeys([*openagentd_tools_for_mode(mode), *data.tools])
+        )
+        data.skills = list(dict.fromkeys([*OPENAGENTD_SKILLS, *data.skills]))
+        data.mcp = list(dict.fromkeys(data.mcp))
+    elif data.role == "member":
+        from app.agent.builtin_prompts import builtin_member_profile
+
+        profile = builtin_member_profile(mode, data.name)
+        if profile is not None:
+            data.description = data.description or profile["description"]
+            data.tools = list(dict.fromkeys([*profile["tools"], *data.tools]))
+            data.skills = list(dict.fromkeys([*profile["skills"], *data.skills]))
+            data.mcp = list(dict.fromkeys([*profile["mcp"], *data.mcp]))
+    data.tools = list(dict.fromkeys(data.tools))
+    return data
 
 
 def _parse_content(name: str, content: str) -> AgentConfig:
@@ -199,10 +245,12 @@ async def get_registry() -> RegistryResponse:
     from app.agent.loader import _default_tool_registry
 
     tool_registry = _default_tool_registry()
+    hidden_tools = {"skill", "todo_manage", "schedule_task", "note"}
     tools = sorted(
         (
             ToolCatalogEntry(name=t.name, description=t.description or "")
             for t in tool_registry.values()
+            if t.name not in hidden_tools
         ),
         key=lambda t: t.name,
     )
@@ -354,7 +402,9 @@ async def get_agent(name: str) -> AgentDetail:
     error: str | None = None
     try:
         cfg = _parse_content(name, record.content)
-        config = cfg.model_dump(exclude_none=True)
+        config = _effective_config(cfg, mode=_mode_for_agent_path(name)).model_dump(
+            exclude_none=True
+        )
     except ValueError as exc:
         error = str(exc)
 

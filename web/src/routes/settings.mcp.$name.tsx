@@ -1,9 +1,10 @@
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
-import { AlertCircle, RotateCw } from 'lucide-react'
+import { AlertCircle, RotateCw, Trash2 } from 'lucide-react'
 
 import {
   useConnectMcpOAuthMutation,
+  useDeleteMcpServerMutation,
   useMcpServerQuery,
   useRestartMcpServerMutation,
   useUpdateMcpServerMutation,
@@ -21,6 +22,14 @@ import {
 } from '@/components/settings/McpServerDraft'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 /**
  * MCP server detail / editor page.
@@ -40,6 +49,7 @@ export function McpServerDetailPage() {
   const push = useToastStore((s) => s.push)
   const serverQ = useMcpServerQuery(name)
   const updateMut = useUpdateMcpServerMutation()
+  const deleteMut = useDeleteMcpServerMutation()
   const restartMut = useRestartMcpServerMutation()
   const connectOAuthMut = useConnectMcpOAuthMutation()
 
@@ -55,6 +65,7 @@ export function McpServerDetailPage() {
 
   const [draft, setDraft] = useState<McpServerDraft | null>(seedDraft)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   // Adopt the seed once the query lands. Subsequent edits keep `draft`.
   const [seededFor, setSeededFor] = useState<string | null>(null)
@@ -92,6 +103,17 @@ export function McpServerDetailPage() {
       const msg = err instanceof ApiValidationError ? err.message : String(err)
       setSaveError(msg)
       push({ tone: 'error', title: 'Save failed', description: msg })
+    }
+  }
+
+  const handleDelete = async () => {
+    try {
+      await deleteMut.mutateAsync(name)
+      push({ tone: 'success', title: `Deleted "${name}"` })
+      navigate({ to: '/settings/mcp' })
+    } catch (err) {
+      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      push({ tone: 'error', title: 'Delete failed', description: msg })
     }
   }
 
@@ -203,24 +225,37 @@ export function McpServerDetailPage() {
                 </Card>
               )}
 
-              {dirty && (
-                <div className="flex items-center gap-2 text-xs text-(--color-text-muted)">
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => seedDraft && setDraft(seedDraft)}
-                  >
-                    Discard changes
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => navigate({ to: '/settings/mcp' })}
-                  >
-                    Leave without saving
-                  </Button>
+              <div className="flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
+                <div className="flex items-center gap-2">
+                  {dirty && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => seedDraft && setDraft(seedDraft)}
+                      >
+                        Discard changes
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => navigate({ to: '/settings/mcp' })}
+                      >
+                        Leave without saving
+                      </Button>
+                    </>
+                  )}
                 </div>
-              )}
+                <Button
+                  variant="destructive"
+                  size="xs"
+                  onClick={() => setDeleteOpen(true)}
+                  disabled={deleteMut.isPending}
+                >
+                  <Trash2 size={11} aria-hidden="true" />
+                  Delete server
+                </Button>
+              </div>
 
               <RestartCard
                 onRestart={handleRestart}
@@ -231,6 +266,30 @@ export function McpServerDetailPage() {
           )}
         </div>
       </div>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete MCP server</DialogTitle>
+            <DialogDescription>
+              Delete `{name}` from mcp.json. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="p-3">
+            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteMut.isPending}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

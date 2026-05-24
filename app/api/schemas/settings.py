@@ -157,4 +157,5 @@ class SeedInstallResponse(BaseModel):
     agents_written: list[str] = Field(default_factory=list)
     skills_written: list[str] = Field(default_factory=list)
     configs_written: list[str] = Field(default_factory=list)
+    agents_removed: list[str] = Field(default_factory=list)
     source: str  # "local", "tag:v0.x.y", or "branch:main"

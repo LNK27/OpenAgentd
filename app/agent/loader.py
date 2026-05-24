@@ -246,11 +246,41 @@ def _build_agent(
     provider_factory: ProviderFactory,
     *,
     source_path: Path | None = None,
+    mode: str = "normal",
 ) -> Agent:
     """Construct one Agent.  ``source_path`` enables drift detection."""
     system_prompt = cfg.system_prompt
+    if cfg.role == "lead" and cfg.name == "openagentd":
+        from app.agent.builtin_prompts import (
+            OPENAGENTD_SKILLS,
+            apply_openagentd_extra_prompt,
+            openagentd_description_for_mode,
+            openagentd_tools_for_mode,
+        )
+
+        cfg.description = cfg.description or openagentd_description_for_mode(mode)
+        cfg.tools = [*openagentd_tools_for_mode(mode), *cfg.tools]
+        cfg.skills = [*OPENAGENTD_SKILLS, *cfg.skills]
+        system_prompt = apply_openagentd_extra_prompt(mode, cfg.system_prompt)
+    elif cfg.role == "member":
+        from app.agent.builtin_prompts import (
+            apply_member_extra_prompt,
+            builtin_member_profile,
+        )
+
+        profile = builtin_member_profile(mode, cfg.name)
+        if profile is not None:
+            built_in_prompt = profile["prompt"]
+            cfg.description = cfg.description or profile["description"]
+            cfg.tools = [*profile["tools"], *cfg.tools]
+            cfg.skills = [*profile["skills"], *cfg.skills]
+            cfg.mcp = [*profile["mcp"], *cfg.mcp]
+            system_prompt = apply_member_extra_prompt(
+                cfg.name, built_in_prompt, cfg.system_prompt
+            )
 
     if cfg.skills:
+        cfg.skills = list(dict.fromkeys(cfg.skills))
         system_prompt += _build_skills_section(cfg.skills)
 
     from app.agent.tools.builtin.schedule import schedule_task as _schedule_task_tool
@@ -270,14 +300,17 @@ def _build_agent(
         tools += [_todo_manage, _schedule_task, _note]
 
     seen: set[str] = {t.name for t in tools}
+    cfg.tools = list(dict.fromkeys(cfg.tools))
+    cfg.mcp = list(dict.fromkeys(cfg.mcp))
     for tool_name in cfg.tools:
         if tool_name in ("skill", "todo_manage", "schedule_task", "note"):
             continue
         if tool_name not in tool_registry:
-            # Soft-skip: dynamic capability management (team_configure) and
-            # disabled-then-rebuild flows can leave a name in frontmatter
-            # that no longer resolves. Log and continue so the agent still
-            # loads; team_configure validates up-front to prevent typos.
+            # Soft-skip: settings/self-healing edits and disabled-then-rebuild
+            # flows can leave a name in frontmatter briefly after the
+            # underlying tool/MCP server disappears between loads. Runtime
+            # team_configure validates up-front and only mutates live instances.
+
             logger.warning(
                 "agent_unknown_tool agent={} tool={} available={}",
                 cfg.name,
@@ -293,7 +326,7 @@ def _build_agent(
     # MCP servers: each entry grants the agent access to *all* tools exposed
     # by that server. Unknown / not-ready servers are warn-and-skip so the
     # agent still loads when an MCP server is disabled, mid-restart, or
-    # removed from mcp.json after being granted via team_configure.
+    # removed from mcp.json while still referenced by config.
     if cfg.mcp:
         from app.agent.mcp import mcp_manager
 
@@ -488,9 +521,15 @@ def load_team_from_dir(
             )
         if cfg.name in blueprints:
             raise ValueError(f"Duplicate member name '{cfg.name}' in '{path.name}'.")
+        description = cfg.description
+        if description is None:
+            from app.agent.builtin_prompts import builtin_member_profile
+
+            profile = builtin_member_profile(mode, cfg.name)
+            description = profile["description"] if profile is not None else cfg.name
         blueprints[cfg.name] = MemberBlueprint(
             name=cfg.name,
-            description=cfg.description or cfg.name,
+            description=description,
             source_path=path,
         )
 
@@ -504,14 +543,14 @@ def load_team_from_dir(
     db_factory = resolve_db_factory(db_factory)
 
     # Unknown tools / MCP servers in frontmatter are warn-and-skipped by
-    # ``_build_agent`` so dynamic capability changes (team_configure, mcp.json
-    # edits) never break agent load. ``team_configure`` validates names
-    # up-front to prevent typos from being persisted in the first place.
+    # ``_build_agent`` so stale config entries or mcp.json edits never break
+    # agent load. Runtime ``team_configure`` validates names up-front before
+    # mutating live members.
 
     # Build the lead.  Members are NOT built — they are described by their
     # blueprints on the team and built on demand by ``AgentTeam.spawn``.
     lead_agent = _build_agent(
-        lead_cfg, tool_registry, provider_factory, source_path=lead_path
+        lead_cfg, tool_registry, provider_factory, source_path=lead_path, mode=mode
     )
     lead_member = TeamLead(lead_agent, db_factory=db_factory)
 
@@ -542,6 +581,7 @@ def rebuild_agent_from_disk(
     *,
     provider_factory: ProviderFactory | None = None,
     extra_tools: dict[str, Tool] | None = None,
+    mode: str = "normal",
 ) -> Agent:
     """Re-parse one agent ``.md`` and return a fresh :class:`Agent`.
 
@@ -557,4 +597,6 @@ def rebuild_agent_from_disk(
     if provider_factory is None:
         provider_factory = build_provider
 
-    return _build_agent(cfg, tool_registry, provider_factory, source_path=source_path)
+    return _build_agent(
+        cfg, tool_registry, provider_factory, source_path=source_path, mode=mode
+    )

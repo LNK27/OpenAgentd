@@ -1,7 +1,13 @@
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
+import { Trash2 } from 'lucide-react'
 
-import { useAgentFileQuery, useUpdateAgentMutation } from '@/queries'
+import {
+  useAgentFileQuery,
+  useAgentFilesQuery,
+  useDeleteAgentMutation,
+  useUpdateAgentMutation,
+} from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { ApiValidationError } from '@/api/client'
 import { AgentForm } from '@/components/settings/AgentForm'
@@ -9,6 +15,14 @@ import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { contentEquals } from '@/components/settings/frontmatter'
 import { validateAgentDraft } from '@/components/settings/schema'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 /**
  * Edit an existing agent. Loads the raw .md, renders the hybrid form,
@@ -20,7 +34,9 @@ export function AgentEditorPage() {
   const navigate = useNavigate()
   const push = useToastStore((s) => s.push)
   const { data, isLoading, isError, error, refetch } = useAgentFileQuery(name)
+  const { data: agentsData } = useAgentFilesQuery()
   const updateMut = useUpdateAgentMutation()
+  const deleteMut = useDeleteAgentMutation()
 
   // `draft` is the editor's working copy. Seed it once per `name` with the
   // server content; subsequent saves call `setDraft` explicitly from the
@@ -28,6 +44,7 @@ export function AgentEditorPage() {
   const [draft, setDraft] = useState<string>(() => data?.content ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [mode, setMode] = useState<'form' | 'raw'>('form')
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   // If the query finished *after* mount (common case), adopt its content
   // once. We derive this from state by tracking whether we've ever seeded.
@@ -46,6 +63,8 @@ export function AgentEditorPage() {
   const draftErrors = dirty ? validateAgentDraft(draft) : null
   const invalid = draftErrors !== null
   const firstDraftError = draftErrors ? Object.values(draftErrors)[0] : null
+  const currentSummary = agentsData?.agents.find((agent) => agent.name === name)
+  const isBuiltIn = currentSummary ? isBuiltInAgent(currentSummary.name, currentSummary.role) : false
 
   const handleSave = async () => {
     setSaveError(null)
@@ -66,6 +85,17 @@ export function AgentEditorPage() {
       const msg = err instanceof ApiValidationError ? err.message : String(err)
       setSaveError(msg)
       push({ tone: 'error', title: 'Save failed', description: msg })
+    }
+  }
+
+  const handleDelete = async () => {
+    try {
+      await deleteMut.mutateAsync(name)
+      push({ tone: 'success', title: `Deleted "${name}"` })
+      navigate({ to: '/settings/agents' })
+    } catch (err) {
+      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      push({ tone: 'error', title: 'Delete failed', description: msg })
     }
   }
 
@@ -96,6 +126,7 @@ export function AgentEditorPage() {
           {data && (
             <AgentForm
               initial={data.content}
+              agentPath={name}
               onChange={setDraft}
               disabled={updateMut.isPending}
               isNew={false}
@@ -103,26 +134,75 @@ export function AgentEditorPage() {
               onModeChange={setMode}
             />
           )}
-          {dirty && (
-            <div className="mt-4 flex items-center gap-2 text-xs text-(--color-text-muted)">
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => data && setDraft(data.content)}
-              >
-                Discard changes
-              </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => navigate({ to: '/settings/agents' })}
-              >
-                Leave without saving
-              </Button>
+          <div className="mt-4 flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
+            <div className="flex items-center gap-2">
+              {dirty && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => data && setDraft(data.content)}
+                  >
+                    Discard changes
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => navigate({ to: '/settings/agents' })}
+                  >
+                    Leave without saving
+                  </Button>
+                </>
+              )}
             </div>
-          )}
+            {data && !isBuiltIn && (
+              <Button
+                variant="destructive"
+                size="xs"
+                onClick={() => setDeleteOpen(true)}
+                disabled={deleteMut.isPending}
+              >
+                <Trash2 size={11} aria-hidden="true" />
+                Delete agent
+              </Button>
+            )}
+          </div>
         </div>
       </div>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete agent</DialogTitle>
+            <DialogDescription>
+              Delete `{name}.md` from the agents config directory. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="p-3">
+            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteMut.isPending}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
+}
+
+const NORMAL_BUILT_INS = new Set(['openagentd', 'explorer', 'executor'])
+const CODING_BUILT_INS = new Set(['openagentd', 'coder'])
+
+function isBuiltInAgent(name: string, role: string): boolean {
+  const isCoding = name.startsWith('coding/')
+  const basename = name.split('/').pop() ?? name
+  if (role === 'lead') return basename === 'openagentd'
+  return isCoding ? CODING_BUILT_INS.has(basename) : NORMAL_BUILT_INS.has(basename)
 }

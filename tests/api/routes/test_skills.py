@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from app.api.routes import skills as skills_routes
 from app.api.routes.skills import router as skills_router
 from app.services import team_manager
 
@@ -147,6 +148,7 @@ async def test_list_skills_returns_created_skill(client):
     assert len(skills) == 1
     assert skills[0]["name"] == "research"
     assert skills[0]["valid"] is True
+    assert skills[0]["built_in"] is False
 
 
 @pytest.mark.asyncio
@@ -305,6 +307,14 @@ async def test_delete_skill_success(client):
     resp = await client.delete("/api/skills/research")
     assert resp.status_code == 200
     assert resp.json() == {"name": "research"}
+
+
+@pytest.mark.asyncio
+async def test_delete_builtin_skill_returns_403(client, monkeypatch):
+    monkeypatch.setattr(skills_routes, "_builtin_skill_names", lambda: {"self-healing"})
+    resp = await client.delete("/api/skills/self-healing")
+    assert resp.status_code == 403
+    assert "cannot be deleted" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio

@@ -98,7 +98,7 @@ agent_run explorer            parent_id=lead   ← child of lead span
 agent_run executor            parent_id=lead   ← child of lead span
   └── chat {model}
 
-agent_run consultant          parent_id=lead   ← child of lead span (used sparingly)
+agent_run coder               parent_id=lead   ← child of lead span (coding mode)
   └── chat {model}
 ```
 

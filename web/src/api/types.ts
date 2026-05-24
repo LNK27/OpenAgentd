@@ -307,6 +307,7 @@ export interface AgentSummary {
   description: string | null
   model: string | null
   tools: string[]
+  mcp: string[]
   skills: string[]
   valid: boolean
   error: string | null
@@ -351,6 +352,7 @@ export interface SkillSummary {
   description: string
   valid: boolean
   error: string | null
+  built_in: boolean
 }
 
 export interface SkillDetail {
@@ -359,6 +361,7 @@ export interface SkillDetail {
   content: string
   description: string
   error: string | null
+  built_in: boolean
 }
 
 export interface SkillDeleteResponse {

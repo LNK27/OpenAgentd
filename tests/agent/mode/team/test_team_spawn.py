@@ -149,6 +149,22 @@ class TestLoaderLeadOnly:
         assert set(team.blueprints) == {"executor", "explorer"}
         assert team.blueprints["executor"].description == "writes files"
 
+    def test_builtin_blueprint_description_is_effective_without_user_description(
+        self, tmp_path
+    ):
+        from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
+
+        _write_md(tmp_path / "lead.md", name="lead", role="lead")
+        _write_md(tmp_path / "executor.md", name="executor", role="member")
+
+        team = load_team_from_dir(tmp_path, provider_factory=_make_test_provider)
+
+        assert team is not None
+        assert (
+            team.blueprints["executor"].description
+            == BUILTIN_MEMBER_PROFILES["normal"]["executor"]["description"]
+        )
+
     def test_blueprint_name_with_hash_is_rejected(self, tmp_path):
         _write_md(tmp_path / "lead.md", name="lead", role="lead")
         _write_md(tmp_path / "bad.md", name="executor#1", role="member")

@@ -45,7 +45,7 @@ def test_ensure_workspace_initialized_creates_roots_and_seeds(
         (config_dir / "agents" / "openagentd.md").write_text(
             "---\nmodel: __PROVIDER_MODEL__\n---\n"
         )
-        return SeedResult(["openagentd.md"], [], [], "test")
+        return SeedResult(["openagentd.md"], [], [], [], "test")
 
     monkeypatch.setattr("app.cli.seed.install_seed", install_seed)
 
@@ -158,3 +158,47 @@ def test_install_seed_leaves_runtime_settings_model_empty_for_placeholder(
     settings = (tmp_path / "config" / "settings.yaml").read_text(encoding="utf-8")
     assert "__PROVIDER_MODEL__" not in settings
     assert "model:" not in settings
+
+
+def test_install_seed_prunes_untouched_removed_first_party_agents(
+    tmp_path: Path,
+) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "agents").mkdir()
+    (seed / "skills").mkdir()
+    config = tmp_path / "config"
+    legacy = config / "agents" / "consultant.md"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        "---\nname: consultant\nrole: member\nmodel: codex:gpt-5\n---\n\n"
+        'You are "consultant".\n\nOld shipped body.\n',
+        encoding="utf-8",
+    )
+
+    result = _install_from_local(seed, config, provider_model="codex:gpt-5")
+
+    assert result.agents_removed == ["consultant.md"]
+    assert not legacy.exists()
+
+
+def test_install_seed_keeps_custom_file_with_removed_first_party_name(
+    tmp_path: Path,
+) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "agents").mkdir()
+    (seed / "skills").mkdir()
+    config = tmp_path / "config"
+    custom = config / "agents" / "coding" / "qa.md"
+    custom.parent.mkdir(parents=True)
+    custom.write_text(
+        "---\nname: qa\nrole: member\nmodel: codex:gpt-5\n---\n\n"
+        "Project-specific release checklist owner.\n",
+        encoding="utf-8",
+    )
+
+    result = _install_from_local(seed, config, provider_model="codex:gpt-5")
+
+    assert result.agents_removed == []
+    assert custom.exists()

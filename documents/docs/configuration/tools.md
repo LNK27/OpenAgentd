@@ -77,8 +77,8 @@ A few tools are injected by the framework — do **not** list them in `tools:`.
 | `note` | Lead agents. (Also listable explicitly if a member needs it.) |
 | `team_message` | All team agents. Peer-to-peer messaging. |
 | `team_manage` | Lead agents in team mode. Roster operations. |
-| `team_configure` | Lead agents in team mode. Live frontmatter edits. |
+| `team_configure` | Lead agents in team mode. Runtime capability changes for live members. |
 
 ## MCP tools
 
-Tools exposed by MCP servers configured in `{OPENAGENTD_CONFIG_DIR}/mcp.json` appear under each agent's `mcp:` frontmatter list (one entry per server name). The agent receives every tool that server exposes; there is no per-tool selection within a server. Edits to `mcp.json` and live applies via `POST /api/mcp/apply` are hot-reloaded — see [`api/index.md`](../api/index.md#mcp-server-management).
+Tools exposed by MCP servers configured in `{OPENAGENTD_CONFIG_DIR}/mcp.json` appear under each agent's `mcp:` frontmatter list (one entry per server name). The agent receives every tool that server exposes; there is no per-tool selection within a server. Settings can add, edit, delete, restart, and OAuth-connect MCP servers. Edits to `mcp.json` and live applies via `POST /api/mcp/apply` are hot-reloaded — see [`api/index.md`](../api/index.md#mcp-server-management).
