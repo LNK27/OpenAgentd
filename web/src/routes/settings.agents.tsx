@@ -11,8 +11,16 @@ export function AgentsListPage() {
 
   const rows = useMemo<ListViewRow[]>(() => {
     const agents = data?.agents ?? []
-    const normal = agents.filter((a) => !a.name.startsWith('coding/'))
-    const coding = agents.filter((a) => a.name.startsWith('coding/'))
+    const byLeadFirst = (a: (typeof agents)[number], b: (typeof agents)[number]) => {
+      if (a.role === b.role) return a.name.localeCompare(b.name)
+      return a.role === 'lead' ? -1 : 1
+    }
+    const normal = agents
+      .filter((a) => !a.name.startsWith('coding/'))
+      .sort(byLeadFirst)
+    const coding = agents
+      .filter((a) => a.name.startsWith('coding/'))
+      .sort(byLeadFirst)
 
     const mapAgent = (a: (typeof agents)[number]): ListViewRow => {
       const isLead = a.role === 'lead'
