@@ -305,7 +305,8 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         raise SystemExit(f"smoke test: missing CLI entry at {cli_entry}")
 
     bootstrap = (
-        "import sys, runpy, site; "
+        "import sys, runpy, site, faulthandler; "
+        "faulthandler.dump_traceback_later(55, repeat=False); "
         "_site = sys.argv.pop(1); "
         "_entry = sys.argv.pop(1); "
         "site.addsitedir(_site); "
@@ -333,10 +334,12 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
             env=env,
         )
 
+    smoke_cmd = [str(python_bin), "-c", bootstrap, str(site_packages), str(cli_entry), "serve",
+                 "--host", "127.0.0.1", "--port", "0",
+                 "--handshake", "--generate-token"]
+    print(">> " + " ".join(smoke_cmd))
     proc = subprocess.Popen(
-        [str(python_bin), "-c", bootstrap, str(site_packages), str(cli_entry), "serve",
-         "--host", "127.0.0.1", "--port", "0",
-         "--handshake", "--generate-token"],
+        smoke_cmd,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         env=env, text=True,
         # Cross-platform process group so the smoke test can hard-kill
@@ -345,24 +348,49 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,  # type: ignore[attr-defined]
     )
 
-    # Read stdout from a background thread so the main thread can
+    # Read output from background threads so the main thread can
     # enforce a real wall-clock timeout. ``subprocess.Popen.stdout`` is
     # buffered and blocking; without this scaffold, a child that goes
     # quiet hangs the smoke test indefinitely (observed on Windows GHA
-    # runners).
+    # runners). Drain stderr too so native/runtime warnings don't fill the
+    # pipe and so timeouts include a useful tail for debugging.
     import queue as _queue
     import threading as _threading
 
     stdout_queue: "_queue.Queue[str | None]" = _queue.Queue()
+    stdout_tail: list[str] = []
+    stderr_tail: list[str] = []
+
+    def _append_tail(buf: list[str], line: str, *, limit: int = 200) -> None:
+        buf.append(line.rstrip())
+        if len(buf) > limit:
+            del buf[: len(buf) - limit]
 
     def _drain_stdout() -> None:
         assert proc.stdout is not None
         for line in iter(proc.stdout.readline, ""):
+            _append_tail(stdout_tail, line)
             stdout_queue.put(line)
         stdout_queue.put(None)  # EOF sentinel
 
-    reader = _threading.Thread(target=_drain_stdout, daemon=True)
-    reader.start()
+    def _drain_stderr() -> None:
+        assert proc.stderr is not None
+        for line in iter(proc.stderr.readline, ""):
+            _append_tail(stderr_tail, line)
+
+    stdout_reader = _threading.Thread(target=_drain_stdout, daemon=True)
+    stderr_reader = _threading.Thread(target=_drain_stderr, daemon=True)
+    stdout_reader.start()
+    stderr_reader.start()
+
+    def _timeout_message() -> str:
+        out = "\n".join(stdout_tail[-80:]) or "<empty>"
+        err = "\n".join(stderr_tail[-120:]) or "<empty>"
+        return (
+            "smoke test: handshake did not arrive in 60s\n"
+            f"stdout tail:\n{out}\n"
+            f"stderr tail:\n{err}"
+        )
 
     payload: dict | None = None
     try:
@@ -371,13 +399,13 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         while True:
             remaining = deadline - (time.monotonic() - start)
             if remaining <= 0:
-                raise SystemExit("smoke test: handshake did not arrive in 60s")
+                raise SystemExit(_timeout_message())
             try:
                 line = stdout_queue.get(timeout=remaining)
             except _queue.Empty:
-                raise SystemExit("smoke test: handshake did not arrive in 60s")
+                raise SystemExit(_timeout_message())
             if line is None:
-                err = proc.stderr.read() if proc.stderr else ""
+                err = "\n".join(stderr_tail)
                 raise SystemExit(
                     f"smoke test: sidecar exited before handshake.\nstderr:\n{err[-4000:]}"
                 )

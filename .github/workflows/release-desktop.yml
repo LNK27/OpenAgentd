@@ -29,6 +29,11 @@ on:
         type: choice
         options: [stable, beta, nightly]
         default: stable
+      platform:
+        description: "Platform matrix to build"
+        type: choice
+        options: [all, windows, macos, linux]
+        default: all
 
 permissions:
   contents: write
@@ -45,6 +50,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
       - id: version
@@ -58,6 +64,27 @@ jobs:
           VERSION=$(cat app/version.txt | tr -d '[:space:]')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+      - id: matrix
+        run: |
+          case "${{ github.event.inputs.platform }}" in
+            all)
+              MATRIX='{"include":[{"platform":"macos","arch":"aarch64","runner":"macos-26","rust_target":"aarch64-apple-darwin","tauri_args":"--target aarch64-apple-darwin --verbose"},{"platform":"windows","arch":"x86_64","runner":"windows-latest","rust_target":"x86_64-pc-windows-msvc","tauri_args":"--verbose"},{"platform":"linux","arch":"x86_64","runner":"ubuntu-22.04","rust_target":"x86_64-unknown-linux-gnu","tauri_args":"--bundles deb --verbose"}]}'
+              ;;
+            macos)
+              MATRIX='{"include":[{"platform":"macos","arch":"aarch64","runner":"macos-26","rust_target":"aarch64-apple-darwin","tauri_args":"--target aarch64-apple-darwin --verbose"}]}'
+              ;;
+            windows)
+              MATRIX='{"include":[{"platform":"windows","arch":"x86_64","runner":"windows-latest","rust_target":"x86_64-pc-windows-msvc","tauri_args":"--verbose"}]}'
+              ;;
+            linux)
+              MATRIX='{"include":[{"platform":"linux","arch":"x86_64","runner":"ubuntu-22.04","rust_target":"x86_64-unknown-linux-gnu","tauri_args":"--bundles deb --verbose"}]}'
+              ;;
+            *)
+              echo "Unknown platform: ${{ github.event.inputs.platform }}" >&2
+              exit 1
+              ;;
+          esac
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
@@ -65,45 +92,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: macos
-            arch: aarch64
-            # macos-26 (Tahoe, Apple Silicon, GA) — the title-bar
-            # control geometry that Tao computes from
-            # ``traffic_light_position`` is sensitive to the build-host
-            # SDK on Tahoe. Binaries built on macos-15 render the
-            # traffic lights ~6 pt off-centre when run on macOS 26.
-            # Building on macos-26 itself makes the offset render
-            # correctly on Tahoe (verified locally; see
-            # documents/docs/desktop.md → "Window chrome"). Older
-            # macOS versions (Sonoma 14, Sequoia 15) continue to
-            # render correctly with a Tahoe-built binary because the
-            # SDK's title-bar metrics are forward-compatible.
-            #
-            # Label note: the standard arm64 Tahoe runner is ``macos-26``
-            # (and the larger paid tier is ``macos-26-xlarge``). The
-            # plain ``macos-26-arm64`` label that appears in
-            # actions/runner-images docs is the *image readme name*, not
-            # a runner label — using it queues forever.
-            runner: macos-26
-            rust_target: aarch64-apple-darwin
-            tauri_args: "--target aarch64-apple-darwin --verbose"
-          - platform: windows
-            arch: x86_64
-            runner: windows-latest
-            rust_target: x86_64-pc-windows-msvc
-            tauri_args: "--verbose"
-          - platform: linux
-            arch: x86_64
-            runner: ubuntu-22.04
-            rust_target: x86_64-unknown-linux-gnu
-            # Skip the AppImage bundle on CI for now: linuxdeploy reliably
-            # fails on GitHub-hosted Ubuntu 22.04 runners and Tauri swallows
-            # the underlying error so we can't actually diagnose it from CI
-            # output. The .deb covers Debian/Ubuntu users; tracking AppImage
-            # restoration in documents/techdebts/distribution-coverage.md.
-            tauri_args: "--bundles deb --verbose"
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -340,6 +329,7 @@ jobs:
     needs: [prepare, build]
     name: Publish release
     runs-on: ubuntu-latest
+    if: github.event.inputs.platform == 'all'
     steps:
       - uses: actions/checkout@v6
 

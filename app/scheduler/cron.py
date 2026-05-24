@@ -61,7 +61,7 @@ def next_fire(
         try:
             tz = ZoneInfo(timezone)
         except ZoneInfoNotFoundError:
-            tz = _utc_zi
+            tz = _utc
         from croniter import croniter
 
         base = now.astimezone(tz)
@@ -88,7 +88,6 @@ def validate_cron(expression: str) -> bool:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 _utc = timezone.utc
-_utc_zi = ZoneInfo("UTC")
 
 
 def _ensure_utc(dt: datetime) -> datetime:
