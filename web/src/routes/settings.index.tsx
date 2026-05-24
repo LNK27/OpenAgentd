@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 
 import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
+import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
 import { MarkdownBlock } from '@/utils/markdown'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -188,7 +189,7 @@ function UpdateSettingsCard() {
             <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
               <h3 className="text-sm font-semibold">Release notes</h3>
               <div className="flex items-center gap-2">
-                {releaseNotes?.url ? <a className="rounded-md px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={releaseNotes.url} target="_blank" rel="noopener noreferrer">View in GitHub</a> : null}
+                {releaseNotes?.url ? <a className="rounded-md px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={releaseNotes.url} target="_blank" rel="noopener noreferrer" onClick={(event) => { event.preventDefault(); void openExternalUrl(releaseNotes.url!) }}>View in GitHub</a> : null}
                 <button className="rounded-md px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => setNotesOpen(false)}>Close</button>
               </div>
             </div>

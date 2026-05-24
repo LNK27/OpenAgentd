@@ -230,10 +230,37 @@ def _emit_handshake(*, port: int, token: str | None, version: str) -> None:
     }
     if token:
         payload["token"] = token
-    # Write to stdout with an explicit marker so the parent can ignore
-    # any incidental log lines that arrive first.
+    # Primary channel: stdout with an explicit marker so the parent can
+    # ignore any incidental log lines that arrive first.  This is the
+    # mechanism for macOS, Linux, CI smoke tests, and Docker.
     sys.stdout.write("OPENAGENTD_HANDSHAKE " + json.dumps(payload) + "\n")
     sys.stdout.flush()
+
+    # Secondary channel: if ``OPENAGENTD_HANDSHAKE_FILE`` is set, write
+    # the same JSON payload to that path (atomically via tmp+rename).
+    # The Windows desktop shell uses this because the kernel anonymous
+    # pipe + tokio overlapped-I/O combination has, on at least two user
+    # installs, failed to deliver the stdout-piped handshake line to
+    # the Tauri reader even though ``backend.log`` shows the lifespan
+    # completing normally.  The file path sidesteps the entire pipe
+    # question.
+    handshake_path = os.environ.get("OPENAGENTD_HANDSHAKE_FILE")
+    if handshake_path:
+        try:
+            tmp_path = handshake_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+            # ``os.replace`` is atomic on POSIX and Windows — the parent
+            # will never see a half-written file.
+            os.replace(tmp_path, handshake_path)
+        except OSError as exc:
+            # Best-effort — stdout path is still the primary on platforms
+            # that work.  Log to stderr so it shows up in ``backend.log``.
+            print(
+                f"handshake file write failed path={handshake_path} error={exc}",
+                file=sys.stderr,
+                flush=True,
+            )
 
 
 def _configure_desktop_token(generate_token: bool) -> str | None:
