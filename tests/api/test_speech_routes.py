@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
@@ -15,6 +16,13 @@ def _make_app() -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/speech")
     return app
+
+
+@pytest.fixture(autouse=True)
+def _stub_availability() -> Iterator[None]:
+    """Avoid importing native speech runtime in tests; report available."""
+    with patch("app.api.routes.speech.probe_local_runtime", return_value=(True, None)):
+        yield
 
 
 # ── GET /api/speech/config ────────────────────────────────────────────────────
@@ -32,6 +40,23 @@ def test_config_voice_disabled_when_no_section() -> None:
     assert body["model"] == "local:base"
     assert body["language"] == "auto"
     assert body["max_file_mb"] == 25
+    assert body["availability"] == {"local": "available", "reason": None}
+
+
+def test_config_surfaces_unavailable_local_runtime() -> None:
+    """When the bundled speech runtime cannot load, the UI sees ``unavailable``."""
+    with patch(
+        "app.api.routes.speech.probe_local_runtime",
+        return_value=(False, "DLL load failed while importing onnxruntime"),
+    ):
+        with patch("app.api.routes.speech.load_raw_voice_section", return_value=None):
+            client = TestClient(_make_app())
+            resp = client.get("/api/speech/config")
+
+    assert resp.status_code == 200
+    availability = resp.json()["availability"]
+    assert availability["local"] == "unavailable"
+    assert "DLL load failed" in availability["reason"]
 
 
 def test_config_returns_persisted_values_when_enabled() -> None:
@@ -148,7 +173,7 @@ async def test_transcribe_returns_text_on_success() -> None:
     app = _make_app()
     with patch("app.api.routes.speech.get_voice_config", return_value=cfg):
         with patch(
-            "app.api.routes.speech._transcribe_local", side_effect=_fake_transcribe
+            "app.api.routes.speech.transcribe_local", side_effect=_fake_transcribe
         ):
             async with AsyncClient(
                 transport=ASGITransport(app=app), base_url="http://test"
@@ -175,7 +200,7 @@ async def test_transcribe_returns_empty_text_for_silence() -> None:
 
     app = _make_app()
     with patch("app.api.routes.speech.get_voice_config", return_value=cfg):
-        with patch("app.api.routes.speech._transcribe_local", side_effect=_fake_silent):
+        with patch("app.api.routes.speech.transcribe_local", side_effect=_fake_silent):
             async with AsyncClient(
                 transport=ASGITransport(app=app), base_url="http://test"
             ) as client:
@@ -186,6 +211,37 @@ async def test_transcribe_returns_empty_text_for_silence() -> None:
 
     assert resp.status_code == 200
     assert resp.json() == {"text": ""}
+
+
+@pytest.mark.asyncio
+async def test_transcribe_returns_503_when_local_runtime_unavailable() -> None:
+    """Optional native speech runtime failures do not crash app startup."""
+    from app.agent.speech._config import VoiceConfig
+    from app.services.speech_transcription import SpeechUnavailableError
+    from httpx import ASGITransport, AsyncClient
+
+    cfg = VoiceConfig(provider="local", model="base", language="auto", max_file_mb=25)
+
+    async def _fake_unavailable(
+        _audio_bytes: bytes, _model: str, _language: str
+    ) -> str:
+        raise SpeechUnavailableError("DLL load failed")
+
+    app = _make_app()
+    with patch("app.api.routes.speech.get_voice_config", return_value=cfg):
+        with patch(
+            "app.api.routes.speech.transcribe_local", side_effect=_fake_unavailable
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await client.post(
+                    "/api/speech/transcribe",
+                    files={"file": ("rec.webm", b"fake audio bytes", "audio/webm")},
+                )
+
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
 
 
 def test_transcribe_returns_501_for_unknown_provider() -> None:
@@ -229,6 +285,7 @@ def test_update_config_returns_echoed_body() -> None:
         "model": "local:base",
         "language": "en",
         "max_file_mb": 12,
+        "availability": {"local": "available", "reason": None},
     }
     save_mock.assert_called_once_with(
         enabled=True,

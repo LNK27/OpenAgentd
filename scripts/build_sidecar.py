@@ -314,11 +314,11 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
     )
 
     if os.name == "nt":
-        # The Windows GitHub runner has repeatedly hung waiting for the
-        # uvicorn handshake even when the packaged sidecar is healthy. Keep a
-        # targeted Windows regression check for the pywin32 .pth processing
-        # failure that broke startup, while POSIX runners continue the full
-        # handshake/HTTP smoke below.
+        # Sanity-check that the Windows-only ``.pth`` bootstrap (the v1.22.2
+        # regression) still works before the full handshake. This is fast
+        # and gives a clean failure signal if the sidecar can't even import
+        # its core deps; without it, an import failure would hide behind
+        # the 60s handshake timeout below.
         run(
             [
                 str(python_bin),
@@ -332,7 +332,6 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
             ],
             env=env,
         )
-        return
 
     proc = subprocess.Popen(
         [str(python_bin), "-c", bootstrap, str(site_packages), str(cli_entry), "serve",

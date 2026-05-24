@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class SpeechAvailability(BaseModel):
+    """Probe-result for the optional local speech runtime."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    local: Literal["available", "unavailable", "unknown"]
+    reason: str | None = None
 
 
 class SpeechConfigResponse(BaseModel):
@@ -12,6 +23,7 @@ class SpeechConfigResponse(BaseModel):
     model: str
     language: str
     max_file_mb: int
+    availability: SpeechAvailability
 
 
 class SpeechConfigBody(BaseModel):

@@ -95,7 +95,7 @@ async def test_web_fetch_html_converted_via_markitdown():
         )
     )
 
-    with patch("app.agent.tools.builtin.web.MarkItDown") as mock_mid_class:
+    with patch("markitdown.MarkItDown") as mock_mid_class:
         mock_mid = mock_mid_class.return_value
         mock_mid.convert_stream.return_value.markdown = "# Hello"
 
@@ -117,7 +117,7 @@ async def test_web_fetch_native_markdown_returned_asis():
         )
     )
 
-    with patch("app.agent.tools.builtin.web.MarkItDown") as mock_mid_class:
+    with patch("markitdown.MarkItDown") as mock_mid_class:
         result = await web_fetch(url)
         assert result == "# Native Markdown"
         mock_mid_class.return_value.convert_stream.assert_not_called()
@@ -135,7 +135,7 @@ async def test_web_fetch_no_scheme_prefixed():
         )
     )
 
-    with patch("app.agent.tools.builtin.web.MarkItDown") as mock_mid_class:
+    with patch("markitdown.MarkItDown") as mock_mid_class:
         mock_mid = mock_mid_class.return_value
         mock_mid.convert_stream.return_value.markdown = "Test"
 
@@ -156,7 +156,7 @@ async def test_web_fetch_format_html_uses_markitdown():
         )
     )
 
-    with patch("app.agent.tools.builtin.web.MarkItDown") as mock_mid_class:
+    with patch("markitdown.MarkItDown") as mock_mid_class:
         mock_mid = mock_mid_class.return_value
         mock_mid.convert_stream.return_value.markdown = "Raw"
 
@@ -216,7 +216,7 @@ async def test_web_fetch_cloudflare_retry():
 
     respx.get(url).mock(side_effect=side_effect)
 
-    with patch("app.agent.tools.builtin.web.MarkItDown") as mock_mid_class:
+    with patch("markitdown.MarkItDown") as mock_mid_class:
         mock_mid = mock_mid_class.return_value
         mock_mid.convert_stream.return_value.markdown = "OK"
 
@@ -262,7 +262,7 @@ async def test_web_fetch_timeout_capped_at_120():
         )
     )
 
-    with patch("app.agent.tools.builtin.web.MarkItDown") as mock_mid_class:
+    with patch("markitdown.MarkItDown") as mock_mid_class:
         mock_mid = mock_mid_class.return_value
         mock_mid.convert_stream.return_value.markdown = "hi"
 
