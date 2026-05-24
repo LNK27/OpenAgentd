@@ -1,8 +1,9 @@
 # Comparison
 
-How openagentd positions against the other notable open-source self-hosted agent
-projects. All four are MIT/Apache and self-hosted; the differences are in **what
-they're for** and **how you drive them**.
+The coding-agent landscape exploded in 2025-2026: Claude Code, Codex CLI, Cursor,
+Windsurf, Cline, Aider, opencode, and others all run agents with tools, and most
+have some form of memory now. The real difference is **what workflow they fit
+into**.
 
 > **A note on accuracy.** Rows in our column are sourced from this repo. Rows in
 > competitor columns are sourced from each project's public README and docs as of
@@ -11,45 +12,45 @@ they're for** and **how you drive them**.
 
 ## At a glance
 
-|                       | **openagentd**                       | **[opencode](https://opencode.ai)**     | **[openclaw](https://openclaw.ai)**             | **[hermes-agent](https://hermes-agent.nousresearch.com)** |
-|-----------------------|--------------------------------------|-----------------------------------------|-------------------------------------------------|-----------------------------------------------------------|
-| **Repo**              | `lthoangg/openagentd`                | `anomalyco/opencode`                    | `openclaw/openclaw`                             | `NousResearch/hermes-agent`                               |
-| **License**           | Apache 2.0                           | MIT                                     | MIT                                             | MIT                                                       |
-| **Language**          | Python (FastAPI) + React             | TypeScript                              | TypeScript                                      | Python (uv)                                               |
-| **Niche**             | Personal AI OS with a cockpit UI     | AI coding agent for the terminal        | Personal assistant in your messaging apps       | Self-improving autonomous server agent                    |
-| **Primary surface**   | Web cockpit + REST/SSE API           | TUI + IDE extensions + desktop (beta)   | WhatsApp / Telegram / Slack / Discord / iMessage / Signal | Telegram / Discord / Slack / WhatsApp / Email + CLI       |
+| Row | OpenAgentd | Claude Code | Codex CLI | Cursor / Windsurf | Aider | opencode |
+|---|---|---|---|---|---|---|
+| Maintainer | lthoangg (community) | Anthropic | OpenAI | Cursor / Codeium | Paul Gauthier (community) | anomalyco (community) |
+| License | Apache 2.0 | Proprietary | Proprietary (Apache CLI shell) | Proprietary | Apache 2.0 | MIT |
+| Surface | Desktop app + web cockpit | Terminal (CLI) | Terminal (CLI) | IDE (VS Code fork) | Terminal (CLI) | Terminal (TUI) |
+| Primary use case | Personal AI OS - coding + research + media + scheduling | Repo-scoped coding agent | Repo-scoped coding agent | In-editor pair-programming | Repo-scoped coding agent | Repo-scoped coding agent |
+| Provider lock | 15 providers (BYO key) | Anthropic only | OpenAI only | Anthropic + few, subscription | Many via LiteLLM | Many via Models.dev |
+| Cost model | Your API keys | Anthropic subscription/API | OpenAI subscription/API | $20/mo+ subscription | Your API keys | Your API keys |
 
 ## Capability matrix
 
-|                                | openagentd                                                                                                                | opencode                                                | openclaw                                            | hermes-agent                                            |
-|--------------------------------|---------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------|-----------------------------------------------------|---------------------------------------------------------|
-| **First-party UI**             | Full web app: chat, command palette, tool-call inspector, memory panel, scheduler, split-grid team view, telemetry dashboard | Terminal UI; web/desktop secondary                      | None — chat bubbles in your existing apps          | None — channel-native + terminal                        |
-| **Real-time UX**               | SSE with reconnect-safe replay (close tab → reopen → stream resumes)                                                      | Terminal streaming                                      | Per-message in your messaging app                   | Per-message in your messaging app                       |
-| **Multi-agent**                | Lead + worker teams, async inter-agent mailbox, `team_message` delegation tool, per-agent SSE pane                        | `build` / `plan` agents + `@general` subagent           | Multi-agent routing per channel/peer                | Isolated subagents with own terminals + Python RPC      |
-| **Built-in tools**             | filesystem, shell + bg, web search/fetch, image gen + edit, video gen, scheduler, todos, skills, MCP                      | shell, file edit, glob, grep, web fetch/search, LSP     | browser, canvas, sessions, cron, channel actions   | web, browser, terminal, vision, image gen, TTS, NL cron |
-| **Image / video gen**          | Yes — multi-provider images + edit; native video                                                                          | None native                                             | Via plugin providers                                | Image gen; no native video                              |
-| **MCP servers**                | Hot-reload via `POST /api/mcp/apply`                                                                                      | Local + remote MCP, OAuth, per-agent scoping            | Bundled MCP via plugin keys                         | Hot-reload via `/reload-mcp`                            |
-| **Skills system**              | Markdown SKILL.md, lazy-loaded, hot-reload on mtime, token substitution                                                   | SKILL.md compatible                                     | Markdown skills, ClawHub registry                   | Markdown skills + auto-creates new skills from experience |
-| **Self-modification**          | `self-healing` skill — agent edits its own `.md` (model, tools, skills, MCP)                                              | None documented                                         | Gateway config patching at runtime                  | Modifies persona file; auto-improves skills from use    |
-| **Memory**                     | Editable Karpathy-style wiki (`USER.md`, sources, topics, entities, comparisons, notes)                                   | Session resume + `/compact`; no cross-session knowledge | Per-session persistence, memory tools               | MEMORY.md + USER.md + FTS5 cross-session search         |
-| **Summarization**              | Per-agent rolling-window with configurable summarizer model                                                               | `/compact` command                                      | Implicit per-session                                | `/compress`, `/usage` commands                          |
-| **Provider matrix**            | Gemini, Vertex, OpenAI, OpenRouter, ZAI, NIM, xAI, DeepSeek, Copilot OAuth, Codex OAuth, local proxies, fallback chains   | 75+ via Models.dev / AI SDK                             | 35+ providers, OAuth subscriptions                  | Nous Portal, OpenRouter, NIM, OpenAI, etc.              |
-| **Sandbox**                    | Path denylist + permission system (allow/deny/ask, wildcard rules)                                                        | Granular per-tool permissions, glob patterns            | Docker / SSH / OpenShell backends                   | Multiple backends: local, Docker, SSH, Modal, Daytona   |
-| **Plugins**                    | Python plugins with `tool.before` / `tool.after` hooks, per-agent filtering                                               | TypeScript plugins via SDK                              | Channel/provider/tool/skill plugins                 | Python plugins (memory providers, orchestrators)        |
-| **Telemetry**                  | OpenTelemetry built-in; DuckDB-backed `/telemetry` dashboard; optional OTLP export                                        | None native                                             | Logging-only                                        | Trajectory export for RL training                       |
-| **Logging**                    | Two-tier loguru: app log + per-session JSONL + transcript                                                                 | Session export, structured plugin logging               | App + session logs                                  | Session SQLite + FTS5                                   |
-| **Hot-reload**                 | Drift detection at end of every turn (agent `.md`, `mcp.json`, `SKILL.md`)                                                | Restart for config                                      | Gateway config patching                             | `/reload-mcp` for MCP                                   |
-| **Programmatic access**        | First-class — documented REST + SSE drives the bundled UI                                                                 | Client/server protocol                                  | Gateway/RPC, channel-shaped                         | Gateway, channel-shaped                                 |
-| **Embed in your app**          | Yes — hit the API or embed the wheel-bundled web UI                                                                       | Possible via client/server protocol                     | Channel-shaped, not app-shaped                      | Channel-shaped, not app-shaped                          |
-| **Install**                    | `uv tool install openagentd`                                                                                              | `npm i -g opencode-ai` / brew / scoop / curl            | `npm install -g openclaw@latest`                    | `curl ... install.sh \| bash` (uv-based)                |
+| | OpenAgentd | Claude Code | Codex CLI | Cursor / Windsurf | Aider | opencode |
+|---|---|---|---|---|---|---|
+| Native desktop GUI | ✅ OpenAgentd | terminal | terminal | IDE | terminal | terminal |
+| In-app auto-updater | ✅ OpenAgentd | brew/manual | brew/manual | yes (editor) | pip/brew | brew/manual |
+| Watch live tool calls (inspector + arguments + results + diffs in GUI) | ✅ OpenAgentd | terminal text | terminal text | inline in editor | terminal text | TUI |
+| Multi-agent concurrent team view (split pane, lead + workers) | ✅ OpenAgentd | sub-agents (sequential) | — | — | — | build/plan agents |
+| Git-backed `/undo` and `/redo` across chat history | ✅ OpenAgentd | — | — | editor undo | git commits | — |
+| `@file` / `@folder` auto-attach to first turn | ✅ OpenAgentd | manual @ in v0.2+ | — | yes | manual /add | yes |
+| Persistent across reload (close tab → agent keeps running → stream resumes) | ✅ OpenAgentd | session-scoped | session-scoped | editor-scoped | session-scoped | session-scoped |
+| Cross-session memory beyond per-repo `CLAUDE.md` | editable wiki | per-repo `CLAUDE.md` | — | project rules | per-repo conventions | — |
+| Local LLM support (Ollama, etc.) | ✅ first-class | — | — | partial | via LiteLLM | yes |
+| Native image + video generation | ✅ built-in | — | — | — | — | — |
+| Built-in telemetry dashboard | ✅ OpenAgentd | — | — | — | — | — |
+| Scheduling / cron / one-shot | ✅ OpenAgentd | — | — | — | — | — |
+| Voice input (local STT) | ✅ Whisper on-device | — | — | — | — | — |
+| Documented HTTP API to embed | ✅ REST + SSE | — | — | — | — | — |
 
 ## Where openagentd fits
 
-openagentd is a *personal AI assistant OS with a real web cockpit*: a
-long-running on-machine multi-agent system you drive from a polished web app,
-with batteries-included tools, persistent memory, lead+worker teams, and a
-documented HTTP/SSE API you can build your own product on top of.
+OpenAgentd is the *desktop cockpit for local AI agents*. Other tools are coding
+agents that live in your terminal or editor; OpenAgentd is a long-running desktop
+app that runs a team of agents on your hardware, drives your whole workflow
+(code, research, media, scheduling), and shows you every step in a real UI. If
+you want one polished local app to watch what your agents are doing - not a
+coding-only terminal session - start here.
 
-Pick openagentd when you want one polished local app where you drive a team of
-agents and watch what they're doing — not a terminal coding assistant, not a
-chat-app integration, not an unattended server agent.
+## When NOT to pick OpenAgentd
+
+- If you live full-time in a TUI / SSH session and want a single coding agent, Claude Code or Aider are simpler.
+- If you only want in-IDE pair programming with no separate window, Cursor or Windsurf are the right shape.
+- If you want a cloud agent service with no infrastructure, this isn't that.

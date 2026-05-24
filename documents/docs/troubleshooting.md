@@ -2,6 +2,52 @@
 
 Common install and runtime issues. Run `openagentd doctor` first — it surfaces most of these automatically.
 
+## Desktop app (most users)
+
+### macOS — `OpenAgentd.app` is damaged and can't be opened
+
+Gatekeeper is blocking the unsigned app bundle. Use the Homebrew cask instead:
+
+```bash
+brew install --cask lthoangg/tap/openagentd
+```
+
+Or mount the DMG and run the bundled installer:
+
+```bash
+./install.sh
+```
+
+If you dragged the app to `/Applications`, re-run the installer against the installed bundle:
+
+```bash
+./install.sh /Applications/OpenAgentd.app --force
+```
+
+### Windows — SmartScreen `Windows protected your PC`
+
+Click **More info** → **Run anyway** once.
+
+### Linux — AppImage won't launch
+
+Make it executable first:
+
+```bash
+chmod +x OpenAgentd_*_amd64.AppImage
+```
+
+### In-app updater stuck on `Checking...`
+
+Go to **Settings → About → Updates**, click **Cancel**, then try again. If it still hangs, use `brew upgrade --cask openagentd` on macOS or reinstall from the latest release.
+
+### Desktop notifications don't appear
+
+Open **Settings → Notifications**, enable notifications, and send a test notification. Also check the OS permission at **System Settings → Notifications → OpenAgentd**.
+
+## CLI / server (developers)
+
+These troubleshooting steps apply if you're running OpenAgentd as a CLI or server (`openagentd`). If you installed the desktop app, see the Desktop app section above.
+
 ## `command not found: openagentd` after pip install
 
 Make sure your Python scripts directory is on `PATH`. Try `python -m app.cli` as a fallback, or install with `uv tool install openagentd` (which manages PATH for you).

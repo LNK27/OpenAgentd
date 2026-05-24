@@ -2,7 +2,7 @@
 title: System Architecture
 description: C4-model system context, containers, components, in-memory SSE streaming, agent loop, SSE protocol, logging tiers.
 status: stable
-updated: 2026-05-16
+updated: 2026-05-23
 ---
 
 # openagentd Architecture (C4 Model)
@@ -16,18 +16,31 @@ The highest level of abstraction, showing openagentd in its environment.
 C4Context
     title System Context Diagram for openagentd
 
-    Person(user, "User", "A developer or power user interacting via HTTP/SSE.")
-    System(openagentd, "openagentd", "On-machine AI assistant with tool-use, session persistence, and streaming.")
+    Person(user, "User", "Operator on the same machine. Drives the agent via desktop app or web UI.")
+    System(openagentd, "openagentd", "Local on-machine AI assistant. Desktop app (Tauri) + FastAPI sidecar. Multi-agent teams, persistent memory, web cockpit UI.")
 
-    System_Ext(google, "Google Gemini API", "LLM provider via Gemini Developer API.")
-    System_Ext(vertex, "Vertex AI", "LLM provider via Google Cloud Vertex AI (express or normal mode).")
-    System_Ext(zai, "ZAI API", "LLM provider for chat.")
-    System_Ext(web, "World Wide Web", "External resources for search and fetch tools.")
+    System_Boundary(llm_providers, "LLM providers (15)") {
+        System_Ext(anthropic, "Anthropic", "Claude models")
+        System_Ext(gemini, "Google Gemini", "Gemini Developer API")
+        System_Ext(vertex, "Vertex AI", "Google Cloud Vertex AI")
+        System_Ext(openai, "OpenAI", "OpenAI API")
+        System_Ext(openrouter, "OpenRouter", "Model routing")
+        System_Ext(bedrock, "AWS Bedrock", "Bedrock runtime")
+        System_Ext(xai, "xAI", "Grok")
+        System_Ext(deepseek, "DeepSeek", "DeepSeek models")
+        System_Ext(nim, "NVIDIA NIM", "NIM endpoints")
+        System_Ext(zai, "ZAI / GLM", "GLM models")
+        System_Ext(copilot, "GitHub Copilot OAuth", "OAuth provider")
+        System_Ext(codex, "OpenAI Codex OAuth", "OAuth provider")
+        System_Ext(ollama, "Ollama", "Local models")
+        System_Ext(router9, "Router9 (local)", "Local router")
+        System_Ext(cliproxy, "CLIProxy (local)", "Local proxy")
+    }
+
+    System_Ext(web, "Web", "Search & fetch via tools")
 
     Rel(user, openagentd, "Sends messages, receives SSE stream", "HTTP/SSE")
-    Rel(openagentd, google, "Sends prompts, receives completion/tools", "HTTPS/SSE")
-    Rel(openagentd, vertex, "Sends prompts, receives completion/tools", "HTTPS/SSE")
-    Rel(openagentd, zai, "Sends prompts, receives completion/tools", "HTTPS/SSE")
+    Rel(openagentd, llm_providers, "Sends prompts, receives completion/tools", "HTTPS/SSE")
     Rel(openagentd, web, "Searches and fetches content", "HTTPS")
 ```
 
@@ -43,8 +56,9 @@ C4Container
     Person(user, "User", "Browser")
 
     System_Boundary(openagentd_boundary, "openagentd System") {
-        Container(web, "Web Frontend", "React / TypeScript / Vite / Bun", "Browser UI. Connects to backend via REST + SSE. Zustand stores, TanStack Query, streamed markdown rendering.")
-        Container(api, "FastAPI Application", "Python / FastAPI / uvicorn", "Exposes REST + SSE endpoints. Handles session management, agent execution, and response streaming.")
+        Container(desktop, "Desktop shell", "Tauri 2 / Rust", "macOS/Windows/Linux native shell. Bundles + launches the Python sidecar, manages auto-updates (in-app updater, signed payloads), native notifications, and the single-instance lifecycle.")
+        Container(web, "Web Frontend", "React / TypeScript / Vite / Bun", "Browser UI. Command palette, slash commands, tool inspector with diffs, file panel, telemetry dashboard, multi-agent split view. Connects to backend via REST + SSE.")
+        Container(api, "FastAPI Application", "Python / FastAPI / uvicorn", "Exposes REST + SSE endpoints. Handles session management, agent execution, agent loop, hooks, tools, multi-agent teams, memory (wiki + dream), provider fallback, SSE streaming.")
         ContainerDb(db, "Database", "SQLite / SQLModel / Alembic", "Persists chat sessions, messages, summaries, memory facts, and memory events.")
     }
 
@@ -53,6 +67,8 @@ C4Container
 
     Rel(user, web, "Browser interactions", "HTTP/SSE")
     Rel(user, api, "POST /api/team/chat, GET /api/team/stream/{id}", "HTTP (direct)")
+    Rel(desktop, api, "Spawns + supervises sidecar process", "stdio + http")
+    Rel(desktop, web, "Loads bundled UI", "file://")
     Rel(web, api, "POST /api/team/chat, GET /api/team/stream/{id}, REST CRUD", "HTTP/SSE")
     Rel(api, db, "Reads/writes sessions and messages", "SQLModel async")
     Rel(api, llm_providers, "Makes API calls", "httpx")
@@ -84,6 +100,8 @@ C4Component
         Component(provider, "LLM Provider", "app/agent/providers/", "Protocol-compatible provider families: OpenAI-compatible, Gemini-compatible, Anthropic-compatible, plus Bedrock Converse and OAuth/subscription specializations. All implement LLMProviderBase. factory.py:build_provider dispatches a 'provider:model' string.")
         Component(plugins, "Plugins", "app/agent/plugins/", "User-authored .py drop-ins loaded from settings.OPENAGENTD_PLUGINS_DIRS. Loader resolves @plugin functions and Plugin(BaseAgentHook) classes per (agent, role).")
         Component(chat_service, "Chat Service", "app/services/chat_service.py", "Sessions, messages, team-history aggregation, heal_orphaned_tool_calls.")
+        Component(dream, "Dream agent", "app/services/dream.py", "Consolidates session notes into durable wiki pages at idle time. Writes to wiki/topics, wiki/entities, wiki/sources, wiki/comparisons.")
+        Component(scheduler, "Scheduler", "app/services/scheduler.py", "Cron, interval, and one-shot scheduled tasks. Runs via APScheduler with SQLite persistence. Results appear in the UI when the user returns.")
         Component(models, "Models", "app/models/", "SQLModel schemas: ChatSession, SessionMessage, ScheduledTask, etc.")
         Component(schemas, "Schemas", "app/agent/schemas/", "Pydantic wire types: chat.py (messages), agent.py (RunConfig, AgentContext), events.py (SSE).")
         Component(teams, "Agent Teams", "app/agent/mode/team/", "AgentTeam, TeamLead, TeamMember, TeamMailbox, team_message/team_manage/team_configure tools.")

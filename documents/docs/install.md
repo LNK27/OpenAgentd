@@ -1,14 +1,96 @@
 # Install
 
-openagentd ships as a single Python package that includes the pre-built web UI. No Node, no Bun, no separate frontend process — one process, one port.
+OpenAgentd is a desktop app that runs a team of AI agents on your machine. It's open source (Apache 2.0). Install it with one of:
 
-## uv (recommended)
+## Desktop app (recommended)
 
-```bash
-uv tool install openagentd
+A native double-click installer for users who don't want a terminal. The desktop build is a [Tauri 2](https://tauri.app) shell that launches a bundled Python sidecar — same backend, same web UI, no port to remember.
+
+### macOS
+
+The easiest path is the Homebrew cask:
+
+```sh
+brew install --cask lthoangg/tap/openagentd
 ```
 
-Installs `openagentd` into an isolated tool venv managed by [uv](https://docs.astral.sh/uv/), and puts the binary on your `PATH`. This is the recommended path on every OS.
+The cask handles quarantine + ad-hoc signing automatically on every install and upgrade.
+
+Or grab the latest installer from the [releases page](https://github.com/lthoangg/openagentd/releases/latest):
+
+| Platform | Artefact | Size |
+|---|---|---|
+| macOS (Apple Silicon, 11+) | `OpenAgentd_*_aarch64.dmg` or `OpenAgentd_*.app.tar.gz` | ~180 MB |
+| Windows 10/11 (x64) | `OpenAgentd_*_x64-setup.exe` (NSIS) or `OpenAgentd_*_x64_en-US.msi` | ~150 MB |
+| Linux (x64) | `OpenAgentd_*_amd64.AppImage` or `OpenAgentd_*_amd64.deb` | ~160 MB |
+
+Mount the `.dmg`, then run the bundled installer:
+
+```sh
+hdiutil attach OpenAgentd_*_aarch64.dmg
+cd /Volumes/OpenAgentd*
+./install.sh               # ad-hoc signs the bundle and exits
+./install.sh --install     # also copies to /Applications
+```
+
+On first launch, **right-click `OpenAgentd.app` → Open** (single-click won't work the first time — that's by design). If you skip `install.sh` and just drag-to-Applications, you'll hit the `"damaged"` error. Re-run `install.sh` against the installed bundle to fix it:
+
+```sh
+./install.sh /Applications/OpenAgentd.app --force
+```
+
+### Windows
+
+Double-click `OpenAgentd_*_x64-setup.exe`. When SmartScreen warns:
+
+1. Click **More info**.
+2. Click **Run anyway**.
+3. Step through the NSIS installer.
+
+The MSI variant (`OpenAgentd_*_x64_en-US.msi`) is for managed deployments (group policy / `msiexec /i ... /quiet`).
+
+### Linux
+
+```sh
+chmod +x OpenAgentd_*_amd64.AppImage
+./OpenAgentd_*_amd64.AppImage            # run directly
+```
+
+Or use the bundled `install.sh` for a launcher entry:
+
+```sh
+./install.sh --install                   # copies to ~/.local/bin, drops a .desktop file
+```
+
+The `.deb` package works on Debian/Ubuntu derivatives: `sudo dpkg -i OpenAgentd_*_amd64.deb`. AppImage is preferred — self-contained, no system-level changes, runs on any glibc 2.28+ distro.
+
+### Why is it unsigned? <a id="desktop-unsigned"></a>
+
+OpenAgentd ships **without** an Apple Developer ID signature or a Windows Authenticode certificate. Both are paid subscriptions ($99/yr Apple, $300+ Windows EV) that we've chosen not to buy yet. The binary is exactly what came out of CI — reproducible from the [`release-desktop.yml`](https://github.com/lthoangg/openagentd/blob/main/.github/workflows/release-desktop.yml) workflow on a public GitHub-hosted runner — but the OS treats it the same as any unsigned executable.
+
+That means:
+
+- **macOS:** Gatekeeper rejects the bundle on first launch with `"OpenAgentd.app" is damaged and can't be opened`. The bundled `install.sh` works around this by stripping the quarantine xattr and ad-hoc signing the app *with your own machine as the signer*. This is the same workaround used by every open-source macOS app you compile yourself.
+- **Windows:** SmartScreen warns `Windows protected your PC` on first launch. Click **More info → Run anyway** once; subsequent launches are silent.
+- **Linux:** No code-signing equivalent — the AppImage / .deb just runs.
+
+The Tauri auto-updater is a separate signing chain. Update payloads are signed with a minisign key we control (public half embedded in the app, private half in GitHub secrets), so even though the OS thinks the app is unsigned, **updates themselves are cryptographically verified**.
+
+### Update
+
+Use **Settings → About → Updates** in the desktop app to check for releases. The updater silently checks every 6 hours, and as of v1.22.0 it also supports notification sounds with a separate **Play sound** toggle in **Settings → Notifications**.
+
+For Homebrew cask installs:
+
+```sh
+brew upgrade --cask openagentd
+```
+
+For CLI users:
+
+```sh
+openagentd update
+```
 
 ## pipx
 
@@ -26,110 +108,31 @@ pip install --user openagentd
 
 Works on Linux distros and Python builds without [PEP 668](https://peps.python.org/pep-0668/) protection. On **macOS Homebrew Python**, **Debian/Ubuntu system Python**, and most modern distros, `pip install` will refuse with an `externally-managed-environment` error — use `uv tool install` or `pipx install` above instead, or create a venv first.
 
-## Homebrew (macOS / Linux)
+## CLI / API server
+
+Use this if you already live in a terminal or want the server build:
 
 ```bash
+uv tool install openagentd
+pipx install openagentd
+pip install --user openagentd
 brew install lthoangg/tap/openagentd
+curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh   # zero-setup: bootstraps uv, then installs
 ```
 
-The `lthoangg/tap/` prefix auto-taps the formula on first install — no separate `brew tap` step needed. To upgrade:
+The `lthoangg/tap/` prefix auto-taps the formula on first install — no separate `brew tap` step needed. Same isolation model as `uv tool`, slower install. On macOS Homebrew Python, Debian/Ubuntu system Python, and most modern distros, `pip install` may refuse with an `externally-managed-environment` error — use `uv tool install` or `pipx install` instead, or create a venv first.
 
 ```bash
-openagentd upgrade      # via the built-in upgrade command
-# or directly:
-brew upgrade openagentd
+openagentd init   # pick provider + API key, install default agents
+openagentd        # http://localhost:4082
 ```
+
+This gives you the same local API and UI on `http://localhost:4082`. `openagentd init` seeds the default agents and config.
 
 > **Note:** On first install or after a `brew reinstall`, you may see a warning about
 > `Failed changing dylib ID` for the `cryptography` package. This is a cosmetic Homebrew
 > relinking warning — openagentd still works correctly. Run `brew update` before
 > reinstalling to ensure the latest formula is used.
-
-## Desktop app
-
-A native double-click installer for users who don't want a terminal. The desktop build is a [Tauri 2](https://tauri.app) shell that launches a bundled Python sidecar — same backend, same web UI, no port to remember.
-
-Grab the latest installer from the [releases page](https://github.com/lthoangg/openagentd/releases/latest):
-
-| Platform | Artefact | Size |
-|---|---|---|
-| macOS (Apple Silicon, 11+) | `OpenAgentd_*_aarch64.dmg` or `OpenAgentd_*.app.tar.gz` | ~180 MB |
-| Windows 10/11 (x64) | `OpenAgentd_*_x64-setup.exe` (NSIS) or `OpenAgentd_*_x64_en-US.msi` | ~150 MB |
-| Linux (x64) | `OpenAgentd_*_amd64.AppImage` or `OpenAgentd_*_amd64.deb` | ~160 MB |
-
-### Why is it unsigned? <a id="desktop-unsigned"></a>
-
-OpenAgentd ships **without** an Apple Developer ID signature or a Windows Authenticode certificate. Both are paid subscriptions ($99/yr Apple, $300+ Windows EV) that we've chosen not to buy yet. The binary is exactly what came out of CI — reproducible from the [`release-desktop.yml`](https://github.com/lthoangg/openagentd/blob/main/.github/workflows/release-desktop.yml) workflow on a public GitHub-hosted runner — but the OS treats it the same as any unsigned executable.
-
-That means:
-
-- **macOS:** Gatekeeper rejects the bundle on first launch with `"OpenAgentd.app" is damaged and can't be opened`. The bundled `install.sh` works around this by stripping the quarantine xattr and ad-hoc signing the app *with your own machine as the signer*. This is the same workaround used by every open-source macOS app you compile yourself.
-- **Windows:** SmartScreen warns `Windows protected your PC` on first launch. Click **More info → Run anyway** once; subsequent launches are silent.
-- **Linux:** No code-signing equivalent — the AppImage / .deb just runs.
-
-The Tauri auto-updater is a separate signing chain. Update payloads are signed with a minisign key we control (public half embedded in the app, private half in GitHub secrets), so even though the OS thinks the app is unsigned, **updates themselves are cryptographically verified**.
-
-### macOS install
-
-The easiest path is the Homebrew cask — it handles the quarantine + ad-hoc signing automatically on every install and upgrade:
-
-```sh
-brew install --cask lthoangg/tap/openagentd
-# upgrades later: brew upgrade --cask openagentd
-```
-
-The `.dmg` path is for users who don't want Homebrew:
-
-```sh
-# Mount the .dmg, then run the bundled installer from inside the volume.
-hdiutil attach OpenAgentd_*_aarch64.dmg
-cd /Volumes/OpenAgentd*
-./install.sh               # ad-hoc signs the bundle and exits
-./install.sh --install     # also copies to /Applications
-```
-
-On first launch via the `.dmg` path, **right-click `OpenAgentd.app` → Open** (single-click won't work the first time — that's by design). The cask path handles this for you. Subsequent launches are normal.
-
-If you skip `install.sh` and just drag-to-Applications, you'll hit the `"damaged"` error. Re-run `install.sh` against the installed bundle to fix it:
-
-```sh
-./install.sh /Applications/OpenAgentd.app --force
-```
-
-### Windows install
-
-Double-click `OpenAgentd_*_x64-setup.exe`. When SmartScreen warns:
-
-1. Click **More info**.
-2. Click **Run anyway**.
-3. Step through the NSIS installer.
-
-The MSI variant (`OpenAgentd_*_x64_en-US.msi`) is for managed deployments (group policy / `msiexec /i ... /quiet`).
-
-### Linux install
-
-```sh
-chmod +x OpenAgentd_*_amd64.AppImage
-./OpenAgentd_*_amd64.AppImage            # run directly
-```
-
-Or use the bundled `install.sh` for a launcher entry:
-
-```sh
-./install.sh --install                   # copies to ~/.local/bin, drops a .desktop file
-```
-
-The `.deb` package works on Debian/Ubuntu derivatives: `sudo dpkg -i OpenAgentd_*_amd64.deb`. AppImage is preferred — self-contained, no system-level changes, runs on any glibc 2.28+ distro.
-
-### Auto-updates
-
-Pick **OpenAgentd → Check for Updates…** from the menu bar, or use **Settings → About → Updates**, to check the rolling [`latest-desktop/latest.json`](https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json) manifest. OpenAgentd also checks silently after startup and every 6 hours while open.
-
-When a new version is available, the in-app update card downloads it first and then asks for **Install and restart**. The updater verifies the minisign signature before install, shuts down the Python sidecar, and restarts the app. Release notes open inside the app and link back to GitHub.
-
-Desktop notifications are managed in **Settings → Notifications**. They can be toggled off, tested, or muted there; OpenAgentd notifies for completed assistant turns, finished background tasks, and scheduled reminders.
-
-Running OpenAgentd as a CLI server (outside the desktop bundle) instead? Use `openagentd update` from the same terminal that launched the process.
 
 ## Docker
 

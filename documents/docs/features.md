@@ -1,0 +1,423 @@
+---
+title: Features
+description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
+status: stable
+updated: 2026-05-23
+---
+
+# Features
+
+The single source of truth for everything OpenAgentd does. Every feature lists the
+release that introduced it (where known) and links to the deeper doc when one
+exists. When you ship something new, **add it here first** — slides, README,
+[`comparison.md`](./comparison.md), and external copy should cite this page.
+
+> **Headline.** OpenAgentd is the desktop cockpit for local AI agents — a
+> double-clickable app that runs a team of AI agents on your machine, with a
+> real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
+
+**Latest release:** v1.22.0 · May 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.22.0)
+
+---
+
+## How this document is organised
+
+Features are grouped by **pillar** — the same surfaces that drive the product
+narrative on slides and in the README:
+
+1. [The desktop cockpit](#1-the-desktop-cockpit)
+2. [Agents and teams](#2-agents-and-teams)
+3. [The coding workspace](#3-the-coding-workspace)
+4. [Memory and context](#4-memory-and-context)
+5. [Providers and models](#5-providers-and-models)
+6. [Built-in tools](#6-built-in-tools)
+7. [Extension surface](#7-extension-surface)
+8. [Sandbox and permissions](#8-sandbox-and-permissions)
+9. [Observability](#9-observability)
+10. [Voice](#10-voice)
+11. [Distribution and updates](#11-distribution-and-updates)
+12. [Embed and API](#12-embed-and-api)
+
+Conventions used in this document:
+
+- `[v1.X.Y]` — release that shipped the feature (where known).
+- `[since v1.0]` — present in the v1 line; no precise version known.
+- *(beta)* — experimental, may change. *(deprecated)* — removed or replaced.
+- Indented sub-bullets are user-visible details, not separate features.
+
+---
+
+## 1. The desktop cockpit
+
+The product's primary surface. A native double-click app on macOS, Windows, and
+Linux that hosts the same FastAPI sidecar + React UI you would otherwise run
+from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](./web/chrome.md).
+
+- **Native desktop app for macOS, Windows, Linux** `[since v1.0]` — Tauri 2 shell,
+  bundled Python sidecar, one process, one port, no terminal required.
+- **In-app auto-updater** `[v1.22.0]` — bottom-right update card + Settings → About
+  → Updates, cached downloads, install-and-restart, signed minisign payloads,
+  GitHub release notes rendered inline. Silent check at startup + every 6 hours.
+  Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
+- **Native desktop notifications** `[v1.19.0]` — finished assistant turns,
+  background tasks, scheduled reminders. Per-session context (coding workspace
+  name when available). Settings → Notifications to toggle or send a test.
+- **Notification sounds** `[v1.22.0]` — separate Play sound toggle so you can
+  keep visual notifications on while muting audio.
+- **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,
+  agents, files, slash commands, settings.
+- **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
+  `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
+- **Drag-and-drop files into chat** `[since v1.0]` — images, PDFs, text. Multimodal
+  parts attach to the user message.
+- **Tool-call inspector** `[since v1.0]` — every tool call expands to show
+  arguments, status, results, and inline Git-like diffs for file edits.
+- **Inline diff previews with real line numbers** `[v1.20.0]` — file-changing tools
+  show affected file's actual line numbers (not "starting at 1"), including
+  multiple hunks. Collapsible per file. Delete counts shown in headers.
+- **Persistent timing on every reply + tool call** `[v1.21.0]` — durations stay
+  visible while streaming and after reloading a session.
+- **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
+  folders render orange. Inline auto-attach: mentioned file body is sent on
+  the first turn so the agent doesn't need a round-trip `read` call. Caps at
+  20 mentions / 20 MB / ~32k chars per turn. Persists on queued messages.
+- **Image viewer (full-screen)** `[since v1.0]` — click any generated or attached
+  image to open in a lightbox.
+- **Workspace files panel** `[since v1.0]` — every file the agent reads, writes, or
+  generates appears in the left drawer. Click to preview or download. See
+  [`web/workspace-files.md`](./web/workspace-files.md).
+- **Todos panel** `[since v1.0]` — task board with a topbar progress badge
+  `<finished>/<total>` `[v1.17.0]`. Live invalidation. See [`web/todos.md`](./web/todos.md).
+- **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
+  shapes optimized for small screens. See [`web/mobile.md`](./web/mobile.md).
+- **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
+  window drag region; macOS gets the proper traffic-light overlay.
+
+---
+
+## 2. Agents and teams
+
+OpenAgentd is multi-agent by default. A lead agent drives the conversation and
+spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/teams.md),
+[`agent/loop.md`](./agent/loop.md), [`agent/hooks.md`](./agent/hooks.md).
+
+- **Lead agent + member blueprints** `[since v1.0]` — exactly one `role: lead`
+  agent; any number of `role: member` blueprints in `agents/`. Lead drives
+  every conversation.
+- **Live member spawning** `[since v1.0]` — `team_manage` spawns `executor#1`,
+  `explorer#1`, `consultant#1` on demand. Dismissing only removes the live
+  instance; the blueprint stays. Re-spawning restores the same instance's
+  history within the current lead session.
+- **`team_message` peer delegation** `[since v1.0]` — async mailbox between
+  agents. Lead delegates with `team_message`; the recipient's next turn drains
+  its inbox.
+- **`team_configure`** `[since v1.0]` — grant or revoke a member's skills, tools,
+  or MCP servers at runtime without restarting.
+- **Split-pane live view** `[since v1.0]` — each active agent gets its own pane,
+  streamed independently. See live whose turn is current, who's idle.
+- **Unified team view** `[since v1.0]` — single chronological transcript across
+  the whole team for reading or sharing.
+- **`/continue` resumes interrupted work** `[v1.5.0]` — restores the team's
+  pending plan and resumes streaming from the last turn. Available in the
+  command palette and assistant footer.
+- **Queued follow-up messages** `[v1.12.0, v1.14.0]` — send another message
+  while the agent is still replying; it's queued and dispatched in order. Long
+  queued messages are collapsible while a response runs `[v1.22.0]`.
+- **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
+  and fallback transitions surface live in single-agent and split-pane views.
+  Assistant messages persist the model that actually generated each reply.
+- **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
+  releases queued hidden user messages into visible history so you can
+  `/undo`, edit, or append before resuming.
+- **Session-level model + thinking-level override** `[v1.16.0]` — override the
+  lead agent's model and thinking level for the current chat. History keeps
+  the model used for each user turn.
+- **Coding team variant** `[since v1.0]` — `agents/coding/` ships a separate
+  team (`coding/openagentd`, `coding/executor`, `coding/explorer`,
+  `coding/consultant`) tuned for workspace-aware sessions.
+
+---
+
+## 3. The coding workspace
+
+Coding mode (`/coding`) opens a local project folder and runs a workspace-aware
+team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md).
+
+- **Open any local project folder** `[since v1.0]` — server-local paths only.
+  Coding mode shows file tree + live git diff (including untracked files) in
+  the side drawer.
+- **Persisted coding sessions per workspace** `[v1.18.0]` — `/coding/{session_id}`
+  restores workspace context from the saved session. Bare `/coding` is the
+  launcher or last-workspace restore. New empty sessions exist before the
+  first message.
+- **Workspace sidebar pagination** `[v1.18.0]` — each workspace shows 5 sessions
+  with a bottom *Load more* control; one busy workspace doesn't crowd the others.
+- **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-cockpit).
+- **Slash commands scoped to coding workspaces** `[v1.17.0]` — project-local
+  commands in `.openagentd/commands/**/*.md` and `.opencode/commands/**/*.md`
+  load only when a workspace is attached. Local commands win on name conflict.
+  Cockpit chat stays global-only.
+- **Git-backed `/undo` and `/redo`** `[v1.11.0]` — restore workspace files
+  (created, modified, deleted) to the exact prior state from any prior turn in
+  chat history. Different from editor undo: this is tied to chat turns.
+- **`/init` scaffolds AGENTS.md** `[v1.9.0]` — writes an AGENTS.md at the repo
+  root from the workspace.
+- **Inline patch tool for multi-file edits** `[v1.5.0]` — structured patches
+  with multiple hunks, real line numbers, collapsible previews.
+- **Workspace status card** `[v1.18.0]` — empty coding sessions show the
+  workspace path, branch, dirty state, last commit instead of the old
+  agent-selection fallback.
+- **Sessions ≥ 100 messages load completely with scroll preserved** `[v1.9.0]`.
+
+---
+
+## 4. Memory and context
+
+OpenAgentd carries durable, editable memory across sessions. Deeper doc:
+[`agent/memory.md`](./agent/memory.md), [`agent/context.md`](./agent/context.md),
+[`agent/summarization.md`](./agent/summarization.md).
+
+- **`USER.md` auto-injection** `[since v1.0]` — pure YAML durable user facts,
+  injected into every prompt. Identity, preferences, projects, standing context.
+- **Editable wiki memory** `[since v1.0]` — Karpathy-style wiki at
+  `{OPENAGENTD_WIKI_DIR}` with `sources/`, `topics/`, `entities/`,
+  `comparisons/`, `notes/`. Browse and edit from the Wiki panel.
+- **`wiki_search` tool** `[since v1.0]` — explicit search across wiki pages.
+  Pages are not auto-injected — the agent queries them when it decides.
+- **Dream agent (idle consolidation)** `[since v1.0]` — runs at idle, reads
+  notes + recent sessions, promotes durable concepts into wiki pages, maintains
+  `INDEX.md` and `LOG.md`.
+- **`/compact` rolling-window summarization** `[v1.5.0]` — compresses old turns
+  into a single summary message kept in context; UI shows the unabridged
+  conversation. Preserves reasoning and skill/tool context.
+- **Notes** `[since v1.0]` — `note` tool writes append-only daily files at
+  `wiki/notes/{date}.md`. The dream agent reads these.
+- **`AGENTS.md` at repo root** `[v1.9.0]` — written by `/init`; standard
+  repo-scoped agent context file.
+- **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
+  the model that generated each reply (visible in inspector).
+
+---
+
+## 5. Providers and models
+
+Switch providers with one line in your agent config. The product is provider-
+agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/providers.md).
+
+**15 first-class providers:**
+
+| Provider | Config syntax | Auth |
+|---|---|---|
+| Anthropic Claude | `anthropic:claude-sonnet-4-6` | `ANTHROPIC_API_KEY` `[v1.14.0]` |
+| Google Gemini | `googlegenai:gemini-3.1-flash` | `GOOGLE_API_KEY` |
+| Google Vertex AI | `vertexai:gemini-3-flash-preview` | `VERTEXAI_API_KEY` or GCP creds |
+| OpenAI | `openai:gpt-5.5` | `OPENAI_API_KEY` |
+| OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
+| ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
+| xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
+| DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
+| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS default chain |
+| NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
+| GitHub Copilot (OAuth) | `copilot:gpt-5.4-mini` | `openagentd auth copilot` |
+| OpenAI Codex (OAuth) | `codex:gpt-5.5` | `openagentd auth codex` |
+| Router9 (local) | `router9:cc/claude-sonnet-4-5` | `ROUTER9_API_KEY` (optional) |
+| CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional) |
+| Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
+
+- **Auto-fallback chain** `[since v1.0]` — set `fallback_model` in an agent
+  config; rate limits and 5xx errors automatically retry on the fallback.
+- **Fast fallback on long retry-after** `[v1.18.2]` — agents with a configured
+  `fallback_model` skip remaining primary retries when the retry delay ≥ 60s.
+- **Drop-in provider plugins** `[v1.6.0]` — Python files in the configured
+  plugins directory register new providers at startup.
+- **Resilient provider construction** `[v1.17.0]` — missing/unavailable
+  providers no longer block startup; an unconfigured stub surfaces an
+  actionable UI error on first use.
+- **Anthropic-compatible custom endpoints** `[v1.16.0]` — providers needing
+  custom headers or alternate message endpoints are supported.
+- **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
+  built-in OAuth helper.
+
+---
+
+## 6. Built-in tools
+
+Tools the agent can call without any extra configuration. Add more via skills or
+MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
+
+| Category | Tools |
+|---|---|
+| Filesystem | `read`, `write`, `edit`, `patch`, `ls`, `glob`, `grep`, `rm` |
+| Shell | `shell`, `bg` (background processes) |
+| Web | `web_search`, `web_fetch` |
+| Memory | `wiki_search`, `note` |
+| Generation | `generate_image`, `generate_video` |
+| Scheduling | `schedule_task` |
+| Tasks | `todo_manage` |
+| Team coordination | `team_message`, `team_manage`, `team_configure` |
+| Utility | `date`, `skill` |
+
+- **Cross-tool `tool_output_delta` streaming** `[since v1.0]` — long-running
+  tools (shell, web search) stream output to the inspector as they run.
+- **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
+  reads, shell spills) move to disk under `.tool_results/` and the inspector
+  links to them.
+- **`.gitignore`-aware file tools** `[v1.20.1]` — `glob`, `grep`, and workspace
+  file browsing respect `.gitignore` and skip generated directories.
+
+---
+
+## 7. Extension surface
+
+Four orthogonal ways to add capability. Deeper docs:
+[`agent/plugins.md`](./agent/plugins.md), [`configuration/skills.md`](./configuration/skills.md),
+[`configuration.md`](./configuration.md).
+
+- **MCP servers** `[since v1.0]` — any Model Context Protocol server, hot-reloaded
+  via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Includes a
+  bundled MCP installer skill `[v1.8.0]`.
+- **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
+  shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
+  any MCP server in Settings to re-detect.
+- **Skills** `[since v1.0]` — markdown `SKILL.md` files, lazy-loaded, hot-reload
+  on mtime change, token substitution. Compatible with the opencode skill spec.
+- **Plugins** `[v1.6.0]` — Python files dropped into `OPENAGENTD_PLUGINS_DIRS`.
+  Register `@plugin` functions or `Plugin(BaseAgentHook)` classes with
+  `tool.before` / `tool.after` / agent lifecycle hooks. Per `(agent, role)` filter.
+- **Slash commands** `[since v1.0]` — `.md` files with optional frontmatter,
+  available globally or scoped to a coding workspace (`[v1.17.0]`).
+- **Self-healing skill** `[v1.14.0]` — agent edits its own `.md` config (model,
+  tools, skills, MCP) and the runtime picks up the change at end-of-turn.
+
+---
+
+## 8. Sandbox and permissions
+
+Single-user trust model. The host is trusted. The operator is the user. Deeper
+doc: [`configuration/sandbox.md`](./configuration/sandbox.md).
+
+- **Path denylist** `[since v1.0]` — absolute paths anywhere on disk are accepted
+  *unless* they resolve under a denied root (`OPENAGENTD_DATA_DIR`,
+  `OPENAGENTD_STATE_DIR`, `OPENAGENTD_CACHE_DIR`) or match a user-defined glob
+  in `sandbox.yaml`. Symlinks are rejected only when targeting a denied root.
+  Tilde paths are always rejected.
+- **Permission system: allow / deny / ask** `[since v1.0]` — wildcard rule
+  matching per tool. Auto-allow, blocking on user reply, or persistent rules.
+- **Shell command pre-scan** `[since v1.0]` — best-effort path-token scan
+  inside shell commands.
+
+---
+
+## 9. Observability
+
+Everything stays local. No third-party telemetry SaaS. Deeper doc:
+[`observability.md`](./observability.md), [`logging.md`](./logging.md).
+
+- **Built-in telemetry dashboard** `[since v1.0]` — `/telemetry` route in the web
+  UI. Token usage, latency, trace waterfall, per-agent breakdown.
+- **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
+  agent runs, model calls, tool calls. Optional OTLP exporter.
+- **DuckDB-backed query API** `[since v1.0]` — `/api/observability/*` queries
+  the local DuckDB span store.
+- **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,
+  per-session JSONL transcript at `{STATE_DIR}/logs/sessions/{id}/`. Rotated,
+  loguru-based.
+- **Persistent reply/tool timing in UI** `[v1.21.0]` — durations stay after a
+  reload.
+
+---
+
+## 10. Voice
+
+Local Whisper, on-device. Nothing leaves your machine.
+
+- **Mic button in composer** `[since v1.0]` — click to record, click to stop.
+  Transcript is inserted into the chat input for review before sending.
+- **Local Whisper STT** `[since v1.0]` — configurable via `speech.yaml` or
+  Settings → Voice. See [`web/voice-input.md`](./web/voice-input.md).
+
+---
+
+## 11. Distribution and updates
+
+Desktop is primary. CLI / server is the developer path. Docker is for
+self-hosters. Deeper doc: [`install.md`](./install.md).
+
+- **macOS desktop** `[since v1.0]` — Homebrew cask
+  (`brew install --cask lthoangg/tap/openagentd`) or `.dmg` with bundled
+  `install.sh` (ad-hoc signs locally).
+- **Windows desktop** `[since v1.0]` — NSIS `.exe` setup or `.msi` for managed
+  deployments.
+- **Linux desktop** `[since v1.0]` — AppImage (`chmod +x`) or `.deb` for
+  Debian/Ubuntu.
+- **Signed update manifests** `[v1.2.2+]` — minisign-signed `latest.json` at the
+  rolling `latest-desktop` release; verified before install.
+- **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-cockpit).
+- **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
+  `brew install lthoangg/tap/openagentd`.
+- **Docker** `[since v1.0]` — `ghcr.io/lthoangg/openagentd:1.22.0`, plus
+  `docker-compose.yaml` with bind-mounted `data/`, `config/`, `wiki/`,
+  `workspace/`.
+- **Migration imports** `[since v1.0]` — `openagentd migrate openclaw`,
+  `migrate hermes`. Imports identity + context Markdown into one lead agent.
+- **Cross-platform single-instance** `[v1.13.0]` — opening the app twice
+  focuses the existing window instead of launching a duplicate.
+- **Desktop force-reload preserves sidecar state** `[v1.12.0]` — refreshes the
+  web UI without killing the Python sidecar or auth state.
+
+---
+
+## 12. Embed and API
+
+The same HTTP + SSE API drives the bundled web UI. Embed it elsewhere with no
+extra work. Deeper doc: [`api/index.md`](./api/index.md).
+
+- **REST + SSE chat API** `[since v1.0]` — `POST /api/team/chat` is
+  fire-and-forget (returns 202 in <50ms); the agent streams events on
+  `GET /api/team/{session_id}/stream`. Reconnect-safe replay.
+- **SSE event protocol** `[since v1.0]` — typed events: `thinking`, `message`,
+  `tool_call`, `tool_start`, `tool_output_delta`, `tool_end`, `usage`,
+  `inbox`, `agent_status`, `queued_turn_start`, `rate_limit`,
+  `provider_status`, `permission_asked`, `title_update`, `error`, `done`. See
+  [`architecture.md`](./architecture.md).
+- **Mid-turn reconnect** `[since v1.0]` — close the tab, reopen later; the
+  stream replays buffered state then resumes live.
+- **Multi-client streaming** `[since v1.0]` — multiple tabs can watch the same
+  session simultaneously.
+- **Embeddable web UI** `[since v1.0]` — the wheel-bundled UI can be served
+  from the API process or behind your own reverse proxy.
+
+---
+
+## Not yet shipped
+
+Things visibly under development or hinted at in release notes; not in the
+product yet. Keep this list small and honest — it's not the roadmap.
+
+- *(no entries)*
+
+When a feature ships, move it into the right pillar above with its `[vX.Y.Z]`
+tag and link to the relevant doc.
+
+---
+
+## How to update this document
+
+When you cut a release:
+
+1. **For each user-visible change**, find the right pillar (1–12) and add a
+   one-line entry with the `[vX.Y.Z]` tag.
+2. If a pillar doesn't fit, add a new one — but don't shoehorn unrelated work
+   into an existing pillar.
+3. If the change is user-visible, also update:
+   - [`../../README.md`](../../README.md) "What you get" section
+   - [`comparison.md`](./comparison.md) if the new feature lands in the capability matrix
+4. If the change is technical / architectural, link the relevant doc under
+   `documents/docs/` from the entry.
+5. Bump the `updated:` field in the frontmatter to the release date.
+6. If you remove a feature, mark it *(deprecated)* in place for at least one
+   release before deleting the entry.
+
+This document is the **canonical** answer to "what does OpenAgentd do?". Slides,
+README copy, comparison docs, marketing posts, and investor decks should all
+trace their claims back to a line here.
