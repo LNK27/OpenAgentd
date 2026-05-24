@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from unittest.mock import patch
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.scheduler.cron import next_fire, validate_cron
 
@@ -196,6 +197,24 @@ class TestNextFireCron:
             after=after,
         )
         # Falls back to UTC, so next 00:00 UTC after 12:00 is the next day.
+        assert result == datetime(2030, 1, 2, 0, 0, tzinfo=_UTC)
+
+    def test_missing_tzdata_falls_back_to_builtin_utc(self):
+        """Windows sidecar builds may not have IANA tzdata available."""
+        after = datetime(2030, 1, 1, 12, 0, tzinfo=_UTC)
+        with patch(
+            "app.scheduler.cron.ZoneInfo",
+            side_effect=ZoneInfoNotFoundError("No time zone found with key UTC"),
+        ):
+            result = next_fire(
+                "cron",
+                cron_expression="0 0 * * *",
+                every_seconds=None,
+                at_datetime=None,
+                timezone="UTC",
+                after=after,
+            )
+
         assert result == datetime(2030, 1, 2, 0, 0, tzinfo=_UTC)
 
     def test_returns_none_when_cron_expression_missing(self):
