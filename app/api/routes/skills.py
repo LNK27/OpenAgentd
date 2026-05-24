@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 
 from app.api.schemas.skills import (
@@ -22,6 +24,13 @@ router = APIRouter()
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _builtin_skill_names() -> set[str]:
+    root = Path(__file__).resolve().parents[2] / "agent" / "builtin_skills"
+    if not root.is_dir():
+        return set()
+    return {p.name for p in root.iterdir() if p.is_dir() and (p / "SKILL.md").is_file()}
 
 
 def _parse_skill(name: str, content: str) -> tuple[str, str | None]:
@@ -53,12 +62,20 @@ def _parse_skill(name: str, content: str) -> tuple[str, str | None]:
 
 @router.get("")
 async def list_skills() -> SkillListResponse:
+    builtin_names = _builtin_skill_names()
     rows: list[SkillSummary] = []
     for name in agent_fs.list_skills():
         try:
             record = agent_fs.read_skill(name)
         except Exception as exc:
-            rows.append(SkillSummary(name=name, valid=False, error=str(exc)))
+            rows.append(
+                SkillSummary(
+                    name=name,
+                    valid=False,
+                    error=str(exc),
+                    built_in=name in builtin_names,
+                )
+            )
             continue
         desc, err = _parse_skill(name, record.content)
         rows.append(
@@ -67,6 +84,7 @@ async def list_skills() -> SkillListResponse:
                 description=desc,
                 valid=err is None,
                 error=err,
+                built_in=name in builtin_names,
             )
         )
     return SkillListResponse(skills=rows)
@@ -87,6 +105,7 @@ async def get_skill(name: str) -> SkillDetail:
         content=record.content,
         description=desc,
         error=err,
+        built_in=name in _builtin_skill_names(),
     )
 
 
@@ -142,6 +161,10 @@ async def update_skill(name: str, body: SkillWriteRequest) -> SkillDetail:
 
 @router.delete("/{name}")
 async def delete_skill(name: str) -> SkillDeleteResponse:
+    if name in _builtin_skill_names():
+        raise HTTPException(
+            status_code=403, detail=f"Built-in skill '{name}' cannot be deleted."
+        )
     try:
         agent_fs.delete_skill(name)
     except AgentFsNotFoundError as exc:

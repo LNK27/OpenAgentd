@@ -352,6 +352,7 @@ export interface SkillSummary {
   description: string
   valid: boolean
   error: string | null
+  built_in: boolean
 }
 
 export interface SkillDetail {
@@ -360,6 +361,7 @@ export interface SkillDetail {
   content: string
   description: string
   error: string | null
+  built_in: boolean
 }
 
 export interface SkillDeleteResponse {

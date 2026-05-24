@@ -10,6 +10,7 @@ class SkillSummary(BaseModel):
     description: str = ""
     valid: bool = True
     error: str | None = None
+    built_in: bool = False
 
 
 class SkillDetail(BaseModel):
@@ -18,6 +19,7 @@ class SkillDetail(BaseModel):
     content: str
     description: str = ""
     error: str | None = None
+    built_in: bool = False
 
 
 class SkillWriteRequest(BaseModel):

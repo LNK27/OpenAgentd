@@ -20,7 +20,9 @@ export function SkillsListPage() {
         params: { name: s.name },
         active: selected === s.name,
         title: s.name,
-        description: s.description || 'No description',
+        description: s.built_in
+          ? `${s.description || 'No description'} · Built-in`
+          : s.description || 'No description',
         invalidReason: !s.valid ? (s.error ?? 'Invalid configuration') : undefined,
         trailing: (
           <span

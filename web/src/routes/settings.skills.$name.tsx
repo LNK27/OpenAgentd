@@ -143,7 +143,7 @@ export function SkillEditorPage() {
                 </>
               )}
             </div>
-            {data && (
+            {data && !data.built_in && (
               <Button
                 variant="destructive"
                 size="xs"
