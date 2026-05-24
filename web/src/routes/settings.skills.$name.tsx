@@ -1,7 +1,8 @@
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
+import { Trash2 } from 'lucide-react'
 
-import { useSkillFileQuery, useUpdateSkillMutation } from '@/queries'
+import { useDeleteSkillMutation, useSkillFileQuery, useUpdateSkillMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
@@ -9,6 +10,14 @@ import { contentEquals } from '@/components/settings/frontmatter'
 import { validateSkillDraft } from '@/components/settings/schema'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 
 /**
@@ -22,8 +31,10 @@ export function SkillEditorPage() {
   const push = useToastStore((s) => s.push)
   const { data, isLoading, isError, error, refetch } = useSkillFileQuery(name)
   const updateMut = useUpdateSkillMutation()
+  const deleteMut = useDeleteSkillMutation()
   const [draft, setDraft] = useState<string>(() => data?.content ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [seeded, setSeeded] = useState(!!data?.content)
   if (!seeded && data?.content) {
     setSeeded(true)
@@ -54,6 +65,17 @@ export function SkillEditorPage() {
       const msg = err instanceof ApiValidationError ? err.message : String(err)
       setSaveError(msg)
       push({ tone: 'error', title: 'Save failed', description: msg })
+    }
+  }
+
+  const handleDelete = async () => {
+    try {
+      await deleteMut.mutateAsync(name)
+      push({ tone: 'success', title: `Deleted "${name}"` })
+      navigate({ to: '/settings/skills' })
+    } catch (err) {
+      const msg = err instanceof ApiValidationError ? err.message : String(err)
+      push({ tone: 'error', title: 'Delete failed', description: msg })
     }
   }
 
@@ -100,26 +122,65 @@ export function SkillEditorPage() {
               </CardContent>
             </Card>
           )}
-          {dirty && (
-            <div className="mt-4 flex items-center gap-2 text-xs text-(--color-text-muted)">
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => data && setDraft(data.content)}
-              >
-                Discard changes
-              </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => navigate({ to: '/settings/skills' })}
-              >
-                Leave without saving
-              </Button>
+          <div className="mt-4 flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
+            <div className="flex items-center gap-2">
+              {dirty && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => data && setDraft(data.content)}
+                  >
+                    Discard changes
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => navigate({ to: '/settings/skills' })}
+                  >
+                    Leave without saving
+                  </Button>
+                </>
+              )}
             </div>
-          )}
+            {data && (
+              <Button
+                variant="destructive"
+                size="xs"
+                onClick={() => setDeleteOpen(true)}
+                disabled={deleteMut.isPending}
+              >
+                <Trash2 size={11} aria-hidden="true" />
+                Delete skill
+              </Button>
+            )}
+          </div>
         </div>
       </div>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete skill</DialogTitle>
+            <DialogDescription>
+              Delete `{name}` from the skills config directory. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="p-3">
+            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteMut.isPending}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
