@@ -24,10 +24,6 @@ If you dragged the app to `/Applications`, re-run the installer against the inst
 ./install.sh /Applications/OpenAgentd.app --force
 ```
 
-### Windows — SmartScreen `Windows protected your PC`
-
-Click **More info** → **Run anyway** once.
-
 ### Linux — AppImage won't launch
 
 Make it executable first:
@@ -43,30 +39,6 @@ Go to **Settings → About → Updates**, click **Cancel**, then try again. If i
 ### Desktop notifications don't appear
 
 Open **Settings → Notifications**, enable notifications, and send a test notification. Also check the OS permission at **System Settings → Notifications → OpenAgentd**.
-
-### Voice input shows "unavailable" on Windows
-
-Voice transcription bundles a native runtime (`onnxruntime` via `faster_whisper`). If its DLLs can't load, OpenAgentd disables voice instead of failing at startup and **Settings → Voice** reports the runtime as unavailable. The three common causes:
-
-1. **Missing Microsoft Visual C++ Redistributable.** `onnxruntime` requires the 2015–2022 x64 redistributable. Install it from an elevated PowerShell:
-
-   ```powershell
-   winget install --id Microsoft.VCRedist.2015+.x64 -e
-   ```
-
-   Reboot, then restart OpenAgentd.
-
-2. **Windows Defender or third-party AV quarantined a bundled DLL.** Add an exclusion for the install directory (default `C:\Program Files\OpenAgentd`) under **Windows Security → Virus & threat protection → Manage settings → Exclusions → Add an exclusion → Folder**, then reinstall to restore any missing files.
-
-3. **CPU lacks AVX/AVX2.** `onnxruntime` builds for Windows require AVX2. Check from PowerShell:
-
-   ```powershell
-   Get-CimInstance Win32_Processor | Select-Object Name, Caption
-   ```
-
-   On unsupported CPUs, leave voice off; text-only usage is unaffected.
-
-Voice continues to work end-to-end on macOS and Linux without any extra setup.
 
 ## CLI / server (developers)
 
@@ -92,7 +64,7 @@ Install Bun:
 curl -fsSL https://bun.sh/install | bash
 ```
 
-Bun is only needed for development. Production installs (`pip install` / Docker) don't require it.
+Bun is only needed for development. Production installs (`pip install`) don't require it.
 
 ## Server starts but the web UI shows a blank page
 
@@ -116,14 +88,6 @@ Usually means two server instances are running. Run `openagentd stop`, then `ope
 If an MCP server configured with stdio (e.g., using `npx` or `uvx`) fails to start:
 - Make sure the command is installed and available in your terminal.
 - The desktop app automatically resolves your terminal's `PATH` by querying your login shell. If you just installed the tool, click **Restart** on the MCP server in the settings UI to trigger a dynamic re-detection of your `PATH` without restarting the desktop app.
-
-## Docker: `permission denied` on `/data`
-
-The container runs as a non-root user. Make sure the volume mount is writable:
-
-```bash
-docker compose down -v && docker compose up -d
-```
 
 ## Related
 

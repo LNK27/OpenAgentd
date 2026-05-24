@@ -21,8 +21,11 @@ Or grab the latest installer from the [releases page](https://github.com/lthoang
 | Platform | Artefact | Size |
 |---|---|---|
 | macOS (Apple Silicon, 11+) | `OpenAgentd_*_aarch64.dmg` or `OpenAgentd_*.app.tar.gz` | ~180 MB |
-| Windows 10/11 (x64) | `OpenAgentd_*_x64-setup.exe` (NSIS) or `OpenAgentd_*_x64_en-US.msi` | ~150 MB |
 | Linux (x64) | `OpenAgentd_*_amd64.AppImage` or `OpenAgentd_*_amd64.deb` | ~160 MB |
+
+> **Windows desktop is not currently supported.** Builds were removed in
+> v1.23.0; see [`features.md`](./features.md#11-distribution-and-updates). Windows
+> users can run the CLI/server inside WSL2.
 
 Mount the `.dmg`, then run the bundled installer:
 
@@ -38,16 +41,6 @@ On first launch, **right-click `OpenAgentd.app` → Open** (single-click won't w
 ```sh
 ./install.sh /Applications/OpenAgentd.app --force
 ```
-
-### Windows
-
-Double-click `OpenAgentd_*_x64-setup.exe`. When SmartScreen warns:
-
-1. Click **More info**.
-2. Click **Run anyway**.
-3. Step through the NSIS installer.
-
-The MSI variant (`OpenAgentd_*_x64_en-US.msi`) is for managed deployments (group policy / `msiexec /i ... /quiet`).
 
 ### Linux
 
@@ -66,15 +59,14 @@ The `.deb` package works on Debian/Ubuntu derivatives: `sudo dpkg -i OpenAgentd_
 
 ### Why is it unsigned? <a id="desktop-unsigned"></a>
 
-OpenAgentd ships **without** an Apple Developer ID signature or a Windows Authenticode certificate. Both are paid subscriptions ($99/yr Apple, $300+ Windows EV) that we've chosen not to buy yet. The binary is exactly what came out of CI — reproducible from the [`release-desktop.yml`](https://github.com/lthoangg/openagentd/blob/main/.github/workflows/release-desktop.yml) workflow on a public GitHub-hosted runner — but the OS treats it the same as any unsigned executable.
+OpenAgentd ships **without** an Apple Developer ID signature. The certificate is a paid subscription ($99/yr) we've chosen not to buy yet. The binary is exactly what came out of CI — reproducible from the [`release-desktop.yml`](https://github.com/lthoangg/openagentd/blob/main/.github/workflows/release-desktop.yml) workflow on a public GitHub-hosted runner — but macOS treats it the same as any unsigned executable.
 
 That means:
 
 - **macOS:** Gatekeeper rejects the bundle on first launch with `"OpenAgentd.app" is damaged and can't be opened`. The bundled `install.sh` works around this by stripping the quarantine xattr and ad-hoc signing the app *with your own machine as the signer*. This is the same workaround used by every open-source macOS app you compile yourself.
-- **Windows:** SmartScreen warns `Windows protected your PC` on first launch. Click **More info → Run anyway** once; subsequent launches are silent.
 - **Linux:** No code-signing equivalent — the AppImage / .deb just runs.
 
-The Tauri auto-updater is a separate signing chain. Update payloads are signed with a minisign key we control (public half embedded in the app, private half in GitHub secrets), so even though the OS thinks the app is unsigned, **updates themselves are cryptographically verified**.
+The Tauri auto-updater is a separate signing chain. Update payloads are signed with a minisign key we control (public half embedded in the app, private half in GitHub secrets), so even though macOS thinks the app is unsigned, **updates themselves are cryptographically verified**.
 
 ### Update
 
@@ -133,47 +125,6 @@ This gives you the same local API and UI on `http://localhost:4082`. `openagentd
 > `Failed changing dylib ID` for the `cryptography` package. This is a cosmetic Homebrew
 > relinking warning — openagentd still works correctly. Run `brew update` before
 > reinstalling to ensure the latest formula is used.
-
-## Docker
-
-```bash
-git clone https://github.com/lthoangg/openagentd.git
-cd openagentd
-cp .env.example .env              # add your API key(s)
-
-docker compose up -d              # pulls and starts on http://localhost:4082
-```
-
-`docker-compose.yaml` bind-mounts four host directories so data is inspectable and portable:
-
-| Host path | Container path | Contents |
-|-----------|---------------|----------|
-| `./data` | `/data` | SQLite DB — **back this up** |
-| `./config` | `/data/config` | `agents/`, `skills/`, `.env`, `mcp.json` |
-| `./wiki` | `/data/wiki` | `USER.md`, knowledge dirs, `notes/` |
-| `./workspace` | `/data/workspace` | Per-session agent workspaces |
-
-The directories are created automatically by Docker on first start. To pre-load agents or skills, populate `./config/agents/` before running `docker compose up`.
-
-Or pull and run without Compose:
-
-```bash
-docker run --env-file .env -p 4082:4082 \
-  -v "$PWD/data:/data" \
-  -v "$PWD/config:/data/config" \
-  -v "$PWD/wiki:/data/wiki" \
-  -v "$PWD/workspace:/data/workspace" \
-  ghcr.io/lthoangg/openagentd
-```
-
-### Building from source (local Docker)
-
-Use `docker-compose.local.yaml` to build the image from your working tree instead of pulling from GHCR:
-
-```bash
-cp .env.example .env              # if not already done
-docker compose -f docker-compose.local.yaml up -d --build
-```
 
 ## From source (development)
 

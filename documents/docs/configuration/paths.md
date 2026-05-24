@@ -129,18 +129,3 @@ Cleanup targets generated, regeneratable artifacts only:
 - old state logs, telemetry files, and OTEL files.
 
 It intentionally does not delete `OPENAGENTD_DATA_DIR`, `OPENAGENTD_CONFIG_DIR`, `OPENAGENTD_WIKI_DIR`, or credential/cache files.
-
-## Docker
-
-The published image pins all path defaults under `/data`:
-
-```
-DATA=/data
-CONFIG=/data/config
-STATE=/data/state
-CACHE=/data/cache
-WORKSPACE=/data/workspace
-WIKI=/data/wiki
-```
-
-`docker-compose.yaml` bind-mounts `data/`, `config/`, `wiki/`, and `workspace/` as separate host directories. See [`install.md`](../install.md) for the full setup.

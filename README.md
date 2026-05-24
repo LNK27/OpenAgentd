@@ -87,7 +87,6 @@ Full capability matrix (incl. Aider + opencode): [`documents/docs/comparison.md`
 | Platform | Artefact | First-launch note |
 |---|---|---|
 | macOS (Apple Silicon) | `brew install --cask lthoangg/tap/openagentd` *or* `OpenAgentd_*_aarch64.dmg` | The cask ad-hoc signs and installs automatically. With the `.dmg`, run the bundled `install.sh` then right-click → **Open**. The app is unsigned — [why](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md#desktop-unsigned). |
-| Windows | `OpenAgentd_*_x64-setup.exe` | SmartScreen warns on first run — click **More info → Run anyway**. |
 | Linux | `OpenAgentd_*_amd64.AppImage` | `chmod +x` the AppImage, or run the bundled `install.sh --install` for a launcher entry. |
 
 macOS — after mounting the `.dmg`:
@@ -106,9 +105,6 @@ Then right-click **OpenAgentd.app → Open** the first time (single-click won't 
 uv tool install openagentd        # recommended
 brew install lthoangg/tap/openagentd
 curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh   # zero-setup: bootstraps uv, then installs
-
-# Windows
-irm https://raw.githubusercontent.com/lthoangg/openagentd/main/install.ps1 | iex
 ```
 
 ```bash
@@ -342,7 +338,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | Section | Contents |
 |---------|----------|
 | [**Features**](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) | **Canonical, version-cited catalogue of every user-visible feature.** Source of truth for slides, docs, and comparisons. |
-| [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | Desktop app first (macOS/Windows/Linux); CLI/uv/pipx/pip, Docker, source. |
+| [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | Desktop app first (macOS/Linux); CLI/uv/pipx/pip, source. |
 | [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs |
 | [CLI reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/cli.md) | Every `openagentd` subcommand |
 | [Configuration overview](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md) | Hub — links into the focused subpages below |

@@ -49,12 +49,13 @@ Conventions used in this document:
 
 ## 1. The desktop cockpit
 
-The product's primary surface. A native double-click app on macOS, Windows, and
+The product's primary surface. A native double-click app on macOS and
 Linux that hosts the same FastAPI sidecar + React UI you would otherwise run
 from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](./web/chrome.md).
 
-- **Native desktop app for macOS, Windows, Linux** `[since v1.0]` — Tauri 2 shell,
+- **Native desktop app for macOS, Linux** `[since v1.0]` — Tauri 2 shell,
   bundled Python sidecar, one process, one port, no terminal required.
+  *(Windows desktop builds dropped in v1.23.0 — see [§11](#11-distribution-and-updates).)*
 - **In-app auto-updater** `[v1.22.0]` — bottom-right update card + Settings → About
   → Updates, cached downloads, install-and-restart, signed minisign payloads,
   GitHub release notes rendered inline. Silent check at startup + every 6 hours.
@@ -340,24 +341,27 @@ Local Whisper, on-device. Nothing leaves your machine.
 
 ## 11. Distribution and updates
 
-Desktop is primary. CLI / server is the developer path. Docker is for
-self-hosters. Deeper doc: [`install.md`](./install.md).
+Desktop is primary. CLI / server is the developer path. Deeper doc:
+[`install.md`](./install.md).
 
 - **macOS desktop** `[since v1.0]` — Homebrew cask
   (`brew install --cask lthoangg/tap/openagentd`) or `.dmg` with bundled
   `install.sh` (ad-hoc signs locally).
-- **Windows desktop** `[since v1.0]` — NSIS `.exe` setup or `.msi` for managed
-  deployments.
 - **Linux desktop** `[since v1.0]` — AppImage (`chmod +x`) or `.deb` for
   Debian/Ubuntu.
+- **Windows desktop** *(deprecated, removed in v1.23.0)* — NSIS `.exe`
+  and `.msi` installers are no longer produced. The Windows leg of
+  `release-desktop.yml` and the `install.ps1` curl-pipe installer were
+  also removed. Windows users can still run the CLI/server via WSL2.
 - **Signed update manifests** `[v1.2.2+]` — minisign-signed `latest.json` at the
   rolling `latest-desktop` release; verified before install.
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-cockpit).
 - **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
   `brew install lthoangg/tap/openagentd`.
-- **Docker** `[since v1.0]` — `ghcr.io/lthoangg/openagentd:1.22.0`, plus
-  `docker-compose.yaml` with bind-mounted `data/`, `config/`, `wiki/`,
-  `workspace/`.
+- **Docker** *(deprecated, removed in v1.23.0)* — the `Dockerfile`,
+  `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
+  no longer maintained. Use the CLI install paths above; revisit if there
+  is concrete self-hoster demand.
 - **Migration imports** `[since v1.0]` — `openagentd migrate openclaw`,
   `migrate hermes`. Imports identity + context Markdown into one lead agent.
 - **Cross-platform single-instance** `[v1.13.0]` — opening the app twice

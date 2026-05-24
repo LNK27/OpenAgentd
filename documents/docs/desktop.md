@@ -9,8 +9,13 @@ updated: 2026-05-16
 
 The desktop app is a **Tauri v2 shell** wrapping the existing FastAPI
 backend as a **Python sidecar**. Non-technical users download a single
-installer (`.dmg`, `.exe`, or `.AppImage`) and double-click to run —
+installer (`.dmg` or `.AppImage`) and double-click to run —
 no Python install, no `uv tool install`, no terminal.
+
+> **Windows builds were removed in v1.23.0.** The Windows-specific details
+> below are retained for historical context and to make it easier to
+> restore Windows support later; they do **not** describe shipping behaviour
+> today. See [`features.md`](./features.md#11-distribution-and-updates).
 
 ## Architecture
 

@@ -9,8 +9,9 @@ Why a separate command?
 
 - ``start`` is for terminal users: backgrounded daemon, fixed port, PID
   file, banner, logs to disk.
-- ``serve`` is for embedding (Tauri, Docker without ``-d``, CI smoke
-  tests): foreground, dynamic port, JSON handshake, parent-death watch.
+- ``serve`` is for embedding (Tauri, CI smoke tests, any
+  foreground-supervised host): foreground, dynamic port, JSON handshake,
+  parent-death watch.
 
 The two never compete: a Tauri sidecar will never need PID-file
 arbitration, and a terminal user will never want the backend's lifecycle
@@ -232,7 +233,7 @@ def _emit_handshake(*, port: int, token: str | None, version: str) -> None:
         payload["token"] = token
     # Primary channel: stdout with an explicit marker so the parent can
     # ignore any incidental log lines that arrive first.  This is the
-    # mechanism for macOS, Linux, CI smoke tests, and Docker.
+    # mechanism for macOS, Linux, and CI smoke tests.
     sys.stdout.write("OPENAGENTD_HANDSHAKE " + json.dumps(payload) + "\n")
     sys.stdout.flush()
 

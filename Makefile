@@ -1,15 +1,9 @@
 # Makefile for openagentd
 
-.PHONY: all up down run dev kill-dev-ports test coverage migrate revision build-web build dist clean help
+.PHONY: all run dev kill-dev-ports test coverage migrate revision build-web build dist clean help
 
 # Default target
 all: test
-
-up: ## Start Docker services
-	docker compose up -d
-
-down: ## Stop Docker services
-	docker compose down
 
 run: ## Start the API server only (no reload, no frontend; :8000)
 	uv run uvicorn app.server:app

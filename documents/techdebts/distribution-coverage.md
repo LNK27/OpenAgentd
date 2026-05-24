@@ -14,9 +14,47 @@ For the channels we **do** ship today, see [`documents/docs/install.md`](../docs
 | PyPI (`pip`, `pipx`, `uv tool install`) | Shipped, automated |
 | Homebrew **formula** (CLI) | Shipped, automated |
 | Homebrew **cask** (macOS app, Apple Silicon) | Shipped, automated |
-| Docker / GHCR | Shipped, automated |
-| `install.sh` / `install.ps1` (curl-pipe) | Shipped, static |
-| Desktop `.dmg` / `.exe` / `.msi` / `.AppImage` / `.deb` | Shipped, automated |
+| `install.sh` (curl-pipe, macOS/Linux) | Shipped, static |
+| Desktop `.dmg` / `.AppImage` / `.deb` | Shipped, automated |
+
+## Recently removed
+
+### Windows desktop (`.exe` / `.msi`) and `install.ps1`
+
+**Status:** Removed in v1.23.0. The Windows leg of
+`release-desktop.yml` produced NSIS `.exe` and `.msi` installers, and
+`install.ps1` bootstrapped `uv` + installed the CLI. Both are gone.
+
+**Why removed:** The unsigned-SmartScreen UX was poor, Windows-specific
+sidecar quirks (Job Object lifetimes, the smoke-test hang documented
+below, pipe buffering) consumed disproportionate maintenance time
+relative to validated demand, and the team had no concrete user
+reports asking for Windows binaries. Windows users can still run the
+CLI/server under WSL2.
+
+**When to revisit:** Concrete user reports requesting Windows desktop
+builds, or before v2 if we want to ship to enterprise Windows
+environments. Restoring requires re-adding the Windows matrix entry,
+the Windows-specific shell handling, and an Authenticode certificate
+to make the install UX acceptable.
+
+### Docker / GHCR
+
+**Status:** Removed in v1.23.0. The `Dockerfile`,
+`docker-compose.yaml`, `docker-compose.local.yaml`, `.dockerignore`,
+and `.github/workflows/docker.yml` are gone. The
+`ghcr.io/lthoangg/openagentd` image is no longer published.
+
+**Why removed:** OpenAgentd's threat model assumes a trusted operator
+on a single machine — agents read/write the host filesystem, run shell
+commands, and expect persistent local state. The container model
+forces awkward bind-mounts of the data/config/wiki/workspace dirs and
+muddies the "your machine, your keys" pitch. We had no validated
+self-hoster demand to justify the maintenance.
+
+**When to revisit:** Multiple concrete deployment requests from
+teams that want a containerised self-hosted instance, or once we have
+a multi-user backend (out of scope today).
 
 ## Deferred
 
@@ -40,37 +78,10 @@ update the cask to drop `depends_on arch: :arm64`.
 
 Until then, the CLI + web cockpit is a sufficient fallback for Intel.
 
-### Scoop bucket (Windows)
+### Scoop bucket / winget (Windows)
 
-**What's missing:** No `scoop install openagentd`. Windows users today
-have two paths: `install.ps1` (CLI only) or manual `.msi`/`.exe`
-download (desktop, SmartScreen warning).
-
-**Cost to add:** New repo `lthoangg/scoop-bucket`, one JSON manifest
-per artefact (CLI and/or desktop), Scoop's `autoupdate` field scrapes
-new releases. ~half a day of work, near-zero ongoing maintenance.
-
-**When worth doing:**
-- After the Homebrew cask lands and we've validated the unsigned-bundle
-  postflight workflow — Scoop bypasses SmartScreen by design so it's
-  the cheapest Windows GUI install path.
-- Pair with a `documents/docs/install.md` update.
-
-### winget (Windows, Microsoft Store)
-
-**What's missing:** No `winget install openagentd`.
-
-**Cost to add:** Submit a manifest PR to
-[`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs)
-per release. Reviewers expect Authenticode-signed binaries; unsigned
-submissions are accepted but the install UX still shows SmartScreen
-warnings.
-
-**When worth doing:**
-- Only after we buy an EV Authenticode certificate (~$300+/yr) or a
-  cheaper OV cert (~$100/yr with longer SmartScreen reputation ramp).
-- Without signing, winget gives us discoverability with no UX
-  improvement — Scoop is the better near-term answer.
+Both are gated on restoring Windows desktop support (see "Recently
+removed" above). Not worth scoping until that decision is reversed.
 
 ### AUR (`openagentd-bin`)
 
@@ -106,36 +117,6 @@ Debian/Ubuntu users in the meantime.
 **When worth doing:** before the next minor release (1.1) — restoring
 AppImage gives us coverage of non-Debian Linux distros (Arch, Fedora,
 openSUSE without rpm conversion) that `.deb` doesn't reach.
-
-### Windows sidecar smoke test (regression at 1.0.5)
-
-**What's missing:** `scripts/build_sidecar.py --no-smoke` is forced on
-the Windows leg of `release-desktop.yml`. The smoke test spawns the
-sidecar and waits for an `OPENAGENTD_HANDSHAKE` line on stdout — on
-Windows GHA runners this reliably hangs past 30 minutes despite the
-60s deadline, even after switching to a threaded `queue.Queue`-based
-stdout drain (so the symptom isn't `readline()` blocking the main
-thread — the child process itself appears to never write anything,
-or its stdout pipe never flushes through to the parent).
-
-macOS and Linux still run the smoke test, so the bundle layout
-invariants (versioned cpython directory, `app/cli/__main__.py` reachable,
-handshake protocol, token-gated middleware) remain exercised every
-release. The Windows bundle's first real integration test is the Tauri
-app launching it.
-
-**Cost to restore:** 1–2 hours. Candidate diagnoses:
-- Spawn the sidecar with `--no-buffer` / `PYTHONUNBUFFERED=1` explicitly
-  in the smoke test environment (we set it on the parent shell but it
-  may not be propagating to the grandchild uvicorn worker).
-- Replace the stdout pipe with a temp file the child writes to and the
-  parent tails — sidesteps any Windows-specific pipe buffering quirk.
-- Run the smoke test in `cmd.exe` rather than `bash` so we use the
-  shell Tauri itself will use to spawn the sidecar at runtime.
-
-**When worth doing:** before any change to the handshake protocol,
-the sidecar bootstrap, or `app/cli/commands/serve.py`. Today, those
-files are stable.
 
 ### Snap / Flatpak
 

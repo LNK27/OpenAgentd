@@ -3,7 +3,6 @@ name: Release Desktop
 # Triggered manually from the Actions tab once a version is tagged.
 # Produces signed (where keys are available) installers for:
 #   - macOS arm64 (.dmg, .app.tar.gz)
-#   - Windows x64 (.exe NSIS installer, .msi)
 #   - Linux x64  (.AppImage, .deb)
 #
 # Outputs are attached to the GitHub Release matching `app/version.txt`
@@ -32,7 +31,7 @@ on:
       platform:
         description: "Platform matrix to build"
         type: choice
-        options: [all, windows, macos, linux]
+        options: [all, macos, linux]
         default: all
 
 permissions:
@@ -68,13 +67,10 @@ jobs:
         run: |
           case "${{ github.event.inputs.platform }}" in
             all)
-              MATRIX='{"include":[{"platform":"macos","arch":"aarch64","runner":"macos-26","rust_target":"aarch64-apple-darwin","tauri_args":"--target aarch64-apple-darwin --verbose"},{"platform":"windows","arch":"x86_64","runner":"windows-latest","rust_target":"x86_64-pc-windows-msvc","tauri_args":"--verbose"},{"platform":"linux","arch":"x86_64","runner":"ubuntu-22.04","rust_target":"x86_64-unknown-linux-gnu","tauri_args":"--bundles deb --verbose"}]}'
+              MATRIX='{"include":[{"platform":"macos","arch":"aarch64","runner":"macos-26","rust_target":"aarch64-apple-darwin","tauri_args":"--target aarch64-apple-darwin --verbose"},{"platform":"linux","arch":"x86_64","runner":"ubuntu-22.04","rust_target":"x86_64-unknown-linux-gnu","tauri_args":"--bundles deb --verbose"}]}'
               ;;
             macos)
               MATRIX='{"include":[{"platform":"macos","arch":"aarch64","runner":"macos-26","rust_target":"aarch64-apple-darwin","tauri_args":"--target aarch64-apple-darwin --verbose"}]}'
-              ;;
-            windows)
-              MATRIX='{"include":[{"platform":"windows","arch":"x86_64","runner":"windows-latest","rust_target":"x86_64-pc-windows-msvc","tauri_args":"--verbose"}]}'
               ;;
             linux)
               MATRIX='{"include":[{"platform":"linux","arch":"x86_64","runner":"ubuntu-22.04","rust_target":"x86_64-unknown-linux-gnu","tauri_args":"--bundles deb --verbose"}]}'
@@ -145,7 +141,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
 
       # ``tauri-cli`` is a single 30 MB prebuilt binary
-      # (``~/.cargo/bin/cargo-tauri`` or ``cargo-tauri.exe`` on Windows).
+      # (``~/.cargo/bin/cargo-tauri``).
       # The naïve flow — install
       # ``cargo-binstall``, then ``binstall --version "^2.0"`` — has
       # two hidden costs:
@@ -170,7 +166,6 @@ jobs:
         with:
           path: |
             ~/.cargo/bin/cargo-tauri
-            ~/.cargo/bin/cargo-tauri.exe
           key: tauri-cli-2.11.1-${{ runner.os }}-${{ runner.arch }}
 
       - name: Install cargo-binstall
@@ -205,12 +200,7 @@ jobs:
       # explicitly here so the Python sidecar build below can pick up
       # app/_web_dist/ before cargo tauri build runs (which would
       # otherwise run beforeBuildCommand a second time, mid-Rust-build).
-      #
-      # ``shell: bash`` is required on Windows: GitHub's default shell
-      # there is PowerShell, which can't parse '\' line continuations
-      # and would die with 'Missing expression after unary operator'.
       - name: Build web UI
-        shell: bash
         run: |
           cd web
           bun install --frozen-lockfile
@@ -219,7 +209,6 @@ jobs:
           cp -r dist/* ../app/_web_dist/
 
       - name: Build Python sidecar bundle
-        shell: bash
         run: |
           python3 scripts/build_sidecar.py \
             --root . \
@@ -254,7 +243,6 @@ jobs:
       # back to the ad-hoc ``signingIdentity: "-"`` from tauri.conf.json.
       - name: Resolve signing env
         id: signing_env
-        shell: bash
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -286,12 +274,10 @@ jobs:
 
       - name: Build Tauri app
         working-directory: desktop/src-tauri
-        shell: bash
         run: cargo tauri build ${{ matrix.tauri_args }}
 
       - name: Collect artefacts
         id: collect
-        shell: bash
         run: |
           mkdir -p _release
           cd desktop/src-tauri/target
@@ -304,16 +290,10 @@ jobs:
           # Match Tauri's actual product bundles. Installers use
           # `{productName}_{version}_{arch}{.lang}.{ext}` (e.g.
           # `OpenAgentd_1.0.6_aarch64.dmg`), while macOS updater
-          # archives use `{productName}.app.tar.gz`. Without the prefix anchor
-          # the NSIS toolchain's installer-helper stubs
-          # (cli-*.exe, gui-*.exe, t*.exe, w*.exe) get vacuumed up too —
-          # they live in `bundle/nsis/` and end in `.exe` but are not
-          # something we want on the release page.
+          # archives use `{productName}.app.tar.gz`.
           find "$BUNDLE_DIR" -type f \( \
             -name 'OpenAgentd_*.dmg' \
             -o -name 'OpenAgentd*.app.tar.gz' -o -name 'OpenAgentd*.app.tar.gz.sig' \
-            -o -name 'OpenAgentd_*.exe' -o -name 'OpenAgentd_*.exe.sig' \
-            -o -name 'OpenAgentd_*.msi' -o -name 'OpenAgentd_*.msi.sig' \
             -o -name 'OpenAgentd_*.AppImage' -o -name 'OpenAgentd_*.AppImage.sig' \
             -o -name 'OpenAgentd_*.deb' \
           \) -print -exec cp {} "$GITHUB_WORKSPACE/_release/" \;
@@ -352,7 +332,7 @@ jobs:
             --artefact-dir _release \
             --out _release/latest.json \
             --require-platform darwin-aarch64 \
-            --require-platform windows-x86_64
+            --require-platform linux-x86_64
 
       - name: Create or update GitHub release
         # Releases land on the shared ``v<X.Y.Z>`` tag. If

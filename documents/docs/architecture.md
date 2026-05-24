@@ -56,7 +56,7 @@ C4Container
     Person(user, "User", "Browser")
 
     System_Boundary(openagentd_boundary, "openagentd System") {
-        Container(desktop, "Desktop shell", "Tauri 2 / Rust", "macOS/Windows/Linux native shell. Bundles + launches the Python sidecar, manages auto-updates (in-app updater, signed payloads), native notifications, and the single-instance lifecycle.")
+        Container(desktop, "Desktop shell", "Tauri 2 / Rust", "macOS/Linux native shell. Bundles + launches the Python sidecar, manages auto-updates (in-app updater, signed payloads), native notifications, and the single-instance lifecycle.")
         Container(web, "Web Frontend", "React / TypeScript / Vite / Bun", "Browser UI. Command palette, slash commands, tool inspector with diffs, file panel, telemetry dashboard, multi-agent split view. Connects to backend via REST + SSE.")
         Container(api, "FastAPI Application", "Python / FastAPI / uvicorn", "Exposes REST + SSE endpoints. Handles session management, agent execution, agent loop, hooks, tools, multi-agent teams, memory (wiki + dream), provider fallback, SSE streaming.")
         ContainerDb(db, "Database", "SQLite / SQLModel / Alembic", "Persists chat sessions, messages, summaries, memory facts, and memory events.")
