@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, fetchReleaseNotes, installUpdate as invokeInstallUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
+import { openExternalUrl } from '@/lib/open-external'
 import { MarkdownBlock } from '@/utils/markdown'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
@@ -150,7 +151,7 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
             <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
               <h2 className="text-sm font-semibold">Release notes</h2>
               <div className="flex items-center gap-2">
-                {notes?.url ? <a className="rounded-md px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={notes.url} target="_blank" rel="noopener noreferrer">View in GitHub</a> : null}
+                {notes?.url ? <a className="rounded-md px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={notes.url} target="_blank" rel="noopener noreferrer" onClick={(event) => { event.preventDefault(); void openExternalUrl(notes.url!) }}>View in GitHub</a> : null}
                 <button className="rounded-md px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => setOpen(false)}>Close</button>
               </div>
             </div>

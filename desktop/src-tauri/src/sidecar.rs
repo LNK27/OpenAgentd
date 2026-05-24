@@ -43,6 +43,12 @@ pub struct Sidecar {
     handshake: Option<Handshake>,
     stdout_reader: Option<BufReader<tokio::process::ChildStdout>>,
     log_path: PathBuf,
+    /// File path the child writes the handshake JSON to.  Used on
+    /// Windows as a fallback when the stdout-piped handshake line
+    /// fails to be delivered to our tokio reader (observed on two
+    /// independent user installs on 1.22.6/1.22.7).
+    #[cfg(windows)]
+    handshake_file: Option<PathBuf>,
 }
 
 impl Sidecar {
@@ -76,6 +82,17 @@ impl Sidecar {
             .context("resolve app log dir")?;
         std::fs::create_dir_all(&log_dir).context("create app log dir")?;
         let log_path = log_dir.join("backend.log");
+
+        // Windows-only: prepare a handshake file path that the child can
+        // write to as a fallback for the stdout-piped handshake line.
+        // We delete any stale copy here so an old payload from a previous
+        // (crashed) launch can't be mistaken for the new run.
+        #[cfg(windows)]
+        let handshake_file = {
+            let path = log_dir.join("handshake.json");
+            let _ = std::fs::remove_file(&path);
+            Some(path)
+        };
 
         let parent_pid = std::process::id();
 
@@ -189,6 +206,14 @@ impl Sidecar {
             .stdout(Stdio::piped())
             .stderr(Stdio::from(stderr_for_child));
 
+        // Windows-only: tell the child to also persist the handshake to
+        // a file.  ``_emit_handshake`` in ``app/cli/commands/serve.py``
+        // checks this env var and writes the JSON atomically (tmp+rename).
+        #[cfg(windows)]
+        if let Some(ref path) = handshake_file {
+            cmd.env("OPENAGENTD_HANDSHAKE_FILE", path.as_os_str());
+        }
+
         // Path resolution is delegated to the Python backend
         // (app.core.paths). It already resolves the XDG-spec directories
         // — ~/.config/openagentd, ~/.local/share/openagentd, etc. — that
@@ -250,18 +275,37 @@ impl Sidecar {
             handshake: None,
             stdout_reader: Some(BufReader::new(stdout)),
             log_path,
+            #[cfg(windows)]
+            handshake_file,
         })
     }
 
     pub async fn read_handshake(&mut self, max_wait: Duration) -> Result<Handshake> {
-        let mut reader = self
+        let reader = self
             .stdout_reader
             .take()
             .ok_or_else(|| anyhow!("stdout already consumed"))?;
         let log_path = self.log_path.clone();
 
-        let parse_task = async {
+        // Wrap the stdout reader in a shared Arc<Mutex<...>> so we can
+        // pass it either to ``parse_task`` (which extracts the handshake
+        // from a stdout line) or to the post-handshake drain task — even
+        // when the file-handshake wins the race on Windows and parse_task
+        // is dropped mid-await without ever spawning its own drain.
+        let reader = std::sync::Arc::new(tokio::sync::Mutex::new(Some(reader)));
+
+        let parse_log_path = log_path.clone();
+        let parse_reader = reader.clone();
+        let parse_task = async move {
+            let mut guard = parse_reader.lock().await;
+            let Some(reader) = guard.as_mut() else {
+                // Drain task already took ownership — parse_task lost
+                // the race, just park forever.
+                std::future::pending::<()>().await;
+                unreachable!();
+            };
             let mut line = String::new();
+            let mut line_count: u64 = 0;
             loop {
                 line.clear();
                 let n = reader
@@ -269,32 +313,126 @@ impl Sidecar {
                     .await
                     .context("read sidecar stdout")?;
                 if n == 0 {
+                    log::warn!(
+                        "sidecar stdout EOF after {line_count} lines without handshake"
+                    );
                     return Err(anyhow!("sidecar exited before handshake"));
                 }
+                line_count += 1;
                 let trimmed = line.trim_end();
-                // Forward non-handshake lines to the log so we don't lose
-                // early startup output.
+                // Diagnostic: log every stdout line we successfully read.
+                // The Windows handshake-delivery bug 1.22.8 ships a fix
+                // for manifests as the child writing the handshake line
+                // but our tokio reader never producing it; this log lets
+                // us tell "we received non-handshake bytes but never the
+                // handshake" from "we received nothing at all".
+                log::info!(
+                    "sidecar stdout line {line_count} ({n} bytes): {trimmed:?}"
+                );
                 if !trimmed.starts_with(HANDSHAKE_PREFIX) {
-                    append_log_line(&log_path, trimmed).await;
+                    append_log_line(&parse_log_path, trimmed).await;
                     continue;
                 }
                 let json = trimmed.trim_start_matches(HANDSHAKE_PREFIX);
                 let hs: Handshake =
                     serde_json::from_str(json).context("parse handshake JSON")?;
-                // After we have the handshake, drain the rest of stdout
-                // into the log file in the background.
-                let log_path_drain = log_path.clone();
-                tokio::spawn(async move {
-                    pipe_lines_to_log(reader, log_path_drain).await;
-                });
                 return Ok(hs);
             }
         };
 
-        let hs = timeout(max_wait, parse_task)
+        // Windows-only secondary channel: poll for the handshake file
+        // the child writes via ``OPENAGENTD_HANDSHAKE_FILE``.  Races
+        // against ``parse_task`` (stdout); whichever delivers first
+        // wins.  This sidesteps the anonymous-pipe + tokio overlapped-I/O
+        // combination that, on at least two user installs, failed to
+        // deliver the stdout-piped handshake line even though the child
+        // had clearly written it (verified by running the same spawn
+        // command manually from PowerShell — which produced the line
+        // instantly).
+        #[cfg(windows)]
+        let file_task = {
+            let file_path = self.handshake_file.clone();
+            let log_path_for_file = log_path.clone();
+            async move {
+                let Some(path) = file_path else {
+                    std::future::pending::<()>().await;
+                    unreachable!();
+                };
+                let mut interval = tokio::time::interval(Duration::from_millis(50));
+                interval.set_missed_tick_behavior(
+                    tokio::time::MissedTickBehavior::Delay,
+                );
+                loop {
+                    interval.tick().await;
+                    match tokio::fs::read_to_string(&path).await {
+                        Ok(content) => {
+                            let trimmed = content.trim();
+                            log::info!(
+                                "sidecar handshake file {} ({} bytes): {trimmed:?}",
+                                path.display(),
+                                content.len()
+                            );
+                            return serde_json::from_str::<Handshake>(trimmed)
+                                .with_context(|| {
+                                    format!(
+                                        "parse handshake JSON from {}",
+                                        path.display()
+                                    )
+                                });
+                        }
+                        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                            continue;
+                        }
+                        Err(err) => {
+                            append_log_line(
+                                &log_path_for_file,
+                                &format!(
+                                    "handshake file read error path={} error={err}",
+                                    path.display()
+                                ),
+                            )
+                            .await;
+                        }
+                    }
+                }
+            }
+        };
+
+        #[cfg(windows)]
+        let race = async {
+            tokio::select! {
+                res = parse_task => {
+                    log::info!("sidecar handshake delivered via stdout");
+                    res
+                }
+                res = file_task => {
+                    log::info!("sidecar handshake delivered via file");
+                    res
+                }
+            }
+        };
+
+        #[cfg(not(windows))]
+        let race = parse_task;
+
+        let hs = timeout(max_wait, race)
             .await
             .map_err(|_| anyhow!("timed out waiting for handshake"))??;
         self.handshake = Some(hs.clone());
+
+        // Drain remaining stdout into backend.log in the background.
+        // On Windows when the file-handshake won the race, parse_task
+        // was cancelled mid-read; we take the reader out of the shared
+        // Mutex and resume draining here.  When parse_task won, it
+        // released its lock cleanly and we still take ownership.
+        let drain_reader = reader.clone();
+        let drain_log_path = log_path.clone();
+        tokio::spawn(async move {
+            if let Some(reader) = drain_reader.lock().await.take() {
+                pipe_lines_to_log(reader, drain_log_path).await;
+            }
+        });
+
         Ok(hs)
     }
 
