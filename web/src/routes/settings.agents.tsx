@@ -1,15 +1,25 @@
-import { useParams } from '@tanstack/react-router'
-import { Crown, Wrench } from 'lucide-react'
-import { useMemo } from 'react'
+import { Link, useParams } from '@tanstack/react-router'
+import { Crown, Plus, Wrench } from 'lucide-react'
+import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { SettingsListView, type ListViewRow } from '@/components/settings/SettingsListView'
 import { useAgentFilesQuery } from '@/queries'
 
 export function AgentsListPage() {
   const { data, isLoading, isError } = useAgentFilesQuery()
   const { name: selected } = useParams({ strict: false }) as { name?: string }
+  const [modeDialogOpen, setModeDialogOpen] = useState(false)
 
-  const rows = useMemo<ListViewRow[]>(() => {
+  const rows: ListViewRow[] = (() => {
     const agents = data?.agents ?? []
     const byLeadFirst = (a: (typeof agents)[number], b: (typeof agents)[number]) => {
       if (a.role === b.role) return a.name.localeCompare(b.name)
@@ -52,14 +62,21 @@ export function AgentsListPage() {
         ? [{ key: 'group-coding', kind: 'group' as const, title: 'Coding' }, ...coding.map(mapAgent)]
         : []),
     ]
-  }, [data?.agents, selected])
+  })()
 
   return (
+    <>
     <SettingsListView
       title="Agents"
       description="Markdown files with YAML frontmatter. Normal and Coding agents are grouped below; built-in OpenAgentd profiles use additive local overrides."
       newTo="/settings/agents/new"
       newLabel="New agent"
+      newAction={
+        <Button size="sm" onClick={() => setModeDialogOpen(true)}>
+          <Plus size={13} aria-hidden="true" />
+          New agent
+        </Button>
+      }
       filterPlaceholder="Filter agents…"
       rows={rows}
       isLoading={isLoading}
@@ -67,5 +84,27 @@ export function AgentsListPage() {
       emptyTitle="No agents yet"
       emptyBody="Define a team member with a model, tools, and a system prompt."
     />
+    <Dialog open={modeDialogOpen} onOpenChange={setModeDialogOpen}>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Create agent</DialogTitle>
+          <DialogDescription>Choose which team directory receives the new agent file.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button render={<Link to="/settings/agents/new" search={{ mode: 'normal' }} />}>
+            Normal
+          </Button>
+          <Button render={<Link to="/settings/agents/new" search={{ mode: 'coding' }} />}>
+            Coding
+          </Button>
+        </div>
+        <DialogFooter className="p-3">
+          <Button type="button" variant="outline" onClick={() => setModeDialogOpen(false)}>
+            Cancel
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

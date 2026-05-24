@@ -35,7 +35,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-import { useMcpServersQuery, useRegistryQuery } from '@/queries'
+import { useAgentFilesQuery, useMcpServersQuery, useRegistryQuery } from '@/queries'
 import { MultiSelect, type MultiSelectOption } from './MultiSelect'
 import { combine, splitFrontmatter, type AgentFrontmatter } from './frontmatter'
 import {
@@ -119,6 +119,7 @@ export function AgentForm({
 
   const registry = useRegistryQuery()
   const mcpServers = useMcpServersQuery()
+  const agentFiles = useAgentFilesQuery()
 
   // Hide ``mcp_<server>_<tool>`` entries from the Tools picker — they are
   // granted en bloc via the MCP server picker below, so showing them in
@@ -145,7 +146,7 @@ export function AgentForm({
   const mcpOptions: MultiSelectOption[] =
     mcpServers.data?.servers.map((s) => {
       const tools = s.tool_names.length
-      const detail = `${s.transport} \u00b7 ${s.state} \u00b7 ${tools} tool${tools === 1 ? '' : 's'}`
+      const detail = `${s.transport} · ${s.state} · ${tools} tool${tools === 1 ? '' : 's'}`
       return {
         value: s.name,
         label: s.name,
@@ -153,6 +154,7 @@ export function AgentForm({
       }
     }) ?? []
 
+  const agentSummary = agentFiles.data?.agents.find((a) => a.name === agentPath)
   const modelOptions = registry.data?.models ?? []
 
   // Form → raw propagation. Runs whenever a form field changes.
@@ -196,6 +198,7 @@ export function AgentForm({
           mcpOptions={mcpOptions}
           modelOptions={modelOptions}
           agentPath={agentPath}
+          effectiveTools={agentSummary?.tools}
           updateFromForm={updateFromForm}
         />
       ) : (
@@ -261,6 +264,7 @@ function FormFields({
   mcpOptions,
   modelOptions,
   agentPath,
+  effectiveTools,
   updateFromForm,
 }: {
   fm: AgentFrontmatter
@@ -272,6 +276,7 @@ function FormFields({
   mcpOptions: MultiSelectOption[]
   modelOptions: { id: string; provider: string; model: string; vision: boolean }[]
   agentPath?: string
+  effectiveTools?: string[]
   updateFromForm: (next: AgentFrontmatter, nextBody: string) => void
 }) {
   // Temperature has a pending state (e.g. "0." while typing) that we need
@@ -300,6 +305,14 @@ function FormFields({
     validValues: validModelIds,
   })
   const hasBuiltInProfile = isBuiltInProfile(fm.name, fm.role, agentPath)
+  const implicitToolNames = new Set(['skill', 'todo_manage', 'schedule_task', 'note'])
+  const builtInTools = (effectiveTools ?? []).filter(
+    (tool) => implicitToolNames.has(tool) || hasBuiltInProfile,
+  ).filter((tool) => !(fm.tools ?? []).includes(tool))
+  const extraToolOptions = (hasBuiltInProfile
+    ? toolOptions.filter((option) => !builtInTools.includes(option.value))
+    : toolOptions
+  ).filter((option) => !implicitToolNames.has(option.value))
 
   const onTempChange = (next: string) => {
     setTempRaw(next)
@@ -483,16 +496,19 @@ function FormFields({
           <Field
             label="Tools"
             hint={
-              hasBuiltInProfile
+              builtInTools.length > 0
                 ? `${(fm.tools ?? []).length} extra selected. Built-in tools are always included.`
-                : `${(fm.tools ?? []).length} selected of ${toolOptions.length} available.`
+                : `${(fm.tools ?? []).length} selected of ${extraToolOptions.length} available.`
             }
           >
+            {builtInTools.length > 0 && (
+              <CapabilityChips label="Built-in tools" values={builtInTools} />
+            )}
             <MultiSelect
-              options={toolOptions}
+              options={extraToolOptions}
               value={fm.tools ?? []}
               onChange={(v) => updateFromForm({ ...fm, tools: v }, body)}
-              placeholder="Pick tools this agent may invoke…"
+              placeholder="Pick extra tools this agent may invoke…"
             />
           </Field>
 
@@ -820,6 +836,26 @@ export function ModelCombobox({
 }
 
 // ── Field wrapper ───────────────────────────────────────────────────────────
+
+function CapabilityChips({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div className="rounded-md border border-(--color-border) bg-(--bg-surface) px-3 py-2">
+      <p className="mb-1.5 text-[11px] font-medium text-(--color-text-muted)">
+        {label}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {values.map((value) => (
+          <span
+            key={value}
+            className="rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text) ring-1 ring-(--color-border)"
+          >
+            {value}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function Field({
   label,

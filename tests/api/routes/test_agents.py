@@ -154,6 +154,8 @@ model: zai:glm-5-turbo
     assert res.status_code == 200
     row = res.json()["agents"][0]
     assert row["description"] is not None
+    assert "skill" in row["tools"]
+    assert {"todo_manage", "schedule_task", "note"}.issubset(row["tools"])
     assert "shell" in row["tools"]
     assert row["mcp"] == []
     assert "self-healing" in row["skills"]
@@ -185,6 +187,8 @@ Extra prompt.
 
     assert res.status_code == 200
     row = res.json()["agents"][0]
+    assert row["tools"].count("skill") == 1
+    assert row["tools"].count("todo_manage") == 1
     assert row["tools"].count("shell") == 1
     assert row["tools"].count("wiki_search") == 1
     assert row["skills"].count("self-healing") == 1
@@ -214,6 +218,7 @@ async def test_registry_returns_catalog(client: AsyncClient):
     tool_names = {t["name"] for t in body["tools"]}
     # A few builtins we know must exist.
     assert {"read", "write", "shell", "date"}.issubset(tool_names)
+    assert {"skill", "todo_manage", "schedule_task", "note"}.isdisjoint(tool_names)
     assert isinstance(body["providers"], list) and body["providers"]
 
 

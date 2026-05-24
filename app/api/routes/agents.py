@@ -97,6 +97,10 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
     API config; callers edit extras, not the expanded runtime prompt.
     """
     data = cfg.model_copy(deep=True)
+    implicit_tools = ["skill"]
+    if data.role == "lead":
+        implicit_tools += ["todo_manage", "schedule_task", "note"]
+    data.tools = [*implicit_tools, *data.tools]
     if data.role == "lead" and data.name == "openagentd":
         from app.agent.builtin_prompts import (
             OPENAGENTD_SKILLS,
@@ -119,6 +123,7 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
             data.tools = list(dict.fromkeys([*profile["tools"], *data.tools]))
             data.skills = list(dict.fromkeys([*profile["skills"], *data.skills]))
             data.mcp = list(dict.fromkeys([*profile["mcp"], *data.mcp]))
+    data.tools = list(dict.fromkeys(data.tools))
     return data
 
 
@@ -240,10 +245,12 @@ async def get_registry() -> RegistryResponse:
     from app.agent.loader import _default_tool_registry
 
     tool_registry = _default_tool_registry()
+    hidden_tools = {"skill", "todo_manage", "schedule_task", "note"}
     tools = sorted(
         (
             ToolCatalogEntry(name=t.name, description=t.description or "")
             for t in tool_registry.values()
+            if t.name not in hidden_tools
         ),
         key=lambda t: t.name,
     )

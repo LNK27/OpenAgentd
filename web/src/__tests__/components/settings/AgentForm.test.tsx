@@ -29,6 +29,10 @@ const registryFixture = {
   tools: [
     { name: 'shell', description: 'Run a shell command' },
     { name: 'read', description: 'Read a file' },
+    { name: 'skill', description: 'Load skill instructions' },
+    { name: 'todo_manage', description: 'Manage tasks' },
+    { name: 'schedule_task', description: 'Schedule reminders' },
+    { name: 'note', description: 'Record notes' },
     // These should be hidden from the Tools picker — they belong to MCP
     // servers and are granted via the MCP picker.
     { name: 'mcp_context7_resolve_library_id', description: 'C7 resolve' },
@@ -69,6 +73,48 @@ const mcpFixture = {
 mock.module('@/queries', () => ({
   useRegistryQuery: () => ({
     data: registryFixture,
+    isLoading: false,
+    isError: false,
+    error: null,
+  }),
+  useAgentFilesQuery: () => ({
+    data: {
+      agents: [
+        {
+          name: 'openagentd',
+          role: 'lead',
+          description: 'Built-in lead',
+          model: 'openai:gpt-5.4',
+          tools: ['skill', 'todo_manage', 'schedule_task', 'note', 'shell', 'read', 'write'],
+          mcp: [],
+          skills: ['self-healing'],
+          valid: true,
+          error: null,
+        },
+        {
+          name: 'helper',
+          role: 'member',
+          description: 'Custom helper',
+          model: 'openai:gpt-5.4',
+          tools: ['skill', 'read'],
+          mcp: [],
+          skills: [],
+          valid: true,
+          error: null,
+        },
+        {
+          name: 'coding/coder',
+          role: 'member',
+          description: 'Built-in coder',
+          model: 'openai:gpt-5.4',
+          tools: ['skill', 'read', 'shell'],
+          mcp: [],
+          skills: [],
+          valid: true,
+          error: null,
+        },
+      ],
+    },
     isLoading: false,
     isError: false,
     error: null,
@@ -186,8 +232,8 @@ describe('AgentForm — Capabilities card', () => {
     const search = screen.getByLabelText('Search options')
     await user.type(search, 'mcp_')
 
-    // The list shows the empty state and the count is 0/2 (the two
-    // remaining non-MCP tools).
+    // The list shows the empty state and the count only includes selectable
+    // non-MCP, non-implicit tools.
     expect(screen.queryByText('mcp_context7_resolve_library_id')).toBeNull()
     expect(screen.queryByText('mcp_context7_get_library_docs')).toBeNull()
     expect(screen.getByText('0/2')).toBeTruthy()
@@ -204,6 +250,54 @@ describe('AgentForm — Capabilities card', () => {
     const listbox = screen.getByRole('listbox')
     expect(within(listbox).getByText('context7')).toBeTruthy()
     expect(within(listbox).getByText('filesystem')).toBeTruthy()
+  })
+
+  it('shows built-in tools separately from extra tool overrides', () => {
+    renderForm(SAMPLE_RAW, 'openagentd')
+
+    const toolsField = fieldFor('Tools')
+    const builtInBox = within(toolsField).getByText('Built-in tools').parentElement
+    if (!builtInBox) throw new Error('missing built-in tools box')
+    expect(within(builtInBox).getByText('write')).toBeTruthy()
+    expect(within(builtInBox).getByText('skill')).toBeTruthy()
+    expect(within(builtInBox).getByText('todo_manage')).toBeTruthy()
+    expect(within(builtInBox).queryByText('shell')).toBeNull()
+    expect(within(builtInBox).queryByText('read')).toBeNull()
+    expect(screen.getByText(/2 extra selected/i)).toBeTruthy()
+  })
+
+  it('shows skill as a built-in tool for custom agents too', async () => {
+    const user = userEvent.setup()
+    renderForm(`---
+name: helper
+role: member
+model: openai:gpt-5.4
+tools:
+  - read
+---
+Custom helper.
+`, 'helper')
+
+    const toolsField = fieldFor('Tools')
+    const builtInBox = within(toolsField).getByText('Built-in tools').parentElement
+    if (!builtInBox) throw new Error('missing built-in tools box')
+    expect(within(builtInBox).getByText('skill')).toBeTruthy()
+
+    await user.click(comboboxIn('Tools'))
+    const listbox = screen.getByRole('listbox')
+    expect(within(listbox).queryByText('skill')).toBeNull()
+  })
+
+  it('does not offer implicit lead-only or skill tools in the extra picker', async () => {
+    const user = userEvent.setup()
+    renderForm(SAMPLE_RAW, 'openagentd')
+
+    await user.click(comboboxIn('Tools'))
+    const listbox = screen.getByRole('listbox')
+    expect(within(listbox).queryByText('skill')).toBeNull()
+    expect(within(listbox).queryByText('todo_manage')).toBeNull()
+    expect(within(listbox).queryByText('schedule_task')).toBeNull()
+    expect(within(listbox).queryByText('note')).toBeNull()
   })
 
   it('shows the picker hint with selected count', () => {

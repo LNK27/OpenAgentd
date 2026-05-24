@@ -69,6 +69,7 @@ export interface SettingsListViewProps {
   /** Route for the primary "+ New" CTA. */
   newTo: NewRoute
   newLabel: string
+  newAction?: ReactNode
   /** Placeholder for the filter input. */
   filterPlaceholder: string
   /** Optional tab strip rendered above the filter input. */
@@ -88,6 +89,7 @@ export function SettingsListView({
   description,
   newTo,
   newLabel,
+  newAction,
   filterPlaceholder,
   tabs,
   rows,
@@ -127,10 +129,12 @@ export function SettingsListView({
               {description}
             </p>
           </div>
-          <Button size="sm" render={<Link to={newTo} />}>
-            <Plus size={13} aria-hidden="true" />
-            {newLabel}
-          </Button>
+          {newAction ?? (
+            <Button size="sm" render={<Link to={newTo} />}>
+              <Plus size={13} aria-hidden="true" />
+              {newLabel}
+            </Button>
+          )}
         </header>
 
         {/* ── Optional tabs ─────────────────────────────────────────────── */}
