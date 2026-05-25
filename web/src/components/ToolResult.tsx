@@ -151,7 +151,7 @@ function ShellResult({ result }: { result: string }) {
 
       {/* stdout / stderr output */}
       {body && (
-        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+        <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
           {body}
         </pre>
       )}
@@ -178,7 +178,7 @@ function FileListResult({ result }: { result: string }) {
       <span className="font-mono text-[10px] text-(--color-text-muted)">
         {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
       </span>
-      <ul className="max-h-64 overflow-auto space-y-0.5">
+      <ul className="space-y-0.5">
         {entries.map((e, i) => (
           <li key={i} className="font-mono text-[11px] leading-relaxed text-(--color-text-2)">
             {e}
@@ -202,7 +202,7 @@ function FileReadResult({ result }: { result: string }) {
       {rangeLabel && (
         <span className="font-mono text-[10px] text-(--color-text-muted)">{rangeLabel}</span>
       )}
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+      <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
         {body}
       </pre>
     </div>
@@ -311,7 +311,7 @@ function GenericResult({ result }: { result: string }) {
       : result
 
   return (
-    <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+    <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
       {display}
     </pre>
   )
