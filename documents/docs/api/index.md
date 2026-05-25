@@ -624,8 +624,12 @@ bytes are fetched separately through the `/media/` proxy above.
 
 - `session_id` must be a valid UUID for session-scoped listing (400 on malformed).
 - Missing workspace directory → `200` with `files: []`.
-- Dotfiles, dot-directories, common generated directories, and root `.gitignore`
-  matches are skipped.
+- `.git/` and common generated directories (`node_modules`, `dist`, `build`,
+  `.venv`, `venv`, `__pycache__`) are always pruned. All other entries —
+  including dot-prefixed ones like `.openagentd/`, `.github/`, `.env.example`
+  — are surfaced unless filtered by the root `.gitignore`. The picker honours
+  `!`-negation, so `.openagentd/*` + `!.openagentd/skills/` re-includes the
+  tracked subtree.
 - Directories, named pipes, sockets, and symlinks whose resolved target escapes
   the workspace root are skipped.
 - Entries are sorted lexicographically; the walk stops at

@@ -80,7 +80,7 @@ Typing `@` (at start of input or after whitespace) opens a picker of workspace f
 | Aspect | Detail |
 |---|---|
 | Trigger | `@` preceded by start-of-string or whitespace. Email-like `user@host` does **not** trigger. |
-| Sources | Files come from `GET /api/team/{sid}/files` (normal mode) or `GET /api/team/workspace/files/list?workspace=…` (`/coding`). Folders are derived from path prefixes client-side. Cached 30s by TanStack Query. |
+| Sources | Files come from `GET /api/team/{sid}/files` (normal mode) or `GET /api/team/workspace/files/list?workspace=…` (`/coding`). Folders are derived from path prefixes client-side. Cached 30s by TanStack Query. Dot-prefixed entries (`.openagentd/skills/…`, `.github/…`, `.env.example`) are tagable when not gitignored — only `.git/` and common generated dirs are hard-excluded; see [API — workspace file listing](../api/index.md#workspace-file-listing). |
 | Ranking | Fuzzy subsequence via `fuzzysort` (so `dockcom` matches `docker-compose.yml`). Directories get a small bonus so `@src` surfaces the `src/` directory above its children. Empty query lists top-level folders alphabetically. |
 | Inserted text | Plain `@path ` for files, `@dir/ ` for directories. The textarea stays plain-text — no structured chips inside the value. |
 | Picker row | A lucide `Folder` or `File` icon, then the path with the parent directory dimmed and the basename in full text colour. Directories show a trailing `/`. |

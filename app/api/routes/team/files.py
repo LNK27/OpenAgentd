@@ -219,12 +219,20 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
     files: list[WorkspaceFileInfo] = []
     truncated = False
 
+    # InputBar @-mention picker policy:
+    #   - Always skip ``.git/`` — VCS internals are huge and never useful to
+    #     reference from a chat composer.
+    #   - Otherwise allow dot-prefixed entries (``.openagentd/``, ``.github/``,
+    #     ``.env.example``, …) and defer the actual filtering to ``.gitignore``.
+    #     This matches what users see in their editor and honours the project's
+    #     ``!`` re-include rules (e.g. ``.openagentd/commands/`` is tracked even
+    #     though ``.openagentd/*`` is ignored).
     for dirpath, dirnames, filenames in os.walk(root):
         current = Path(dirpath)
         dirnames[:] = sorted(
             name
             for name in dirnames
-            if not name.startswith(".")
+            if name != ".git"
             and name not in _SKIPPED_DIR_NAMES
             and not _is_gitignored(
                 (current / name).relative_to(root).as_posix(),
@@ -237,8 +245,6 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
             if len(files) >= _MAX_FILES_LISTED:
                 truncated = True
                 break
-            if filename.startswith("."):
-                continue
             entry = current / filename
             rel = entry.relative_to(root).as_posix()
             if _is_gitignored(rel, is_dir=False, rules=gitignore_rules):
