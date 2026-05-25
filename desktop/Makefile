@@ -69,7 +69,7 @@ dev:
 # without producing a .dmg. Useful for testing handshake, token injection,
 # Job-Object cleanup, and the ``app.cli serve`` entry path.
 #
-# The XDG roots are pinned to ``<repo>/.openagentd/...`` so the bundled
+# The XDG roots are pinned to ``<repo>/.openagentd/dev/...`` so the bundled
 # sidecar shares state (DB, config, wiki, workspace) with ``make dev`` at
 # the repo root. Without these overrides ``APP_ENV=development`` would
 # resolve them relative to the sidecar's cwd (``desktop/src-tauri/``).
@@ -78,12 +78,12 @@ dev-bundled:
 	@$(MAKE) sidecar
 	cd src-tauri && \
 		OPENAGENTD_APP_ENV=development \
-		OPENAGENTD_DATA_DIR="$(ROOT)/.openagentd/data" \
-		OPENAGENTD_CONFIG_DIR="$(ROOT)/.openagentd/config" \
-		OPENAGENTD_STATE_DIR="$(ROOT)/.openagentd/state" \
-		OPENAGENTD_CACHE_DIR="$(ROOT)/.openagentd/cache" \
-		OPENAGENTD_WORKSPACE_DIR="$(ROOT)/.openagentd/workspace" \
-		OPENAGENTD_WIKI_DIR="$(ROOT)/.openagentd/wiki" \
+		OPENAGENTD_DATA_DIR="$(ROOT)/.openagentd/dev/data" \
+		OPENAGENTD_CONFIG_DIR="$(ROOT)/.openagentd/dev/config" \
+		OPENAGENTD_STATE_DIR="$(ROOT)/.openagentd/dev/state" \
+		OPENAGENTD_CACHE_DIR="$(ROOT)/.openagentd/dev/cache" \
+		OPENAGENTD_WORKSPACE_DIR="$(ROOT)/.openagentd/dev/workspace" \
+		OPENAGENTD_WIKI_DIR="$(ROOT)/.openagentd/dev/wiki" \
 		cargo tauri dev -c tauri.dev-bundled.conf.json
 
 build-dev-app:

@@ -35,16 +35,17 @@ def _default_dirs(app_env: str) -> dict[str, Path]:
         ~/.local/state/openagentd            ← state
         ~/.cache/openagentd                  ← cache
 
-    Development (anything else) keeps everything under ``.openagentd/`` in the
-    project root::
+    Development (anything else) keeps runtime state under ``.openagentd/dev/``
+    in the project root so project commands/skills can live directly under
+    ``.openagentd/`` without mixing with local runtime data::
 
-        .openagentd/data/
+        .openagentd/dev/data/
             openagentd.db
-        .openagentd/wiki/
-        .openagentd/workspace/<sid>/uploads/
-        .openagentd/config/
-        .openagentd/state/
-        .openagentd/cache/
+        .openagentd/dev/wiki/
+        .openagentd/dev/workspace/<sid>/uploads/
+        .openagentd/dev/config/
+        .openagentd/dev/state/
+        .openagentd/dev/cache/
     """
     home = Path.home()
     if app_env == "production":
@@ -57,7 +58,8 @@ def _default_dirs(app_env: str) -> dict[str, Path]:
             "state": home / ".local" / "state" / "openagentd",
             "cache": home / ".cache" / "openagentd",
         }
-    root = Path(".openagentd").absolute()
+    root = Path(".openagentd") / "dev"
+    root = root.absolute()
     data = root / "data"
     return {
         "data": data,
@@ -174,7 +176,7 @@ class Settings(BaseSettings):
     DATABASE_URL: SecretStr = SecretStr("")
 
     # Wiki directory — shared wiki store (USER.md, topics/, notes/).
-    # Empty string means "derive from APP_ENV" (→ ``.openagentd/wiki`` in dev,
+    # Empty string means "derive from APP_ENV" (→ ``.openagentd/dev/wiki`` in dev,
     # ``~/.local/share/openagentd-wiki`` in production).
     OPENAGENTD_WIKI_DIR: str = ""
 

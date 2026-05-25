@@ -40,8 +40,9 @@ def app_no_team():
 
 
 @pytest.fixture
-def client(app_no_team):
+def client(app_no_team, monkeypatch):
     """Create test client."""
+    monkeypatch.delenv("OPENAGENTD_DESKTOP_TOKEN", raising=False)
     return TestClient(app_no_team)
 
 

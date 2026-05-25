@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
+from app.agent.artifacts import SESSION_METADATA_DIR, SESSIONS_DIR
 from app.agent.tools.builtin.todo import TODOS_FILENAME
 from app.api.schemas.team import TodoItemResponse, TodosResponse
 from app.core.paths import workspace_dir
@@ -42,7 +43,7 @@ async def get_todos(session_id: str) -> TodosResponse:
     else:
         root = workspace_dir(session_id)
 
-    path = root / ".openagentd" / "sessions" / session_id / TODOS_FILENAME
+    path = root / SESSION_METADATA_DIR / SESSIONS_DIR / session_id / TODOS_FILENAME
     if not path.exists():
         return TodosResponse(todos=[])
     try:
