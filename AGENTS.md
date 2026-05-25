@@ -41,6 +41,21 @@ cd web && bun run test
 
 Full command + style reference: [`documents/docs/guidelines.md`](documents/docs/guidelines.md).
 
+## Manual smoke/debug helpers
+
+`manual/` contains API-driven smoke scripts for live-server debugging (`make run` or `make dev`, default `http://localhost:8000/api`). Prefer these before ad-hoc DB/API probing when investigating a user-reported session or symptom:
+
+```bash
+uv run python -m manual.health
+uv run python -m manual.team_sessions --id <SESSION_ID>
+uv run python -m manual.team_history <SESSION_ID>
+uv run python -m manual.team_timeline <SESSION_ID> --full
+uv run python -m manual.team_sse "message" --session <SESSION_ID>
+uv run python -m manual.queued_injection
+```
+
+See [`manual/AGENTS.md`](manual/AGENTS.md) for the full script catalogue.
+
 ## Code style (summary)
 
 - **Python 3.14+** — `|` unions, `from __future__ import annotations`, strict type hints, Pydantic v2, absolute imports from `app`, loguru `logger.info("event key={}", val)`.
