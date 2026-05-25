@@ -67,6 +67,8 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   keep visual notifications on while muting audio.
 - **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,
   agents, files, slash commands, settings.
+- **Editable session titles** `[v1.X.Y]` — double-click a session card or use its
+  edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
 - **Drag-and-drop files into chat** `[since v1.0]` — images, PDFs, text. Multimodal

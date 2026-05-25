@@ -1,7 +1,8 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { listTeamSessions, deleteTeamSession } from '@/api/client'
-import type { SessionPageResponse } from '@/api/types'
+import { listTeamSessions, deleteTeamSession, updateTeamSessionTitle } from '@/api/client'
+import type { SessionPageResponse, SessionResponse } from '@/api/types'
 import { queryKeys } from './keys'
+import { patchSessionInPageData } from './session-cache'
 
 const PAGE_SIZE = 20
 const CODING_WORKSPACE_PAGE_SIZE = 5
@@ -28,6 +29,17 @@ export function useCodingWorkspaceSessionsQuery(workspace: string, enabled = tru
       lastPage.has_more ? lastPage.next_cursor : undefined,
     enabled,
     staleTime: CODING_WORKSPACE_SMOOTHING_MS,
+  })
+}
+
+export function useUpdateTeamSessionTitleMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => updateTeamSessionTitle(id, title),
+    onSuccess: (updated) => {
+      queryClient.setQueriesData({ queryKey: queryKeys.team.sessions.all() }, (old) => patchSessionInPageData(old, updated))
+      queryClient.setQueryData(queryKeys.team.sessions.detail(updated.id), (old: SessionResponse | undefined) => old ? { ...old, ...updated } : old)
+    },
   })
 }
 

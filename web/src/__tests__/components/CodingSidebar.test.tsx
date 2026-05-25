@@ -18,6 +18,7 @@ let isTauri = true
 let platformOs = 'macos'
 let validateError: Error | null = null
 const deleteSessionMutate = mock(() => {})
+const updateSessionTitleMutate = mock(() => {})
 type TestSession = {
   id: string
   title: string | null
@@ -58,6 +59,7 @@ mock.module('lucide-react', () => ({
   Plus: Icon,
   Search: Icon,
   Settings: Icon,
+  Pencil: Icon,
   Trash2: Icon,
 }))
 
@@ -86,6 +88,14 @@ mock.module('@/components/ui/dialog', () => ({
 }))
 
 mock.module('@/queries/useSessionsQuery', () => ({
+  queryKeys: {
+    team: {
+      sessions: {
+        infinite: () => ['team', 'sessions', 'infinite'],
+        workspace: (workspace: string) => ['team', 'sessions', 'workspace', workspace],
+      },
+    },
+  },
   useTeamSessionsQuery: () => ({
     data: { pages: [{ data: sessionsData }] },
     isFetching: false,
@@ -99,6 +109,11 @@ mock.module('@/queries/useSessionsQuery', () => ({
     fetchNextPage: fetchWorkspaceNextPage,
   }),
   useDeleteTeamSessionMutation: () => ({ mutate: deleteSessionMutate }),
+  useUpdateTeamSessionTitleMutation: () => ({
+    mutate: updateSessionTitleMutate,
+    isPending: false,
+    isError: false,
+  }),
 }))
 
 describe('CodingSidebar workspace trust flow', () => {
@@ -115,6 +130,7 @@ describe('CodingSidebar workspace trust flow', () => {
     dialogOpen.mockReset()
     dialogOpen.mockImplementation(async () => '/repo/project')
     deleteSessionMutate.mockClear()
+    updateSessionTitleMutate.mockClear()
     fetchWorkspaceNextPage.mockClear()
     validateError = null
     globalThis.fetch = mock(async (input: unknown) => {
@@ -434,6 +450,88 @@ describe('CodingSidebar workspace trust flow', () => {
     await user.click(screen.getByRole('button', { name: /load more/i }))
 
     expect(fetchWorkspaceNextPage).toHaveBeenCalled()
+  })
+
+  it('opens title editing from a coding session card', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Old title',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, 'New title')
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(updateSessionTitleMutate).toHaveBeenCalledWith(
+      { id: 'session-1', title: 'New title' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('trims title edits before submitting', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Old title',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, '  New title  ')
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(updateSessionTitleMutate).toHaveBeenCalledWith(
+      { id: 'session-1', title: 'New title' },
+      expect.anything(),
+    )
+  })
+
+  it('does not submit empty title edits', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Old title',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, '   ')
+
+    expect(screen.getByRole('button', { name: /^save$/i }).hasAttribute('disabled')).toBe(true)
+    await user.keyboard('{Enter}')
+    expect(updateSessionTitleMutate).not.toHaveBeenCalled()
   })
 
   it('selects another coding session after deleting the current one', async () => {

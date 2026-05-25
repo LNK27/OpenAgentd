@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cancelQueuedTeamMessage, postTeamChat, resolveTeamSession } from '@/api/client'
+import { cancelQueuedTeamMessage, postTeamChat, resolveTeamSession, updateTeamSessionTitle } from '@/api/client'
 
 const originalFetch = globalThis.fetch
 
@@ -150,5 +150,37 @@ describe('resolveTeamSession', () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response('bad', { status: 422 }))) as typeof fetch
 
     await expect(resolveTeamSession({ mode: 'coding' })).rejects.toThrow('resolveTeamSession failed: 422')
+  })
+})
+
+describe('updateTeamSessionTitle', () => {
+  it('patches only the title as JSON and returns the updated session', async () => {
+    let url = ''
+    let init: RequestInit | undefined
+    globalThis.fetch = mock((input, requestInit) => {
+      url = String(input)
+      init = requestInit as RequestInit | undefined
+      return Promise.resolve(new Response(JSON.stringify({
+        id: 'sid',
+        title: 'Renamed session',
+        agent_name: 'lead',
+        created_at: null,
+        updated_at: null,
+      })))
+    }) as typeof fetch
+
+    const result = await updateTeamSessionTitle('sid', 'Renamed session')
+
+    expect(url).toBe('/api/team/sessions/sid')
+    expect(init?.method).toBe('PATCH')
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(JSON.parse(init?.body as string)).toEqual({ title: 'Renamed session' })
+    expect(result.title).toBe('Renamed session')
+  })
+
+  it('throws when the backend rejects the title update', async () => {
+    globalThis.fetch = mock(() => Promise.resolve(new Response('bad', { status: 422 }))) as typeof fetch
+
+    await expect(updateTeamSessionTitle('sid', '')).rejects.toThrow('updateTeamSessionTitle failed: 422')
   })
 })

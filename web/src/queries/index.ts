@@ -4,6 +4,7 @@ export { useTeamStatusQuery } from './useTeamStatusQuery'
 export {
   useTeamSessionsQuery,
   useDeleteTeamSessionMutation,
+  useUpdateTeamSessionTitleMutation,
 } from './useSessionsQuery'
 export {
   useWikiTreeQuery,
