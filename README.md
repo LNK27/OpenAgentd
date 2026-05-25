@@ -11,7 +11,7 @@
 
 **The desktop cockpit for local AI agents.** A double-click app that runs a team of AI agents on your machine, with a real UI to watch every step. Persistent memory, 15 providers, your keys. Open source.
 
-[Features](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) · [Roadmap](https://github.com/lthoangg/openagentd/blob/main/documents/docs/roadmap.md) · [Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md) · [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md)
+[Features](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) · [Issues / roadmap](https://github.com/lthoangg/OpenAgentd/issues) · [Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md) · [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md)
 
 ![OpenAgentd annotated multi-agent cockpit](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-hero-annotated.png)
 
@@ -35,15 +35,11 @@
 
 ## What you get
 
+A short list of the most important shipped capabilities. The canonical, version-cited catalogue is [`documents/docs/features.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md); other feature requests and future work live in [GitHub issues](https://github.com/lthoangg/OpenAgentd/issues).
+
 **A cockpit, not a chat box.** Command palette (Ctrl+P), slash commands (`/init`, `/continue`, `/compact`, `/undo`, `/redo`), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back, including inline Git-like diffs for file edits.
 
 ![Tool call inspector — arguments, execution status, and results](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/tool-call-inspector.png)
-
-**Agents that can actually do things.** Read and write files, run shell commands, search the web, generate images and video, manage todos, schedule tasks. Add more via a skill `.md` or any MCP server.
-
-**A workspace the agent shares with you.** Every file the agent touches shows up in a side panel — browse, preview, download. In `/coding`, open a server-local project folder and review the live file tree plus current git diff, including untracked files, from the same drawer.
-
-**Persistent memory you can edit.** Karpathy-style wiki: `USER.md` is injected into every prompt, session notes feed the dream agent, and durable knowledge is organized into sources, topics, entities, and comparisons. Browse and edit it from the Wiki panel.
 
 **Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view, resume interrupted work with `/continue`, or switch to a single unified view.
 
@@ -51,15 +47,11 @@
 
 ![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
-**Voice input, transcribed locally.** Click the mic button to record, click again to stop. The recording is transcribed on-device via Whisper and inserted into the chat input for review — nothing leaves your machine. Configure in `speech.yaml` or enable via Settings → Voice.
-
-**Schedule it and walk away.** Cron, interval, or one-shot schedules. Results appear when you come back.
-
-**Track work as a board.** `todo_manage` gives the lead and members a shared task board with assignment, claims, dependencies, priorities, and live UI updates.
-
-**See exactly what the agent is doing.** Built-in telemetry dashboard — token usage, latency, trace waterfall. No third-party SaaS, all local.
+**Persistent memory you can edit.** Karpathy-style wiki: `USER.md` is injected into every prompt, session notes feed the dream agent, and durable knowledge is organized into sources, topics, entities, and comparisons. Browse and edit it from the Wiki panel.
 
 **Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config, or override the lead model/thinking level per session from Session Settings.
+
+**Local-first operations.** Voice input is transcribed locally with Whisper, scheduled tasks run on cron/interval/one-shot timers, todos update a live board, and the telemetry dashboard stays local with no third-party SaaS.
 
 ---
 
@@ -337,7 +329,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | Section | Contents |
 |---------|----------|
 | [**Features**](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) | **Canonical, version-cited catalogue of every user-visible feature.** Source of truth for slides, docs, and comparisons. |
-| [Roadmap](https://github.com/lthoangg/openagentd/blob/main/documents/docs/roadmap.md) | Public roadmap — what's next, considering, deferred, or out of scope (with reasons). |
+| [Roadmap / issues](https://github.com/lthoangg/openagentd/blob/main/documents/docs/roadmap.md) | Short planning note with links to GitHub issues for feature requests, future work, and known issues. |
 | [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | Desktop app first (macOS/Linux); CLI/uv/pipx/pip, source. |
 | [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs |
 | [CLI reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/cli.md) | Every `openagentd` subcommand |

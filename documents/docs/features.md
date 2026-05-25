@@ -405,13 +405,12 @@ extra work. Deeper doc: [`api/index.md`](./api/index.md).
 
 ## Not yet shipped
 
-Things visibly under development or hinted at in release notes; not in the
-product yet. Keep this list small and honest — it's not the roadmap.
+Future work and known issues are tracked in GitHub issues, not in this feature
+catalogue. See [`roadmap.md`](./roadmap.md) for the short priority list and
+issue-label links.
 
-- *(no entries)*
-
-When a feature ships, move it into the right pillar above with its `[vX.Y.Z]`
-tag and link to the relevant doc.
+When a feature ships, add it to the right pillar above with its `[vX.Y.Z]` tag
+and link to the relevant doc.
 
 ---
 
@@ -424,12 +423,15 @@ When you cut a release:
 2. If a pillar doesn't fit, add a new one — but don't shoehorn unrelated work
    into an existing pillar.
 3. If the change is user-visible, also update:
-   - [`../../README.md`](../../README.md) "What you get" section
+   - [`../../README.md`](../../README.md) "What you get" section only if it is
+     important enough for the short README feature list
    - [`comparison.md`](./comparison.md) if the new feature lands in the capability matrix
-4. If the change is technical / architectural, link the relevant doc under
+4. Close the GitHub issue that tracked the feature, or create one if the shipped
+   work did not have an issue yet.
+5. If the change is technical / architectural, link the relevant doc under
    `documents/docs/` from the entry.
-5. Bump the `updated:` field in the frontmatter to the release date.
-6. If you remove a feature, mark it *(deprecated)* in place for at least one
+6. Bump the `updated:` field in the frontmatter to the release date.
+7. If you remove a feature, mark it *(deprecated)* in place for at least one
    release before deleting the entry.
 
 This document is the **canonical** answer to "what does OpenAgentd do?". Slides,

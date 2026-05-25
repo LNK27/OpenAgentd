@@ -4,6 +4,8 @@ Thanks for your interest in contributing. This guide covers everything you need 
 
 **License note:** openagentd is licensed under [Apache License 2.0](LICENSE). By contributing you agree your work is released under the same license.
 
+All participation must follow the [Code of Conduct](CODE_OF_CONDUCT.md). Issue and PR templates include a short reminder, but not a required checkbox: contributors are expected to follow the policy by participating.
+
 ---
 
 ## What gets merged
@@ -26,7 +28,9 @@ UI changes and new core features require discussion first — open an issue befo
 - [Code style](#code-style)
 - [Testing](#testing)
 - [Submitting changes](#submitting-changes)
+- [Issues and roadmap](#issues-and-roadmap)
 - [Issue labels](#issue-labels)
+- [Code of Conduct and security](#code-of-conduct-and-security)
 
 ---
 
@@ -70,9 +74,10 @@ openagentd/
 ├── seed/                   # Default config copied on first init
 │   ├── agents/             # Seed agent .md files (lead + members)
 │   └── skills/             # Seed skill SKILL.md files
-    └── documents/              # All documentation
-        ├── docs/               # Architecture, configuration, guidelines
-        └── styling-specs/      # Design tokens and visual specifications
+├── documents/              # All documentation
+│   ├── docs/               # Architecture, configuration, guidelines
+│   └── styling-specs/      # Design tokens and visual specifications
+└── .github/                # Issue templates, PR template, CI workflows
 ```
 
 Skills and agents at runtime live in `{OPENAGENTD_CONFIG_DIR}/agents/` and `{OPENAGENTD_CONFIG_DIR}/skills/` (populated from `seed/` on first `openagentd init`).
@@ -203,15 +208,50 @@ Tests use Bun test + Happy DOM. Test store logic and pure utils directly; avoid 
 
 ---
 
+## Issues and roadmap
+
+Use GitHub issues for bugs, known issues, feature requests, and roadmap discussion.
+The templates follow the same pattern used by large open-source projects: ask
+for reproducible facts, link/remind about conduct and private security reporting,
+and avoid mandatory Code of Conduct agreement checkboxes.
+
+The short roadmap page is [`documents/docs/roadmap.md`](documents/docs/roadmap.md);
+shipped capabilities belong in [`documents/docs/features.md`](documents/docs/features.md).
+
+- **Bugs / known issues:** use the Bug report template. Confirmed known issues
+  are labeled `known issue` by maintainers and stay out of the roadmap page.
+- **Features:** use the Feature request template. UI changes and new core
+  features need issue discussion before implementation.
+- **Roadmap items:** use `roadmap` plus `enhancement`. When a roadmap item ships,
+  close the issue and add the shipped feature to `documents/docs/features.md`.
+- **Security vulnerabilities:** do not open a public issue. Use GitHub Security
+  Advisories as described in [SECURITY.md](SECURITY.md).
+
 ## Issue labels
 
 | Label | Meaning |
 |-------|---------|
 | `bug` | Something is broken |
-| `feature` | New capability |
-| `docs` | Documentation update |
+| `known issue` | Confirmed product issue tracked publicly |
+| `enhancement` | New capability or improvement |
+| `roadmap` | Planned or considered roadmap item |
+| `documentation` | Documentation update |
 | `devex` | Developer experience improvement |
 | `question` | Usage question (closed after answering) |
+| `good first issue` | Good for newcomers |
+| `help wanted` | Extra attention is needed |
+| `wontfix` | This will not be worked on |
+
+---
+
+## Code of Conduct and security
+
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md) in issues, PRs, commits,
+  discussions, and any public representation of the project.
+- Keep technical disagreement focused on facts, trade-offs, and user impact.
+- Report abuse or harassment through the channels listed in the Code of Conduct.
+- Report security vulnerabilities privately through
+  [GitHub Security Advisories](https://github.com/lthoangg/openagentd/security/advisories/new).
 
 ---
 

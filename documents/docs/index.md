@@ -22,7 +22,7 @@ Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Cop
 | Doc | What it covers |
 |-----|----------------|
 | [Features](./features.md) | **Canonical catalogue of every user-visible feature**, version-cited. Source of truth for slides, README, comparison docs. |
-| [Roadmap](./roadmap.md) | Transparent public roadmap — what's next, what we're considering, what we won't do (with reasons). |
+| [Roadmap / issues](./roadmap.md) | Short planning note with links to GitHub issues for feature requests, future work, and known issues. |
 | [Install](./install.md) | Desktop app (macOS/Linux) first; CLI/uv/pipx/pip, source. First-run wizard. |
 | [Migration](../../MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs. |
 | [CLI reference](./cli.md) | Every `openagentd` subcommand (`init`, `auth`, `stop`, `doctor`, `upgrade`, …). |
