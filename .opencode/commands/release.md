@@ -25,11 +25,53 @@ subtask: false
 git status --short
 ```
 
-3. Confirm release:
+3. Related GitHub issues:
+
+- Before confirming the release, search for issues related to the actual diff and intended release notes. Do not rely only on branch names or commit subjects.
+
+```bash
+git branch --show-current
+git log --oneline --no-merges main..HEAD
+gh issue list --repo lthoangg/openagentd --state open --search "<keyword from diff or feature area>" --limit 20
+gh issue list --repo lthoangg/openagentd --state all --search "<keyword from diff or feature area> in:title,body" --limit 20
+gh issue view <issue-number> --repo lthoangg/openagentd --comments --json number,title,state,labels,body,comments
+```
+
+- Triage each related issue as **included/fixed**, **partially included**, **not included**, or **unrelated**.
+- If the release fully fixes or ships an issue, include `Fixes #<issue-number>` or `Closes #<issue-number>` in the release PR body so GitHub closes it on merge; use `Refs #<issue-number>` when the release is related but should not close it.
+- Tag included issues when useful for tracking. Prefer an existing milestone/label convention if present; otherwise create and apply a version label:
+
+```bash
+gh label create "included-in-v<version>" --repo lthoangg/openagentd --description "Included in v<version>" --color "0E8A16" || true
+gh issue edit <issue-number> --repo lthoangg/openagentd --add-label "included-in-v<version>"
+```
+
+- Add a short issue comment when the relationship is not obvious, especially for partial inclusion or when using `Refs` instead of `Fixes`:
+
+```bash
+gh issue comment <issue-number> --repo lthoangg/openagentd --body "Included in the v<version> release PR: <pr-url>."
+```
+
+4. Documentation readiness:
+
+- Before confirming the release, check whether the diff requires documentation updates. At minimum inspect the canonical feature catalogue and roadmap, plus any related docs for touched areas.
+
+```bash
+git diff --name-only main..HEAD
+git diff --stat main..HEAD -- documents/docs/features.md documents/docs/roadmap.md documents/docs README.md
+```
+
+- For user-visible features, behavior changes, install/update changes, or removed/deprecated functionality, update `documents/docs/features.md` first; it is the canonical feature catalogue.
+- Update `documents/docs/roadmap.md` when the release completes, changes, adds, or invalidates roadmap items.
+- Update related files as needed, such as `README.md`, `documents/docs/comparison.md`, installation docs, agent/team docs, or operation docs for the affected area.
+- If no documentation changes are needed, record the rationale in the release PR body (for example: `Docs: no user-facing behavior changed`).
+- Include documentation updates in the feature branch before the version bump PR is created; do not leave release-blocking docs fixes until after publishing.
+
+5. Confirm release:
 
 > Ready to release **`<version>`**. Proceed? **(yes / no)**
 
-4. Version PR:
+6. Version PR:
 
 - Reuse the existing feature branch when present; do not spin a fresh `release/` branch on top of it.
 - Update **all six** version files in lockstep, and include any generated lockfile version updates:
@@ -91,7 +133,7 @@ gh api repos/lthoangg/openagentd/pulls/<pr-number>/comments \
   - Use `--squash` only when the branch is a single logical change (e.g. metadata-only bump).
   - `--admin` is required when branch protection blocks solo-author PRs on `REVIEW_REQUIRED`; confirm with the user before using it.
 
-5. Merge and release notes:
+7. Merge and release notes:
 
 - After CI is green and comments are handled, merge the PR, then generate notes from `main`.
 
@@ -205,7 +247,7 @@ Sections:
 - Avoid marketing language.
 - Avoid restating section headings.
 
-6. Trigger CLI release:
+8. Trigger CLI release:
 
 Both workflows publish into the **same** `v<X.Y.Z>` tag (introduced in
 1.0.9 — older releases used a separate `v<X.Y.Z>-desktop` tag). Whichever
@@ -220,7 +262,7 @@ gh run list --workflow=release.yml --limit=3
 # Watch this workflow in-session until status=completed conclusion=success before continuing.
 ```
 
-7. Trigger desktop release:
+9. Trigger desktop release:
 
 ```bash
 # Desktop release (~20–25 minutes for the matrix build)
@@ -231,7 +273,7 @@ gh run list --workflow=release-desktop.yml --limit=3
 
 - **Do not patch release notes before the desktop workflow finishes.** The desktop workflow re-uploads `latest.json` and can rewrite the release body as a side effect (observed on v1.24.0 — notes patched between the CLI and desktop runs were reverted to the auto-generated text). Wait for `status=completed conclusion=success` on `release-desktop.yml` before editing.
 
-8. GitHub release notes:
+10. GitHub release notes:
 
 - Only after **both** workflows finish, draft the notes from the actually-published artefacts. Never copy the Install block from a previous release verbatim — confirm against this release's asset list, because the desktop matrix may have skipped a target (v1.24.0 shipped macOS arm64 + Linux `.deb` only, no Windows `.exe`, no `.AppImage`):
 
