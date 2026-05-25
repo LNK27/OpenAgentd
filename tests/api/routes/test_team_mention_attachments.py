@@ -62,11 +62,8 @@ class TestExtractMentionPaths:
         # ``@`` not preceded by whitespace or string-start → not a mention.
         assert _extract_mention_paths("ping user@host.com") == []
 
-    def test_ignores_directory_mentions(self):
-        # Trailing slash means the user picked a directory in the picker.
-        # Folders are visual references only — the agent has LS / Glob /
-        # Read tools and can inspect on demand if it actually needs to.
-        assert _extract_mention_paths("look in @src/") == []
+    def test_folder_mentions_resolve_to_agents_md(self):
+        assert _extract_mention_paths("look in @src/") == ["src/AGENTS.md"]
 
     def test_ignores_bare_at(self):
         assert _extract_mention_paths("type @ here") == []
@@ -275,12 +272,25 @@ async def test_text_mention_carries_truncation_cap(workspace, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_folder_mention_is_not_auto_attached(tmp_path):
-    # Folders are visual prose references only — the agent has LS / Glob /
-    # Read tools and can inspect on demand. Even with a real folder in
-    # the workspace, ``@manual/`` produces zero attachments.
+async def test_folder_mention_attaches_agents_md(tmp_path):
     (tmp_path / "manual").mkdir()
     (tmp_path / "manual" / "AGENTS.md").write_text("docs", encoding="utf-8")
+    team = _make_team()
+    out = await collect_mention_attachments(
+        message="use @manual/ check this",
+        team=team,
+        session_id="sid",
+        workspace=str(tmp_path),
+        existing_total_bytes=0,
+    )
+    assert len(out) == 1
+    assert out[0].filename == "AGENTS.md"
+    assert out[0].data == b"docs"
+
+
+@pytest.mark.asyncio
+async def test_folder_mention_without_agents_md_is_skipped(tmp_path):
+    (tmp_path / "manual").mkdir()
     team = _make_team()
     out = await collect_mention_attachments(
         message="use @manual/ check this",

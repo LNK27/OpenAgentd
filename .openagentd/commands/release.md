@@ -1,7 +1,5 @@
 ---
-applicable_to: Release a new version of OpenAgentd
 description: Bump the version by PR, then publish the GitHub release.
-subtask: false
 ---
 
 ## Steps

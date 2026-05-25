@@ -110,9 +110,9 @@ _MENTION_INLINE_MAX_CHARS = 32_000
 def _extract_mention_paths(message: str) -> list[str]:
     """Return the unique, ordered list of @file tokens from ``message``.
 
-    Directory mentions (trailing ``/``) and the bare ``@`` are dropped:
-    folders are visual references only, the agent uses its own tools to
-    inspect them. Trailing sentence punctuation is stripped before
+    Directory mentions (trailing ``/``) are resolved to that folder's
+    ``AGENTS.md`` so folder-specific instructions can be loaded. The bare
+    ``@`` is dropped. Trailing sentence punctuation is stripped before
     deduplication so "see @a.ts, please" yields ``["a.ts"]``.
     """
     seen: set[str] = set()
@@ -122,8 +122,10 @@ def _extract_mention_paths(message: str) -> list[str]:
         # Strip trailing punctuation in a loop — handles `@x?!`.
         while token and token[-1] in _TRAILING_PUNCT:
             token = token[:-1]
-        if not token or token.endswith("/"):
+        if not token:
             continue
+        if token.endswith("/"):
+            token = f"{token}AGENTS.md"
         if token in seen:
             continue
         seen.add(token)

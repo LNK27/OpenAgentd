@@ -158,6 +158,16 @@ async def test_render_unknown_returns_404(client):
 
 
 @pytest.mark.asyncio
+async def test_builtin_init_mentions_subfolder_agents_md(client):
+    res = await client.post("/api/commands/init/render", json={"arguments": ""})
+
+    assert res.status_code == 200
+    content = res.json()["content"]
+    assert "repo root and in each meaningful subfolder" in content
+    assert "subfolder files should only include" in content
+
+
+@pytest.mark.asyncio
 async def test_precedence_is_local_before_global_and_openagentd_before_opencode(
     client, roots
 ):

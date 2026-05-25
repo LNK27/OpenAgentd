@@ -111,7 +111,7 @@ When the message is dispatched (`POST /api/team/chat`, immediate path only — q
 | Text file (`.md`, `.txt`, `.json`, …) | Inlined into the prompt with a head + tail window capped at 32K chars (see [API — mention attachments](../api/index.md#mention-auto-attachment)). |
 | Document (`.pdf`, `.docx`) | Same — markitdown-converted then truncated head + tail. |
 | Image (`.png`, `.jpg`, …) | Reference only. Agent uses its vision-aware `Read` tool on demand. |
-| Folder | Reference only. Agent uses `LS` / `Glob` / `Read` on demand. |
+| Folder | Resolves to that folder's `AGENTS.md` and inlines it when present; otherwise skipped. |
 | Unresolvable path | Silently skipped — also no chip. |
 
 Helpers live in `InputBar.mentions.ts` (`findActiveMention`, `findCommittedMentions`, `rankFileRefs`). The overlay is `InputBar.overlay.tsx`. The query hook is `useFileRefsQuery.ts`. Backend resolution is `app/api/routes/team/_helpers.py::collect_mention_attachments`.
