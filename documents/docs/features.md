@@ -76,8 +76,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Inline diff previews with real line numbers** `[v1.20.0]` — file-changing tools
   show affected file's actual line numbers (not "starting at 1"), including
   multiple hunks. Collapsible per file. Delete counts shown in headers.
-- **Persistent timing on every reply + tool call** `[v1.21.0]` — durations stay
-  visible while streaming and after reloading a session.
+- **Persistent timing on every reply + tool call** `[v1.21.0]` — reply durations
+  measure full user-turn wall-clock time; tool durations measure execution time.
+  Both stay visible while streaming and after reloading a session.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Inline auto-attach: mentioned file body is sent on
   the first turn so the agent doesn't need a round-trip `read` call; folder
@@ -333,8 +334,9 @@ Everything stays local. No third-party telemetry SaaS. Deeper doc:
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,
   per-session JSONL transcript at `{STATE_DIR}/logs/sessions/{id}/`. Rotated,
   loguru-based.
-- **Persistent reply/tool timing in UI** `[v1.21.0]` — durations stay after a
-  reload.
+- **Persistent reply/tool timing in UI** `[v1.21.0]` — assistant footers show
+  full user-turn wall-clock duration; tool rows show individual execution time.
+  Durations stay after a reload.
 
 ---
 

@@ -4,6 +4,7 @@ export interface PendingMessage {
   id: string
   sessionId?: string | null
   content: string
+  submittedAt?: number
 }
 
 export type CacheInvalidation =
@@ -31,6 +32,7 @@ export interface AgentStream {
   usage: AgentUsage
   _completionBase: number
   _completionEstimated?: number
+  _turnStartedAt?: number | null
   model: string | null
   lastError: string | null
   revertedCount?: number

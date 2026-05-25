@@ -58,19 +58,32 @@ interface CreateSSEHandlerArgs {
 
 type BufferedTextKind = 'message' | 'thinking'
 
-function stampOpenTextBlocks(blocks: TeamStore['agentStreams'][string]['currentBlocks'], completedAt: number) {
+function stampOpenTextBlocks(
+  blocks: TeamStore['agentStreams'][string]['currentBlocks'],
+  completedAt: number,
+  turnStartedAt?: number | null,
+) {
   return blocks.map((block) => {
-    if (block.type !== 'text' || block.responseDurationMs !== undefined || !block.startedAt) return block
+    if (block.type !== 'text' || block.responseDurationMs !== undefined) return block
+    const startedAt = turnStartedAt ?? block.startedAt
+    if (startedAt === undefined || startedAt === null) return block
     return {
       ...block,
-      responseDurationMs: Math.max(0, completedAt - block.startedAt),
+      responseDurationMs: Math.max(0, completedAt - startedAt),
     }
   })
+}
+
+function markTurnStarted(draft: TeamStore, agent: string, startedAt = Date.now()) {
+  ensureAgent(draft, agent)
+  const stream = draft.agentStreams[agent]
+  if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = startedAt
 }
 
 function appendStreamingText(draft: TeamStore, agent: string, kind: BufferedTextKind, text: string) {
   ensureAgent(draft, agent)
   const stream = draft.agentStreams[agent]
+  if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = Date.now()
   if (kind === 'thinking') {
     stream.currentBlocks = appendThinking(stream.currentBlocks, text)
   } else {
@@ -124,7 +137,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (TODO_MUTATING_TOOLS.has(d.name as string)) break
         const agent = d.agent as string
         set((draft) => {
-          ensureAgent(draft, agent)
+          markTurnStarted(draft, agent)
           draft.agentStreams[agent].currentBlocks = initTool(
             draft.agentStreams[agent].currentBlocks,
             d.name as string,
@@ -139,7 +152,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (TODO_MUTATING_TOOLS.has(d.name as string)) break
         const agent = d.agent as string
         set((draft) => {
-          ensureAgent(draft, agent)
+          markTurnStarted(draft, agent)
           draft.agentStreams[agent].currentBlocks = addTool(
             draft.agentStreams[agent].currentBlocks,
             d.name as string,
@@ -319,18 +332,23 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             return messageIds === null || messageIds.has(msg.id)
           })
           if (queued.length === 0) return
-          draft.agentStreams[agent].currentBlocks = stampOpenTextBlocks(
-            draft.agentStreams[agent].currentBlocks,
-            Date.now(),
+          const now = Date.now()
+          const stream = draft.agentStreams[agent]
+          stream.currentBlocks = stampOpenTextBlocks(
+            stream.currentBlocks,
+            now,
+            stream._turnStartedAt,
           )
-          draft.agentStreams[agent].currentBlocks.push(
+          const nextTurnStartedAt = queued[0]?.submittedAt ?? now
+          stream.currentBlocks.push(
             ...queued.map((msg) => ({
               id: msg.id,
               type: 'user' as const,
               content: msg.content,
-              timestamp: new Date(),
+              timestamp: new Date(msg.submittedAt ?? now),
             })),
           )
+          stream._turnStartedAt = nextTurnStartedAt
           const queuedIds = new Set(queued.map((msg) => msg.id))
           draft._pendingMessages = draft._pendingMessages.filter((msg) => !queuedIds.has(msg.id))
         })
@@ -389,7 +407,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           Object.keys(draft.agentStreams).forEach((name) => {
             const stream = draft.agentStreams[name]
             if (stream.currentBlocks.length > 0) {
-              const stamped = stampOpenTextBlocks(stream.currentBlocks, completedAtMs).map((b) => ({
+              const stamped = stampOpenTextBlocks(stream.currentBlocks, completedAtMs, stream._turnStartedAt).map((b) => ({
                 ...b,
                 timestamp: b.timestamp ?? completedAt,
               }))
@@ -398,6 +416,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             }
             stream._completionBase = stream.usage.completionTokens
             stream._completionEstimated = 0
+            stream._turnStartedAt = null
             if (stream.status !== 'error' && stream.status !== 'offline') {
               stream.status = 'idle'
             }

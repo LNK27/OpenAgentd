@@ -378,6 +378,9 @@ class Agent(Generic[TContext]):
             )
 
             message_extra = dict(assistant_msg.extra or {})
+            message_extra["duration_ms"] = round(
+                (time.monotonic() - run_start) * 1000, 3
+            )
             message_extra["model"] = effective_model or active_model_id
             if provider_fallback:
                 message_extra["requested_model"] = active_model_id

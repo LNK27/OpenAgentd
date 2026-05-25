@@ -1,5 +1,6 @@
 """Tests for Agent.run() — the main agentic loop."""
 
+import asyncio
 from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
@@ -392,6 +393,35 @@ async def test_agent_run_calls_all_hooks():
     hook.after_agent.assert_called_once()
     hook.before_tool_call.assert_not_called()
     hook.after_tool_call.assert_not_called()
+
+
+async def test_agent_run_stamps_final_duration_after_tools():
+    """Persisted assistant duration includes model, tool, and final response time."""
+
+    async def wait_tool() -> str:
+        """Wait briefly."""
+        await asyncio.sleep(0.01)
+        return "ok"
+
+    provider = MockProvider(
+        [
+            [make_tool_chunk("wait_tool", "c1", "{}")],
+            [make_text_chunk("done")],
+        ]
+    )
+    agent = Agent(name="bot", llm_provider=provider, tools=[Tool(wait_tool)])
+
+    msgs = await agent.run([HumanMessage(content="go")])
+
+    assistant_msgs = [m for m in msgs if isinstance(m, AssistantMessage)]
+    assert len(assistant_msgs) == 2
+    assert assistant_msgs[0].extra is not None
+    assert assistant_msgs[1].extra is not None
+    first_duration = assistant_msgs[0].extra["duration_ms"]
+    final_duration = assistant_msgs[1].extra["duration_ms"]
+    assert isinstance(first_duration, float)
+    assert isinstance(final_duration, float)
+    assert final_duration >= first_duration
 
 
 async def test_agent_run_calls_tool_hooks():
