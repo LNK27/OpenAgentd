@@ -760,6 +760,37 @@ describe("sendMessage: queue behaviour", () => {
     ])
   })
 
+  it("keeps live response durations separate across queued-message injection", () => {
+    const originalNow = Date.now
+    const times = [0, 1_000, 4_600, 0, 4_700, 7_600]
+    Date.now = mock(() => times.shift() ?? 7_600) as typeof Date.now
+    try {
+      useTeamStore.setState({
+        sessionId: "session-a",
+        leadName: "lead",
+        agentStreams: {
+          lead: makeStream({ status: "working" as const }),
+        },
+        _pendingMessages: [
+          { id: "pm-a1", sessionId: "session-a", content: "queued follow-up" },
+        ],
+      })
+
+      useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "first assistant" })
+      useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead", message_ids: ["pm-a1"] })
+      useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "second assistant" })
+      useTeamStore.getState()._handleSSEEvent("done", {})
+    } finally {
+      Date.now = originalNow
+    }
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks
+    const textBlocks = blocks.filter((block) => block.type === "text")
+
+    expect(textBlocks.map((block) => block.content)).toEqual(["first assistant", "second assistant"])
+    expect(textBlocks.map((block) => block.responseDurationMs)).toEqual([3600, 2900])
+  })
+
   it("notifies when the backend emits a desktop notification", () => {
     useTeamStore.setState({
       sessionId: "session-a",

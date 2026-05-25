@@ -58,18 +58,25 @@ interface CreateSSEHandlerArgs {
 
 type BufferedTextKind = 'message' | 'thinking'
 
+function stampOpenTextBlocks(blocks: TeamStore['agentStreams'][string]['currentBlocks'], completedAt: number) {
+  return blocks.map((block) => {
+    if (block.type !== 'text' || block.responseDurationMs !== undefined || !block.startedAt) return block
+    return {
+      ...block,
+      responseDurationMs: Math.max(0, completedAt - block.startedAt),
+    }
+  })
+}
+
 function appendStreamingText(draft: TeamStore, agent: string, kind: BufferedTextKind, text: string) {
   ensureAgent(draft, agent)
   const stream = draft.agentStreams[agent]
   if (kind === 'thinking') {
     stream.currentBlocks = appendThinking(stream.currentBlocks, text)
   } else {
-    const hadText = stream.currentBlocks.some((b) => b.type === 'text')
     stream.currentBlocks = appendText(stream.currentBlocks, text)
-    if (!hadText) {
-      const last = stream.currentBlocks[stream.currentBlocks.length - 1]
-      if (last?.type === 'text' && !last.startedAt) last.startedAt = Date.now()
-    }
+    const last = stream.currentBlocks[stream.currentBlocks.length - 1]
+    if (last?.type === 'text' && !last.startedAt) last.startedAt = Date.now()
   }
   if (text) {
     stream._completionEstimated = (stream._completionEstimated ?? 0) + (text.length / 4)
@@ -312,6 +319,10 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             return messageIds === null || messageIds.has(msg.id)
           })
           if (queued.length === 0) return
+          draft.agentStreams[agent].currentBlocks = stampOpenTextBlocks(
+            draft.agentStreams[agent].currentBlocks,
+            Date.now(),
+          )
           draft.agentStreams[agent].currentBlocks.push(
             ...queued.map((msg) => ({
               id: msg.id,
@@ -373,22 +384,14 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           draft.isTeamWorking = false
           draft.isContinuing = false
-          const completedAt = new Date()
+          const completedAtMs = Date.now()
+          const completedAt = new Date(completedAtMs)
           Object.keys(draft.agentStreams).forEach((name) => {
             const stream = draft.agentStreams[name]
             if (stream.currentBlocks.length > 0) {
-              const durationMs = stream.currentBlocks.some((b) => b.type === 'text')
-                ? Math.max(
-                    0,
-                    ...stream.currentBlocks
-                      .filter((b) => b.type === 'text' && b.startedAt)
-                      .map((b) => completedAt.getTime() - (b.startedAt ?? completedAt.getTime())),
-                  )
-                : undefined
-              const stamped = stream.currentBlocks.map((b) => ({
+              const stamped = stampOpenTextBlocks(stream.currentBlocks, completedAtMs).map((b) => ({
                 ...b,
                 timestamp: b.timestamp ?? completedAt,
-                responseDurationMs: b.type === 'text' ? b.responseDurationMs ?? durationMs : b.responseDurationMs,
               }))
               stream.blocks = [...stream.blocks, ...stamped]
               stream.currentBlocks = []
