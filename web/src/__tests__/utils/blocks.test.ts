@@ -238,7 +238,7 @@ describe("appendToolOutput", () => {
     expect(result[0].toolOutput).toBe("hello world");
   });
 
-  it("truncates shell tool output to last 50 lines when it gets too large", () => {
+  it("truncates shell tool output to last 10 lines when it gets too large", () => {
     const blocks: ContentBlock[] = [
       { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
     ];
@@ -249,10 +249,10 @@ describe("appendToolOutput", () => {
     const output = result[0].toolOutput || "";
     expect(output).toContain("... [truncated live output] ...");
     const outputLines = output.split("\n");
-    // Should be 1 header line + 50 lines of output
-    expect(outputLines.length).toBe(51);
-    expect(outputLines[1]).toBe("line 70");
-    expect(outputLines[50]).toBe("line 119");
+    // Should be 1 header line + 10 lines of output
+    expect(outputLines.length).toBe(11);
+    expect(outputLines[1]).toBe("line 110");
+    expect(outputLines[10]).toBe("line 119");
   });
 });
 

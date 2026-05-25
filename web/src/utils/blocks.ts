@@ -196,8 +196,8 @@ export function appendToolOutput(
       let newOutput = `${block.toolOutput ?? ''}${text}`
       if (name === 'shell' || name === 'bash') {
         const lines = newOutput.split('\n')
-        if (lines.length > 50) {
-          newOutput = '... [truncated live output] ...\n' + lines.slice(-50).join('\n')
+        if (lines.length > 10) {
+          newOutput = '... [truncated live output] ...\n' + lines.slice(-10).join('\n')
         }
       }
       result[i] = { ...block, toolOutput: newOutput }
