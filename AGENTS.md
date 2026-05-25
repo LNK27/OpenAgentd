@@ -4,9 +4,9 @@ The desktop cockpit for local AI agents — Tauri 2 desktop shell wrapping a Fas
 
 ## Tech stack
 
-- **Backend:** Python 3.14, FastAPI, SQLModel, Pydantic v2, SQLite (WAL), SSE, loguru.
-- **Frontend:** React 19, TypeScript 5, Vite, Bun, Tailwind v4, Zustand + Immer, TanStack Query.
-- **Desktop:** Tauri v2 shell with a Python sidecar.
+- **Backend:** Python `>=3.14`, FastAPI, SQLModel, Pydantic v2, SQLite (WAL), SSE, loguru.
+- **Frontend:** React 19, TypeScript 5.9, Vite 7, Bun, Tailwind v4, Zustand + Immer, TanStack Query.
+- **Desktop:** Tauri v2 shell with a Python sidecar; Rust 2021 / minimum Rust 1.77.
 - **Agent config:** `.md` files with YAML frontmatter in `{OPENAGENTD_CONFIG_DIR}/agents/`.
 
 ## Layout
@@ -26,13 +26,17 @@ documents/   Developer docs (see documents/docs/index.md)
 # Backend
 uv sync                           # install
 make dev                          # backend (:8000 reload) + Vite (:5173)
-uv run ruff check app/ tests/     # lint
-uv run ty check app/              # type check
-uv run pytest --no-cov -q         # fast tests
+uv run ruff check app/ tests/             # lint
+uv run ruff format --check app/ tests/    # format check
+uv run ty check app/                      # type check
+uv run pytest --no-cov -q                 # fast tests
 
 # Frontend
-cd web && bun dev                 # :5173, proxies /api → :8000
-cd web && bun run lint && bun run typecheck && bun run test
+cd web && bun dev                         # :5173, proxies /api → :8000
+cd web && bun run lint
+cd web && bun run typecheck
+cd web && bunx tsc -p tsconfig.test.json --noEmit
+cd web && bun run test
 ```
 
 Full command + style reference: [`documents/docs/guidelines.md`](documents/docs/guidelines.md).
@@ -46,8 +50,8 @@ Full command + style reference: [`documents/docs/guidelines.md`](documents/docs/
 ## Post-implementation checklist
 
 ```bash
-uv run ruff check app/ tests/ && uv run ty check app/ && uv run pytest --no-cov -q
-cd web && bun run lint && bun run test              # if frontend changed
+uv run ruff check app/ tests/ && uv run ruff format --check app/ tests/ && uv run ty check app/ && uv run pytest --no-cov -q
+cd web && bun run lint && bun run typecheck && bunx tsc -p tsconfig.test.json --noEmit && bun run test  # if frontend changed
 ```
 
 ## Documentation

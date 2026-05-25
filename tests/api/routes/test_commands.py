@@ -163,8 +163,11 @@ async def test_builtin_init_mentions_subfolder_agents_md(client):
 
     assert res.status_code == 200
     content = res.json()["content"]
-    assert "repo root and in each meaningful subfolder" in content
-    assert "subfolder files should only include" in content
+    assert "meaningful nested subfolders" in content
+    assert "future coding agent" in content
+    assert "Where to look first" in content
+    assert "Do not duplicate parent guidance" in content
+    assert "expensive/optional checks" in content
 
 
 @pytest.mark.asyncio
