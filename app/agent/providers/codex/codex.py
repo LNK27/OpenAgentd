@@ -29,10 +29,12 @@ from app.agent.schemas.chat import AssistantMessage, ChatMessage, SystemMessage
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
 
+# ``originator`` must match upstream's first-party allowlist
+# (codex-rs/login/src/auth/default_client.rs::is_first_party_originator).
 _DEFAULT_HEADERS = {
     "Content-Type": "application/json",
     "User-Agent": "openagentd/1.0.0",
-    "originator": "openagentd",
+    "originator": "codex_cli_rs",
 }
 
 
@@ -51,7 +53,6 @@ class _CodexResponsesHandler(ResponsesHandler):
         stream: bool,
         merged: dict[str, Any],
     ) -> dict[str, Any]:
-        # Separate system messages from the rest
         system_parts: list[str] = []
         non_system: list[ChatMessage] = []
         for msg in messages:
@@ -63,15 +64,11 @@ class _CodexResponsesHandler(ResponsesHandler):
 
         body = super().build_request(non_system, tools, stream, merged)
 
-        # ChatGPT's private Codex endpoint rejects the public Responses API
-        # token cap field (``max_output_tokens``).  Drop it here; callers may
-        # still pass ``max_tokens`` for provider compatibility, but Codex does
-        # not currently expose a supported wire equivalent.
+        # Upstream ``ResponsesApiRequest`` (codex-rs/codex-api/src/common.rs)
+        # has no token-cap field; the endpoint stalls when sent one.
         body.pop("max_output_tokens", None)
 
-        # instructions is required and must be non-empty
         body["instructions"] = "\n\n".join(system_parts)
-        # Codex endpoint requires store=false explicitly
         body["store"] = False
         return body
 
@@ -159,7 +156,7 @@ class CodexProvider(LLMProviderBase):
             "Authorization": f"Bearer {access_token}",
         }
         if account_id:
-            headers["ChatGPT-Account-Id"] = account_id
+            headers["ChatGPT-Account-ID"] = account_id
 
         self._responses = _CodexResponsesHandler(model, CODEX_API_BASE, headers)
 

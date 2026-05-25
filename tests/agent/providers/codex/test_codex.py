@@ -709,7 +709,13 @@ class TestCodexResponsesHandlerBuildRequest:
         assert "tools" in body
 
     def test_build_request_drops_max_tokens(self):
-        """Codex rejects max_output_tokens, so max_tokens has no wire field."""
+        """Match upstream: ``ResponsesApiRequest`` has no token-cap field.
+
+        See openai/codex ``codex-rs/codex-api/src/common.rs::ResponsesApiRequest``
+        — the official Codex CLI never sends ``max_output_tokens`` to the
+        Responses endpoint. Empirically the endpoint stalls when given one
+        (verified 2026-05-25), so we strip what the parent ResponsesHandler adds.
+        """
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
         messages = [HumanMessage(content="Hello")]
         body = handler.build_request(messages, None, False, {"max_tokens": 1000})
@@ -789,20 +795,22 @@ class TestCodexProviderInit:
             )
 
     def test_init_sets_chatgpt_account_id_header_when_present(self):
-        """__init__() sets ChatGPT-Account-Id header when account_id is present."""
+        """__init__() sets ChatGPT-Account-ID header when account_id is present."""
         with patch("app.agent.providers.codex.codex._load_token") as mock_load:
             mock_load.return_value = ("access_token_123", "account_789")
             provider = CodexProvider(model="gpt-5.4")
 
-            assert provider._responses.headers["ChatGPT-Account-Id"] == "account_789"
+            # Upstream codex-rs/model-provider/src/bearer_auth_provider.rs uses
+            # the all-caps ``ID`` form.
+            assert provider._responses.headers["ChatGPT-Account-ID"] == "account_789"
 
     def test_init_does_not_set_chatgpt_account_id_header_when_none(self):
-        """__init__() does NOT set ChatGPT-Account-Id header when account_id is None."""
+        """__init__() does NOT set ChatGPT-Account-ID header when account_id is None."""
         with patch("app.agent.providers.codex.codex._load_token") as mock_load:
             mock_load.return_value = ("access_token_123", None)
             provider = CodexProvider(model="gpt-5.4")
 
-            assert "ChatGPT-Account-Id" not in provider._responses.headers
+            assert "ChatGPT-Account-ID" not in provider._responses.headers
 
     def test_init_sets_model(self):
         """__init__() sets the model attribute."""
@@ -820,7 +828,9 @@ class TestCodexProviderInit:
 
             assert provider._responses.headers["Content-Type"] == "application/json"
             assert provider._responses.headers["User-Agent"] == "openagentd/1.0.0"
-            assert provider._responses.headers["originator"] == "openagentd"
+            # Mirrors upstream DEFAULT_ORIGINATOR so the Codex backend's
+            # first-party allowlist treats us identically to the official CLI.
+            assert provider._responses.headers["originator"] == "codex_cli_rs"
 
     def test_init_creates_responses_handler(self):
         """__init__() creates _CodexResponsesHandler instance."""
@@ -975,7 +985,7 @@ class TestCodexProviderIntegration:
 
             assert provider.model == "gpt-5.4"
             assert provider._responses.headers["Authorization"] == "Bearer access_123"
-            assert provider._responses.headers["ChatGPT-Account-Id"] == "account_789"
+            assert provider._responses.headers["ChatGPT-Account-ID"] == "account_789"
 
     def test_build_request_with_complex_message_flow(self):
         """Test build_request with realistic message flow."""

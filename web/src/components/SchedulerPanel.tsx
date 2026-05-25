@@ -174,13 +174,11 @@ export function ModeWorkspaceFields({
    *  unchanged (two sequential setState calls on the same snapshot). */
   onChange: (next: { mode: ScheduledTaskMode; workspace: string | null }) => void
 }) {
-  const savedWorkspaces = useMemo(
-    () =>
-      loadCodingWorkspaceEntries()
-        .map((entry) => entry.path)
-        .sort(),
-    [],
-  )
+  const savedWorkspaces = useMemo(() => {
+    const paths = loadCodingWorkspaceEntries().map((entry) => entry.path)
+    if (workspace && !paths.includes(workspace)) paths.push(workspace)
+    return paths.sort()
+  }, [workspace])
 
   const modeOptions: { key: ScheduledTaskMode; label: string }[] = [
     { key: 'normal', label: 'Normal' },
@@ -235,38 +233,28 @@ export function ModeWorkspaceFields({
       {mode === 'coding' && (
         <div className="mt-3">
           <label className="block text-sm font-medium text-(--color-text)">Workspace</label>
-          <div className="mt-1 flex gap-2">
-            <Input
-              className={`flex-1 ${FIELD_CLASS}`}
-              value={workspace ?? ''}
-              onChange={(e) => onChange({ mode, workspace: e.target.value || null })}
-              placeholder="Absolute path, e.g. /Users/you/project"
-            />
-            {savedWorkspaces.length > 0 && (
-              <Select
-                value=""
-                onValueChange={(v) => {
-                  if (v) onChange({ mode, workspace: v })
-                }}
-              >
-                <SelectTrigger
-                  className={`w-44 shrink-0 ${FIELD_CLASS}`}
-                  aria-label="Pick a saved workspace"
-                >
-                  <SelectValue placeholder="Saved…" />
-                </SelectTrigger>
-                <SelectContent className={SELECT_CONTENT_CLASS}>
-                  {savedWorkspaces.map((path) => (
-                    <SelectItem key={path} value={path}>
-                      {workspaceLabel(path)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+          <Select
+            value={workspace ?? ''}
+            onValueChange={(v) => onChange({ mode, workspace: v || null })}
+          >
+            <SelectTrigger
+              className={`mt-1 w-full ${FIELD_CLASS}`}
+              aria-label="Select workspace"
+            >
+              <SelectValue>
+                {workspace ? workspaceLabel(workspace) : 'Select a saved workspace…'}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className={SELECT_CONTENT_CLASS}>
+              {savedWorkspaces.map((path) => (
+                <SelectItem key={path} value={path}>
+                  {workspaceLabel(path)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <p className="mt-1 text-xs text-(--color-text-muted)">
-            The directory must already exist on disk.
+            Workspaces come from saved coding workspaces.
           </p>
         </div>
       )}
@@ -306,25 +294,9 @@ export function SchedulerPanel({
 
   const tasks = tasksQuery.data?.tasks ?? []
 
-  // Scope the visible list to the caller's chat context so the user only
-  // sees reminders that belong to *this* lead:
-  //   * Default chat (``contextMode='normal'``)   → only normal tasks.
-  //   * Coding chat  (``contextMode='coding'``,
-  //     ``contextWorkspace='/repo/x'``)            → only coding tasks
-  //                                                  for that workspace.
-  // Mirrors the server-side ``_in_scope`` filter applied by the
-  // ``schedule_task`` tool so the UI shows what the agent itself sees.
-  // No explicit toggle is exposed: per the UX decision, the scoping is
-  // implicit and there is no "show all" escape hatch from inside the panel.
-  const scopedTasks = tasks.filter((task) => {
-    if (task.mode !== contextMode) return false
-    if (contextMode === 'coding') {
-      return task.workspace === contextWorkspace
-    }
-    return true
-  })
-
-  const filteredTasks = scopedTasks.filter((task) => {
+  // Show all scheduled tasks. Each row carries a routing badge so users can
+  // distinguish normal reminders from coding-workspace reminders.
+  const filteredTasks = tasks.filter((task) => {
     const q = searchQuery.toLowerCase()
     if (!q) return true
     return (
@@ -419,15 +391,9 @@ export function SchedulerPanel({
                         className="mt-0.5 truncate text-xs text-(--color-text-muted)"
                         // ``title`` exposes the full workspace path on
                         // hover when the truncated label hides it.
-                        title={
-                          contextMode === 'coding' && contextWorkspace
-                            ? `Reminders for ${contextWorkspace}`
-                            : undefined
-                        }
+                        title="Normal and coding scheduled tasks"
                       >
-                        {contextMode === 'coding' && contextWorkspace
-                          ? `Reminders for ${workspaceLabel(contextWorkspace)}`
-                          : 'Reminders for this chat'}
+                        All scheduled tasks
                       </p>
                     )}
                   </div>

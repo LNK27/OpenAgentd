@@ -241,17 +241,12 @@ describe('SchedulerPanel — Edit Task Form', () => {
     expect(searchInput).toHaveAttribute('placeholder', 'Search tasks…')
   })
 
-  it('displays the scope-aware description in the header', async () => {
-    // With no ``contextMode`` / ``contextWorkspace`` props the panel
-    // defaults to the normal-chat scope, so the header subtitle shows
-    // the generic "Reminders for this chat" copy. (The coding-mode
-    // variant — "Reminders for <workspace>" — is exercised in
-    // SchedulerPanel.scope.test.tsx.)
+  it('displays the all-tasks description in the header', async () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Reminders for this chat/i),
+        screen.getByText(/All scheduled tasks/i),
       ).toBeInTheDocument()
     })
   })
