@@ -24,6 +24,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `continue_smoketest.py` | End-to-end test of `/continue`: send long prompt, wait, interrupt, inspect truncated assistant row, dispatch `/continue`, stream resumption inline, print final history | `--wait-before-stop N`, `--wait N`, `--base URL` |
 | `stop_mid_stream.py` | Drive the user-stop matrix (early / text / tool phases, with and without `/undo`) and check phase-agnostic invariants on the persisted history + follow-up SSE. Exits non-zero on any invariant failure | `--only NAME`, `--skip-undo`, `--base URL` |
 | `stop_additive.py` | Verify the Stop + additional-message ("I forgot to add ...") additive semantic — send msg_A, Stop, send msg_B, assert the final assistant reply incorporates both. Exits non-zero if either word is missing | `--wait N`, `--base URL` |
+| `queued_injection.py` | Verify queued follow-ups splice into the running turn before `done`: send a slow tool prompt, queue multiple follow-ups, assert `queued_turn_start` arrives before completion, rows become visible history, and the final answer includes exact queued tokens | `--queue-delay N`, `--between-delay N`, `--followup TEXT`, `--expect TEXT`, `--wait N`, `--base URL` |
 | `mention_attachments.py` | Smoke-test `@`-mention auto-attachment: text file fenced, large text head+tail truncated, image and folder mentions are reference-only (no attachment). Exits non-zero on any invariant failure | `--base URL` |
 | `undo_mid_second_turn.py` | Two-turn `/undo` scenario: turn 1 completes, turn 2 is interrupted mid-stream, `/undo` must return 202 (lead is idle post-Stop, busy-member guard does not fire) and the boundary must roll back so a follow-up runs without the interrupted prompt in context | `--base URL` |
 
@@ -71,6 +72,9 @@ uv run python -m manual.stop_mid_stream --skip-undo                 # skip the /
 # Stop + additional-message ("I forgot to add ...") additive contract check
 uv run python -m manual.stop_additive                               # default 0.3s wait → forces [user, user] adjacency
 uv run python -m manual.stop_additive --wait 1.5                    # mid-stream interrupt
+
+# Queued follow-up injection: queue while a slow tool turn is running, verify splice before done
+uv run python -m manual.queued_injection
 
 # Two-turn /undo: complete turn 1, interrupt turn 2 mid-stream, /undo, verify boundary rolled back
 uv run python -m manual.undo_mid_second_turn

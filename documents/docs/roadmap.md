@@ -42,7 +42,6 @@ record of what the product does today.
 The shortlist for the next release. Everything else lives in the pillar tables
 below.
 
-- Inject queued message into a running turn (today the queue activates only between turns).
 - Per-response running token total + cumulative session total, persisted through `/compact`.
 - Group "explored" tool calls so long inspector logs stay scannable.
 - Menubar: prev / next session, prev / next coding project.
@@ -75,7 +74,6 @@ Shipped cockpit features: [`features.md §1`](./features.md#1-the-desktop-cockpi
 
 | Item | Status | Notes |
 |---|---|---|
-| Inject queued message into a running turn | Soon | Splice at the next LLM-step boundary; not mid-tool-call. |
 | Agent asks the user a question | Later | Real "ask user" tool — pauses the loop, prompts the UI, resumes on answer. |
 | `/goal` mode with structured-output evaluator | Later | Planner + executor + evaluator. Evaluator uses provider-native structured output, no free-text parsing. Tight scope, no backtracking in v1. |
 | `/btw` — fork a session for a side question | Deferred | Useful but low pull. Re-evaluate when 3+ users ask. |

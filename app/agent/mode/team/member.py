@@ -42,6 +42,7 @@ from app.agent.hooks.otel import OpenTelemetryHook
 from app.agent.hooks.stream_publisher import StreamPublisherHook
 from app.agent.hooks.summarization import build_summarization_hook
 from app.agent.hooks.title_generation import build_title_generation_hook
+from app.agent.mode.team.hooks.queued_injection import QueuedMessageInjectionHook
 from app.agent.mode.team.hooks.team_inbox import TeamInboxHook
 from app.agent.mode.team.hooks.team_prompt import AgentTeamProtocolHook
 from app.agent.hooks.tool_result_offload import ToolResultOffloadHook
@@ -810,6 +811,18 @@ class TeamMemberBase(abc.ABC):
             publisher_hook,
             otel_hook,
         ]
+        # Splice user-queued messages into the running turn — lead only, since
+        # the user-facing queue lives on the lead's session.  Must precede
+        # summarization so a freshly-injected message participates in window
+        # accounting on the same iteration.
+        if self._role_label == "lead" and self.db_factory:
+            hooks.append(
+                QueuedMessageInjectionHook(
+                    session_id=self.session_id,
+                    agent_name=self.name,
+                    db_factory=self.db_factory,
+                )
+            )
         if self._team.mode == "coding":
             hooks.append(WorkspaceInstructionsHook(self._team.workspace))
 

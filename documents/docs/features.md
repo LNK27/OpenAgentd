@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-05-23
+updated: 2026-05-25
 ---
 
 # Features
@@ -124,7 +124,10 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   command palette and assistant footer.
 - **Queued follow-up messages** `[v1.12.0, v1.14.0]` — send another message
   while the agent is still replying; it's queued and dispatched in order. Long
-  queued messages are collapsible while a response runs `[v1.22.0]`.
+  queued messages are collapsible while a response runs `[v1.22.0]`. Queued
+  messages now splice into the running turn at the next LLM-step boundary
+  (not mid-tool-call), so the agent sees them on the very next iteration
+  instead of waiting for the current turn to finish `[v1.25.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
   Assistant messages persist the model that actually generated each reply.
