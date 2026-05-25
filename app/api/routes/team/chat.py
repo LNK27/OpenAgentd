@@ -216,10 +216,6 @@ async def team_chat(
 
     assert message is not None
 
-    if session_uuid is not None:
-        async with db.begin():
-            await cleanup_reverted_tail(db, session_uuid)
-
     # Materialise the multipart uploads into transport-neutral attachments
     # so agent_service can validate + persist them without knowing about
     # FastAPI ``UploadFile``.
@@ -247,91 +243,98 @@ async def team_chat(
     )
     attachments.extend(mention_attachments)
 
-    if session_uuid is not None and team_obj.lead.state == "working":
-        # Explicit uploads still 409 — they need the live capability check
-        # + persistence pipeline that only runs on the dispatch path. But
-        # mentions are derived from workspace files the agent will see
-        # anyway, so we persist them onto the queued row so the dequeue
-        # path rehydrates the same context the user typed.
-        if explicit_attachment_count > 0:
-            raise HTTPException(
-                status_code=409,
-                detail="Cannot queue messages with attachments while the agent is working.",
-            )
-        queued_attachment_metas: list[dict] = []
-        if mention_attachments:
-            try:
-                (
-                    _,
-                    queued_attachment_metas,
-                ) = await agent_service.validate_and_persist_attachments(
-                    team_obj, mention_attachments, session_id
+    async with team_obj.user_message_lock:
+        if session_uuid is not None:
+            async with db.begin():
+                await cleanup_reverted_tail(db, session_uuid)
+
+        if session_uuid is not None and team_obj.has_active_user_turn():
+            # Explicit uploads still 409 — they need the live capability check
+            # + persistence pipeline that only runs on the dispatch path. But
+            # mentions are derived from workspace files the agent will see
+            # anyway, so we persist them onto the queued row so the dequeue
+            # path rehydrates the same context the user typed.
+            if explicit_attachment_count > 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cannot queue messages with attachments while the agent is working.",
                 )
-            except AttachmentError as exc:
-                raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
-        async with db.begin():
-            queued_extra: dict[str, object] = {}
-            effective_model = model or team_obj.lead.agent.model_id
-            if effective_model:
-                queued_extra["model"] = effective_model
-            if thinking_level:
-                queued_extra["thinking_level"] = thinking_level
-            if queued_attachment_metas:
-                queued_extra["attachments"] = queued_attachment_metas
-            existing_row = await db.get(ChatSession, session_uuid)
-            if existing_row is not None:
-                if model_provided:
-                    existing_row.model = model
-                if thinking_level_provided:
-                    existing_row.thinking_level = thinking_level
-                effective_model = existing_row.model or team_obj.lead.agent.model_id
+            queued_attachment_metas: list[dict] = []
+            if mention_attachments:
+                try:
+                    (
+                        _,
+                        queued_attachment_metas,
+                    ) = await agent_service.validate_and_persist_attachments(
+                        team_obj, mention_attachments, session_id
+                    )
+                except AttachmentError as exc:
+                    raise HTTPException(
+                        status_code=exc.status, detail=str(exc)
+                    ) from exc
+            async with db.begin():
+                queued_extra: dict[str, object] = {}
+                effective_model = model or team_obj.lead.agent.model_id
                 if effective_model:
                     queued_extra["model"] = effective_model
-                if existing_row.thinking_level:
-                    queued_extra["thinking_level"] = existing_row.thinking_level
-                db.add(existing_row)
-            queued = await save_queued_user_message(
-                db,
-                session_uuid,
-                message,
-                extra=queued_extra,
+                if thinking_level:
+                    queued_extra["thinking_level"] = thinking_level
+                if queued_attachment_metas:
+                    queued_extra["attachments"] = queued_attachment_metas
+                existing_row = await db.get(ChatSession, session_uuid)
+                if existing_row is not None:
+                    if model_provided:
+                        existing_row.model = model
+                    if thinking_level_provided:
+                        existing_row.thinking_level = thinking_level
+                    effective_model = existing_row.model or team_obj.lead.agent.model_id
+                    if effective_model:
+                        queued_extra["model"] = effective_model
+                    if existing_row.thinking_level:
+                        queued_extra["thinking_level"] = existing_row.thinking_level
+                    db.add(existing_row)
+                queued = await save_queued_user_message(
+                    db,
+                    session_uuid,
+                    message,
+                    extra=queued_extra,
+                )
+            logger.info(
+                "team_chat_queued session_id={} message_id={} mentions={}",
+                session_id,
+                queued.id,
+                len(queued_attachment_metas),
             )
+            if not team_obj.has_active_user_turn():
+                await team_obj._activate_queued_user_messages(session_id)
+            return {
+                "status": "queued",
+                "session_id": session_id,
+                "message_id": str(queued.id),
+            }
+
+        try:
+            sid, n_attachments = await agent_service.dispatch_user_message(
+                team_obj,
+                content=message,
+                session_id=session_id,
+                attachments=attachments,
+                mode=mode,
+                workspace=workspace,
+                model=model,
+                model_provided=model_provided,
+                thinking_level=thinking_level,
+                thinking_level_provided=thinking_level_provided,
+            )
+        except AttachmentError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
         logger.info(
-            "team_chat_queued session_id={} message_id={} mentions={}",
-            session_id,
-            queued.id,
-            len(queued_attachment_metas),
+            "team_chat_received session_id={} attachments={}",
+            sid,
+            n_attachments,
         )
-        if team_obj.lead.state != "working":
-            await team_obj._activate_queued_user_messages(session_id)
-        return {
-            "status": "queued",
-            "session_id": session_id,
-            "message_id": str(queued.id),
-        }
-
-    try:
-        sid, n_attachments = await agent_service.dispatch_user_message(
-            team_obj,
-            content=message,
-            session_id=session_id,
-            attachments=attachments,
-            mode=mode,
-            workspace=workspace,
-            model=model,
-            model_provided=model_provided,
-            thinking_level=thinking_level,
-            thinking_level_provided=thinking_level_provided,
-        )
-    except AttachmentError as exc:
-        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
-
-    logger.info(
-        "team_chat_received session_id={} attachments={}",
-        sid,
-        n_attachments,
-    )
-    return {"status": "accepted", "session_id": sid}
+        return {"status": "accepted", "session_id": sid}
 
 
 @router.delete("/sessions/{session_id}/queued-messages/{message_id}", status_code=204)

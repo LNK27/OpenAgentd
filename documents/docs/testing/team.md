@@ -216,4 +216,4 @@ Regression coverage: `web/src/__tests__/stores/useTeamStore.async.test.ts`.
 | Lead never wakes | `session_id` not propagated, or `TeamInboxHook` failed to drain the mailbox |
 | Member never wakes | `team_message` targeted the wrong name, or inbox not registered for that member |
 | 4xx on `POST /api/team/chat` | Sending JSON instead of multipart/form-data, or omitting `message` without `interrupt=true` |
-| 5xx with `No tool output found for function call` | An orphan tool call survived a crash — `heal_orphaned_tool_calls` should patch this on the next turn |
+| 5xx with `No tool output found for function call` or OpenAI `tool_calls` pairing errors | A visible orphan tool call survived crash/compaction — `heal_orphaned_tool_calls` should patch this on the next turn |

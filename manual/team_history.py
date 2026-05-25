@@ -34,7 +34,7 @@ def print_history(base: str, sid: str):
     lead_name: str = ""
     for page in pages:
         lead = page["lead"]
-        lead_name = lead["agent_name"]
+        lead_name = lead.get("agent_name") or lead.get("name") or "lead"
         lead_messages.extend(lead["messages"])
         for mb in page.get("members", []):
             members_messages.setdefault(mb["name"], []).extend(mb["messages"])
@@ -46,10 +46,7 @@ def print_history(base: str, sid: str):
     all_member_msgs = list(members_messages.values())
     total = len(lead_messages) + sum(len(msgs) for msgs in all_member_msgs)
     done_ct = sum(
-        1
-        for msgs in all_member_msgs
-        for m in msgs
-        if m.get("content") == "[DONE]"
+        1 for msgs in all_member_msgs for m in msgs if m.get("content") == "[DONE]"
     )
     social_ct = 0
     for msgs in all_member_msgs:

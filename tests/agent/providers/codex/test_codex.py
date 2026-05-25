@@ -21,11 +21,13 @@ import pytest
 from pydantic import SecretStr
 
 from app.agent.providers.codex.oauth import (
+    CODEX_ORIGINATOR,
     CodexOAuth,
     _device_login,
     _extract_account_id,
 )
 from app.agent.providers.codex.codex import (
+    CODEX_STREAM_IDLE_TIMEOUT_SECONDS,
     _load_token,
     _CodexResponsesHandler,
     CodexProvider,
@@ -828,9 +830,7 @@ class TestCodexProviderInit:
 
             assert provider._responses.headers["Content-Type"] == "application/json"
             assert provider._responses.headers["User-Agent"] == "openagentd/1.0.0"
-            # Mirrors upstream DEFAULT_ORIGINATOR so the Codex backend's
-            # first-party allowlist treats us identically to the official CLI.
-            assert provider._responses.headers["originator"] == "codex_cli_rs"
+            assert provider._responses.headers["originator"] == CODEX_ORIGINATOR
 
     def test_init_creates_responses_handler(self):
         """__init__() creates _CodexResponsesHandler instance."""
@@ -840,6 +840,16 @@ class TestCodexProviderInit:
 
             assert isinstance(provider._responses, _CodexResponsesHandler)
             assert provider._responses.model == "gpt-5.4"
+
+    def test_init_uses_codex_stream_idle_timeout(self):
+        """Codex mirrors upstream's 300s stream idle timeout."""
+        with patch("app.agent.providers.codex.codex._load_token") as mock_load:
+            mock_load.return_value = ("access_token_123", "account_789")
+            provider = CodexProvider(model="gpt-5.4")
+
+            assert (
+                provider._responses.request_timeout == CODEX_STREAM_IDLE_TIMEOUT_SECONDS
+            )
 
     def test_init_accepts_temperature_parameter(self):
         """__init__() accepts temperature parameter (for API compatibility)."""

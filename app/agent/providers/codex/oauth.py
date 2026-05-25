@@ -35,6 +35,7 @@ CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 ISSUER = "https://auth.openai.com"
 OAUTH_PORT = 1455
 _USER_AGENT = "openagentd/1.0.0"
+CODEX_ORIGINATOR = "openagentd"
 _REFRESH_LOCK = Lock()
 
 
@@ -155,7 +156,7 @@ def _authorize_url(redirect_uri: str, verifier: str, state: str) -> str:
             "id_token_add_organizations": "true",
             "codex_cli_simplified_flow": "true",
             "state": state,
-            "originator": "codex_cli_rs",
+            "originator": CODEX_ORIGINATOR,
         }
     )
     return f"{ISSUER}/oauth/authorize?{params}"

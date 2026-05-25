@@ -466,20 +466,6 @@
  * See documents/styling-specs/motion.md#choreography-patterns
  * ───────────────────────────────────────────────────────────── */
 
-/* Streaming cursor — agent is actively generating this token. */
-@keyframes streaming-cursor {
-  0%, 50%   { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-.streaming-cursor {
-  display: inline-block;
-  width: 0.5em;
-  height: 1em;
-  vertical-align: text-bottom;
-  background: currentColor;
-  animation: streaming-cursor 1000ms steps(2, end) infinite;
-}
-
 /* Thinking dot — one of three; stagger set inline on element. */
 @keyframes thinking-dot {
   0%, 100% { opacity: 0.4; }

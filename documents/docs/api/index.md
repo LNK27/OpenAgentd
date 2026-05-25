@@ -303,12 +303,12 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 **Normal send** (`interrupt=false`):
 - `message` is required.
 - `session_id` optional — omit to create a new session.
-- Returns `{"status": "queued", "session_id": "..."}` with HTTP 202.
+- Returns HTTP 202 with `status: "accepted"`, or `status: "queued"` plus `message_id` when a lead turn is already active.
 
 **Coding send** (`mode=coding`):
 - `workspace` must be an existing directory.
 - One live team is kept per resolved workspace; multiple workspaces can run at the same time.
-- Concurrent sends to the same workspace are admitted by the lead's mailbox — if the lead is working, the new message is queued in its inbox and drained on the next LLM call; if the lead is idle, it starts a fresh activation. Same model as normal mode.
+- Concurrent sends to the same workspace are serialized per team: if a lead turn is active, the new message is queued and drained in order; otherwise it starts a fresh activation. Same model as normal mode.
 - The workspace root's `AGENTS.md`, when present and under the size limit, is appended to the model system prompt.
 - The web UI enters coding mode at `/coding`; the last opened workspace is restored locally. Persisted coding session routes use `/coding/{session_id}` without a workspace query param; the workspace is resolved from session detail.
 
@@ -624,8 +624,12 @@ bytes are fetched separately through the `/media/` proxy above.
 
 - `session_id` must be a valid UUID for session-scoped listing (400 on malformed).
 - Missing workspace directory → `200` with `files: []`.
-- Dotfiles, dot-directories, common generated directories, and root `.gitignore`
-  matches are skipped.
+- `.git/` and common generated directories (`node_modules`, `dist`, `build`,
+  `.venv`, `venv`, `__pycache__`) are always pruned. All other entries —
+  including dot-prefixed ones like `.openagentd/`, `.github/`, `.env.example`
+  — are surfaced unless filtered by the root `.gitignore`. The picker honours
+  `!`-negation, so `.openagentd/*` + `!.openagentd/skills/` re-includes the
+  tracked subtree.
 - Directories, named pipes, sockets, and symlinks whose resolved target escapes
   the workspace root are skipped.
 - Entries are sorted lexicographically; the walk stops at

@@ -237,12 +237,25 @@ class AgentTeam:
         # same lead turn could otherwise race the counter.
         self._roster_lock = asyncio.Lock()
 
+        # Serialise user ingress so quick follow-ups queue behind the active
+        # turn instead of racing in as adjacent normal user rows.
+        self._user_message_lock = asyncio.Lock()
+
         # Restorable-instance roster, refreshed once per user turn by
         # ``handle_user_message``.  Maps blueprint name → list of
         # ``(handle, hint)`` for dismissed-but-on-disk instances under
         # the current lead session, newest-first.  Empty until the first
         # ``refresh_restorable_index()`` call.
         self._restorable_index: dict[str, list[tuple[str, str]]] = {}
+
+    @property
+    def user_message_lock(self) -> asyncio.Lock:
+        """Lock that serialises route-level user message dispatch decisions."""
+        return self._user_message_lock
+
+    def has_active_user_turn(self) -> bool:
+        """Return whether a user turn is active or the lead is already running."""
+        return self._has_active_turn or self.lead.state == "working"
 
     # ------------------------------------------------------------------
     # Lifecycle

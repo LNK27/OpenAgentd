@@ -19,7 +19,6 @@ import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { InboxBubble } from './InboxBubble'
 import { CompactionDivider } from './CompactionDivider'
-import { StreamingCursor } from './motion'
 import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
@@ -222,7 +221,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
 }
 
 
-function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = true, onRevert }: { block: ContentBlock; isStreaming: boolean; isLast: boolean; sessionId?: string; showCursor?: boolean; onRevert?: () => void }) {
+function BlockRenderer({ block, isStreaming, sessionId, onRevert }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void }) {
   switch (block.type) {
     case 'user': {
       const fromAgent = block.extra?.from_agent as string | undefined
@@ -295,9 +294,6 @@ function BlockRenderer({ block, isStreaming, isLast, sessionId, showCursor = tru
       return (
         <div>
           <LazyMarkdownBlock content={block.content} sessionId={sessionId} />
-          {showCursor && isStreaming && isLast && (
-            <StreamingCursor className="ml-0.5 text-(--color-accent)" />
-          )}
         </div>
       )
     }
@@ -446,7 +442,6 @@ export function AgentPane({
                          key={item.block.id}
                          block={item.block}
                          isStreaming={false}
-                          isLast={item.index === allBlocks.length - 1}
                            sessionId={sessionId}
                            onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
                           />
@@ -464,13 +459,11 @@ export function AgentPane({
                         isTrailingTurn={isTrailingTurn}
                         totalBlocks={allBlocks.length}
                         onContinue={onContinue}
-                        renderBlock={({ block, isStreaming, isLast }) => (
+                        renderBlock={({ block, isStreaming }) => (
                          <BlockRenderer
                            block={block}
                            isStreaming={isStreaming}
-                            isLast={isLast}
                             sessionId={sessionId}
-                            showCursor={!isContinuing}
                           />
                        )}
                      />

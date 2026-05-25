@@ -2,7 +2,7 @@
 title: Chat Input & Message Queue
 description: How queued follow-up messages work while the team lead is streaming.
 status: stable
-updated: 2026-05-22
+updated: 2026-05-25
 ---
 
 # Chat Input & Message Queue
@@ -13,16 +13,11 @@ updated: 2026-05-22
 
 ## Consecutive message behaviour
 
-The input bar (`FloatingInputBar` + `InputBar`) is never disabled. Submitting text while the lead is busy persists the message to the backend queue; it is not kept only in browser memory.
+The input bar (`FloatingInputBar` + `InputBar`) is never disabled. Submitting text while a lead turn is active persists the message to the backend queue; it is not kept only in browser memory.
 
-**Guard condition** (`sendMessage` in `useTeamStore/index.ts`):
+**Guard condition:** the UI enqueues when the lead reports `working`; the backend also treats an already-active turn as busy, so rapid double-sends queue safely even before status updates reach the client.
 
-```
-lead.status === "working"  →  enqueue
-lead.status !== "working"  →  POST /api/team/chat immediately
-```
-
-Only the **lead's** status matters. Members running background sub-tasks do not block new input.
+Only the **lead turn** matters. Members running background sub-tasks do not block new input.
 
 Attachments are not queued while the lead is working. The UI asks the user to wait for the current response to finish before sending files.
 
@@ -32,7 +27,7 @@ Attachments are not queued while the lead is working. The UI asks the user to wa
 
 | Step | What happens |
 |------|-------------|
-| User submits text while lead is busy | `POST /api/team/chat` stores a hidden `SessionMessage` with `extra.queue_status="queued"` and returns its `message_id` |
+| User submits text while a lead turn is active | `POST /api/team/chat` stores a hidden `SessionMessage` with `extra.queue_status="queued"` and returns its `message_id` |
 | Lead finishes its current activation | Backend emits `queued_turn_start`, pops queued rows in order, keeps the same SSE connection alive, and sends each queued message to the lead mailbox immediately. Team-level `done` still waits for all members to finish; the queue handoff does not wait for every member status to become `idle`. |
 | User clicks `/stop` while messages are queued | Backend releases queued rows into normal visible history, removes their queued metadata, stops the stream, and does not activate those messages. Frontend reloads the session so the released messages can be edited with `/undo` or followed by a new message. |
 | User reloads or switches sessions | Session history includes queued rows; the frontend rehydrates `_pendingMessages` for the active session |
@@ -80,7 +75,7 @@ Typing `@` (at start of input or after whitespace) opens a picker of workspace f
 | Aspect | Detail |
 |---|---|
 | Trigger | `@` preceded by start-of-string or whitespace. Email-like `user@host` does **not** trigger. |
-| Sources | Files come from `GET /api/team/{sid}/files` (normal mode) or `GET /api/team/workspace/files/list?workspace=…` (`/coding`). Folders are derived from path prefixes client-side. Cached 30s by TanStack Query. |
+| Sources | Files come from `GET /api/team/{sid}/files` (normal mode) or `GET /api/team/workspace/files/list?workspace=…` (`/coding`). Folders are derived from path prefixes client-side. Cached 30s by TanStack Query. Dot-prefixed entries (`.openagentd/skills/…`, `.github/…`, `.env.example`) are tagable when not gitignored — only `.git/` and common generated dirs are hard-excluded; see [API — workspace file listing](../api/index.md#workspace-file-listing). |
 | Ranking | Fuzzy subsequence via `fuzzysort` (so `dockcom` matches `docker-compose.yml`). Directories get a small bonus so `@src` surfaces the `src/` directory above its children. Empty query lists top-level folders alphabetically. |
 | Inserted text | Plain `@path ` for files, `@dir/ ` for directories. The textarea stays plain-text — no structured chips inside the value. |
 | Picker row | A lucide `Folder` or `File` icon, then the path with the parent directory dimmed and the basename in full text colour. Directories show a trailing `/`. |

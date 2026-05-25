@@ -9,6 +9,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+import httpx
 
 from app.agent.providers.openai.responses import ResponsesHandler
 
@@ -66,6 +67,27 @@ class TestResponsesStreaming:
         assert chunks[3].usage is not None
         assert chunks[3].usage.prompt_tokens == 10
         assert chunks[3].usage.completion_tokens == 5
+
+    async def test_parse_stream_response_failed_overload_is_retryable(self, handler):
+        """Codex/OpenAI overload stream errors should enter retry handling."""
+        lines = [
+            "event: response.failed",
+            'data: {"type": "response.failed", "response": {"error": {"type": "service_unavailable_error", "code": "server_is_overloaded", "message": "Our servers are currently overloaded."}}}',
+        ]
+
+        async def async_iter_lines():
+            for line in lines:
+                yield line
+
+        response = MagicMock()
+        response.aiter_lines = lambda: async_iter_lines()
+
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            async for _chunk in handler._parse_stream(response):
+                pass
+
+        assert exc_info.value.response.status_code == 503
+        assert "overloaded" in exc_info.value.response.text
 
     async def test_parse_stream_tool_call(self, handler):
         """Parse streaming tool call response."""

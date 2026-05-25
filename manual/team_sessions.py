@@ -64,7 +64,8 @@ def print_history(base: str, session_id: str):
     data = r.json()
 
     lead = data["lead"]
-    _print_agent_msgs(lead["agent_name"], lead["messages"], is_lead=True)
+    lead_name = lead.get("agent_name") or lead.get("name") or "lead"
+    _print_agent_msgs(lead_name, lead["messages"], is_lead=True)
 
     for mb in data.get("members", []):
         _print_agent_msgs(mb["name"], mb["messages"])
@@ -88,7 +89,7 @@ def print_history(base: str, session_id: str):
         )
     )
 
-    print(f"\n--- summary ---")
+    print("\n--- summary ---")
     print(
         f"total: {len(all_msgs)} | [DONE]: {done_ct} | dupes: {dupes} | social: {social_ct}"
     )

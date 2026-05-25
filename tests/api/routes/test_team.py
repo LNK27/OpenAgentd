@@ -251,6 +251,40 @@ class TestTeamChatRoute:
         assert response.json()["status"] == "queued"
         test_team._activate_queued_user_messages.assert_awaited_once_with(session_id)
 
+    def test_team_chat_queues_when_turn_active_before_lead_state_flips(
+        self, app_with_team, test_team
+    ):
+        """Quick follow-up POSTs must queue once a turn is active.
+
+        Regression guard for two requests arriving close together: the first
+        request sets ``_has_active_turn`` before the lead activation task may
+        visibly flip ``lead.state`` to ``working``. The second request should
+        still persist as queued, not as an adjacent normal user row.
+        """
+        session_id = str(uuid.uuid7())
+        test_team.lead.state = "idle"
+        test_team._has_active_turn = True
+        test_team._activate_queued_user_messages = AsyncMock(return_value=False)
+
+        async def save_queue(_db, _session_id, _message, *, extra=None):
+            queued = AsyncMock()
+            queued.id = uuid.uuid7()
+            return queued
+
+        client = TestClient(app_with_team)
+        try:
+            with patch("app.api.routes.team.chat.save_queued_user_message", save_queue):
+                response = client.post(
+                    "/api/team/chat",
+                    data={"message": "queued", "session_id": session_id},
+                )
+        finally:
+            test_team._has_active_turn = False
+
+        assert response.status_code == 202
+        assert response.json()["status"] == "queued"
+        test_team._activate_queued_user_messages.assert_not_awaited()
+
     def test_team_chat_queued_message_persists_mention_attachments(
         self, app_with_team, test_team
     ):

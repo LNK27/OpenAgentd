@@ -15,6 +15,7 @@ import respx
 from pydantic import SecretStr
 
 from app.agent.providers.codex.oauth import (
+    CODEX_ORIGINATOR,
     CLIENT_ID,
     ISSUER,
     CodexOAuth,
@@ -298,14 +299,13 @@ class TestPKCEHelpers:
 class TestAuthorizeUrl:
     """Authorize URL must mirror upstream codex-rs/login/src/server.rs.
 
-    Wire-level invariants — drift here is what would cause the Codex backend
-    to gate us as a non-first-party client.
+    Wire-level invariants for the ChatGPT OAuth flow.
     """
 
-    def test_originator_is_codex_cli_rs(self):
+    def test_originator_identifies_openagentd(self):
         url = _authorize_url("http://localhost:1455/auth/callback", "v", "s")
         qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
-        assert qs["originator"] == ["codex_cli_rs"]
+        assert qs["originator"] == [CODEX_ORIGINATOR]
 
     def test_scope_includes_connectors(self):
         url = _authorize_url("http://localhost:1455/auth/callback", "v", "s")

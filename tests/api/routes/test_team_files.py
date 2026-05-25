@@ -129,18 +129,22 @@ class TestWorkspaceFilesListing:
         # Unknown extension falls back to the octet-stream default.
         assert by_name["blob.bin"]["mime"] == "application/octet-stream"
 
-    def test_dotfiles_and_dotdirs_excluded(
+    def test_git_dir_excluded_other_dotentries_allowed(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Hidden files (``.foo``) and files inside hidden dirs (``.git/…``)
-        are skipped at every depth.  Users and agents shouldn't see noise
-        like editor swap files or VCS internals."""
+        """``.git/`` is always pruned (VCS internals — huge and noisy), but
+        other dot-prefixed files and folders flow through so the InputBar
+        @-mention picker can tag things like ``.openagentd/`` skills,
+        ``.github/`` workflows, or ``.env.example``. Filtering beyond
+        ``.git`` is delegated to ``.gitignore``."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir()
         (fake_root / "visible.txt").write_text("ok")
-        (fake_root / ".hidden").write_text("no")
+        (fake_root / ".env.example").write_text("KEY=")
         (fake_root / ".git").mkdir()
         (fake_root / ".git" / "HEAD").write_text("ref: …")
+        (fake_root / ".github").mkdir()
+        (fake_root / ".github" / "ci.yml").write_text("jobs: {}")
         (fake_root / "sub").mkdir()
         (fake_root / "sub" / ".swp").write_text("tmp")
 
@@ -149,8 +153,43 @@ class TestWorkspaceFilesListing:
         monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
-        paths = [f["path"] for f in resp.json()["files"]]
-        assert paths == ["visible.txt"]
+        paths = sorted(f["path"] for f in resp.json()["files"])
+        assert paths == [
+            ".env.example",
+            ".github/ci.yml",
+            "sub/.swp",
+            "visible.txt",
+        ]
+        # ``.git/`` is the one hard exclusion.
+        assert not any(p.startswith(".git/") for p in paths)
+
+    def test_gitignore_negation_reincludes_dot_subdir(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        """``.gitignore`` with ``.openagentd/*`` + ``!.openagentd/skills/``
+        should hide the ignored siblings but surface the re-included subtree
+        so users can @-mention their tracked skill files."""
+        fake_root = tmp_path / "ws"
+        fake_root.mkdir()
+        (fake_root / ".gitignore").write_text(
+            ".openagentd/*\n!.openagentd/skills/\n",
+            encoding="utf-8",
+        )
+        oad = fake_root / ".openagentd"
+        oad.mkdir()
+        (oad / "data").mkdir()
+        (oad / "data" / "runtime.db").write_text("x")
+        (oad / "skills").mkdir()
+        (oad / "skills" / "SKILL.md").write_text("# skill")
+
+        from app.api.routes.team import files as team_routes
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        resp = client.get(f"/api/team/{session_id}/files")
+        paths = sorted(f["path"] for f in resp.json()["files"])
+        assert ".openagentd/skills/SKILL.md" in paths
+        assert ".openagentd/data/runtime.db" not in paths
 
     def test_symlink_escaping_root_is_skipped(
         self, client, session_id, tmp_path, monkeypatch

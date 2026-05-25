@@ -46,10 +46,17 @@ if TYPE_CHECKING:
 class ResponsesHandler:
     """Handles all interaction with /v1/responses."""
 
-    def __init__(self, model: str, base_url: str, headers: dict[str, str]) -> None:
+    def __init__(
+        self,
+        model: str,
+        base_url: str,
+        headers: dict[str, str],
+        request_timeout: float = 120.0,
+    ) -> None:
         self.model = model
         self.base_url = base_url
         self.headers = headers
+        self.request_timeout = request_timeout
 
     # ------------------------------------------------------------------
     # Message / tool conversion
@@ -249,7 +256,7 @@ class ResponsesHandler:
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                url, headers=self.headers, json=body, timeout=120.0
+                url, headers=self.headers, json=body, timeout=self.request_timeout
             )
             if response.status_code >= 400:
                 logger.error(
@@ -271,7 +278,11 @@ class ResponsesHandler:
 
         async with httpx.AsyncClient() as client:
             async with client.stream(
-                "POST", url, headers=self.headers, json=body, timeout=120.0
+                "POST",
+                url,
+                headers=self.headers,
+                json=body,
+                timeout=self.request_timeout,
             ) as response:
                 if response.status_code >= 400:
                     err_body = await response.aread()
@@ -390,6 +401,9 @@ class ResponsesHandler:
                         ],
                     )
 
+            elif etype == "response.failed":
+                self._raise_response_failed(event, response)
+
             elif etype == "response.function_call_arguments.delta":
                 # item_id is the stable tool call ID (prefix: fc_)
                 call_id, inline_name = self._extract_call_id_and_name(event)
@@ -499,3 +513,28 @@ class ResponsesHandler:
                             or None,
                         ),
                     )
+
+    def _raise_response_failed(self, event: dict[str, Any], response: Any) -> None:
+        error = (event.get("response") or {}).get("error") or event.get("error") or {}
+        code = str(error.get("code") or "")
+        error_type = str(error.get("type") or "")
+        message = str(error.get("message") or "response.failed event received")
+
+        if code in {"server_is_overloaded", "slow_down"} or (
+            error_type == "service_unavailable_error"
+        ):
+            status_code = 503
+        elif code == "rate_limit_exceeded":
+            status_code = 429
+        else:
+            status_code = 400
+
+        request = getattr(response, "request", None)
+        if not isinstance(request, httpx.Request):
+            request = httpx.Request("POST", f"{self.base_url}/responses")
+        failed_response = httpx.Response(
+            status_code,
+            request=request,
+            content=message.encode(),
+        )
+        raise httpx.HTTPStatusError(message, request=request, response=failed_response)

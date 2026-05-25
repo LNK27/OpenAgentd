@@ -7,8 +7,7 @@ interface ThinkingDotsProps {
 
 /**
  * Thinking indicator — three dots pulsing with a 200ms stagger. Signals
- * "the agent is reasoning but has not yet produced output". Distinct from
- * StreamingCursor: thinking dots appear when there is no text to show yet.
+ * "the agent is reasoning but has not yet produced output".
  *
  * Pair with a progressive text label (`Thinking`, `Reading`, `Searching`)
  * to tell the user what the agent is actually doing.
