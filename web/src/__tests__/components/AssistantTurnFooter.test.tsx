@@ -30,4 +30,17 @@ describe("AssistantTurnFooter", () => {
     expect(screen.getByText("12:34")).toBeTruthy()
     expect(screen.getByTitle("Response duration").textContent).toBe("1.2s")
   })
+
+  it("shows long response durations as minutes and seconds", () => {
+    const blocks: ContentBlock[] = [{
+      id: "b1",
+      type: "text",
+      content: "Assistant answer",
+      responseDurationMs: 93_000,
+    }]
+
+    render(<AssistantTurnFooter turnBlocks={blocks} />)
+
+    expect(screen.getByTitle("Response duration").textContent).toBe("1m 33s")
+  })
 })

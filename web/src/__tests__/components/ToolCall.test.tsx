@@ -79,6 +79,11 @@ describe("ToolCall — header", () => {
     expect(screen.getByText("1.2s")).toBeTruthy()
   })
 
+  it("displays long durations as minutes and seconds", () => {
+    render(<ToolCall name="read" args='{"path":"x"}' done={true} durationMs={93_000} />)
+    expect(screen.getByText("1m 33s")).toBeTruthy()
+  })
+
   it("displays realtime elapsed counting while running", async () => {
     render(<ToolCall name="read" args='{"path":"x"}' done={false} startedAt={Date.now() - 1500} />)
     await waitFor(() => {
