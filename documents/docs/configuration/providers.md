@@ -104,7 +104,7 @@ Uses Anthropic's Messages API at `https://api.anthropic.com/v1/messages`. API-ke
 
 ### `codex`
 
-Uses your **ChatGPT Plus/Pro subscription** to access OpenAI models via `https://chatgpt.com/backend-api/codex/responses`. The endpoint is Responses API only and requires streaming; non-streaming `chat()` calls are assembled from the stream. `temperature`, `top_p`, and `max_tokens` are ignored because the private endpoint rejects those public API fields. `thinking_level` maps to `reasoning.effort`. The same OAuth token also powers `generate_image` when `multimodal.yaml` sets `image.model: codex:<chat-model>`.
+Uses your **ChatGPT Plus/Pro subscription** to access OpenAI models via `https://chatgpt.com/backend-api/codex/responses`. The endpoint is Responses API only and requires streaming; non-streaming `chat()` calls are assembled from the stream. `temperature`, `top_p`, and `max_tokens` are ignored because the private endpoint rejects those public API fields. `thinking_level` maps to `reasoning.effort`. OpenAgentd identifies itself with `originator: openagentd`, uses a 300s Codex stream idle timeout, and retries transient `response.failed` stream errors such as overloads. The same OAuth token also powers `generate_image` when `multimodal.yaml` sets `image.model: codex:<chat-model>`.
 
 ### `copilot`
 

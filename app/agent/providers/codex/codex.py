@@ -23,18 +23,18 @@ from typing import Any
 from loguru import logger
 
 from app.agent.providers.base import LLMProviderBase
-from app.agent.providers.codex.oauth import CodexOAuth
+from app.agent.providers.codex.oauth import CODEX_ORIGINATOR, CodexOAuth
 from app.agent.providers.openai.responses import ResponsesHandler
 from app.agent.schemas.chat import AssistantMessage, ChatMessage, SystemMessage
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
+CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 300.0
 
-# ``originator`` must match upstream's first-party allowlist
-# (codex-rs/login/src/auth/default_client.rs::is_first_party_originator).
+# Identify requests honestly as OpenAgentd.
 _DEFAULT_HEADERS = {
     "Content-Type": "application/json",
     "User-Agent": "openagentd/1.0.0",
-    "originator": "codex_cli_rs",
+    "originator": CODEX_ORIGINATOR,
 }
 
 
@@ -158,7 +158,12 @@ class CodexProvider(LLMProviderBase):
         if account_id:
             headers["ChatGPT-Account-ID"] = account_id
 
-        self._responses = _CodexResponsesHandler(model, CODEX_API_BASE, headers)
+        self._responses = _CodexResponsesHandler(
+            model,
+            CODEX_API_BASE,
+            headers,
+            request_timeout=CODEX_STREAM_IDLE_TIMEOUT_SECONDS,
+        )
 
         logger.debug("codex_provider model={}", model)
 
