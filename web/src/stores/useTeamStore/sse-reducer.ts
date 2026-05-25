@@ -56,6 +56,30 @@ interface CreateSSEHandlerArgs {
   get: Getter
 }
 
+type BufferedTextKind = 'message' | 'thinking'
+
+function appendStreamingText(draft: TeamStore, agent: string, kind: BufferedTextKind, text: string) {
+  ensureAgent(draft, agent)
+  const stream = draft.agentStreams[agent]
+  if (kind === 'thinking') {
+    stream.currentBlocks = appendThinking(stream.currentBlocks, text)
+  } else {
+    const hadText = stream.currentBlocks.some((b) => b.type === 'text')
+    stream.currentBlocks = appendText(stream.currentBlocks, text)
+    if (!hadText) {
+      const last = stream.currentBlocks[stream.currentBlocks.length - 1]
+      if (last?.type === 'text' && !last.startedAt) last.startedAt = Date.now()
+    }
+  }
+  if (text) {
+    stream._completionEstimated = (stream._completionEstimated ?? 0) + (text.length / 4)
+    const newEstimatedVal = Math.round(stream._completionEstimated)
+    const currentTurnTokens = Math.max(stream.usage.completionTokens - stream._completionBase, newEstimatedVal)
+    stream.usage.completionTokens = stream._completionBase + currentTurnTokens
+    stream.usage.totalTokens = stream.usage.promptTokens + stream.usage.completionTokens
+  }
+}
+
 export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
   return (type: string, data: unknown) => {
     const d = data as Record<string, unknown>
@@ -75,18 +99,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const agent = d.agent as string
         const text = d.text as string
         set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          stream.currentBlocks = appendThinking(
-            stream.currentBlocks, text
-          )
-          if (text) {
-            stream._completionEstimated = (stream._completionEstimated ?? 0) + (text.length / 4)
-            const newEstimatedVal = Math.round(stream._completionEstimated)
-            const currentTurnTokens = Math.max(stream.usage.completionTokens - stream._completionBase, newEstimatedVal)
-            stream.usage.completionTokens = stream._completionBase + currentTurnTokens
-            stream.usage.totalTokens = stream.usage.promptTokens + stream.usage.completionTokens
-          }
+          appendStreamingText(draft, agent, 'thinking', text)
         })
         break
       }
@@ -95,23 +108,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const agent = d.agent as string
         const text = d.text as string
         set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          const hadText = stream.currentBlocks.some((b) => b.type === 'text')
-          stream.currentBlocks = appendText(
-            stream.currentBlocks, text
-          )
-          if (!hadText) {
-            const last = stream.currentBlocks[stream.currentBlocks.length - 1]
-            if (last?.type === 'text' && !last.startedAt) last.startedAt = Date.now()
-          }
-          if (text) {
-            stream._completionEstimated = (stream._completionEstimated ?? 0) + (text.length / 4)
-            const newEstimatedVal = Math.round(stream._completionEstimated)
-            const currentTurnTokens = Math.max(stream.usage.completionTokens - stream._completionBase, newEstimatedVal)
-            stream.usage.completionTokens = stream._completionBase + currentTurnTokens
-            stream.usage.totalTokens = stream.usage.promptTokens + stream.usage.completionTokens
-          }
+          appendStreamingText(draft, agent, 'message', text)
         })
         break
       }
