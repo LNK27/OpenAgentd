@@ -334,7 +334,7 @@ On the immediate dispatch path (not the queued path), the route scans `message` 
 |---|---|---|
 | Text / document | Yes | Reused size limits (`SIZE_LIMITS["text"] = 500 KB`, `SIZE_LIMITS["document"] = 5 MB`). |
 | Image | No | Reference only — the agent uses its vision-aware `Read` tool to fetch on demand, so base64 pixels don't ride on every history rehydration. |
-| Folder | No | Reference only — agent uses `LS` / `Glob` / `Read`. |
+| Folder | Yes, if `AGENTS.md` exists | `@folder/` resolves to `folder/AGENTS.md`; missing files are silently skipped. |
 | Bad path / traversal / missing | No | Silently dropped. |
 
 Soft constraints: per-message cap of 20 mention attachments, global byte cap of `GLOBAL_SIZE_LIMIT` (20 MB). Capability-incompatible documents are skipped. Mentions never surface a 4xx — explicit paperclip uploads remain the authoritative way to force a file in.

@@ -80,8 +80,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   visible while streaming and after reloading a session.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Inline auto-attach: mentioned file body is sent on
-  the first turn so the agent doesn't need a round-trip `read` call. Caps at
-  20 mentions / 20 MB / ~32k chars per turn. Persists on queued messages.
+  the first turn so the agent doesn't need a round-trip `read` call; folder
+  mentions load that folder's `AGENTS.md` when present. Caps at 20 mentions /
+  20 MB / ~32k chars per turn. Persists on queued messages.
 - **Image viewer (full-screen)** `[since v1.0]` — click any generated or attached
   image to open in a lightbox.
 - **Workspace files panel** `[since v1.0]` — every file the agent reads, writes, or
@@ -167,8 +168,8 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 - **Git-backed `/undo` and `/redo`** `[v1.11.0]` — restore workspace files
   (created, modified, deleted) to the exact prior state from any prior turn in
   chat history. Different from editor undo: this is tied to chat turns.
-- **`/init` scaffolds AGENTS.md** `[v1.9.0]` — writes an AGENTS.md at the repo
-  root from the workspace.
+- **`/init` scaffolds AGENTS.md** `[v1.9.0]` — writes AGENTS.md files at the
+  repo root and meaningful subfolders from the workspace.
 - **Inline patch tool for multi-file edits** `[v1.5.0]` — structured patches
   with multiple hunks, real line numbers, collapsible previews.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
@@ -199,8 +200,8 @@ OpenAgentd carries durable, editable memory across sessions. Deeper doc:
   conversation. Preserves reasoning and skill/tool context.
 - **Notes** `[since v1.0]` — `note` tool writes append-only daily files at
   `wiki/notes/{date}.md`. The dream agent reads these.
-- **`AGENTS.md` at repo root** `[v1.9.0]` — written by `/init`; standard
-  repo-scoped agent context file.
+- **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
+  standard repo- and folder-scoped agent context files.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).
 

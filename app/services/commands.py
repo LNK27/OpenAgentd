@@ -127,16 +127,19 @@ def _iter_md(root: Path):
 
 _BUILTIN_INIT_BODY = """\
 Inspect the project at the current working directory and create or update \
-`AGENTS.md` at the repo root. Treat this as documentation work, not a code change.
+`AGENTS.md` at the repo root and in each meaningful subfolder. Treat this as \
+documentation work, not a code change.
 
 1. If `AGENTS.md` already exists, read it first and preserve human-authored \
 notes that are still accurate — only revise sections that are out of date.
 2. Survey the repo: top-level layout, language and runtime versions, build / \
 test / lint commands (Makefile, package.json, pyproject.toml, Cargo.toml, CI \
 files), notable conventions, and documentation entry points.
-3. Write a concise `AGENTS.md` — aim for a single screen. Suggested sections: \
-one-line summary, Tech stack, Layout, Essential commands, Code style, \
-Post-implementation checklist, Documentation pointers.
+3. Write concise `AGENTS.md` files — aim for a single screen each. The root \
+file should cover repo-wide context; subfolder files should only include \
+instructions that differ for that folder. Suggested sections: one-line summary, \
+Tech stack, Layout, Essential commands, Code style, Post-implementation \
+checklist, Documentation pointers.
 4. Match the repo's existing tone. Do not invent commands — only document \
 what actually works.
 5. Run the lint/test/type-check commands you documented to confirm they \
