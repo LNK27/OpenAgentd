@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.22.0 · May 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.22.0)
+**Latest release:** v1.27.0 · May 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.27.0)
 
 ---
 
@@ -67,7 +67,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   keep visual notifications on while muting audio.
 - **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,
   agents, files, slash commands, settings.
-- **Editable session titles** `[v1.X.Y]` — double-click a session card or use its
+- **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
