@@ -1267,6 +1267,45 @@ async def test_heal_only_inspects_latest_assistant_message(session):
 
 
 @pytest.mark.asyncio
+async def test_heal_synthesises_stub_for_older_visible_orphan_after_summary(session):
+    """Compacted LLM windows can expose an older orphan before the tail.
+
+    Production regression: ``get_messages_for_llm`` returned
+    ``[summary] + keep_last_n`` where the latest assistant had no tool calls,
+    but an earlier visible assistant still had unmatched ``tool_calls``. OpenAI
+    validates the full message array and rejected the request.
+    """
+    chat_session = await create_chat_session(session)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[Summary] prior context"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="q1"))
+    await save_message(
+        session,
+        chat_session.id,
+        _assistant_with_tool_calls(("c1", "search")),
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="q2"))
+    await save_message(session, chat_session.id, AssistantMessage(content="answer"))
+    await session.commit()
+
+    healed = await heal_orphaned_tool_calls(session, chat_session.id)
+    await session.commit()
+
+    assert healed == 1
+    msgs = await get_messages_for_llm(session, chat_session.id)
+    roles = [m.role for m in msgs]
+    assert roles == ["user", "user", "assistant", "tool", "user", "assistant"]
+    stub = msgs[3]
+    assert isinstance(stub, ToolMessage)
+    assert stub.tool_call_id == "c1"
+    assert stub.name == "search"
+
+
+@pytest.mark.asyncio
 async def test_heal_skips_summary_messages_when_finding_latest_assistant(session):
     """SystemMessage rows in between mustn't confuse the lookup.
 

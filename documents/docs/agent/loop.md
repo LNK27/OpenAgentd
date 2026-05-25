@@ -2,7 +2,7 @@
 title: Agent Loop & Execution
 description: One-turn reasoning loop with iteration, tool dispatch, checkpointing, and interrupts.
 status: stable
-updated: 2026-05-16
+updated: 2026-05-25
 ---
 
 # Agent Loop
@@ -259,7 +259,7 @@ The checkpointer (`SQLiteCheckpointer`) has already saved partial output at the 
 
 Sync point 2 (after `after_model`) persists the `AssistantMessage` with `tool_calls` *before* dispatch starts; sync point 3 persists the matching `ToolMessage` rows. A crash, SIGKILL, or uvicorn auto-reload between those two points leaves the assistant turn on disk with no tool replies. The next user turn would then 400 against any provider that enforces the assistant→tool pairing (OpenAI Responses: `"No tool output found for function call …"`).
 
-`AgentTeam.handle_user_message` calls `chat_service.heal_orphaned_tool_calls()` immediately before persisting the new user message. The helper inspects the latest visible assistant row and inserts a synthetic `ToolMessage("Tool execution was interrupted before a result could be recorded.")` for any `tool_call_id` without a matching reply. Rows hidden by `/undo` are ignored so an edited resend cannot resurrect a reverted tool-call branch into the next provider request. Stub timestamps anchor to `last_assistant.created_at + 1µs * (i+1)` so the LLM input order stays `assistant{tool_calls} → tool → … → user` even when wall-clock writes collide. Heal runs in the same transaction as the user-message insert (atomic) and is a no-op when the latest turn is healthy. See `app/services/chat_service.py:heal_orphaned_tool_calls` for the implementation and `tests/services/test_chat_service.py` (`test_heal_*`) for the contract.
+`AgentTeam.handle_user_message` calls `chat_service.heal_orphaned_tool_calls()` immediately before persisting the new user message. The helper scans the full LLM-visible window, including compacted history (`[latest_summary] + keep_last_n`), and inserts a synthetic `ToolMessage("Tool execution was interrupted before a result could be recorded.")` for any visible `tool_call_id` without a matching visible reply. Rows hidden by `/undo` are ignored so an edited resend cannot resurrect a reverted tool-call branch into the next provider request. Stub timestamps anchor immediately after the owning assistant row so the LLM input order stays `assistant{tool_calls} → tool → … → user` even when wall-clock writes collide. Heal runs in the same transaction as the user-message insert (atomic) and is a no-op when the visible window is healthy. See `app/services/chat_service.py:heal_orphaned_tool_calls` and `tests/services/test_chat_service.py` (`test_heal_*`) for the contract.
 
 A second failure mode occurs when the user stops the agent **during argument streaming** — before the LLM has finished emitting the JSON arguments for a tool call. Two layers of defence apply:
 

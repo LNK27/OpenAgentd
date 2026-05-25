@@ -79,7 +79,7 @@ _INTERRUPTED_TOOL_RESULT = (
 
 
 async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
-    """Insert synthetic ``ToolMessage`` rows for unmatched tool_calls.
+    """Insert synthetic ``ToolMessage`` rows for unmatched visible tool_calls.
 
     Background — the agent loop persists the assistant turn (with
     ``tool_calls``) *before* tools run, so a server restart mid-tool
@@ -89,51 +89,69 @@ async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
 
         No tool output found for function call fc_…
 
-    Heal strategy: peek at the last *visible* assistant message in the
-    session.  If it has ``tool_calls``, look up which IDs are already
-    paired with a ``tool`` reply and INSERT a stub for any that are
-    missing.  The stub sits in the same DB transaction as the caller,
-    so the heal lands atomically with the next user message.
+    Heal strategy: inspect every *visible* assistant message in the same
+    LLM-facing window as :func:`get_messages_for_llm`.  If an assistant row
+    has ``tool_calls``, look up which IDs are already paired with visible
+    ``tool`` replies and INSERT a stub for any that are missing.  The stub
+    sits in the same DB transaction as the caller, so the heal lands
+    atomically with the next user message.
 
-    Only the latest assistant message is inspected: a healthy turn
-    always either ends without tool_calls (final answer) or has every
-    tool_call paired before the next assistant message; an earlier
-    orphan would have crashed the loop on the previous turn before the
-    log got this deep.
+    Earlier versions only inspected the latest assistant row.  That missed
+    compacted sessions where ``[latest_summary] + keep_last_n`` exposed an
+    older orphan before the current tail, causing OpenAI to reject the full
+    request even though the last assistant message looked healthy.
 
     Returns the number of synthetic rows inserted (``0`` in the healthy
     case).  Caller is responsible for the commit.
     """
-    last_assistant_stmt = (
+    boundary = await _boundary_created_at(db, session_id)
+    summary_stmt = (
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.role) == "assistant")
+        .where(col(SessionMessage.is_summary))
         .where(~col(SessionMessage.exclude_from_context))
+    )
+    summary_stmt = (
+        _before_boundary(summary_stmt, boundary)
         .order_by(col(SessionMessage.created_at).desc())
         .limit(1)
     )
-    last_assistant = (await db.exec(last_assistant_stmt)).first()
-    if last_assistant is None or not last_assistant.tool_calls:
+    latest_summary = (await db.exec(summary_stmt)).first()
+
+    if latest_summary is None:
+        db_messages = list(
+            (await db.exec(_visible_messages_stmt(session_id, boundary))).all()
+        )
+    else:
+        rest_stmt = _visible_messages_stmt(session_id, boundary).where(
+            ~col(SessionMessage.is_summary)
+        )
+        db_messages = [latest_summary] + list((await db.exec(rest_stmt)).all())
+
+    assistant_rows = [
+        row for row in db_messages if row.role == "assistant" and row.tool_calls
+    ]
+    if not assistant_rows:
         return 0
 
-    expected_ids: list[str] = [
-        tc["id"] for tc in last_assistant.tool_calls if tc.get("id")
-    ]
+    expected_ids: list[str] = []
+    for row in assistant_rows:
+        expected_ids.extend(tc["id"] for tc in row.tool_calls or [] if tc.get("id"))
     if not expected_ids:
         return 0
 
-    matched_stmt = (
-        select(SessionMessage.tool_call_id)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.role) == "tool")
-        .where(col(SessionMessage.created_at) >= last_assistant.created_at)
-        .where(col(SessionMessage.tool_call_id).in_(expected_ids))
-    )
-    matched_ids = {row for row in (await db.exec(matched_stmt)).all() if row}
-    missing = [
-        tc for tc in last_assistant.tool_calls if tc.get("id") not in matched_ids
-    ]
-    if not missing:
+    matched_ids = {
+        row.tool_call_id
+        for row in db_messages
+        if row.role == "tool" and row.tool_call_id in expected_ids
+    }
+    missing_by_row: list[tuple[SessionMessage, list[dict]]] = []
+    for row in assistant_rows:
+        missing = [tc for tc in row.tool_calls or [] if tc.get("id") not in matched_ids]
+        if missing:
+            missing_by_row.append((row, missing))
+
+    if not missing_by_row:
         return 0
 
     # Anchor synthetic timestamps to the orphaned assistant message so
@@ -142,26 +160,29 @@ async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
     # ``assistant{tool_calls} → tool (synth) → tool (synth) → … → user``.
     # ``+1µs * (i+1)`` keeps multiple stubs strictly monotonic relative
     # to one another, and well before any new ``utcnow()`` write.
-    for i, tc in enumerate(missing):
-        stub = ToolMessage(
-            content=_INTERRUPTED_TOOL_RESULT,
-            tool_call_id=tc["id"],
-            name=tc.get("function", {}).get("name", "unknown"),
-        )
-        await save_message(
-            db,
-            session_id,
-            stub,
-            created_at=last_assistant.created_at + timedelta(microseconds=i + 1),
-        )
+    healed_ids: list[str] = []
+    for row, missing in missing_by_row:
+        for i, tc in enumerate(missing):
+            stub = ToolMessage(
+                content=_INTERRUPTED_TOOL_RESULT,
+                tool_call_id=tc["id"],
+                name=tc.get("function", {}).get("name", "unknown"),
+            )
+            await save_message(
+                db,
+                session_id,
+                stub,
+                created_at=row.created_at + timedelta(microseconds=i + 1),
+            )
+            healed_ids.append(tc["id"])
 
     logger.warning(
         "tool_call_orphans_healed session_id={} count={} ids=[{}]",
         session_id,
-        len(missing),
-        ", ".join(tc["id"] for tc in missing),
+        len(healed_ids),
+        ", ".join(healed_ids),
     )
-    return len(missing)
+    return len(healed_ids)
 
 
 async def save_message(
