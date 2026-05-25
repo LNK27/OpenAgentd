@@ -30,6 +30,7 @@ from app.api.schemas.sessions import (
     SessionResponse,
     TeamSessionResolveRequest,
     TeamSessionResolveResponse,
+    TeamSessionUpdateRequest,
 )
 from app.api.schemas.team import TeamHistoryMember, TeamHistoryResponse
 from app.models.chat import ChatSession
@@ -48,6 +49,7 @@ from app.services.chat_service import (
     get_latest_top_level_session,
     list_sessions_page,
     save_queued_user_message,
+    update_session_title,
 )
 
 router = APIRouter()
@@ -687,6 +689,22 @@ async def get_team_session_detail(
     return SessionDetailResponse(
         **lead_resp.model_dump(),
         messages=[_message_response(m) for m in history.lead_messages],
+    )
+
+
+@router.patch("/sessions/{session_id}")
+async def update_team_session(
+    session_id: UUID, body: TeamSessionUpdateRequest, db: DbSession
+) -> SessionResponse:
+    """Update editable metadata for a top-level team session."""
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Title cannot be empty.")
+    session = await update_session_title(db, session_id, title)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    return SessionResponse.model_validate(session).model_copy(
+        update={"running": str(session.id) in stream_store.running_session_ids()}
     )
 
 

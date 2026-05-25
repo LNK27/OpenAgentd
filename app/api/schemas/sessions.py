@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.schemas.base import _ExcludeNoneModel
 
@@ -21,6 +21,10 @@ class TeamSessionResolveRequest(BaseModel):
     model: str | None = None
     thinking_level: str | None = None
     create: bool = False
+
+
+class TeamSessionUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
 
 
 class SessionResponse(_ExcludeNoneModel):

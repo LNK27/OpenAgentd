@@ -20,22 +20,24 @@
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
   Folder,
   HelpCircle,
   Loader2,
+  Pencil,
   Plus,
   Search,
   Settings,
   Trash2,
 } from 'lucide-react'
-import { useCodingWorkspaceSessionsQuery, useDeleteTeamSessionMutation, useTeamSessionsQuery } from '@/queries/useSessionsQuery'
+import { useCodingWorkspaceSessionsQuery, useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { browseWorkspaces, resolveTeamSession, validateWorkspace } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
@@ -84,6 +86,7 @@ function WorkspaceSessionList({
   collapsed = false,
   onSessionSelect,
   onSessionDelete,
+  onSessionEdit,
 }: {
   path: string
   currentSessionId?: string
@@ -91,6 +94,7 @@ function WorkspaceSessionList({
   collapsed?: boolean
   onSessionSelect: (session: SessionResponse, workspacePath: string) => void
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
+  onSessionEdit: (session: SessionResponse) => void
 }) {
   const sessions = useCodingWorkspaceSessionsQuery(path, !collapsed)
   const workspaceSessions = collapsed
@@ -110,6 +114,10 @@ function WorkspaceSessionList({
             <button
               type="button"
               onClick={() => onSessionSelect(session, path)}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                onSessionEdit(session)
+              }}
               className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
                 isCurrent
                   ? 'bg-(--bg-key) text-(--color-text)'
@@ -128,6 +136,17 @@ function WorkspaceSessionList({
                   <Loader2 size={11} className="animate-spin" aria-hidden="true" />
                 </span>
               )}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onSessionEdit(session)
+              }}
+              className="absolute right-6 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100"
+              aria-label={`Edit session ${session.title || 'Untitled'}`}
+            >
+              <Pencil size={11} />
             </button>
             <button
               type="button"
@@ -166,6 +185,7 @@ export function CodingSidebar({
   onMobileClose,
 }: CodingSidebarProps) {
   const isMobile = useIsMobile()
+  const { isTauri } = usePlatform()
   const prefersReducedMotion = useReducedMotion()
   // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
   // We don't render an inline collapse toggle anymore — the topbar
@@ -175,6 +195,7 @@ export function CodingSidebar({
   const queryClient = useQueryClient()
   const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
+  const updateSessionTitle = useUpdateTeamSessionTitleMutation()
 
   const allSessions = sessions.data?.pages.flatMap((page) => page.data) ?? []
   const codingSessions = allSessions.filter(
@@ -234,6 +255,7 @@ export function CodingSidebar({
   }
 
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
   const [browserPath, setBrowserPath] = useState<string | null>(null)
   const [parentPath, setParentPath] = useState<string | null>(null)
   const [dirs, setDirs] = useState<Array<{ name: string; path: string }>>([])
@@ -241,6 +263,9 @@ export function CodingSidebar({
   const [loading, setLoading] = useState(false)
   const [pendingWorkspace, setPendingWorkspace] = useState<string | null>(null)
   const [trustWorkspace, setTrustWorkspace] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const editTitleInputRef = useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
   // Workspace pending removal — null when no confirmation is open. The
   // confirmation dialog reads this; ``confirmRemoveWorkspace`` commits.
@@ -261,9 +286,43 @@ export function CodingSidebar({
     }
   }, [])
 
-  useEffect(() => {
-    if (dialogOpen && !browserPath) void loadBrowser(null)
-  }, [dialogOpen, browserPath, loadBrowser])
+  const openWebWorkspaceDialog = useCallback(() => {
+    setSelectedWorkspace(null)
+    setTrustWorkspace(null)
+    setDialogOpen(true)
+    if (!browserPath) void loadBrowser(null)
+  }, [browserPath, loadBrowser])
+
+  const openWorkspaceDialog = useCallback(async () => {
+    setError(null)
+    setSelectedWorkspace(null)
+    setTrustWorkspace(null)
+
+    if (!isTauri) {
+      openWebWorkspaceDialog()
+      return
+    }
+
+    setLoading(true)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Open workspace',
+      })
+      if (typeof selected !== 'string') return
+      setSelectedWorkspace(selected)
+      const result = await validateWorkspace(selected)
+      setTrustWorkspace(result.workspace)
+      setDialogOpen(true)
+    } catch (err) {
+      setDialogOpen(true)
+      setError(err instanceof Error ? err.message : 'Unable to open workspace')
+    } finally {
+      setLoading(false)
+    }
+  }, [isTauri, openWebWorkspaceDialog])
 
   useEffect(() => {
     const handler = () => setWorkspaces(loadCodingWorkspaces())
@@ -276,12 +335,16 @@ export function CodingSidebar({
   }, [])
 
   useEffect(() => {
-    if (openWorkspaceDialogKey > 0) setDialogOpen(true)
-  }, [openWorkspaceDialogKey])
+    if (openWorkspaceDialogKey > 0) void openWorkspaceDialog()
+  }, [openWorkspaceDialogKey, openWorkspaceDialog])
 
   useEffect(() => {
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)
   }, [pendingWorkspace, workspace])
+
+  useEffect(() => {
+    if (editTarget) editTitleInputRef.current?.focus()
+  }, [editTarget])
 
   const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
     saveLastCodingWorkspace(path)
@@ -370,6 +433,22 @@ export function CodingSidebar({
   const handleSessionDelete = (e: React.MouseEvent, session: SessionResponse) => {
     e.stopPropagation()
     setDeleteTarget(session)
+  }
+
+  const handleSessionEdit = (session: SessionResponse) => {
+    setEditTarget(session)
+    setEditTitle(session.title || '')
+  }
+
+  const submitSessionTitle = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editTarget) return
+    const title = editTitle.trim()
+    if (!title) return
+    updateSessionTitle.mutate(
+      { id: editTarget.id, title },
+      { onSuccess: () => setEditTarget(null) },
+    )
   }
 
   const confirmSessionDelete = () => {
@@ -509,6 +588,7 @@ export function CodingSidebar({
                   collapsed={!isExpanded}
                   onSessionSelect={handleSessionSelect}
                   onSessionDelete={handleSessionDelete}
+                  onSessionEdit={handleSessionEdit}
                 />
               )}
             </div>
@@ -518,7 +598,7 @@ export function CodingSidebar({
         {/* + Open folder… */}
         <button
           type="button"
-          onClick={() => setDialogOpen(true)}
+          onClick={() => { void openWorkspaceDialog() }}
           className="mt-1 flex h-8 items-center gap-2 px-3 text-left text-xs italic text-(--color-accent) transition-colors hover:bg-(--bg-key)"
           aria-label="Open folder"
           title="Open a new workspace folder"
@@ -581,6 +661,31 @@ export function CodingSidebar({
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setTrustWorkspace(null)}>Back</Button>
                 <Button type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
+              </DialogFooter>
+            </>
+          ) : isTauri ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Open workspace</DialogTitle>
+                <DialogDescription>
+                  Use the desktop folder picker to choose a local project folder.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="min-w-0 space-y-2">
+                {selectedWorkspace && (
+                  <div className="min-w-0 rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                    <p className="min-w-0 font-mono text-xs text-(--color-text-muted) [overflow-wrap:anywhere]" title={selectedWorkspace}>
+                      {selectedWorkspace}
+                    </p>
+                  </div>
+                )}
+                {error && <p className="text-xs text-(--color-error)">{error}</p>}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+                <Button type="button" disabled={loading} onClick={() => { void openWorkspaceDialog() }}>
+                  {loading ? 'Opening…' : 'Choose folder…'}
+                </Button>
               </DialogFooter>
             </>
           ) : (
@@ -649,6 +754,41 @@ export function CodingSidebar({
             <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button type="button" variant="destructive" onClick={confirmSessionDelete}>Delete</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editTarget !== null}
+        onOpenChange={(open) => { if (!open) setEditTarget(null) }}
+      >
+        <DialogContent showCloseButton={false}>
+          <form onSubmit={submitSessionTitle}>
+            <DialogHeader>
+              <DialogTitle>Edit session title</DialogTitle>
+              <DialogDescription>
+                Rename this session in the sidebar.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="px-3 py-2">
+              <input
+                ref={editTitleInputRef}
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                className="h-9 w-full min-w-0 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                aria-label="Session title"
+                maxLength={255}
+              />
+              {updateSessionTitle.isError && (
+                <p className="mt-2 text-xs text-(--color-error)">Failed to update title.</p>
+              )}
+            </div>
+            <DialogFooter className="p-3">
+              <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button type="submit" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
+                {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

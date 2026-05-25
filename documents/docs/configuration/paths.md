@@ -15,12 +15,12 @@ OpenAgentd splits runtime files across **six** XDG-aligned roots, one per catego
 
 | Root | Env var | Production default | Development default | Sandbox |
 |------|---------|--------------------|---------------------|---------|
-| Data | `OPENAGENTD_DATA_DIR` | `~/.local/share/openagentd` | `.openagentd/data` | denied |
-| Config | `OPENAGENTD_CONFIG_DIR` | `~/.config/openagentd` | `.openagentd/config` | allowed |
-| State | `OPENAGENTD_STATE_DIR` | `~/.local/state/openagentd` | `.openagentd/state` | denied |
-| Cache | `OPENAGENTD_CACHE_DIR` | `~/.cache/openagentd` | `.openagentd/cache` | denied |
-| Workspace | `OPENAGENTD_WORKSPACE_DIR` | `~/.local/share/openagentd-workspace` | `.openagentd/workspace` | allowed |
-| Wiki | `OPENAGENTD_WIKI_DIR` | `~/.local/share/openagentd-wiki` | `.openagentd/wiki` | allowed |
+| Data | `OPENAGENTD_DATA_DIR` | `~/.local/share/openagentd` | `.openagentd/dev/data` | denied |
+| Config | `OPENAGENTD_CONFIG_DIR` | `~/.config/openagentd` | `.openagentd/dev/config` | allowed |
+| State | `OPENAGENTD_STATE_DIR` | `~/.local/state/openagentd` | `.openagentd/dev/state` | denied |
+| Cache | `OPENAGENTD_CACHE_DIR` | `~/.cache/openagentd` | `.openagentd/dev/cache` | denied |
+| Workspace | `OPENAGENTD_WORKSPACE_DIR` | `~/.local/share/openagentd-workspace` | `.openagentd/dev/workspace` | allowed |
+| Wiki | `OPENAGENTD_WIKI_DIR` | `~/.local/share/openagentd-wiki` | `.openagentd/dev/wiki` | allowed |
 
 **What lives where:**
 
@@ -46,51 +46,54 @@ Dev-mode paths shown below — substitute the production columns from the table 
 
 ```
 .openagentd/
-├── data/                                  # OPENAGENTD_DATA_DIR
-│   └── openagentd.db                          # main SQLite DB
-├── wiki/                                  # OPENAGENTD_WIKI_DIR
-│   ├── USER.md                                # pure YAML, injected into system prompt
-│   ├── INDEX.md                               # dream-maintained TOC
-│   ├── LOG.md                                 # service-managed dream/lint log
-│   ├── LINT.md                                # latest dream lint report
-│   ├── topics/                                # concept pages
-│   ├── entities/                              # concrete things
-│   ├── sources/                               # one page per ingested source
-│   ├── comparisons/                           # X-vs-Y pages
-│   └── notes/                                 # agent notes
-├── workspace/                             # OPENAGENTD_WORKSPACE_DIR
-│   └── {lead_session_id}/                     # per-team agent workspace
-│       ├── uploads/<uuid>.<ext>               # user uploads (reachable as `uploads/<filename>`)
-│       └── .openagentd/sessions/{session_id}/ # agent-generated session metadata
-│           ├── .todos.json                    # todo_manage store
-│           └── .tool_results/
-│               ├── shell/*.txt                # large shell output spills
-│               └── {agent}/*.txt              # large tool-result offloads
-├── config/                                # OPENAGENTD_CONFIG_DIR
-│   ├── .env                                   # secrets (gitignored)
-│   ├── agents/*.md                            # per-agent config
-│   ├── agents/coding/*.md                     # coding-mode team
-│   ├── skills/{name}/SKILL.md                 # skills
-│   ├── settings.yaml                          # Dream + title generation runtime settings
-│   ├── multimodal.yaml                        # image/video gen config
-│   ├── speech.yaml                            # voice input config
-│   ├── mcp.json                               # MCP server config
-│   ├── sandbox.yaml                           # user-defined deny patterns
-│   └── plugins/                               # user plugin .py drop-ins (OPENAGENTD_PLUGINS_DIRS)
-├── state/                                 # OPENAGENTD_STATE_DIR
-│   ├── logs/
-│   │   ├── app/app.log                        # JSON app log (10 MB / 7 days)
-│   │   └── sessions/{session_id}/
-│   │       ├── session.log                    # human-readable per-session sink
-│   │       └── {agent}.jsonl                  # structured events (SessionLogHook)
-│   ├── telemetry/{session_id}/{user_msg_id}.jsonl  # context window snapshots
-│   ├── snapshot/{session_id}/                 # out-of-tree git repo for /undo + /redo
-│   ├── otel/                                  # OTEL spans + metrics
-│   └── openagentd.pid                         # server PID file
-└── cache/                                 # OPENAGENTD_CACHE_DIR
-    ├── quoteoftheday.json                     # Quote of the Day cache
-    ├── copilot_oauth.json                     # GitHub Copilot token
-    └── codex_oauth.json                       # OpenAI Codex OAuth token
+├── dev/                                   # local development runtime state
+│   ├── data/                              # OPENAGENTD_DATA_DIR
+│   │   └── openagentd.db                  # main SQLite DB
+│   ├── wiki/                              # OPENAGENTD_WIKI_DIR
+│   │   ├── USER.md                        # pure YAML, injected into system prompt
+│   │   ├── INDEX.md                       # dream-maintained TOC
+│   │   ├── LOG.md                         # service-managed dream/lint log
+│   │   ├── LINT.md                        # latest dream lint report
+│   │   ├── topics/                        # concept pages
+│   │   ├── entities/                      # concrete things
+│   │   ├── sources/                       # one page per ingested source
+│   │   ├── comparisons/                   # X-vs-Y pages
+│   │   └── notes/                         # agent notes
+│   ├── workspace/                         # OPENAGENTD_WORKSPACE_DIR
+│   │   └── {lead_session_id}/             # per-team agent workspace
+│   │       ├── uploads/<uuid>.<ext>       # user uploads (reachable as `uploads/<filename>`)
+│   │       └── .openagentd/sessions/{session_id}/ # agent-generated session metadata
+│   │           ├── .todos.json            # todo_manage store
+│   │           └── .tool_results/
+│   │               ├── shell/*.txt        # large shell output spills
+│   │               └── {agent}/*.txt      # large tool-result offloads
+│   ├── config/                            # OPENAGENTD_CONFIG_DIR
+│   │   ├── .env                           # secrets (gitignored)
+│   │   ├── agents/*.md                    # per-agent config
+│   │   ├── agents/coding/*.md             # coding-mode team
+│   │   ├── skills/{name}/SKILL.md         # skills
+│   │   ├── settings.yaml                  # Dream + title generation runtime settings
+│   │   ├── multimodal.yaml                # image/video gen config
+│   │   ├── speech.yaml                    # voice input config
+│   │   ├── mcp.json                       # MCP server config
+│   │   ├── sandbox.yaml                   # user-defined deny patterns
+│   │   └── plugins/                       # user plugin .py drop-ins (OPENAGENTD_PLUGINS_DIRS)
+│   ├── state/                             # OPENAGENTD_STATE_DIR
+│   │   ├── logs/
+│   │   │   ├── app/app.log                # JSON app log (10 MB / 7 days)
+│   │   │   └── sessions/{session_id}/
+│   │   │       ├── session.log            # human-readable per-session sink
+│   │   │       └── {agent}.jsonl          # structured events (SessionLogHook)
+│   │   ├── telemetry/{session_id}/{user_msg_id}.jsonl  # context window snapshots
+│   │   ├── snapshot/{session_id}/         # out-of-tree git repo for /undo + /redo
+│   │   ├── otel/                          # OTEL spans + metrics
+│   │   └── openagentd.pid                 # server PID file
+│   └── cache/                             # OPENAGENTD_CACHE_DIR
+│       ├── quoteoftheday.json             # Quote of the Day cache
+│       ├── copilot_oauth.json             # GitHub Copilot token
+│       └── codex_oauth.json               # OpenAI Codex OAuth token
+├── commands/                              # project slash commands
+└── skills/                                # project skills
 ```
 
 ## Session path helpers (`app/core/paths.py`)

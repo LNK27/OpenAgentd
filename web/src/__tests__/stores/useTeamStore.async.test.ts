@@ -762,17 +762,17 @@ describe("sendMessage: queue behaviour", () => {
 
   it("keeps live response durations separate across queued-message injection", () => {
     const originalNow = Date.now
-    const times = [0, 1_000, 4_600, 0, 4_700, 7_600]
+    const times = [1_000, 4_600, 4_700, 7_600]
     Date.now = mock(() => times.shift() ?? 7_600) as typeof Date.now
     try {
       useTeamStore.setState({
         sessionId: "session-a",
         leadName: "lead",
         agentStreams: {
-          lead: makeStream({ status: "working" as const }),
+          lead: makeStream({ status: "working" as const, _turnStartedAt: 0 }),
         },
         _pendingMessages: [
-          { id: "pm-a1", sessionId: "session-a", content: "queued follow-up" },
+          { id: "pm-a1", sessionId: "session-a", content: "queued follow-up", submittedAt: 4_700 },
         ],
       })
 
@@ -788,7 +788,7 @@ describe("sendMessage: queue behaviour", () => {
     const textBlocks = blocks.filter((block) => block.type === "text")
 
     expect(textBlocks.map((block) => block.content)).toEqual(["first assistant", "second assistant"])
-    expect(textBlocks.map((block) => block.responseDurationMs)).toEqual([3600, 2900])
+    expect(textBlocks.map((block) => block.responseDurationMs)).toEqual([4700, 2900])
   })
 
   it("notifies when the backend emits a desktop notification", () => {
@@ -888,9 +888,9 @@ describe("sendMessage: queue behaviour", () => {
 
     await useTeamStore.getState().sendMessage("queued")
 
-    expect(useTeamStore.getState()._pendingMessages).toEqual([
-      { id: "message-a", sessionId: "session-a", content: "queued" },
-    ])
+    const [pending] = useTeamStore.getState()._pendingMessages
+    expect(pending).toMatchObject({ id: "message-a", sessionId: "session-a", content: "queued" })
+    expect(typeof pending.submittedAt).toBe("number")
   })
 
   it("removePendingMessage removes message by id", () => {
@@ -1443,7 +1443,7 @@ describe("loadSession", () => {
     await useTeamStore.getState().loadSession("sess-1")
 
     expect(useTeamStore.getState()._pendingMessages).toEqual([
-      { id: "q1", sessionId: "sess-1", content: "queued" },
+      { id: "q1", sessionId: "sess-1", content: "queued", submittedAt: 1704067200000 },
     ])
     expect(useTeamStore.getState().agentStreams.lead.blocks.map((block) => block.content)).toEqual(["response"])
   })

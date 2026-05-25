@@ -904,6 +904,21 @@ async def get_latest_top_level_session(
     return (await db.exec(stmt.limit(1))).first()
 
 
+async def update_session_title(
+    db: AsyncSession, session_id: UUID, title: str
+) -> ChatSession | None:
+    """Update a top-level session title and return the refreshed session."""
+    async with db.begin():
+        session = await db.get(ChatSession, session_id)
+        if not session or session.parent_session_id is not None:
+            return None
+        session.title = title
+        db.add(session)
+        await db.flush()
+        await db.refresh(session)
+        return session
+
+
 async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
     """Delete a session, all its messages, and associated on-disk artifacts.
 

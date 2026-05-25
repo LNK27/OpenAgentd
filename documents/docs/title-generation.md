@@ -313,5 +313,4 @@ await generate_and_save_title(
 
 ## Deferred
 
-- User-editable titles via `PATCH /chat/sessions/{id}` (DB field already exists)
 - Re-generation trigger for sessions that significantly change topic after turn 1

@@ -296,6 +296,103 @@ class TestResolveTeamSession:
 # ---------------------------------------------------------------------------
 
 
+class TestUpdateTeamSession:
+    @pytest.mark.asyncio
+    async def test_update_session_title(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, title="Old title")
+
+        client = TestClient(app_with_team)
+        resp = client.patch(
+            f"/api/team/sessions/{lead_id}", json={"title": "New title"}
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "New title"
+
+        async with _db.async_session_factory() as db:
+            session = await db.get(ChatSession, lead_id)
+            assert session is not None
+            assert session.title == "New title"
+
+    @pytest.mark.asyncio
+    async def test_update_session_title_trims_whitespace(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, title="Old title")
+
+        client = TestClient(app_with_team)
+        resp = client.patch(
+            f"/api/team/sessions/{lead_id}", json={"title": "  New title  "}
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "New title"
+
+        async with _db.async_session_factory() as db:
+            session = await db.get(ChatSession, lead_id)
+            assert session is not None
+            assert session.title == "New title"
+
+    @pytest.mark.asyncio
+    async def test_update_session_title_rejects_blank_title(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, title="Keep me")
+
+        client = TestClient(app_with_team)
+        resp = client.patch(f"/api/team/sessions/{lead_id}", json={"title": "   "})
+
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Title cannot be empty."
+
+        async with _db.async_session_factory() as db:
+            session = await db.get(ChatSession, lead_id)
+            assert session is not None
+            assert session.title == "Keep me"
+
+    @pytest.mark.asyncio
+    async def test_update_session_title_does_not_update_member_sessions(
+        self, app_with_team
+    ):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        member_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, title="Lead")
+                member = await _create_member_session(db, member_id, lead_id)
+                member.title = "Member"
+
+        client = TestClient(app_with_team)
+        resp = client.patch(f"/api/team/sessions/{member_id}", json={"title": "Nope"})
+
+        assert resp.status_code == 404
+
+        async with _db.async_session_factory() as db:
+            member = await db.get(ChatSession, member_id)
+            assert member is not None
+            assert member.title == "Member"
+
+    def test_update_session_title_returns_404_for_missing_session(self, app_with_team):
+        client = TestClient(app_with_team)
+
+        resp = client.patch(f"/api/team/sessions/{uuid.uuid7()}", json={"title": "New"})
+
+        assert resp.status_code == 404
+
+
 class TestDeleteTeamSessionWithData:
     @pytest.mark.asyncio
     async def test_delete_session_removes_session_and_messages(self, app_with_team):

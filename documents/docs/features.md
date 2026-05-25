@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.22.0 · May 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.22.0)
+**Latest release:** v1.27.0 · May 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.27.0)
 
 ---
 
@@ -67,6 +67,8 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   keep visual notifications on while muting audio.
 - **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,
   agents, files, slash commands, settings.
+- **Editable session titles** `[v1.27.0]` — double-click a session card or use its
+  edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
 - **Drag-and-drop files into chat** `[since v1.0]` — images, PDFs, text. Multimodal
@@ -76,8 +78,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Inline diff previews with real line numbers** `[v1.20.0]` — file-changing tools
   show affected file's actual line numbers (not "starting at 1"), including
   multiple hunks. Collapsible per file. Delete counts shown in headers.
-- **Persistent timing on every reply + tool call** `[v1.21.0]` — durations stay
-  visible while streaming and after reloading a session.
+- **Persistent timing on every reply + tool call** `[v1.21.0]` — reply durations
+  measure full user-turn wall-clock time; tool durations measure execution time.
+  Both stay visible while streaming and after reloading a session.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Inline auto-attach: mentioned file body is sent on
   the first turn so the agent doesn't need a round-trip `read` call; folder
@@ -333,8 +336,9 @@ Everything stays local. No third-party telemetry SaaS. Deeper doc:
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,
   per-session JSONL transcript at `{STATE_DIR}/logs/sessions/{id}/`. Rotated,
   loguru-based.
-- **Persistent reply/tool timing in UI** `[v1.21.0]` — durations stay after a
-  reload.
+- **Persistent reply/tool timing in UI** `[v1.21.0]` — assistant footers show
+  full user-turn wall-clock duration; tool rows show individual execution time.
+  Durations stay after a reload.
 
 ---
 

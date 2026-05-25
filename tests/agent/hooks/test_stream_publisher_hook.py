@@ -72,6 +72,19 @@ class TestModelTiming:
         assert response.extra == {"duration_ms": 1234.0}
 
     @pytest.mark.asyncio
+    async def test_after_model_uses_turn_start_when_available(self):
+        hook = _make_hook()
+        response = AssistantMessage(content="answer")
+
+        with patch("app.agent.hooks.stream_publisher.time") as mock_time:
+            mock_time.monotonic.side_effect = [10.0, 12.0, 15.5]
+            await hook.before_agent(MagicMock(), MagicMock())
+            await hook.before_model(MagicMock(), MagicMock(), MagicMock())
+            await hook.after_model(MagicMock(), MagicMock(), response)
+
+        assert response.extra == {"duration_ms": 5500.0}
+
+    @pytest.mark.asyncio
     async def test_after_model_preserves_existing_extra_fields(self):
         hook = _make_hook()
         response = AssistantMessage(content="answer", extra={"usage": {"input": 1}})

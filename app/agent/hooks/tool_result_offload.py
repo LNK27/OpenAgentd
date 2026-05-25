@@ -56,7 +56,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from app.agent.artifacts import TOOL_RESULTS_DIR, tool_results_dir
+from app.agent.artifacts import SESSION_METADATA_DIR, TOOL_RESULTS_DIR, tool_results_dir
 from app.agent.hooks.base import BaseAgentHook
 
 if TYPE_CHECKING:
@@ -149,10 +149,10 @@ class ToolResultOffloadHook(BaseAgentHook):
 
         # Me path relative to workspace root — agent can pass to read_file directly
         rel_path = (
-            f".openagentd/sessions/{ctx.session_id}/{TOOL_RESULTS_DIR}/"
+            f"{SESSION_METADATA_DIR}/sessions/{ctx.session_id}/{TOOL_RESULTS_DIR}/"
             f"{ctx.agent_name}/{tool_call_id}.txt"
             if ctx.session_id
-            else f".openagentd/{TOOL_RESULTS_DIR}/{ctx.agent_name}/{tool_call_id}.txt"
+            else f"{SESSION_METADATA_DIR}/{TOOL_RESULTS_DIR}/{ctx.agent_name}/{tool_call_id}.txt"
         )
 
         compact = (

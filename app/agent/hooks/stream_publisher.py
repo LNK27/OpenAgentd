@@ -65,6 +65,7 @@ class StreamPublisherHook(BaseAgentHook):
         self._agent_name = agent_name
         self._publish_reasoning = publish_reasoning
         self._resolver = ToolIdResolver()
+        self._turn_started: float | None = None
         self._model_started: float | None = None
         # Me track per-turn usage for turn-total summary
         self._total_prompt = 0
@@ -82,6 +83,9 @@ class StreamPublisherHook(BaseAgentHook):
                 self._session_id, StreamEnvelope.from_event(event)
             )
 
+    async def before_agent(self, ctx: "RunContext", state: "AgentState") -> None:
+        self._turn_started = time.monotonic()
+
     async def before_model(
         self,
         ctx: "RunContext",
@@ -93,10 +97,15 @@ class StreamPublisherHook(BaseAgentHook):
     async def after_model(
         self, ctx: "RunContext", state: "AgentState", response: "AssistantMessage"
     ) -> None:
-        if self._model_started is not None:
+        started = (
+            self._turn_started
+            if self._turn_started is not None
+            else self._model_started
+        )
+        if started is not None:
             response.extra = dict(response.extra or {})
             response.extra["duration_ms"] = round(
-                (time.monotonic() - self._model_started) * 1000,
+                (time.monotonic() - started) * 1000,
                 3,
             )
 

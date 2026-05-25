@@ -13,8 +13,12 @@ const browseResponse = {
   parent: '/repo',
   directories: [],
 }
+const dialogOpen = mock(async () => '/repo/project')
+let isTauri = true
+let platformOs = 'macos'
 let validateError: Error | null = null
 const deleteSessionMutate = mock(() => {})
+const updateSessionTitleMutate = mock(() => {})
 type TestSession = {
   id: string
   title: string | null
@@ -36,6 +40,15 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
 }))
 
+mock.module('@/hooks/use-platform', () => ({
+  usePlatform: () => ({ isTauri, os: platformOs, isMacOverlay: isTauri && platformOs === 'macos' }),
+  getPlatform: () => ({ isTauri, os: platformOs, isMacOverlay: isTauri && platformOs === 'macos' }),
+}))
+
+mock.module('@tauri-apps/plugin-dialog', () => ({
+  open: dialogOpen,
+}))
+
 const Icon = () => null
 mock.module('lucide-react', () => ({
   ChevronDown: Icon,
@@ -46,6 +59,7 @@ mock.module('lucide-react', () => ({
   Plus: Icon,
   Search: Icon,
   Settings: Icon,
+  Pencil: Icon,
   Trash2: Icon,
 }))
 
@@ -74,6 +88,14 @@ mock.module('@/components/ui/dialog', () => ({
 }))
 
 mock.module('@/queries/useSessionsQuery', () => ({
+  queryKeys: {
+    team: {
+      sessions: {
+        infinite: () => ['team', 'sessions', 'infinite'],
+        workspace: (workspace: string) => ['team', 'sessions', 'workspace', workspace],
+      },
+    },
+  },
   useTeamSessionsQuery: () => ({
     data: { pages: [{ data: sessionsData }] },
     isFetching: false,
@@ -87,6 +109,11 @@ mock.module('@/queries/useSessionsQuery', () => ({
     fetchNextPage: fetchWorkspaceNextPage,
   }),
   useDeleteTeamSessionMutation: () => ({ mutate: deleteSessionMutate }),
+  useUpdateTeamSessionTitleMutation: () => ({
+    mutate: updateSessionTitleMutate,
+    isPending: false,
+    isError: false,
+  }),
 }))
 
 describe('CodingSidebar workspace trust flow', () => {
@@ -96,9 +123,14 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = []
     workspaceHasNextPage = false
     workspaceIsFetchingNextPage = false
+    isTauri = true
+    platformOs = 'macos'
     useTeamStore.setState({ isTeamWorking: false, sessionId: null })
     navigate.mockClear()
+    dialogOpen.mockReset()
+    dialogOpen.mockImplementation(async () => '/repo/project')
     deleteSessionMutate.mockClear()
+    updateSessionTitleMutate.mockClear()
     fetchWorkspaceNextPage.mockClear()
     validateError = null
     globalThis.fetch = mock(async (input: unknown) => {
@@ -191,8 +223,11 @@ describe('CodingSidebar workspace trust flow', () => {
     }) as typeof fetch
     await renderCodingSidebar()
 
-    const openButton = await screen.findByRole('button', { name: /open this folder/i })
-    await user.click(openButton)
+    expect(dialogOpen).toHaveBeenCalledWith({
+      directory: true,
+      multiple: false,
+      title: 'Open workspace',
+    })
 
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
     expect(screen.getByText('/repo/project')).toBeTruthy()
@@ -216,11 +251,25 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(loadLastCodingWorkspace()?.path).toBe('/repo/project')
   })
 
+  it('uses the native desktop folder picker on Linux desktop too', async () => {
+    platformOs = 'linux'
+
+    await renderCodingSidebar()
+
+    expect(dialogOpen).toHaveBeenCalledWith({
+      directory: true,
+      multiple: false,
+      title: 'Open workspace',
+    })
+    expect(screen.getByText('Trust this workspace?')).toBeTruthy()
+    expect(screen.getByText('/repo/project')).toBeTruthy()
+  })
+
   it('lets the user go back from the trust warning without opening the workspace', async () => {
     const user = userEvent.setup()
     await renderCodingSidebar()
 
-    await user.click(await screen.findByRole('button', { name: /open this folder/i }))
+    expect(await screen.findByText('Trust this workspace?')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: /back/i }))
 
     expect(screen.getByText('Open workspace')).toBeTruthy()
@@ -229,17 +278,30 @@ describe('CodingSidebar workspace trust flow', () => {
   })
 
   it('shows validation errors without showing the trust confirmation', async () => {
-    const user = userEvent.setup()
     validateError = new Error('Workspace does not exist')
 
     await renderCodingSidebar()
-
-    await user.click(await screen.findByRole('button', { name: /open this folder/i }))
 
     expect(await screen.findByText('Workspace does not exist')).toBeTruthy()
     expect(screen.queryByText('Trust this workspace?')).toBeNull()
     expect(navigate).not.toHaveBeenCalled()
     expect(loadLastCodingWorkspace()).toBeNull()
+  })
+
+  it('keeps the server-local browser fallback outside desktop', async () => {
+    const user = userEvent.setup()
+    isTauri = false
+
+    await renderCodingSidebar()
+
+    expect(dialogOpen).not.toHaveBeenCalled()
+    expect(await screen.findByText('/repo/project')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /open this folder/i }))
+
+    expect(screen.getByText('Trust this workspace?')).toBeTruthy()
+    expect(dialogOpen).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
   })
 
   it('shows a running indicator on every running coding session', async () => {
@@ -388,6 +450,88 @@ describe('CodingSidebar workspace trust flow', () => {
     await user.click(screen.getByRole('button', { name: /load more/i }))
 
     expect(fetchWorkspaceNextPage).toHaveBeenCalled()
+  })
+
+  it('opens title editing from a coding session card', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Old title',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, 'New title')
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(updateSessionTitleMutate).toHaveBeenCalledWith(
+      { id: 'session-1', title: 'New title' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('trims title edits before submitting', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Old title',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, '  New title  ')
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(updateSessionTitleMutate).toHaveBeenCalledWith(
+      { id: 'session-1', title: 'New title' },
+      expect.anything(),
+    )
+  })
+
+  it('does not submit empty title edits', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Old title',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, '   ')
+
+    expect(screen.getByRole('button', { name: /^save$/i }).hasAttribute('disabled')).toBe(true)
+    await user.keyboard('{Enter}')
+    expect(updateSessionTitleMutate).not.toHaveBeenCalled()
   })
 
   it('selects another coding session after deleting the current one', async () => {

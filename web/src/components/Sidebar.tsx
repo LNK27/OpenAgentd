@@ -12,9 +12,10 @@ import {
   Settings,
   HelpCircle,
   Loader2,
+  Pencil,
 } from 'lucide-react'
 import { isToday, isYesterday } from 'date-fns'
-import { useTeamSessionsQuery, useDeleteTeamSessionMutation } from '@/queries'
+import { useTeamSessionsQuery, useDeleteTeamSessionMutation, useUpdateTeamSessionTitleMutation } from '@/queries'
 import { formatRelativeDate } from '@/utils/format'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
@@ -79,8 +80,10 @@ export function Sidebar({
   const navigate = useNavigate()
   const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
+  const updateSessionTitle = useUpdateTeamSessionTitleMutation()
   const sessionListRef = useRef<HTMLDivElement>(null)
   const loadMoreRef = useRef<HTMLDivElement>(null)
+  const editTitleInputRef = useRef<HTMLInputElement>(null)
 
   // Flatten pages into a single list of sessions
   const allSessions = sessions.data?.pages.flatMap((p) => p.data) ?? []
@@ -95,6 +98,8 @@ export function Sidebar({
   })
 
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
+  const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
+  const [editTitle, setEditTitle] = useState('')
 
   const toggleCollapse = useCallback(() => {
     setCollapsed((prev) => {
@@ -126,6 +131,10 @@ export function Sidebar({
 
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
 
+  useEffect(() => {
+    if (editTarget) editTitleInputRef.current?.focus()
+  }, [editTarget])
+
   // Intersection observer — load next page when sentinel scrolls into view.
   useEffect(() => {
     const sentinel = loadMoreRef.current
@@ -145,6 +154,22 @@ export function Sidebar({
   const handleDelete = (e: React.MouseEvent, session: SessionResponse) => {
     e.stopPropagation()
     setDeleteTarget(session)
+  }
+
+  const handleEdit = (session: SessionResponse) => {
+    setEditTarget(session)
+    setEditTitle(session.title || '')
+  }
+
+  const submitSessionTitle = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editTarget) return
+    const title = editTitle.trim()
+    if (!title) return
+    updateSessionTitle.mutate(
+      { id: editTarget.id, title },
+      { onSuccess: () => setEditTarget(null) },
+    )
   }
 
   const confirmDelete = () => {
@@ -317,6 +342,7 @@ export function Sidebar({
                                 isActive={session.id === currentSessionId}
                                 onSelect={handleSelect}
                                 onDelete={(e, s) => handleDelete(e, s)}
+                                onEdit={handleEdit}
                               />
                             ))}
                           </div>
@@ -420,6 +446,39 @@ export function Sidebar({
            </DialogFooter>
          </DialogContent>
        </Dialog>
+       <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
+         <DialogContent showCloseButton={false}>
+           <form onSubmit={submitSessionTitle}>
+             <DialogHeader>
+               <DialogTitle>Edit session title</DialogTitle>
+               <DialogDescription>
+                 Rename this session in the sidebar.
+               </DialogDescription>
+             </DialogHeader>
+             <div className="px-3 py-2">
+               <input
+                 ref={editTitleInputRef}
+                 value={editTitle}
+                 onChange={(e) => setEditTitle(e.target.value)}
+                 className="h-9 w-full min-w-0 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                 aria-label="Session title"
+                 maxLength={255}
+               />
+               {updateSessionTitle.isError && (
+                 <p className="mt-2 text-xs text-(--color-error)">Failed to update title.</p>
+               )}
+             </div>
+             <DialogFooter className="p-3">
+               <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
+                 Cancel
+               </Button>
+               <Button type="submit" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
+                 {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
+               </Button>
+             </DialogFooter>
+           </form>
+         </DialogContent>
+       </Dialog>
        </motion.aside>
     </>
     )
@@ -430,6 +489,7 @@ interface SessionRowProps {
   isActive: boolean
   onSelect: (id: string) => void
   onDelete: (e: React.MouseEvent, session: SessionResponse) => void
+  onEdit: (session: SessionResponse) => void
 }
 
 /**
@@ -437,7 +497,7 @@ interface SessionRowProps {
  * brightens its text from ``--color-text-2`` to ``--color-text`` as the
  * hover affordance. Active rows keep the solid ``--bg-key`` background.
  */
-function SessionRow({ session, isActive, onSelect, onDelete }: SessionRowProps) {
+function SessionRow({ session, isActive, onSelect, onDelete, onEdit }: SessionRowProps) {
   const isScheduled = Boolean(session.scheduled_task_name)
   const isRunning = session.running === true
 
@@ -445,6 +505,10 @@ function SessionRow({ session, isActive, onSelect, onDelete }: SessionRowProps) 
     <div className="group relative">
       <button
         onClick={() => onSelect(session.id)}
+        onDoubleClick={(e) => {
+          e.stopPropagation()
+          onEdit(session)
+        }}
         className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${
           isActive
             ? 'bg-(--bg-key) text-(--color-text)'
@@ -489,6 +553,17 @@ function SessionRow({ session, isActive, onSelect, onDelete }: SessionRowProps) 
             {formatRelativeDate(session.created_at)}
           </p>
         </div>
+      </button>
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onEdit(session)
+        }}
+        className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text) opacity-100 md:opacity-0 md:group-hover:opacity-100"
+        aria-label={`Edit session ${session.title || 'Untitled'}`}
+      >
+        <Pencil size={12} />
       </button>
 
       {/* Delete on hover */}

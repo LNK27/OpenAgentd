@@ -305,7 +305,7 @@ Writes verbose structured JSONL to `{OPENAGENTD_STATE_DIR}/logs/sessions/{sessio
 | `usage` | `on_model_delta` (when chunk carries usage) | prompt/completion/total/cached/thoughts/tool-use tokens, model |
 | `agent_done` | `after_agent` | content, elapsed seconds, iterations, total tokens |
 
-`StreamPublisherHook` also persists response/tool durations into message `extra.duration_ms` so the UI can show them after reload.
+`StreamPublisherHook` also persists assistant turn and tool durations into message `extra.duration_ms` so the UI can show them after reload. Assistant-message `duration_ms` represents the user-visible turn wall-clock time; per-model response timing remains available through `SessionLogHook` / OpenTelemetry model-call spans.
 
 ```python
 hook = SessionLogHook(session_id=session_id, agent_name=agent_name)

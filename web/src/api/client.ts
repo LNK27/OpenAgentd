@@ -11,6 +11,7 @@ import type {
   SessionDetailResponse,
   TeamSessionResolveResponse,
   SessionPageResponse,
+  SessionResponse,
   TeamHistoryResponse,
   TeamAgentsResponse,
   WorkspaceValidationResponse,
@@ -231,6 +232,16 @@ export async function resolveTeamSession(options: {
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`resolveTeamSession failed: ${res.status}`)
+  return res.json()
+}
+
+export async function updateTeamSessionTitle(id: string, title: string): Promise<SessionResponse> {
+  const res = await fetch(`${API}/team/sessions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+  if (!res.ok) throw new Error(`updateTeamSessionTitle failed: ${res.status}`)
   return res.json()
 }
 

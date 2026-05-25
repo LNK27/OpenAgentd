@@ -9,7 +9,7 @@ Git Commit Execution Workflow
 3. **Sync Docs**: Update related documentation files automatically to align with the changes made in the codebase.
 4. **Generate Message**:
    - **Format**: `<type>: <subject>`
-   - **Subject**: Use `$ARGUMENTS` if provided; otherwise, auto-generate a concise imperative subject.
+   - **Subject**: Auto-generate a concise imperative subject from the staged changes.
    - **Body**: Leave a blank line, then detail **Motivation**, **Technical Changes** (bulleted deep-dive), and **Impact**.
 5. **Commit**: Execute `git commit -m "<message>"` and output the commit hash and a brief summary.
 

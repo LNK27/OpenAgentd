@@ -25,6 +25,7 @@ updated: 2026-05-22
 - Session rows and workspace headers show running indicators from per-session `running` data, not from only the currently selected chat state.
 - Collapsed workspaces do not eagerly fetch their own pages; they show running sessions already present in the global session cache.
 - New coding sessions appear in the sidebar immediately. They are prepended only into the global cache and the matching workspace cache, while detail caches are ignored by list-only patching. Workspace prepends keep a short stale window so a 5-row list can temporarily show 6 rows instead of immediately dropping the previous fifth row.
+- Session titles are editable from the sidebar: double-click a session row or use the pencil action. Saves call `PATCH /api/team/sessions/{id}` and patch the global/workspace/detail session caches in-place.
 - Deleting a session selects the next available session when possible instead of attempting to reload the deleted session.
 
 ## Running and reload states

@@ -35,6 +35,7 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
       id: msg.id,
       sessionId,
       content: msg.content ?? '',
+      submittedAt: msg.created_at ? new Date(msg.created_at).getTime() : undefined,
     }))
 }
 
@@ -94,6 +95,8 @@ function resetSessionState(
     state.agentStreams[name].lastError = null
     state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
     state.agentStreams[name]._completionBase = 0
+    state.agentStreams[name]._completionEstimated = 0
+    state.agentStreams[name]._turnStartedAt = null
     state.agentStreams[name].revertedCount = 0
     state.agentStreams[name].revertedMessages = []
     state.agentStreams[name]._revertedSuffix = []
@@ -253,6 +256,7 @@ export const useTeamStore = create<TeamStore>()(
               id: result.message_id ?? '',
               sessionId: result.session_id,
               content,
+              submittedAt: Date.now(),
             })
             draft.error = null
           })
@@ -273,6 +277,7 @@ export const useTeamStore = create<TeamStore>()(
         url: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined,
       }))
 
+      const submittedAt = Date.now()
       set((draft) => {
           draft.isTeamWorking = true
           draft.isContinuing = false
@@ -285,13 +290,14 @@ export const useTeamStore = create<TeamStore>()(
           stream.revertedMessages = []
         })
         if (leadName && draft.agentStreams[leadName]) {
+          draft.agentStreams[leadName]._turnStartedAt = submittedAt
           const effectiveModel = effectiveLeadModel(draft, leadName, options?.model)
           const effectiveThinkingLevel = options?.thinkingLevel ?? draft.sessionThinkingLevel
           draft.agentStreams[leadName].currentBlocks.push({
             id: `user-${Date.now()}`,
             type: 'user',
             content,
-            timestamp: new Date(),
+            timestamp: new Date(submittedAt),
             attachments: optimisticAttachments,
             extra: {
               ...(effectiveModel ? { model: effectiveModel } : {}),
@@ -347,10 +353,14 @@ export const useTeamStore = create<TeamStore>()(
       }
 
       try {
+        const submittedAt = Date.now()
         set((draft) => {
           draft.isTeamWorking = true
           draft.isContinuing = true
           draft.error = null
+          if (draft.leadName && draft.agentStreams[draft.leadName]) {
+            draft.agentStreams[draft.leadName]._turnStartedAt = submittedAt
+          }
         })
         await postTeamCommand('continue', sessionId)
         get().connectStream()
@@ -371,9 +381,13 @@ export const useTeamStore = create<TeamStore>()(
       }
 
       try {
+        const submittedAt = Date.now()
         set((draft) => {
           draft.isTeamWorking = true
           draft.error = null
+          if (draft.leadName && draft.agentStreams[draft.leadName]) {
+            draft.agentStreams[draft.leadName]._turnStartedAt = submittedAt
+          }
         })
         await postTeamCommand('compact', sessionId)
         get().connectStream()
@@ -591,6 +605,9 @@ export const useTeamStore = create<TeamStore>()(
               if (!draft.agentStreams[agent.name]) {
                 draft.agentStreams[agent.name] = createDefaultAgentStream()
               }
+              if (agent.state === 'working') {
+                draft.agentStreams[agent.name]._turnStartedAt ??= Date.now()
+              }
               draft.agentStreams[agent.name].model = agent.model
             })
             historicalNames.forEach((name) => {
@@ -664,6 +681,7 @@ export const useTeamStore = create<TeamStore>()(
             leadStream.currentText = ''
             leadStream.currentThinking = ''
             leadStream.status = history.lead.running === true ? 'working' : 'idle'
+            leadStream._turnStartedAt = history.lead.running === true ? Date.now() : null
             const leadVisibleMsgs = messagesBeforeRevert(history.lead)
             const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
             leadStream.usage = leadUsage
@@ -695,6 +713,7 @@ export const useTeamStore = create<TeamStore>()(
               !isLiveMember
                 ? 'offline'
                 : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
+            memberStream._turnStartedAt = null
             const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
             const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
             memberStream.usage = memberUsage

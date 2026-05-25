@@ -68,4 +68,6 @@ The position is set programmatically in `configure_window_chrome` (`desktop/src-
 
 Both `Sidebar` and `CodingSidebar` draw `border-r border-(--color-border)` so the boundary between sidebar and content is unambiguous on dark themes.
 
+Session titles can be renamed directly in the sidebar by double-clicking a session row or using its pencil action. The save path is shared by normal and coding sidebars.
+
 In coding mode, the topbar shows `Workspace: <name>` for the active workspace. The command palette intentionally excludes custom slash commands, Focus Chat Input, and the lead self-switch command; slash commands stay in the composer picker, `Ctrl+I` still focuses the composer, and worker-agent view commands remain available.
