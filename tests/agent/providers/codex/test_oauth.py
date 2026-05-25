@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +18,7 @@ from app.agent.providers.codex.oauth import (
     CLIENT_ID,
     ISSUER,
     CodexOAuth,
+    _authorize_url,
     _challenge,
     _exchange_code,
     _extract_account_id,
@@ -291,6 +293,30 @@ class TestPKCEHelpers:
         s2 = _state()
         assert s1 != s2
         assert len(s1) > 20
+
+
+class TestAuthorizeUrl:
+    """Authorize URL must mirror upstream codex-rs/login/src/server.rs.
+
+    Wire-level invariants — drift here is what would cause the Codex backend
+    to gate us as a non-first-party client.
+    """
+
+    def test_originator_is_codex_cli_rs(self):
+        url = _authorize_url("http://localhost:1455/auth/callback", "v", "s")
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        assert qs["originator"] == ["codex_cli_rs"]
+
+    def test_scope_includes_connectors(self):
+        url = _authorize_url("http://localhost:1455/auth/callback", "v", "s")
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        scope = qs["scope"][0]
+        assert "openid" in scope
+        assert "profile" in scope
+        assert "email" in scope
+        assert "offline_access" in scope
+        assert "api.connectors.read" in scope
+        assert "api.connectors.invoke" in scope
 
 
 # ---------------------------------------------------------------------------

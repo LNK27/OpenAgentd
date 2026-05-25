@@ -140,18 +140,22 @@ def _state() -> str:
 
 
 def _authorize_url(redirect_uri: str, verifier: str, state: str) -> str:
+    # Mirrors upstream codex-rs/login/src/server.rs::build_authorize_url.
     params = urllib.parse.urlencode(
         {
             "response_type": "code",
             "client_id": CLIENT_ID,
             "redirect_uri": redirect_uri,
-            "scope": "openid profile email offline_access",
+            "scope": (
+                "openid profile email offline_access"
+                " api.connectors.read api.connectors.invoke"
+            ),
             "code_challenge": _challenge(verifier),
             "code_challenge_method": "S256",
             "id_token_add_organizations": "true",
             "codex_cli_simplified_flow": "true",
             "state": state,
-            "originator": "openagentd",
+            "originator": "codex_cli_rs",
         }
     )
     return f"{ISSUER}/oauth/authorize?{params}"
