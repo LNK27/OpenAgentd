@@ -11,7 +11,7 @@
 
 **The desktop cockpit for local AI agents.** A double-click app that runs a team of AI agents on your machine, with a real UI to watch every step. Persistent memory, 15 providers, your keys. Open source.
 
-[Features](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) · [Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md) · [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md)
+[Features](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) · [Roadmap](https://github.com/lthoangg/openagentd/blob/main/documents/docs/roadmap.md) · [Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md) · [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md)
 
 ![OpenAgentd annotated multi-agent cockpit](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-hero-annotated.png)
 
@@ -337,6 +337,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | Section | Contents |
 |---------|----------|
 | [**Features**](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) | **Canonical, version-cited catalogue of every user-visible feature.** Source of truth for slides, docs, and comparisons. |
+| [Roadmap](https://github.com/lthoangg/openagentd/blob/main/documents/docs/roadmap.md) | Public roadmap — what's next, considering, deferred, or out of scope (with reasons). |
 | [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | Desktop app first (macOS/Linux); CLI/uv/pipx/pip, source. |
 | [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs |
 | [CLI reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/cli.md) | Every `openagentd` subcommand |
