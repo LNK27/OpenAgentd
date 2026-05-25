@@ -25,6 +25,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
   Folder,
@@ -166,6 +167,7 @@ export function CodingSidebar({
   onMobileClose,
 }: CodingSidebarProps) {
   const isMobile = useIsMobile()
+  const { isTauri } = usePlatform()
   const prefersReducedMotion = useReducedMotion()
   // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
   // We don't render an inline collapse toggle anymore — the topbar
@@ -234,6 +236,7 @@ export function CodingSidebar({
   }
 
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
   const [browserPath, setBrowserPath] = useState<string | null>(null)
   const [parentPath, setParentPath] = useState<string | null>(null)
   const [dirs, setDirs] = useState<Array<{ name: string; path: string }>>([])
@@ -261,9 +264,43 @@ export function CodingSidebar({
     }
   }, [])
 
-  useEffect(() => {
-    if (dialogOpen && !browserPath) void loadBrowser(null)
-  }, [dialogOpen, browserPath, loadBrowser])
+  const openWebWorkspaceDialog = useCallback(() => {
+    setSelectedWorkspace(null)
+    setTrustWorkspace(null)
+    setDialogOpen(true)
+    if (!browserPath) void loadBrowser(null)
+  }, [browserPath, loadBrowser])
+
+  const openWorkspaceDialog = useCallback(async () => {
+    setError(null)
+    setSelectedWorkspace(null)
+    setTrustWorkspace(null)
+
+    if (!isTauri) {
+      openWebWorkspaceDialog()
+      return
+    }
+
+    setLoading(true)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Open workspace',
+      })
+      if (typeof selected !== 'string') return
+      setSelectedWorkspace(selected)
+      const result = await validateWorkspace(selected)
+      setTrustWorkspace(result.workspace)
+      setDialogOpen(true)
+    } catch (err) {
+      setDialogOpen(true)
+      setError(err instanceof Error ? err.message : 'Unable to open workspace')
+    } finally {
+      setLoading(false)
+    }
+  }, [isTauri, openWebWorkspaceDialog])
 
   useEffect(() => {
     const handler = () => setWorkspaces(loadCodingWorkspaces())
@@ -276,8 +313,8 @@ export function CodingSidebar({
   }, [])
 
   useEffect(() => {
-    if (openWorkspaceDialogKey > 0) setDialogOpen(true)
-  }, [openWorkspaceDialogKey])
+    if (openWorkspaceDialogKey > 0) void openWorkspaceDialog()
+  }, [openWorkspaceDialogKey, openWorkspaceDialog])
 
   useEffect(() => {
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)
@@ -518,7 +555,7 @@ export function CodingSidebar({
         {/* + Open folder… */}
         <button
           type="button"
-          onClick={() => setDialogOpen(true)}
+          onClick={() => { void openWorkspaceDialog() }}
           className="mt-1 flex h-8 items-center gap-2 px-3 text-left text-xs italic text-(--color-accent) transition-colors hover:bg-(--bg-key)"
           aria-label="Open folder"
           title="Open a new workspace folder"
@@ -581,6 +618,31 @@ export function CodingSidebar({
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setTrustWorkspace(null)}>Back</Button>
                 <Button type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
+              </DialogFooter>
+            </>
+          ) : isTauri ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Open workspace</DialogTitle>
+                <DialogDescription>
+                  Use the desktop folder picker to choose a local project folder.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="min-w-0 space-y-2">
+                {selectedWorkspace && (
+                  <div className="min-w-0 rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                    <p className="min-w-0 font-mono text-xs text-(--color-text-muted) [overflow-wrap:anywhere]" title={selectedWorkspace}>
+                      {selectedWorkspace}
+                    </p>
+                  </div>
+                )}
+                {error && <p className="text-xs text-(--color-error)">{error}</p>}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+                <Button type="button" disabled={loading} onClick={() => { void openWorkspaceDialog() }}>
+                  {loading ? 'Opening…' : 'Choose folder…'}
+                </Button>
               </DialogFooter>
             </>
           ) : (
