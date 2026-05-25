@@ -143,7 +143,7 @@ The state blob holds **only unpersisted live content**. After `checkpointer.sync
 
 ### Turn Lifecycle
 
-1. **`init_turn(session_id)`** — called synchronously in POST handler before spawning the background task. Creates `_TurnState`, sets `is_streaming=True`. Queued follow-up turns may call `init_turn(..., keep_subscribers=True)` to reset replay state without disconnecting the current SSE subscriber.
+1. **`init_turn(session_id)`** — called synchronously before dispatching the lead turn. Creates `_TurnState`, sets `is_streaming=True`. Queued follow-up turns may call `init_turn(..., keep_subscribers=True)` to reset replay state without disconnecting the current SSE subscriber.
 2. **`push_event(session_id, envelope: StreamEnvelope)`** — called for every SSE event. The envelope is a typed Pydantic wrapper `{event: str, data: dict}` (see `app/services/stream_envelope.py`). Updates state blob and fans out `envelope.to_wire()` to all subscriber queues.
 3. **`attach(session_id)`** — called by `GET /api/team/{session_id}/stream`. Subscribe-before-read two-phase protocol:
    - If `is_streaming=False` → return immediately (DB is authoritative).
@@ -178,7 +178,7 @@ All events flow server→client. Schemas live in `app/agent/schemas/events.py`; 
 | `usage` | `StreamPublisherHook` after each model call + `after_agent` turn total | `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `thoughts_tokens` |
 | `inbox` | `TeamInboxHook.before_model` | `agent`, `text`, `from_agent` — peer message injected into LLM context |
 | `agent_status` | `AgentTeam` activation/done | `agent`, `status` (`idle`\|`working`\|`offline`\|`error`) — team only |
-| `queued_turn_start` | `AgentTeam` queued-message drain | `agent`, `message_ids` — marks queued user bubbles as active for the next turn |
+| `queued_turn_start` | `AgentTeam` / queued-message injection | `agent`, `message_ids` — marks queued user bubbles as active when queued rows are popped |
 | `rate_limit` | `StreamPublisherHook.on_rate_limit` | `retry_after`, `attempt`, `max_attempts` |
 | `provider_status` | Retry/fallback loop via `StreamPublisherHook` | `agent`, `status` (`retrying`\|`exhausted`\|`fallback`), `model`, `primary`, `fallback`, `attempt`, `max_attempts`, `delay_seconds`, `error_type`, `status_code` |
 | `permission_asked` | `StreamPublisherHook` (permission system) | `request_id`, `session_id`, `tool`, `patterns` |
