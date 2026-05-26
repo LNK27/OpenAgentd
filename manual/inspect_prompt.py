@@ -1,7 +1,8 @@
 """Reconstruct the full LLM payload for an agent — no server required.
 
 Produces the exact things sent to the provider on every request:
-  1. system_prompt        — base prompt + skills section + date injection
+   1. system_prompt        — base prompt + date injection
+
   2. system_prompt_final  — same, after ``WikiInjectionHook`` has appended
                             ``wiki/USER.md`` (what the LLM actually sees).
                             Requires the configured wiki dir to exist on disk
@@ -62,43 +63,6 @@ DEFAULT_AGENTS_DIR = _default_agents_dir()
 
 # ── Loader helpers ────────────────────────────────────────────────────────────
 
-
-def _build_skills_section(skills: list[str]) -> str:
-    """Replicate loader._build_skills_section() exactly."""
-    from app.agent.tools.builtin.skill import discover_skills
-
-    available = discover_skills()
-    lines = ["\n## Available skills\n"]
-    for skill_name in skills:
-        meta = available.get(skill_name, {})
-        desc = meta.get("description", "(no description)")
-        lines.append(f"- **{skill_name}**: {desc}")
-    lines += [
-        "",
-        "Call `skill` with the skill name to load its full instructions.",
-    ]
-    return "\n".join(lines)
-
-
-def _build_tool_definitions(tool_names: list[str]) -> list[dict]:
-    """Return tool definition dicts in the order the agent sends them."""
-    from app.agent.loader import _default_tool_registry
-    from app.agent.tools.builtin.skill import load_skill as _load_skill_tool
-
-    registry = _default_tool_registry()
-
-    # skill tool is always prepended (mirrors loader._build_agent)
-    tools = [registry.get("skill", _load_skill_tool)]
-
-    for name in tool_names:
-        if name == "skill":
-            continue
-        if name not in registry:
-            print(f"Warning: unknown tool '{name}' — skipped", file=sys.stderr)
-            continue
-        tools.append(registry[name])
-
-    return [t.definition for t in tools]
 
 
 def _inject_date(prompt: str, date_str: str) -> str:
@@ -291,10 +255,16 @@ def main() -> None:
         )
     print(file=sys.stderr)
 
-    # 1. System prompt
-    system_prompt = agent_cfg.system_prompt
-    if agent_cfg.skills:
-        system_prompt += _build_skills_section(agent_cfg.skills)
+    # 1. System prompt — use the same runtime expansion as loader._build_agent
+    #    so builtin prompts, member profiles, and skill tool descriptions are
+    #    all reflected accurately.
+    from app.agent.loader import _build_agent, _default_tool_registry
+    from app.agent.providers.factory import build_provider
+
+    _tool_registry = _default_tool_registry()
+    _mode = "coding" if Path(args.dir).name == "coding" else "normal"
+    _expanded_agent = _build_agent(agent_cfg, _tool_registry, build_provider, mode=_mode)
+    system_prompt = _expanded_agent.system_prompt
 
     # 2. Date injection
     if not args.no_date:
@@ -326,8 +296,8 @@ def main() -> None:
         print(system_prompt_final)
         return
 
-    # 4. Tool definitions
-    tool_defs = _build_tool_definitions(agent_cfg.tools)
+    # 4. Tool definitions — taken from the expanded agent to match runtime exactly
+    tool_defs = [t.definition for t in _expanded_agent._tools.values()]
     tools_json = json.dumps(tool_defs, indent=2, ensure_ascii=False)
 
     payload = {
