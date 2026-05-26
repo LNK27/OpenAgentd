@@ -346,7 +346,7 @@ class TestHandleContinuePreconditions:
         with pytest.raises(ContinuePreconditionError) as exc_info:
             await lead_only_team.handle_continue(str(sid))
 
-        assert "not linked" in exc_info.value.reason.lower()
+        assert "not an assistant message" in exc_info.value.reason.lower()
 
     @pytest.mark.asyncio
     async def test_allows_when_last_assistant_has_empty_content(

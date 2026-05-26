@@ -24,7 +24,6 @@ import {
   Mic,
   Video,
   ArrowRight,
-  Sparkles,
   Plug,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -314,34 +313,6 @@ function Tools({
           ))
         )}
       </div>
-    </section>
-  )
-}
-
-// ── Skills section ────────────────────────────────────────────────────────────
-
-function Skills({ skills }: { skills: AgentInfo['skills'] }) {
-  return (
-    <section className="border-t border-(--color-border) px-5 py-4">
-      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
-        Skills
-      </h3>
-      {skills.length === 0 ? (
-        <p className="text-xs italic text-(--color-text-muted)">None configured.</p>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {skills.map((s) => (
-            <span
-              key={s.name}
-              title={s.description || undefined}
-              className="flex cursor-default items-center gap-1 rounded-md bg-(--bg-key) px-2 py-0.5 font-mono text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)"
-            >
-              <Sparkles size={10} className="text-(--color-text-muted)" />
-              {s.name}
-            </span>
-          ))}
-        </div>
-      )}
     </section>
   )
 }
@@ -696,8 +667,6 @@ export function SessionSettingsPanel({
                   )}
                 </p>
               </section>
-
-              <Skills skills={leadAgent.skills} />
 
               {leadAgent.capabilities && (
                 <Capabilities caps={leadAgent.capabilities} tools={leadAgent.tools} />

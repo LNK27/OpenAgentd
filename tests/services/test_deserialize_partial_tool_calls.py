@@ -635,6 +635,126 @@ def test_tool_message_with_non_matching_tool_call_id_kept(session_id):
     assert result[1].tool_call_id == "call_999"
 
 
+def test_sanitize_tool_pairs_drops_orphan_tool_message(session_id, caplog_loguru):
+    """LLM sanitization drops ToolMessages with no matching assistant call."""
+    db_messages = [
+        make_session_message(role="user", content="Hello", session_id=session_id),
+        make_session_message(
+            role="tool",
+            content="orphan result",
+            tool_call_id="call_999",
+            name="search",
+            session_id=session_id,
+        ),
+    ]
+
+    result = _deserialize_messages(db_messages, sanitize_tool_pairs=True)
+
+    assert len(result) == 1
+    assert isinstance(result[0], HumanMessage)
+    assert "deserialize_drop_orphan_tool_message" in caplog_loguru.text
+    assert "call_999" in caplog_loguru.text
+
+
+def test_sanitize_tool_pairs_keeps_valid_assistant_tool_pair(session_id):
+    """LLM sanitization preserves a complete assistant/tool pair."""
+    db_messages = [
+        make_session_message(
+            role="assistant",
+            content="I'll search",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": "{}"},
+                }
+            ],
+            session_id=session_id,
+        ),
+        make_session_message(
+            role="tool",
+            content="result",
+            tool_call_id="call_1",
+            name="search",
+            session_id=session_id,
+        ),
+    ]
+
+    result = _deserialize_messages(db_messages, sanitize_tool_pairs=True)
+
+    assert len(result) == 2
+    assert isinstance(result[0], AssistantMessage)
+    assert result[0].tool_calls is not None
+    assert result[0].tool_calls[0].id == "call_1"
+    assert isinstance(result[1], ToolMessage)
+    assert result[1].tool_call_id == "call_1"
+
+
+def test_sanitize_tool_pairs_strips_incomplete_assistant_tool_calls(
+    session_id, caplog_loguru
+):
+    """LLM sanitization strips assistant tool_calls missing tool outputs."""
+    db_messages = [
+        make_session_message(
+            role="assistant",
+            content="I'll search",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": "{}"},
+                }
+            ],
+            session_id=session_id,
+        ),
+        make_session_message(role="user", content="next", session_id=session_id),
+    ]
+
+    result = _deserialize_messages(db_messages, sanitize_tool_pairs=True)
+
+    assert len(result) == 2
+    assert isinstance(result[0], AssistantMessage)
+    assert result[0].tool_calls is None
+    assert isinstance(result[1], HumanMessage)
+    assert "deserialize_strip_incomplete_assistant_tool_calls" in caplog_loguru.text
+    assert "call_1" in caplog_loguru.text
+
+
+def test_sanitize_tool_pairs_drops_tool_output_for_bad_partial_call(
+    session_id, caplog_loguru
+):
+    """Partial tool calls are stripped and matching tool outputs are removed."""
+    db_messages = [
+        make_session_message(
+            role="assistant",
+            content="I'll write",
+            tool_calls=[
+                {
+                    "id": "call_bad",
+                    "type": "function",
+                    "function": {"name": "write", "arguments": '{"path": "x"'},
+                }
+            ],
+            session_id=session_id,
+        ),
+        make_session_message(
+            role="tool",
+            content="result",
+            tool_call_id="call_bad",
+            name="write",
+            session_id=session_id,
+        ),
+    ]
+
+    result = _deserialize_messages(db_messages, sanitize_tool_pairs=True)
+
+    assert len(result) == 1
+    assert isinstance(result[0], AssistantMessage)
+    assert result[0].tool_calls is None
+    assert "deserialize_drop_partial_tool_call" in caplog_loguru.text
+    assert "deserialize_drop_orphan_tool_message" in caplog_loguru.text
+
+
 def test_malformed_json_with_special_characters(session_id, caplog_loguru):
     """Malformed JSON with special characters is dropped."""
     db_messages = [

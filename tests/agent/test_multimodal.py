@@ -90,6 +90,19 @@ def test_converted_text_block_is_fenced_with_close_tag():
     )
 
 
+def test_line_reference_attachment_tells_model_not_to_read_again():
+    parts = build_parts_from_metas(
+        "show me this",
+        [_att_text("line 7\nline 8", name="commands/pr.md#L7-L8")],
+    )
+    assert parts[0].text == (
+        "[File: commands/pr.md#L7-L8 — selected lines already loaded; "
+        "use this block directly instead of reading the same range]\n"
+        "line 7\nline 8\n"
+        "[End file: commands/pr.md#L7-L8]"
+    )
+
+
 # ---------------------------------------------------------------------------
 # slow path — image read from disk via stored ``path``
 # ---------------------------------------------------------------------------

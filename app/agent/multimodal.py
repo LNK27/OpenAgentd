@@ -69,10 +69,16 @@ def build_parts_from_metas(
             # ("just to be sure I have all of it") — wasting a tool turn
             # on content already in the prompt.
             kind = "File" if category == "text" else "Document"
+            prefix = f"[{kind}: {original_name}]"
+            if "#L" in str(original_name):
+                prefix = (
+                    f"[{kind}: {original_name} — selected lines already loaded; "
+                    "use this block directly instead of reading the same range]"
+                )
             parts.append(
                 TextBlock(
                     text=(
-                        f"[{kind}: {original_name}]\n"
+                        f"{prefix}\n"
                         f"{att['converted_text']}\n"
                         f"[End {kind.lower()}: {original_name}]"
                     )

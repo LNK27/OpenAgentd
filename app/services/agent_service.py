@@ -244,7 +244,8 @@ async def _persist_attachment(
             f"'{safe_original_name}' extension does not match its content type '{mime}'.",
             status=422,
         )
-    ext = Path(original_name).suffix or _default_ext(category)
+    ext_source = original_name.split("#L", 1)[0]
+    ext = Path(ext_source).suffix or _default_ext(category)
     filename = f"{uuid.uuid4().hex}{ext}"
     uploads_dir.mkdir(parents=True, exist_ok=True)
     dest = uploads_dir / filename

@@ -96,6 +96,9 @@ export function findCommittedMentions(
         ),
       )
     : null
+  const validLineBases = refs
+    ? new Set(refs.filter((r) => r.type === 'file').map((r) => `@${r.path}`))
+    : null
 
   const out: { start: number; end: number }[] = []
   for (let i = 0; i < value.length; i++) {
@@ -126,7 +129,13 @@ export function findCommittedMentions(
 
     // Resolution check: only chip tokens that actually resolve to a known
     // ref. This is what kills the ``@@`` / ``@nonexistent`` false positive.
-    if (valid && !valid.has(value.slice(i, end))) {
+    const token = value.slice(i, end)
+    const baseToken = token.replace(/#L\d+(?:-L?\d+)?$/, '')
+    if (
+      valid
+      && !valid.has(token)
+      && !(baseToken !== token && validLineBases?.has(baseToken))
+    ) {
       i = j
       continue
     }

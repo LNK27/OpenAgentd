@@ -48,7 +48,7 @@ import type { WorkspaceFileInfo } from '@/api/types'
 // Extensions we preview as plain text.  Anything else falls back to "Download".
 const TEXT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'rst',
-  'json', 'jsonl', 'ndjson', 'yaml', 'yml', 'toml', 'ini', 'env',
+  'json', 'jsonl', 'ndjson', 'yaml', 'yml', 'toml', 'ini', 'env', 'gitignore',
   'csv', 'tsv', 'log',
   'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs',
   'html', 'css', 'scss', 'sass',
@@ -71,6 +71,7 @@ function kindOf(file: WorkspaceFileInfo): FileKind {
   // SVG is both an image (for preview) and text — prefer the visual preview.
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
   if (file.mime.startsWith('image/')) return 'image'
+  if (!ext) return 'text'
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
   if (file.mime.startsWith('text/')) return 'text'
   if (file.mime === 'application/json') return 'text'

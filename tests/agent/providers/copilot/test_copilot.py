@@ -390,10 +390,7 @@ class TestBuildResponsesRequest:
             stream=False,
             merged=p._merged_kwargs(),
         )
-        item = body["input"][0]
-        assert item["type"] == "function_call_output"
-        assert item["call_id"] == "call_1"
-        assert item["output"] == "result"
+        assert body["input"] == []
 
     def test_assistant_with_tool_calls_in_input(self):
         p = _make_provider(model="gpt-5.4")
@@ -409,9 +406,7 @@ class TestBuildResponsesRequest:
         body = p._responses.build_request(
             [msg], None, stream=False, merged=p._merged_kwargs()
         )
-        fc_item = next(i for i in body["input"] if i.get("type") == "function_call")
-        assert fc_item["name"] == "search"
-        assert fc_item["call_id"] == "call_1"
+        assert not any(i.get("type") == "function_call" for i in body["input"])
 
     def test_tools_in_responses_format(self):
         p = _make_provider(model="gpt-5.4")
@@ -926,12 +921,11 @@ class TestBuildResponsesRequestExtra:
         body = p._responses.build_request(
             [msg], None, stream=False, merged=p._merged_kwargs()
         )
-        # Me only function_call item — no assistant content dict
+        # Me no assistant content dict, and incomplete tool calls are stripped.
         content_items = [i for i in body["input"] if i.get("role") == "assistant"]
         assert len(content_items) == 0
         fc_items = [i for i in body["input"] if i.get("type") == "function_call"]
-        assert len(fc_items) == 1
-        assert fc_items[0]["name"] == "do_thing"
+        assert len(fc_items) == 0
 
     def test_top_p_in_responses_body(self):
         """Line 332: top_p kwarg appears in responses request body."""
