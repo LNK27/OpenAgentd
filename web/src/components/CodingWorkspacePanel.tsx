@@ -8,13 +8,35 @@ import { queryKeys } from '@/queries'
 import { formatBytes } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import type { WorkspaceFileInfo } from '@/api/types'
+import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
 interface TreeNode {
   name: string
   path: string
   children: Map<string, TreeNode>
   file?: WorkspaceFileInfo
+}
+
+function collectChangedPaths(diff?: WorkspaceGitDiffResponse): Set<string> {
+  const paths = new Set<string>()
+  if (!diff?.is_git_repo) return paths
+
+  for (const line of diff.diff.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      const match = /^diff --git a\/(.*) b\/(.*)$/.exec(line)
+      if (match?.[2]) paths.add(match[2])
+    }
+  }
+  for (const path of diff.untracked ?? []) paths.add(path)
+  return paths
+}
+
+function pathHasChangedDescendant(path: string, changedPaths: Set<string>): boolean {
+  const prefix = `${path}/`
+  for (const changedPath of changedPaths) {
+    if (changedPath === path || changedPath.startsWith(prefix)) return true
+  }
+  return false
 }
 
 function buildTree(files: WorkspaceFileInfo[]): TreeNode {
@@ -41,11 +63,13 @@ function TreeNodeView({
   depth,
   selectedPath,
   onFileSelect,
+  changedPaths,
 }: {
   node: TreeNode
   depth: number
   selectedPath?: string | null
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
+  changedPaths: Set<string>
 }) {
   const [open, setOpen] = useState(false)
   const isDir = node.children.size > 0 && !node.file
@@ -58,6 +82,7 @@ function TreeNodeView({
 
   if (!isDir && node.file) {
     const isSelected = node.file.path === selectedPath
+    const isChanged = changedPaths.has(node.file.path)
     return (
       <button
         type="button"
@@ -66,17 +91,26 @@ function TreeNodeView({
           'flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors',
           isSelected
             ? 'bg-(--bg-key) text-(--color-accent)'
-            : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
+            : isChanged
+              ? 'text-(--accent-orange-text) hover:bg-(--bg-key)'
+              : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
         )}
         style={{ paddingLeft: 8 + depth * 12 }}
         title={node.file.path}
       >
-        <FileText size={12} className="shrink-0 text-(--color-text-subtle)" />
+        <FileText size={12} className={cn('shrink-0', isChanged ? 'text-(--accent-orange-text)' : 'text-(--color-text-subtle)')} />
         <span className="min-w-0 flex-1 truncate font-mono">{node.name}</span>
+        {isChanged && (
+          <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)">
+            M
+          </span>
+        )}
         <span className="shrink-0 text-[10px] text-(--color-text-subtle)">{formatBytes(node.file.size)}</span>
       </button>
     )
   }
+
+  const hasChangedDescendant = node.path ? pathHasChangedDescendant(node.path, changedPaths) : false
 
   return (
     <div>
@@ -84,16 +118,20 @@ function TreeNodeView({
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-(--color-text-2) hover:bg-(--bg-key)"
+          className={cn(
+            'flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-(--bg-key)',
+            hasChangedDescendant ? 'text-(--color-text)' : 'text-(--color-text-2)',
+          )}
           style={{ paddingLeft: 8 + depth * 12 }}
         >
           <ChevronRight size={12} className={cn('shrink-0 transition-transform', open && 'rotate-90')} />
-          <Folder size={12} className="shrink-0 text-(--color-accent)" />
+          <Folder size={12} className={cn('shrink-0', hasChangedDescendant ? 'text-(--accent-orange-text)' : 'text-(--color-accent)')} />
           <span className="min-w-0 flex-1 truncate font-mono">{node.name}</span>
+          {hasChangedDescendant && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--accent-orange-text)" aria-label="Contains modified files" />}
         </button>
       )}
       {(open || !node.path) && children.map((child) => (
-        <TreeNodeView key={child.path} node={child} depth={node.path ? depth + 1 : 0} selectedPath={selectedPath} onFileSelect={onFileSelect} />
+        <TreeNodeView key={child.path} node={child} depth={node.path ? depth + 1 : 0} selectedPath={selectedPath} onFileSelect={onFileSelect} changedPaths={changedPaths} />
       ))}
     </div>
   )
@@ -268,6 +306,7 @@ export function CodingWorkspacePanel({
     staleTime: 5_000,
   })
   const tree = buildTree(files.data?.files ?? [])
+  const changedPaths = collectChangedPaths(diff.data)
 
   if (!open) return null
 
@@ -292,6 +331,7 @@ export function CodingWorkspacePanel({
         <div className="flex border-b border-(--color-border) p-1">
           <button type="button" onClick={() => setTab('files')} className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs', tab === 'files' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted)')}>
             <Folder size={13} /> Files
+            {changedPaths.size > 0 && <span className="rounded-full bg-(--color-warning)/15 px-1.5 py-0.5 font-mono text-[10px] text-(--accent-orange-text)">{changedPaths.size}</span>}
           </button>
           <button type="button" onClick={() => setTab('diff')} className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs', tab === 'diff' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted)')}>
             <GitCompare size={13} /> Diff
@@ -306,7 +346,7 @@ export function CodingWorkspacePanel({
             ) : files.data?.files.length === 0 ? (
               <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No files shown</p>
             ) : (
-              <TreeNodeView node={tree} depth={0} selectedPath={selectedFilePath} onFileSelect={onFileSelect} />
+              <TreeNodeView node={tree} depth={0} selectedPath={selectedFilePath} onFileSelect={onFileSelect} changedPaths={changedPaths} />
             )
           ) : diff.isLoading ? (
             <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading diff…</p>

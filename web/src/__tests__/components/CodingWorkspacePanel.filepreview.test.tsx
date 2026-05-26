@@ -10,6 +10,7 @@ const readme: WorkspaceFileInfo = { path: 'README.md', name: 'README.md', size: 
 const image: WorkspaceFileInfo = { path: 'assets/logo.png', name: 'logo.png', size: 100, mtime: 1, mime: 'image/png' }
 const binary: WorkspaceFileInfo = { path: 'dist/app.bin', name: 'app.bin', size: 100, mtime: 1, mime: 'application/octet-stream' }
 const filesResponse = { workspace: WORKSPACE, truncated: false, files: [readme, image, binary] }
+let diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untracked: [] as string[] }
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
@@ -36,11 +37,12 @@ mock.module('framer-motion', () => ({
 mock.module('@/utils/workspace', () => ({ workspaceLabel: (path: string) => path.split('/').at(-1) ?? path }))
 
 beforeEach(() => {
+  diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untracked: [] }
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
     if (url.includes('/workspace/files/read')) return new Response('const value = 1\n// comment\nreturn value')
-    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: false, diff: '' }))
+    if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diffResponse))
     return new Response(null, { status: 404 })
   }) as typeof fetch
 })
@@ -90,6 +92,24 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(screen.getByTitle('README.md'))
 
     expect(onFileSelect).toHaveBeenCalledWith(null)
+  })
+
+  it('marks git-modified files and parent folders in the files tab', async () => {
+    diffResponse = {
+      workspace: WORKSPACE,
+      is_git_repo: true,
+      diff: 'diff --git a/README.md b/README.md\n@@ -1 +1 @@\n-old\n+new\n',
+      untracked: ['assets/logo.png'],
+    }
+
+    await renderWorkspacePanel()
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+
+    expect(screen.getByRole('button', { name: /files 2/i })).toBeTruthy()
+    expect(screen.getByTitle('README.md').textContent).toContain('M')
+    await userEvent.setup().click(screen.getByText('assets'))
+    expect(screen.getByLabelText('Contains modified files')).toBeTruthy()
+    expect(screen.getByTitle('assets/logo.png').textContent).toContain('M')
   })
 
   it('renders text files with a read-only IDE-style line-number gutter', async () => {
