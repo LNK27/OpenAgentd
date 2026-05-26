@@ -9,7 +9,7 @@ import type { WorkspaceFileInfo } from '@/api/types'
 
 const TEXT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'rst',
-  'json', 'jsonl', 'yaml', 'yml', 'toml', 'ini', 'env',
+  'json', 'jsonl', 'yaml', 'yml', 'toml', 'ini', 'env', 'gitignore',
   'csv', 'tsv', 'log',
   'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs',
   'html', 'css', 'scss', 'sass',
@@ -31,7 +31,7 @@ type FileKind = 'image' | 'text' | 'binary'
 function kindOf(file: WorkspaceFileInfo): FileKind {
   const ext = extOf(file.name)
   if (IMAGE_EXTENSIONS.has(ext) || file.mime.startsWith('image/')) return 'image'
-  if (TEXT_EXTENSIONS.has(ext) || file.mime.startsWith('text/') || file.mime === 'application/json') return 'text'
+  if (!ext || TEXT_EXTENSIONS.has(ext) || file.mime.startsWith('text/') || file.mime === 'application/json') return 'text'
   return 'binary'
 }
 
