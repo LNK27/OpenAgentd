@@ -44,12 +44,6 @@ CODING_OPENAGENTD_TOOLS = [
     "web_search",
     "write",
 ]
-OPENAGENTD_SKILLS = [
-    "self-healing",
-    "mcp-installer",
-    "skill-installer",
-    "plugin-installer",
-]
 
 
 class BuiltinMemberProfile(TypedDict):

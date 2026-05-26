@@ -36,6 +36,7 @@ from typing import (
     Annotated,
     Any,
     Callable,
+    cast,
     get_args,
     get_origin,
     get_type_hints,
@@ -137,7 +138,7 @@ class Tool:
         func: Callable,
         *,
         name: str | None = None,
-        description: str | None = None,
+        description: str | Callable[[], str] | None = None,
     ) -> None:
         self._func = func
         # ``Callable`` is the abstract type; only function objects guarantee
@@ -148,6 +149,9 @@ class Tool:
         self._custom_description = description
 
         self._model, self._definition, self._injected_params = self._build()
+        self._description_factory: Callable[[], str] | None = (
+            cast(Callable[[], str], description) if callable(description) else None
+        )
 
         # Preserve function metadata so the Tool looks like the original function
         self.__name__ = self.name
@@ -170,12 +174,21 @@ class Tool:
 
     @property
     def description(self) -> str:
+        if self._description_factory is not None:
+            return self._description_factory()
         return self._definition["function"]["description"]
 
     @property
     def definition(self) -> dict[str, Any]:
         """OpenAI-compatible tool definition dict."""
-        return self._definition
+        if self._description_factory is None:
+            return self._definition
+        definition = {
+            **self._definition,
+            "function": {**self._definition["function"]},
+        }
+        definition["function"]["description"] = self._description_factory()
+        return definition
 
     # ------------------------------------------------------------------
     # Validated execution (used by Agent)
@@ -252,7 +265,11 @@ class Tool:
 
         # Description: custom override or the full docstring (use-case focused)
         raw_doc = inspect.getdoc(func) or ""
-        description = self._custom_description or raw_doc.strip()
+        description = (
+            raw_doc.strip()
+            if self._custom_description is None or callable(self._custom_description)
+            else self._custom_description
+        )
 
         # include_extras=True preserves Annotated[..., Field(...)] wrappers so
         # Pydantic picks up Field metadata (description, constraints) when
@@ -320,7 +337,7 @@ def tool(
     func: None = None,
     *,
     name: str | None = None,
-    description: str | None = None,
+    description: str | Callable[[], str] | None = None,
 ) -> Callable[[Callable], Tool]: ...
 
 
@@ -328,7 +345,7 @@ def tool(
     func: Callable | None = None,
     *,
     name: str | None = None,
-    description: str | None = None,
+    description: str | Callable[[], str] | None = None,
 ) -> Tool | Callable[[Callable], Tool]:
     """Decorator that converts a function into a :class:`Tool`.
 

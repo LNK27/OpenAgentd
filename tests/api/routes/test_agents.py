@@ -158,7 +158,7 @@ model: zai:glm-5-turbo
     assert {"todo_manage", "schedule_task", "note"}.issubset(row["tools"])
     assert "shell" in row["tools"]
     assert row["mcp"] == []
-    assert "self-healing" in row["skills"]
+    assert row["skills"] == []
 
 
 @pytest.mark.asyncio

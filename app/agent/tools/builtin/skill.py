@@ -208,6 +208,48 @@ def _discover_skills_cached(
     return skills
 
 
+def format_available_skills(*, verbose: bool = False) -> str:
+    """Render discovered skills for prompt/tool-description context."""
+    skills = [
+        info
+        for info in discover_skills().values()
+        if str(info.get("description", "")).strip()
+    ]
+    if not skills:
+        return "No skills are currently available."
+
+    skills.sort(key=lambda info: str(info.get("name", "")))
+    if verbose:
+        lines = ["<available_skills>"]
+        for info in skills:
+            lines += [
+                "  <skill>",
+                f"    <name>{info['name']}</name>",
+                f"    <description>{info['description']}</description>",
+                f"    <location>{Path(str(info['dir'])).as_uri()}</location>",
+                "  </skill>",
+            ]
+        lines.append("</available_skills>")
+        return "\n".join(lines)
+
+    return "\n".join(
+        ["## Available Skills"]
+        + [f"- **{info['name']}**: {info['description']}" for info in skills]
+    )
+
+
+def _skill_tool_description() -> str:
+    return "\n".join(
+        [
+            "Load a specialized skill that provides domain-specific instructions and workflows.",
+            "",
+            "When a task matches one of the available skills listed below, use this tool to load the full skill instructions.",
+            "",
+            format_available_skills(verbose=False),
+        ]
+    )
+
+
 def _iter_skill_paths(directory: Path):
     """Yield (skill_file_path, stem) for all skills in *directory*.
 
@@ -223,16 +265,16 @@ def _iter_skill_paths(directory: Path):
             yield skill_file, subdir.name
 
 
-@tool(name="skill")
+@tool(name="skill", description=_skill_tool_description)
 async def load_skill(
     skill_name: Annotated[
         str,
         Field(
-            description="Skill name as listed in Available Skills (e.g. 'mcp-installer')."
+            description="Skill name from the available skills listed in this tool description (e.g. 'mcp-installer')."
         ),
     ],
 ) -> str:
-    """Load skill instructions into context. Call before starting skill-matched work."""
+    """Load skill instructions into context."""
     roots = [r for r in _iter_skill_roots() if r.is_dir()]
     if not roots:
         return "Skills directory not found."
