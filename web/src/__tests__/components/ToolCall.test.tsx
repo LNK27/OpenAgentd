@@ -205,6 +205,22 @@ describe("ToolCall — diff stats", () => {
     })
   })
 
+  it("collapses the whole write result when clicking the diff file header", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ path: "src/new.py", content: "new line" })
+
+    render(<ToolCall name="write" args={args} done={true} result="Tool applied successfully" />)
+
+    await user.click(screen.getByRole("button", { name: "Expand write details" }))
+    expect(screen.getByRole("button", { name: "Collapse diff for src/new.py" })).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "Collapse diff for src/new.py" }))
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Expand write details" })).toBeTruthy()
+    })
+  })
+
   it("shows deleted line count for rm from result metadata", () => {
     const args = JSON.stringify({ path: "src/old.txt" })
     const result = [

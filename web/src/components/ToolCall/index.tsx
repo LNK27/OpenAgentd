@@ -237,7 +237,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                   toolName={name}
                   args={args || ''}
                   result={result}
-                  onCollapse={name === 'edit' || name === 'patch' ? () => setManualExpanded(false) : undefined}
+                  onCollapse={() => setManualExpanded(false)}
                 />
               ) : (
                 <>
