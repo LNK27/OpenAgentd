@@ -59,6 +59,7 @@ interface InputBarProps {
    * plain text.
    */
   fileRefs?: FileRef[]
+  onFileRefsNeeded?: () => void
   isStreaming?: boolean
   disabled?: boolean
   placeholder?: string
@@ -139,6 +140,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   onSlashCommand,
   slashCommands = [],
   fileRefs = [],
+  onFileRefsNeeded,
   isStreaming = false,
   disabled,
   placeholder = 'Message OpenAgentd…',
@@ -649,6 +651,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // time React fires onChange.
     const caret = e.target.selectionStart ?? e.target.value.length
     const next = findActiveMention(e.target.value, caret)
+    if (next) onFileRefsNeeded?.()
     setMentionRange(next)
     resize()
   }
@@ -813,7 +816,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         onSelect={syncMention}
         onClick={syncMention}
         onPaste={handlePaste}
-        onFocus={onFocus}
+        onFocus={(e) => {
+          onFocus?.()
+          if (findActiveMention(value, e.currentTarget.selectionStart ?? value.length)) onFileRefsNeeded?.()
+        }}
         onBlur={() => {
           const canMinimize = value.trim().length === 0 && files.length === 0
           onBlur?.(canMinimize)

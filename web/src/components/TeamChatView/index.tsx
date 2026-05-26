@@ -108,6 +108,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
+  const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('agent')
 
   // On mobile, always force agent view — split/unified require a wide screen.
@@ -202,7 +203,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     mode,
     sessionId: sessionIdState,
     workspace,
-    enabled: mode === 'coding' ? Boolean(workspace) : Boolean(sessionIdState),
+    enabled: fileRefsEnabled && (mode === 'coding' ? Boolean(workspace) : Boolean(sessionIdState)),
   })
 
   // Sum tokens — four primitive selectors, no new object returned (avoids infinite loop).
@@ -896,6 +897,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             onSlashCommand={handleSlashCommand}
             slashCommands={slashCommands}
             fileRefs={fileRefs}
+            onFileRefsNeeded={() => setFileRefsEnabled(true)}
             isStreaming={isTeamWorking}
             disabled={mode === 'coding' && isCodingSessionLoading}
             autoFocus={!sessionId}

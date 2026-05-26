@@ -84,6 +84,7 @@ interface FloatingInputBarProps {
   onSlashCommand?: (id: string) => void
   slashCommands?: SlashCommand[]
   fileRefs?: FileRef[]
+  onFileRefsNeeded?: () => void
   isStreaming?: boolean
   disabled?: boolean
   placeholder?: string

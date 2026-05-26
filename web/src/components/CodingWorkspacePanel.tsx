@@ -302,7 +302,7 @@ export function CodingWorkspacePanel({
   const diff = useQuery({
     queryKey: queryKeys.coding.diff(workspace),
     queryFn: () => getCodingWorkspaceGitDiff(workspace),
-    enabled: open,
+    enabled: open && tab === 'diff',
     staleTime: 5_000,
   })
   const tree = buildTree(files.data?.files ?? [])

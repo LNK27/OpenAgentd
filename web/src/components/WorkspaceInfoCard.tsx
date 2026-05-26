@@ -25,10 +25,10 @@ export function WorkspaceInfoCard({ workspace }: Props) {
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.coding.status(workspace),
     queryFn: () => getCodingWorkspaceStatus(workspace),
-    // Refetch on every new-chat open (component re-mount) — no caching
-    // beyond the in-flight request, no manual refresh affordance.
-    staleTime: 0,
-    gcTime: 0,
+    // Workspace status is informational and can be reused across route
+    // transitions; cache briefly to avoid duplicate git status probes when
+    // coding views remount for the same workspace.
+    staleTime: 30_000,
   })
 
   const name = data?.name ?? workspace.split('/').filter(Boolean).pop() ?? workspace
