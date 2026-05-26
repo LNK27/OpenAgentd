@@ -2,7 +2,7 @@
 title: Slash commands
 description: Reusable prompt templates triggered with `/name` in the chat input. Compatible with opencode's command format.
 status: stable
-updated: 2026-05-20
+updated: 2026-05-26
 ---
 
 # Slash commands
@@ -33,9 +33,11 @@ Produce a conventional commit message describing: $ARGUMENTS
   the command name. If absent and arguments are supplied, they are
   appended to the body on a new line.
 
-The filename (minus `.md`) becomes the command id. Nested folders are
-preserved as `/`-separated names — `commands/git/commit.md` registers
-as `git/commit`.
+The filename (minus `.md`) becomes the command id. One nested folder level is
+supported: `commands/git/commit.md` registers as `git/commit`. Deeper files
+such as `commands/a/b/c.md` are ignored. In the chat picker, nested commands are
+shown and inserted with colon syntax (`/git:commit`) while the API/storage name
+remains `git/commit`.
 
 ## Where commands live
 
@@ -61,7 +63,8 @@ Slash commands live in the composer picker only; the command palette does not li
 - **Built-in commands** (`/stop`, `/continue`, `/compact`, `/undo`, `/redo`, `/new`) execute immediately on pick.
   `/continue` resumes the last assistant response; `/compact` runs the session summarizer; `/undo` reverts the latest user turn, restores its workspace snapshot, and puts the text back in the composer; `/redo` restores all undone turns sequentially, replaying the workspace forward to the live tip.
 - **Discovered commands** insert `/<name> ` into the textarea so you
-  can type arguments before submitting.
+  can type arguments before submitting. For nested commands, the picker uses
+  colon syntax: `git/commit` is displayed and inserted as `/git:commit`.
 
 When you submit a message starting with `/`, the backend renders the
 template and sends the expanded body to the agent. The picker closes
@@ -92,8 +95,8 @@ conventional-commits message describing: $ARGUMENTS
 Then in chat:
 
 ```
-/git/commit fix off-by-one in cursor decoder
+/git:commit fix off-by-one in cursor decoder
 ```
 
-The agent receives the full rendered prompt, not the `/git/commit …`
+The agent receives the full rendered prompt, not the `/git:commit …`
 line.

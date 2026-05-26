@@ -30,7 +30,7 @@ export function NewSkillPage() {
 
   const handleContentChange = (raw: string) => {
     setContent(raw)
-    const match = /^\s*---[\s\S]*?name:\s*([A-Za-z0-9._-]+)/m.exec(raw)
+    const match = /^\s*---[\s\S]*?name:\s*([A-Za-z0-9._/-]+)/m.exec(raw)
     if (match) setName(match[1])
   }
 
@@ -80,7 +80,8 @@ export function NewSkillPage() {
               <CardDescription>
                 Frontmatter (<span className="font-mono">name</span>,{' '}
                 <span className="font-mono">description</span>) is required;
-                the body is the instruction the agent loads on demand.
+                use <span className="font-mono">parent/sub</span> for a one-level sub-skill.
+                The body is the instruction the agent loads on demand.
               </CardDescription>
             </CardHeader>
             <CardContent>

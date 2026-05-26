@@ -90,6 +90,7 @@ class MCPTool(Tool):
         }
         self._model = _NoopParameters
         self._injected_params: set[str] = set()
+        self._description_factory = None
 
         self.name = local_name
         self._custom_description = description

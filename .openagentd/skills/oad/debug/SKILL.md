@@ -1,5 +1,6 @@
 ---
-description: Investigate a reported bug, session, symptom, regression, or runtime issue.
+name: oad/debug
+description: OpenAgentd workflow for investigating bugs, regressions, sessions, and runtime issues.
 ---
 
 Debug the reported issue.

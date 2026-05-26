@@ -185,6 +185,26 @@ describe("ToolCall — web_search display", () => {
 })
 
 describe("ToolCall — diff stats", () => {
+  it("collapses the whole edit result when clicking the diff file header", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({
+      path: "src/main.py",
+      old_string: "old line",
+      new_string: "new line",
+    })
+
+    render(<ToolCall name="edit" args={args} done={true} result="Edit applied successfully" />)
+
+    await user.click(screen.getByRole("button", { name: "Expand edit details" }))
+    expect(screen.getByRole("button", { name: "Collapse diff for src/main.py" })).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "Collapse diff for src/main.py" }))
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Expand edit details" })).toBeTruthy()
+    })
+  })
+
   it("shows deleted line count for rm from result metadata", () => {
     const args = JSON.stringify({ path: "src/old.txt" })
     const result = [

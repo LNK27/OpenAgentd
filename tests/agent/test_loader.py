@@ -12,7 +12,6 @@ from app.agent.agent_loop import Agent
 from app.agent.loader import (
     AgentConfig,
     _build_agent,
-    _build_skills_section,
     _default_tool_registry,
     parse_agent_md,
 )
@@ -402,34 +401,11 @@ def test_build_agent_skill_tool_deduped():
 
 
 # ---------------------------------------------------------------------------
-# _build_skills_section
+# Skill prompt handling
 # ---------------------------------------------------------------------------
 
 
-def test_build_skills_section_empty():
-    assert _build_skills_section([]) == ""
-
-
-def test_build_skills_section_with_skills(tmp_path, monkeypatch):
-    d = tmp_path / "myskill"
-    d.mkdir()
-    (d / "SKILL.md").write_text(
-        "---\nname: myskill\ndescription: Does something cool\n---\nBody."
-    )
-    monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
-    result = _build_skills_section(["myskill"])
-    assert "myskill" in result
-    assert "Does something cool" in result
-    assert "skill" in result
-
-
-def test_build_skills_section_unknown_skill_warns(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
-    result = _build_skills_section(["ghost"])
-    assert "skill" in result
-
-
-def test_build_agent_skills_injected_into_prompt(tmp_path, monkeypatch):
+def test_build_agent_skills_do_not_inject_prompt_descriptions(tmp_path, monkeypatch):
     d = tmp_path / "myskill"
     d.mkdir()
     (d / "SKILL.md").write_text(
@@ -439,8 +415,8 @@ def test_build_agent_skills_injected_into_prompt(tmp_path, monkeypatch):
     factory, _ = _make_provider_factory()
     cfg = AgentConfig(name="bot", system_prompt="Base prompt", skills=["myskill"])
     agent = _build_agent(cfg, {}, factory)
-    assert "myskill" in agent.system_prompt
-    assert "A great skill" in agent.system_prompt
+    assert agent.system_prompt == "Base prompt"
+    assert agent.skills == ["myskill"]
 
 
 # ---------------------------------------------------------------------------
@@ -534,7 +510,7 @@ def test_openagentd_lead_uses_builtin_prompt_with_extra(tmp_path):
     assert "personal on-machine AI assistant" in team.lead.agent.description
     assert "shell" in team.lead.agent._tools
     assert "generate_image" in team.lead.agent._tools
-    assert "self-healing" in team.lead.agent.skills
+    assert team.lead.agent.skills == []
 
 
 def test_openagentd_seed_comment_is_not_injected_as_extra_prompt(tmp_path):
@@ -580,12 +556,11 @@ def test_openagentd_file_can_add_tools_and_skills(tmp_path):
     assert team is not None
     assert "wiki_search" in team.lead.agent._tools
     assert "shell" in team.lead.agent._tools
-    assert "custom-skill" in team.lead.agent.skills
-    assert "self-healing" in team.lead.agent.skills
+    assert team.lead.agent.skills == ["custom-skill"]
 
 
 def test_openagentd_builtin_and_user_capabilities_are_deduped(tmp_path):
-    """User overrides are additive, but duplicate built-ins should not duplicate."""
+    """User overrides are deduped without injecting built-in skills."""
     from app.agent.loader import load_team_from_dir
 
     d = _make_agents_dir(

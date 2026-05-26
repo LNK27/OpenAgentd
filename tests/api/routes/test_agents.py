@@ -10,7 +10,7 @@ that contract: validation + rollback semantics, but no live team swap.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -35,6 +35,10 @@ def fs_dirs(tmp_path: Path, monkeypatch):
     skills.mkdir()
     monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
     monkeypatch.setattr(settings, "SKILLS_DIR", str(skills))
+    from app.agent.tools.builtin import skill as skill_module
+
+    monkeypatch.setattr(skill_module, "_iter_skill_roots", lambda: [skills])
+    skill_module._discover_skills_cached.cache_clear()
     return agents, skills
 
 
@@ -158,7 +162,7 @@ model: zai:glm-5-turbo
     assert {"todo_manage", "schedule_task", "note"}.issubset(row["tools"])
     assert "shell" in row["tools"]
     assert row["mcp"] == []
-    assert "self-healing" in row["skills"]
+    assert row["skills"] == []
 
 
 @pytest.mark.asyncio
@@ -210,7 +214,16 @@ async def test_list_surfaces_invalid_file(fs_dirs, client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_registry_returns_catalog(client: AsyncClient):
+async def test_registry_returns_catalog(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    import app.api.routes.agents as agents_routes
+
+    agents_routes._registry_model_cache.clear()
+    monkeypatch.setattr(
+        agents_routes, "discover_provider_models", AsyncMock(return_value=[])
+    )
+
     res = await client.get("/api/agents/registry")
     assert res.status_code == 200
     body = res.json()

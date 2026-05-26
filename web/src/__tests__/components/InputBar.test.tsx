@@ -238,6 +238,37 @@ describe("InputBar", () => {
     expect(textarea.getAttribute("aria-activedescendant")).toBe(options[1].id)
   })
 
+  it("displays nested commands with colon syntax and inserts colon form", async () => {
+    const user = userEvent.setup()
+    render(
+      <InputBar
+        onSubmit={() => {}}
+        slashCommands={[
+          {
+            id: "git/commit",
+            label: "git:commit",
+            displayName: "git:commit",
+            insertText: "git:commit",
+            description: "Commit staged changes",
+            category: "command",
+            keepInputOpen: true,
+          },
+        ]}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "/git")
+
+    expect(screen.getByText("git:")).toBeTruthy()
+    expect(screen.getByText("commit")).toBeTruthy()
+    expect(screen.queryByText("/git/commit")).toBeNull()
+
+    await user.keyboard("{Enter}")
+
+    expect(textarea.value).toBe("/git:commit ")
+  })
+
   it("clears input after submit", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}

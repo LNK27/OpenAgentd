@@ -7,7 +7,9 @@ import pytest
 from app.agent.tools.builtin.skill import (
     _builtin_skills_dir,
     _discover_skills_cached,
+    _iter_skill_paths,
     _parse_frontmatter,
+    _skills_dir_signature,
     discover_skills,
     load_skill,
 )
@@ -388,3 +390,208 @@ class TestBuiltinSkills:
         body = await load_skill("mcp-installer")
 
         assert str(_builtin_skills_dir() / "mcp-installer" / "mcp_apply.py") in body
+
+
+# ---------------------------------------------------------------------------
+# Sub-skill support (one nested level)
+#
+# Skills may live one level deeper than the flat layout:
+#   skills/{parent}/{sub}/SKILL.md  →  name "parent/sub"
+#
+# The parent directory itself may or may not have its own SKILL.md — both
+# configurations are valid and must coexist.
+# ---------------------------------------------------------------------------
+
+
+class TestSubSkills:
+    """Tests for one-level nested skill support."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        _discover_skills_cached.cache_clear()
+        yield
+        _discover_skills_cached.cache_clear()
+
+    # ── _iter_skill_paths ────────────────────────────────────────────────
+
+    def test_iter_yields_nested_skill(self, tmp_path):
+        parent = tmp_path / "git"
+        sub = parent / "commit"
+        sub.mkdir(parents=True)
+        (sub / "SKILL.md").write_text("---\nname: git/commit\n---\nBody.")
+
+        results = list(_iter_skill_paths(tmp_path))
+
+        assert len(results) == 1
+        path, stem = results[0]
+        assert stem == "git/commit"
+        assert path == sub / "SKILL.md"
+
+    def test_iter_yields_flat_and_nested_together(self, tmp_path):
+        # Flat skill
+        flat = tmp_path / "search"
+        flat.mkdir()
+        (flat / "SKILL.md").write_text("---\nname: search\n---\nSearch.")
+        # Nested skill under the same parent
+        nested = tmp_path / "git" / "commit"
+        nested.mkdir(parents=True)
+        (nested / "SKILL.md").write_text("---\nname: git/commit\n---\nCommit.")
+
+        stems = {stem for _, stem in _iter_skill_paths(tmp_path)}
+
+        assert stems == {"search", "git/commit"}
+
+    def test_iter_parent_with_own_skill_md_and_sub_skills(self, tmp_path):
+        """Parent dir can have its own SKILL.md AND nested sub-skills."""
+        parent = tmp_path / "git"
+        parent.mkdir()
+        (parent / "SKILL.md").write_text("---\nname: git\n---\nGit overview.")
+        sub = parent / "commit"
+        sub.mkdir()
+        (sub / "SKILL.md").write_text("---\nname: git/commit\n---\nCommit detail.")
+
+        stems = {stem for _, stem in _iter_skill_paths(tmp_path)}
+
+        assert stems == {"git", "git/commit"}
+
+    def test_iter_ignores_directory_without_skill_md(self, tmp_path):
+        """A sub-directory with no SKILL.md (e.g. scripts/) is never yielded."""
+        parent = tmp_path / "git"
+        scripts = parent / "scripts"
+        scripts.mkdir(parents=True)
+        (scripts / "helper.py").write_text("# helper")
+
+        results = list(_iter_skill_paths(tmp_path))
+
+        assert results == []
+
+    # ── discover_skills ──────────────────────────────────────────────────
+
+    def test_discover_nested_skill(self, tmp_path):
+        sub = tmp_path / "git" / "commit"
+        sub.mkdir(parents=True)
+        (sub / "SKILL.md").write_text(
+            "---\nname: git/commit\ndescription: Make a git commit.\n---\nBody."
+        )
+
+        result = discover_skills(skills_dir=tmp_path)
+
+        assert "git/commit" in result
+        assert result["git/commit"]["description"] == "Make a git commit."
+        assert result["git/commit"]["file"] == "git/commit/SKILL.md"
+
+    def test_discover_flat_and_nested_coexist(self, tmp_path):
+        (tmp_path / "search").mkdir()
+        (tmp_path / "search" / "SKILL.md").write_text(
+            "---\nname: search\ndescription: Search.\n---\nSearch body."
+        )
+        sub = tmp_path / "git" / "push"
+        sub.mkdir(parents=True)
+        (sub / "SKILL.md").write_text(
+            "---\nname: git/push\ndescription: Push commits.\n---\nPush body."
+        )
+
+        result = discover_skills(skills_dir=tmp_path)
+
+        assert set(result.keys()) == {"search", "git/push"}
+
+    def test_discover_nested_name_from_stem_when_no_frontmatter_name(self, tmp_path):
+        """Stem ``parent/sub`` is used when frontmatter has no ``name`` key."""
+        sub = tmp_path / "git" / "rebase"
+        sub.mkdir(parents=True)
+        (sub / "SKILL.md").write_text("---\ndescription: Rebase.\n---\nBody.")
+
+        result = discover_skills(skills_dir=tmp_path)
+
+        assert "git/rebase" in result
+
+    def test_discover_precedence_flat_over_nested_same_name(self, tmp_path):
+        """If a flat skill and a nested SKILL.md accidentally resolve to the
+        same name, the flat one (discovered first in sorted order) wins."""
+        flat = tmp_path / "git"
+        flat.mkdir()
+        (flat / "SKILL.md").write_text(
+            "---\nname: git\ndescription: flat\n---\nFlat body."
+        )
+        sub = flat / "sub"
+        sub.mkdir()
+        (sub / "SKILL.md").write_text(
+            "---\nname: git/sub\ndescription: nested\n---\nNested body."
+        )
+
+        result = discover_skills(skills_dir=tmp_path)
+
+        # Both should appear under their distinct names.
+        assert "git" in result
+        assert "git/sub" in result
+
+    # ── _skills_dir_signature ────────────────────────────────────────────
+
+    def test_signature_changes_when_nested_skill_added(self, tmp_path):
+        sig_before = _skills_dir_signature(tmp_path)
+
+        sub = tmp_path / "git" / "commit"
+        sub.mkdir(parents=True)
+        (sub / "SKILL.md").write_text("---\nname: git/commit\n---\nBody.")
+
+        sig_after = _skills_dir_signature(tmp_path)
+
+        assert sig_after != sig_before
+
+    def test_signature_changes_when_nested_skill_edited(self, tmp_path):
+        sub = tmp_path / "git" / "commit"
+        sub.mkdir(parents=True)
+        skill_file = sub / "SKILL.md"
+        skill_file.write_text("---\nname: git/commit\n---\nOriginal.")
+
+        sig_before = _skills_dir_signature(tmp_path)
+
+        import time
+
+        time.sleep(0.01)  # ensure mtime changes on fast filesystems
+        skill_file.write_text("---\nname: git/commit\n---\nEdited.")
+
+        sig_after = _skills_dir_signature(tmp_path)
+
+        assert sig_after != sig_before
+
+    # ── load_skill ───────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_load_nested_skill_by_slash_name(self, tmp_path, monkeypatch):
+        sub = tmp_path / "git" / "commit"
+        sub.mkdir(parents=True)
+        (sub / "SKILL.md").write_text("---\nname: git/commit\n---\nCommit body.")
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
+
+        result = await load_skill("git/commit")
+
+        assert result == "Commit body."
+
+    @pytest.mark.asyncio
+    async def test_load_nested_skill_by_stem(self, tmp_path, monkeypatch):
+        """When frontmatter name differs, the slash-stem is still matchable."""
+        sub = tmp_path / "git" / "commit"
+        sub.mkdir(parents=True)
+        (sub / "SKILL.md").write_text(
+            "---\nname: git-commit\n---\nCommit body by stem."
+        )
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
+
+        result = await load_skill("git/commit")
+
+        assert result == "Commit body by stem."
+
+    @pytest.mark.asyncio
+    async def test_flat_and_nested_skill_both_loadable(self, tmp_path, monkeypatch):
+        (tmp_path / "search").mkdir()
+        (tmp_path / "search" / "SKILL.md").write_text(
+            "---\nname: search\n---\nSearch body."
+        )
+        sub = tmp_path / "git" / "push"
+        sub.mkdir(parents=True)
+        (sub / "SKILL.md").write_text("---\nname: git/push\n---\nPush body.")
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
+
+        assert await load_skill("search") == "Search body."
+        assert await load_skill("git/push") == "Push body."

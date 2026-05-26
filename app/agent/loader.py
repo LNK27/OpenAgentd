@@ -217,29 +217,6 @@ def _default_tool_registry() -> dict[str, Tool]:
 # ---------------------------------------------------------------------------
 
 
-def _build_skills_section(skill_names: list[str]) -> str:
-    """Build a skills reference block for injection into the system prompt."""
-    from app.agent.tools.builtin.skill import discover_skills
-
-    if not skill_names:
-        return ""
-
-    available = discover_skills()
-    lines = ["\n## Available skills", ""]
-    for name in skill_names:
-        info = available.get(name)
-        if info is None:
-            logger.warning("skill_not_found name={}", name)
-            continue
-        desc = info.get("description", "No description.")
-        lines.append(f"- **{name}**: {desc}")
-    lines += [
-        "",
-        "Call `skill` with the skill name to load its full instructions.",
-    ]
-    return "\n".join(lines)
-
-
 def _build_agent(
     cfg: AgentConfig,
     tool_registry: dict[str, Tool],
@@ -252,7 +229,6 @@ def _build_agent(
     system_prompt = cfg.system_prompt
     if cfg.role == "lead" and cfg.name == "openagentd":
         from app.agent.builtin_prompts import (
-            OPENAGENTD_SKILLS,
             apply_openagentd_extra_prompt,
             openagentd_description_for_mode,
             openagentd_tools_for_mode,
@@ -260,7 +236,6 @@ def _build_agent(
 
         cfg.description = cfg.description or openagentd_description_for_mode(mode)
         cfg.tools = [*openagentd_tools_for_mode(mode), *cfg.tools]
-        cfg.skills = [*OPENAGENTD_SKILLS, *cfg.skills]
         system_prompt = apply_openagentd_extra_prompt(mode, cfg.system_prompt)
     elif cfg.role == "member":
         from app.agent.builtin_prompts import (
@@ -281,7 +256,6 @@ def _build_agent(
 
     if cfg.skills:
         cfg.skills = list(dict.fromkeys(cfg.skills))
-        system_prompt += _build_skills_section(cfg.skills)
 
     from app.agent.tools.builtin.schedule import schedule_task as _schedule_task_tool
     from app.agent.tools.builtin.skill import load_skill as _load_skill_tool

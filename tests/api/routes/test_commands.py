@@ -152,6 +152,35 @@ async def test_render_nested_command(client, roots):
 
 
 @pytest.mark.asyncio
+async def test_create_subcommand_file_list_and_render_roundtrip(client, roots):
+    """Actual one-level subcommand: create git/commit.md, list it, render it."""
+    project_openagentd, _project_opencode, _global_openagentd, _global_opencode = roots
+    workspace = project_openagentd.parents[1]
+    _write(
+        project_openagentd / "git" / "commit.md",
+        "---\ndescription: Commit changes\n---\nCommit: $ARGUMENTS\n",
+    )
+
+    listed = await client.get("/api/commands", params={"workspace": str(workspace)})
+    assert listed.status_code == 200
+    assert listed.json()["commands"] == [
+        {
+            "name": "git/commit",
+            "description": "Commit changes",
+            "source": "project-openagentd",
+        }
+    ]
+
+    rendered = await client.post(
+        "/api/commands/git/commit/render",
+        params={"workspace": str(workspace)},
+        json={"arguments": "fix bug"},
+    )
+    assert rendered.status_code == 200
+    assert rendered.json() == {"name": "git/commit", "content": "Commit: fix bug"}
+
+
+@pytest.mark.asyncio
 async def test_render_unknown_returns_404(client):
     res = await client.post("/api/commands/nope/render", json={"arguments": ""})
     assert res.status_code == 404

@@ -149,7 +149,8 @@ def _skills_dir_signature(directory: Path) -> int:
     """Cheap fingerprint that changes whenever any SKILL.md in the tree changes.
 
     ~1ms for a typical user's <20 skills.  Returns the max of the directory's
-    own mtime_ns and every ``{name}/SKILL.md`` mtime_ns we can stat — so
+    own mtime_ns and every ``{name}/SKILL.md`` (flat) or
+    ``{parent}/{sub}/SKILL.md`` (one nested level) mtime_ns we can stat — so
     in-place edits, additions, and removals all change the signature.
     """
     try:
@@ -159,13 +160,25 @@ def _skills_dir_signature(directory: Path) -> int:
     for subdir in directory.iterdir():
         if not subdir.is_dir():
             continue
+        # Flat skill: {parent}/SKILL.md
         skill_file = subdir / "SKILL.md"
         try:
             mtime = skill_file.stat().st_mtime_ns
+            if mtime > max_mtime:
+                max_mtime = mtime
         except OSError:
-            continue
-        if mtime > max_mtime:
-            max_mtime = mtime
+            pass
+        # One nested level: {parent}/{sub}/SKILL.md
+        for nested in subdir.iterdir():
+            if not nested.is_dir():
+                continue
+            nested_file = nested / "SKILL.md"
+            try:
+                mtime = nested_file.stat().st_mtime_ns
+                if mtime > max_mtime:
+                    max_mtime = mtime
+            except OSError:
+                continue
     return max_mtime
 
 
@@ -185,17 +198,23 @@ def _discover_skills_cached(
     for directory_str in directories:
         directory = Path(directory_str)
         for path, stem in _iter_skill_paths(directory):
-            text = path.read_text(encoding="utf-8")
-            meta, _ = _parse_frontmatter(text)
-            name = meta.get("name", stem)
+            try:
+                text = path.read_text(encoding="utf-8")
+                meta, _ = _parse_frontmatter(text)
+                name = meta.get("name", stem)
+                description = _render_tokens(
+                    meta.get("description", ""), skill_dir=path.parent
+                )
+            except OSError:
+                # Keep unreadable skills discoverable by their path stem so UI
+                # routes can surface the read error instead of the whole
+                # catalog failing to load. ``format_available_skills`` filters
+                # empty descriptions, so broken entries are not advertised to
+                # agents in prompts.
+                name = stem
+                description = ""
             if name in skills:
                 continue  # earlier root wins on collision
-            # Substitute path tokens in description so the skill list shown
-            # to the agent ("## Available skills" section) renders concrete
-            # paths instead of literal {OPENAGENTD_CONFIG_DIR}/etc placeholders.
-            description = _render_tokens(
-                meta.get("description", ""), skill_dir=path.parent
-            )
             skills[name] = {
                 "name": name,
                 "description": description,
@@ -208,10 +227,61 @@ def _discover_skills_cached(
     return skills
 
 
-def _iter_skill_paths(directory: Path):
-    """Yield (skill_file_path, stem) for all skills in *directory*.
+def format_available_skills(*, verbose: bool = False) -> str:
+    """Render discovered skills for prompt/tool-description context."""
+    skills = [
+        info
+        for info in discover_skills().values()
+        if str(info.get("description", "")).strip()
+    ]
+    if not skills:
+        return "No skills are currently available."
 
-    Only the directory layout is supported: ``skills/{name}/SKILL.md``.
+    skills.sort(key=lambda info: str(info.get("name", "")))
+    if verbose:
+        lines = ["<available_skills>"]
+        for info in skills:
+            lines += [
+                "  <skill>",
+                f"    <name>{info['name']}</name>",
+                f"    <description>{info['description']}</description>",
+                f"    <location>{Path(str(info['dir'])).as_uri()}</location>",
+                "  </skill>",
+            ]
+        lines.append("</available_skills>")
+        return "\n".join(lines)
+
+    return "\n".join(
+        ["## Available Skills"]
+        + [f"- **{info['name']}**: {info['description']}" for info in skills]
+    )
+
+
+def _skill_tool_description() -> str:
+    return "\n".join(
+        [
+            "Load a specialized skill that provides domain-specific instructions and workflows.",
+            "",
+            "When a task matches one of the available skills listed below, use this tool to load the full skill instructions.",
+            "",
+            format_available_skills(verbose=False),
+        ]
+    )
+
+
+def _iter_skill_paths(directory: Path):
+    """Yield ``(skill_file_path, stem)`` for all skills in *directory*.
+
+    Supports two layouts (one nested level maximum):
+
+    * Flat:   ``skills/{name}/SKILL.md``          → stem ``name``
+    * Nested: ``skills/{parent}/{sub}/SKILL.md``  → stem ``parent/sub``
+
+    Sub-directories that contain *neither* a ``SKILL.md`` nor any
+    nested ``{sub}/SKILL.md`` are silently skipped, so auxiliary files
+    (``scripts/``, ``reference/``, …) sitting alongside the skill file
+    are never exposed as skills themselves.
+
     Returns nothing for non-existent or non-directory paths so callers
     can pass roots that may not be present on this machine.
     """
@@ -220,19 +290,26 @@ def _iter_skill_paths(directory: Path):
     for subdir in sorted(p for p in directory.iterdir() if p.is_dir()):
         skill_file = subdir / "SKILL.md"
         if skill_file.is_file():
+            # Flat skill — yield and *also* check for nested sub-skills
+            # below (they coexist with the parent's own SKILL.md).
             yield skill_file, subdir.name
+        # One level of nesting: {parent}/{sub}/SKILL.md → "parent/sub"
+        for nested in sorted(p for p in subdir.iterdir() if p.is_dir()):
+            nested_file = nested / "SKILL.md"
+            if nested_file.is_file():
+                yield nested_file, f"{subdir.name}/{nested.name}"
 
 
-@tool(name="skill")
+@tool(name="skill", description=_skill_tool_description)
 async def load_skill(
     skill_name: Annotated[
         str,
         Field(
-            description="Skill name as listed in Available Skills (e.g. 'mcp-installer')."
+            description="Skill name from the available skills listed in this tool description (e.g. 'mcp-installer')."
         ),
     ],
 ) -> str:
-    """Load skill instructions into context. Call before starting skill-matched work."""
+    """Load skill instructions into context."""
     roots = [r for r in _iter_skill_roots() if r.is_dir()]
     if not roots:
         return "Skills directory not found."

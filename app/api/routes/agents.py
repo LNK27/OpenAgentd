@@ -103,7 +103,6 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
     data.tools = [*implicit_tools, *data.tools]
     if data.role == "lead" and data.name == "openagentd":
         from app.agent.builtin_prompts import (
-            OPENAGENTD_SKILLS,
             openagentd_description_for_mode,
             openagentd_tools_for_mode,
         )
@@ -112,7 +111,6 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
         data.tools = list(
             dict.fromkeys([*openagentd_tools_for_mode(mode), *data.tools])
         )
-        data.skills = list(dict.fromkeys([*OPENAGENTD_SKILLS, *data.skills]))
         data.mcp = list(dict.fromkeys(data.mcp))
     elif data.role == "member":
         from app.agent.builtin_prompts import builtin_member_profile

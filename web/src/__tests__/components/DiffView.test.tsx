@@ -38,7 +38,7 @@ describe("DiffView", () => {
     expect(screen.getByText('42')).toBeTruthy()
   })
 
-  it("toggles edit diff when clicking the file header", () => {
+  it("toggles edit diff when no outer collapse handler is provided", () => {
     const args = JSON.stringify({
       path: "src/main.py",
       old_string: "old line",
@@ -55,6 +55,22 @@ describe("DiffView", () => {
     expect(screen.getByRole("button", { name: "Expand diff for src/main.py" })).toBeTruthy()
 
     fireEvent.click(screen.getByRole("button", { name: "Expand diff for src/main.py" }))
+    expect(screen.getByText("old line")).toBeTruthy()
+  })
+
+  it("calls the outer collapse handler when clicking an expanded edit file header", () => {
+    const args = JSON.stringify({
+      path: "src/main.py",
+      old_string: "old line",
+      new_string: "new line",
+    })
+    let collapsed = false
+
+    render(<DiffView toolName="edit" args={args} onCollapse={() => { collapsed = true }} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse diff for src/main.py" }))
+
+    expect(collapsed).toBe(true)
     expect(screen.getByText("old line")).toBeTruthy()
   })
 
@@ -84,7 +100,7 @@ describe("DiffView", () => {
     expect(screen.getAllByText('17')).toHaveLength(2)
   })
 
-  it("toggles patch file diff when clicking the file header", () => {
+  it("toggles patch file diff when no outer collapse handler is provided", () => {
     const patchText = [
       "*** Begin Patch",
       "*** Update File: src/utils.py",
@@ -102,6 +118,31 @@ describe("DiffView", () => {
     fireEvent.click(header)
     expect(screen.queryByText("old line")).toBeNull()
     expect(screen.getByRole("button", { name: "Expand diff for src/utils.py" })).toBeTruthy()
+  })
+
+  it("calls the outer collapse handler when clicking an expanded patch file header", () => {
+    const patchText = [
+      "*** Begin Patch",
+      "*** Update File: src/utils.py",
+      "@@",
+      "-old line",
+      "+new line",
+      "*** End Patch",
+    ].join("\n")
+    let collapsed = false
+
+    render(
+      <DiffView
+        toolName="patch"
+        args={JSON.stringify({ patch_text: patchText })}
+        onCollapse={() => { collapsed = true }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse diff for src/utils.py" }))
+
+    expect(collapsed).toBe(true)
+    expect(screen.getByText("old line")).toBeTruthy()
   })
 
   it("toggles one file in a multi-file patch independently", () => {

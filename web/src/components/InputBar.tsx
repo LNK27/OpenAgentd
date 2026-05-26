@@ -29,6 +29,23 @@ export interface SlashCommand {
    * ``onSlashCommand`` runs immediately.
    */
   keepInputOpen?: boolean
+  /**
+   * Optional visual category tag displayed in a small badge to the right of
+   * the description (e.g. ``"skill"`` or ``"command"``). Use this to visually
+   * distinguish different kinds of slash entries without adding a separate
+   * separator row for every group.
+   */
+  category?: string
+  /** Text shown after the leading slash in the picker. Defaults to ``id``. */
+  displayName?: string
+  /** Text inserted after the leading slash when ``keepInputOpen`` is true. Defaults to ``id``. */
+  insertText?: string
+  /**
+   * When ``true`` this entry is rendered as a non-interactive section header
+   * (a label row). Set ``id`` to something unique but non-actionable and
+   * leave ``description`` blank. Keyboard navigation skips these rows.
+   */
+  isSeparator?: boolean
 }
 
 interface InputBarProps {
@@ -395,22 +412,70 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const slashFilter = value.startsWith('/') && !value.includes(' ')
     ? value.slice(1).toLowerCase()
     : null
+
+  /**
+   * ``filteredSlashCommands`` — the visible list shown in the popover.
+   *
+   * When a filter string is present, separator rows are only kept when at
+   * least one actionable entry in their group matches (so we never render a
+   * dangling header with nothing beneath it). With an empty filter string
+   * (the user just typed ``/``) every entry is shown.
+   *
+   * Separator rows are excluded from keyboard-navigation indexing; only
+   * actionable entries count as "selectable" positions.
+   */
   const filteredSlashCommands = useMemo(() => {
     if (slashFilter === null || slashCommands.length === 0) return []
-    return slashCommands.filter(
-      (cmd) =>
-        cmd.id.toLowerCase().includes(slashFilter) ||
-        cmd.label.toLowerCase().includes(slashFilter)
+    if (slashFilter === '') return slashCommands
+
+    // Two-pass: first collect matching actionable ids, then walk the list
+    // again keeping actionable matches AND any separator that precedes them.
+    const matchedIds = new Set(
+      slashCommands
+        .filter(
+          (cmd) =>
+            !cmd.isSeparator &&
+            (cmd.id.toLowerCase().includes(slashFilter) ||
+              cmd.label.toLowerCase().includes(slashFilter) ||
+              (cmd.displayName ?? '').toLowerCase().includes(slashFilter)),
+        )
+        .map((cmd) => cmd.id),
     )
+    if (matchedIds.size === 0) return []
+
+    const result: SlashCommand[] = []
+    let pendingSeparator: SlashCommand | null = null
+    for (const cmd of slashCommands) {
+      if (cmd.isSeparator) {
+        pendingSeparator = cmd
+        continue
+      }
+      if (matchedIds.has(cmd.id)) {
+        if (pendingSeparator) {
+          result.push(pendingSeparator)
+          pendingSeparator = null
+        }
+        result.push(cmd)
+      }
+    }
+    return result
   }, [slashFilter, slashCommands])
+
+  /** Actionable entries only — used for keyboard index arithmetic. */
+  const selectableSlashCommands = useMemo(
+    () => filteredSlashCommands.filter((cmd) => !cmd.isSeparator),
+    [filteredSlashCommands],
+  )
 
   const slashMenuOpen = slashFilter !== null && filteredSlashCommands.length > 0
   const slashMenuId = 'inputbar-slash-menu'
   const mentionMenuId = 'inputbar-mention-menu'
 
-  // Clamp index to valid range (handles filter changes reducing the list)
-  const clampedIndex = filteredSlashCommands.length > 0
-    ? slashMenuIndex % filteredSlashCommands.length
+  // Clamp index to valid range (handles filter changes reducing the list).
+  // The index tracks position within ``selectableSlashCommands``, not the full
+  // ``filteredSlashCommands`` list, so separator rows are never "focused".
+  const clampedIndex = selectableSlashCommands.length > 0
+    ? slashMenuIndex % selectableSlashCommands.length
     : 0
 
   // Refs for slash option buttons so the highlighted row stays visible when
@@ -419,18 +484,19 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // render, so unmounted-but-still-recorded nulls don't accumulate.
   const slashOptionRefs = useRef<(HTMLButtonElement | null)[]>([])
   useEffect(() => {
-    slashOptionRefs.current.length = filteredSlashCommands.length
+    slashOptionRefs.current.length = selectableSlashCommands.length
     if (!slashMenuOpen) return
     const el = slashOptionRefs.current[clampedIndex]
     el?.scrollIntoView({ block: 'nearest' })
-  }, [clampedIndex, slashMenuOpen, filteredSlashCommands])
+  }, [clampedIndex, slashMenuOpen, selectableSlashCommands])
 
   const executeSlashCommand = useCallback((cmd: SlashCommand) => {
+    if (cmd.isSeparator) return
     if (cmd.keepInputOpen) {
       // Insert ``/<id> `` and keep the textarea focused so the user can
       // append arguments. Submission is what triggers the action — the
       // parent's onSubmit handler inspects the raw text.
-      const next = `/${cmd.id} `
+      const next = `/${cmd.insertText ?? cmd.displayName ?? cmd.id} `
       setValue(next)
       const el = textareaRef.current
       if (el) {
@@ -537,20 +603,20 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     }
 
     // Slash menu navigation
-    if (slashMenuOpen && filteredSlashCommands.length > 0) {
+    if (slashMenuOpen && selectableSlashCommands.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSlashMenuIndex((i) => (i + 1) % filteredSlashCommands.length)
+        setSlashMenuIndex((i) => (i + 1) % selectableSlashCommands.length)
         return
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSlashMenuIndex((i) => (i - 1 + filteredSlashCommands.length) % filteredSlashCommands.length)
+        setSlashMenuIndex((i) => (i - 1 + selectableSlashCommands.length) % selectableSlashCommands.length)
         return
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        executeSlashCommand(filteredSlashCommands[clampedIndex])
+        executeSlashCommand(selectableSlashCommands[clampedIndex])
         return
       }
       if (e.key === 'Escape') {
@@ -814,30 +880,55 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
             aria-label="Slash commands"
             className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md"
           >
-            {filteredSlashCommands.map((cmd, idx) => (
-              <button
-                key={cmd.id}
-                id={`${slashMenuId}-option-${idx}`}
-                role="option"
-                aria-selected={idx === clampedIndex}
-                ref={(node) => { slashOptionRefs.current[idx] = node }}
-                onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd) }}
-                className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
-                  idx === clampedIndex
-                    ? 'bg-(--bg-key) text-(--color-text)'
-                    : 'text-(--color-text-muted) hover:bg-(--bg-key)'
-                }`}
-              >
-                {/* Name keeps its full width (``shrink-0``); description gets
-                    the remaining space and truncates with an ellipsis. The
-                    container already constrains width via the input's
-                    ``max-w-3xl`` wrapper, so we don't need a max-width here. */}
-                <span className="shrink-0 font-mono text-xs text-(--color-accent)">/{cmd.id}</span>
-                <span className="min-w-0 flex-1 truncate text-(--color-text-2)">
-                  {cmd.description}
-                </span>
-              </button>
-            ))}
+            {filteredSlashCommands.map((cmd) => {
+              if (cmd.isSeparator) {
+                return (
+                  <div
+                    key={cmd.id}
+                    className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)"
+                  >
+                    {cmd.label}
+                  </div>
+                )
+              }
+
+              const idx = selectableSlashCommands.findIndex((item) => item.id === cmd.id)
+              const active = idx === clampedIndex
+              const displayName = cmd.displayName ?? cmd.id
+              const colon = displayName.indexOf(':')
+              const prefix = colon === -1 ? '' : displayName.slice(0, colon + 1)
+              const suffix = colon === -1 ? displayName : displayName.slice(colon + 1)
+
+              return (
+                <button
+                  key={cmd.id}
+                  id={`${slashMenuId}-option-${idx}`}
+                  role="option"
+                  aria-selected={active}
+                  ref={(node) => { slashOptionRefs.current[idx] = node }}
+                  onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd) }}
+                  className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
+                    active
+                      ? 'bg-(--bg-key) text-(--color-text)'
+                      : 'text-(--color-text-muted) hover:bg-(--bg-key)'
+                  }`}
+                >
+                  <span className="shrink-0 font-mono text-xs text-(--color-accent)">
+                    /
+                    {prefix && <span className="text-(--color-text-muted)">{prefix}</span>}
+                    <span>{suffix}</span>
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-(--color-text-2)">
+                    {cmd.description}
+                  </span>
+                  {cmd.category && (
+                    <span className="shrink-0 rounded-md bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted) ring-1 ring-(--color-border)">
+                      {cmd.category}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         )}
 

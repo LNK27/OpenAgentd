@@ -233,7 +233,12 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
           >
             <section className="surface-raised group relative mt-1 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
               {name === 'edit' || name === 'patch' || name === 'write' ? (
-                <DiffView toolName={name} args={args || ''} result={result} />
+                <DiffView
+                  toolName={name}
+                  args={args || ''}
+                  result={result}
+                  onCollapse={name === 'edit' || name === 'patch' ? () => setManualExpanded(false) : undefined}
+                />
               ) : (
                 <>
                   {/* Args section — caption + copy sit above the content. */}

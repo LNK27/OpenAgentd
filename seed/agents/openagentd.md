@@ -6,4 +6,4 @@ temperature: 0.2
 thinking_level: low
 ---
 
-<!-- Add extra prompt text below. OpenAgentd's base prompt, tools, and skills are built in. -->
+<!-- Add extra prompt text below. OpenAgentd's base prompt and tools are built in. Skills are discovered by the skill tool. -->

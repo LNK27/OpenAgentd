@@ -1,5 +1,6 @@
 ---
-description: Create well-formatted, detailed conventional commits.
+name: oad/commit
+description: OpenAgentd workflow for well-formatted, detailed conventional commits.
 ---
 
 Git Commit Execution Workflow

@@ -823,6 +823,9 @@ class TestWaitUntilReady:
 
         # Reset cache
         mcp_manager_mod._CACHED_USER_PATH = None
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.shell_runtime._CACHED_SHELL", "/bin/sh"
+        )
 
         spawn_count = 0
         original_create_subprocess_exec = asyncio.create_subprocess_exec
@@ -830,8 +833,8 @@ class TestWaitUntilReady:
         async def mock_create_subprocess_exec(*args, **kwargs):
             nonlocal spawn_count
             spawn_count += 1
-            # Simulate some delay to allow concurrency
-            await asyncio.sleep(0.05)
+            # Yield once so concurrent callers queue behind the cache lock.
+            await asyncio.sleep(0)
             return await original_create_subprocess_exec(*args, **kwargs)
 
         monkeypatch.setattr(

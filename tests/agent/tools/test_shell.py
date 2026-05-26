@@ -60,6 +60,14 @@ def sandbox_workspace(tmp_path):
     _sandbox_ctx.reset(token)
 
 
+@pytest.fixture(autouse=True)
+def fast_shell(monkeypatch):
+    """Use bare /bin/sh in shell tests unless a test exercises detection."""
+    monkeypatch.setattr(
+        "app.agent.tools.builtin.shell_runtime._CACHED_SHELL", "/bin/sh"
+    )
+
+
 # ---------------------------------------------------------------------------
 # _tail_text helper
 # ---------------------------------------------------------------------------
