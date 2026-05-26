@@ -671,8 +671,8 @@ class TestCodexResponsesHandlerBuildRequest:
         assert input_items[0]["role"] == "user"
         assert input_items[1]["role"] == "assistant"
 
-    def test_build_request_preserves_non_system_messages(self):
-        """build_request() preserves all non-system messages in input."""
+    def test_build_request_drops_orphan_tool_messages(self):
+        """build_request() drops tool outputs without assistant tool calls."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
         messages = [
             SystemMessage(content="System"),
@@ -682,11 +682,9 @@ class TestCodexResponsesHandlerBuildRequest:
         ]
         body = handler.build_request(messages, None, False, {})
         input_items = body["input"]
-        assert len(input_items) == 3
-        # First is user (HumanMessage), second is assistant, third is function_call_output
+        assert len(input_items) == 2
         assert input_items[0]["role"] == "user"
         assert input_items[1]["role"] == "assistant"
-        assert input_items[2]["type"] == "function_call_output"
 
     def test_build_request_inherits_model_from_parent(self):
         """build_request() includes model from parent class."""

@@ -180,6 +180,62 @@ class TestCompletionsHandler:
         assert isinstance(result[0].content, list)
         assert len(result[0].content) == 2
 
+    def test_build_request_drops_orphan_tool_message(self, handler):
+        """OpenAI request building drops invalid tool outputs defensively."""
+        messages = [
+            HumanMessage(content="Hello"),
+            ToolMessage(tool_call_id="missing_call", content="orphan"),
+        ]
+
+        body = handler.build_request(messages, tools=None, stream=False, merged={})
+
+        assert len(body["messages"]) == 1
+        assert body["messages"][0]["role"] == "user"
+
+    def test_build_request_strips_incomplete_assistant_tool_calls(self, handler):
+        """OpenAI request building does not send tool_calls without outputs."""
+        messages = [
+            AssistantMessage(
+                content="Calling a tool.",
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        function=FunctionCall(name="get_weather", arguments="{}"),
+                    )
+                ],
+            ),
+            HumanMessage(content="next"),
+        ]
+
+        body = handler.build_request(messages, tools=None, stream=False, merged={})
+
+        assert len(body["messages"]) == 2
+        assert body["messages"][0]["role"] == "assistant"
+        assert "tool_calls" not in body["messages"][0]
+        assert body["messages"][1]["role"] == "user"
+
+    def test_build_request_keeps_valid_assistant_tool_pair(self, handler):
+        """OpenAI request building preserves complete assistant/tool pairs."""
+        messages = [
+            AssistantMessage(
+                content="Calling a tool.",
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        function=FunctionCall(name="get_weather", arguments="{}"),
+                    )
+                ],
+            ),
+            ToolMessage(tool_call_id="call_123", content="sunny"),
+        ]
+
+        body = handler.build_request(messages, tools=None, stream=False, merged={})
+
+        assert len(body["messages"]) == 2
+        assert body["messages"][0]["tool_calls"][0]["id"] == "call_123"
+        assert body["messages"][1]["role"] == "tool"
+        assert body["messages"][1]["tool_call_id"] == "call_123"
+
     # ─────────────────────────────────────────────────────────────────────────
     # Tool conversion tests
     # ─────────────────────────────────────────────────────────────────────────

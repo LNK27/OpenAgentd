@@ -192,6 +192,63 @@ class TestResponsesHandler:
         assert len(result) == 1
         assert result[0]["type"] == "function_call_output"
 
+    def test_build_request_drops_orphan_tool_message(self, handler):
+        """Responses request building drops invalid function_call_output items."""
+        messages = [
+            HumanMessage(content="Hello"),
+            ToolMessage(tool_call_id="missing_call", content="orphan"),
+        ]
+
+        body = handler.build_request(messages, tools=None, stream=False, merged={})
+
+        assert len(body["input"]) == 1
+        assert body["input"][0]["role"] == "user"
+
+    def test_build_request_strips_incomplete_assistant_tool_calls(self, handler):
+        """Responses request building does not send function_call without output."""
+        messages = [
+            AssistantMessage(
+                content="Calling a tool.",
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        function=FunctionCall(name="get_weather", arguments="{}"),
+                    )
+                ],
+            ),
+            HumanMessage(content="next"),
+        ]
+
+        body = handler.build_request(messages, tools=None, stream=False, merged={})
+
+        assert len(body["input"]) == 2
+        assert body["input"][0]["role"] == "assistant"
+        assert body["input"][1]["role"] == "user"
+        assert not any(item.get("type") == "function_call" for item in body["input"])
+
+    def test_build_request_keeps_valid_assistant_tool_pair(self, handler):
+        """Responses request building preserves complete function call pairs."""
+        messages = [
+            AssistantMessage(
+                content="Calling a tool.",
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        function=FunctionCall(name="get_weather", arguments="{}"),
+                    )
+                ],
+            ),
+            ToolMessage(tool_call_id="call_123", content="sunny"),
+        ]
+
+        body = handler.build_request(messages, tools=None, stream=False, merged={})
+
+        assert len(body["input"]) == 3
+        assert body["input"][1]["type"] == "function_call"
+        assert body["input"][1]["call_id"] == "call_123"
+        assert body["input"][2]["type"] == "function_call_output"
+        assert body["input"][2]["call_id"] == "call_123"
+
     # ─────────────────────────────────────────────────────────────────────────
     # Tool conversion tests
     # ─────────────────────────────────────────────────────────────────────────

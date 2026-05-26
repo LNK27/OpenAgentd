@@ -38,6 +38,7 @@ from app.agent.schemas.chat import (
     ToolMessage,
     Usage,
 )
+from .sanitization import sanitize_openai_tool_pairs
 
 if TYPE_CHECKING:
     pass
@@ -158,7 +159,7 @@ class ResponsesHandler:
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": self.model,
-            "input": self.convert_messages(messages),
+            "input": self.convert_messages(sanitize_openai_tool_pairs(messages)),
             "stream": stream,
         }
 

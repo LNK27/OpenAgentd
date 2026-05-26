@@ -240,6 +240,51 @@ def _collect_preserved_ids(messages: list) -> set[int]:
     return preserved
 
 
+def _expand_tool_pair_ids(messages: list, seed_ids: set[int]) -> set[int]:
+    """Expand *seed_ids* so assistant/tool-call pairs stay together.
+
+    Compaction must not hide only one side of an assistant→tool exchange: OpenAI
+    rejects orphan ``tool`` rows, and preserving an assistant ``tool_calls`` row
+    without all of its tool outputs leaves an incomplete call. Treat each
+    visible assistant/tool-call group as an atomic unit when deciding what to
+    summarise or preserve.
+    """
+    if not seed_ids:
+        return set()
+
+    assistant_ids_by_call: dict[str, set[int]] = {}
+    tool_ids_by_call: dict[str, set[int]] = {}
+
+    for m in messages:
+        if isinstance(m, AssistantMessage) and m.tool_calls:
+            for tc in m.tool_calls:
+                if tc.id:
+                    assistant_ids_by_call.setdefault(tc.id, set()).add(id(m))
+        elif isinstance(m, ToolMessage) and m.tool_call_id:
+            tool_ids_by_call.setdefault(m.tool_call_id, set()).add(id(m))
+
+    expanded = set(seed_ids)
+    changed = True
+    while changed:
+        changed = False
+        for m in messages:
+            if id(m) not in expanded:
+                continue
+            related: set[int] = set()
+            if isinstance(m, AssistantMessage) and m.tool_calls:
+                for tc in m.tool_calls:
+                    related.update(tool_ids_by_call.get(tc.id, set()))
+            elif isinstance(m, ToolMessage) and m.tool_call_id:
+                related.update(assistant_ids_by_call.get(m.tool_call_id, set()))
+
+            new_ids = related - expanded
+            if new_ids:
+                expanded.update(new_ids)
+                changed = True
+
+    return expanded
+
+
 def prompt_token_threshold_for_model(model_id: str | None) -> int:
     """Return summarisation threshold: min(150k, 75% model context)."""
     context_length = get_model_limits(model_id).context_length
@@ -443,7 +488,9 @@ class SummarizationHook(BaseAgentHook):
         # Preserved messages (skill tool calls + their assistant pair) are
         # neither summarised nor excluded — they stay in the live context
         # so the agent keeps seeing the skill instructions.
-        preserved_ids = _collect_preserved_ids(state.messages)
+        preserved_ids = _expand_tool_pair_ids(
+            eligible, _collect_preserved_ids(eligible)
+        )
 
         cutoff_idx = _find_assistant_cutoff(eligible, self._keep_last_assistants)
         if cutoff_idx > 0:
@@ -452,6 +499,11 @@ class SummarizationHook(BaseAgentHook):
             ]
         else:
             to_summarise = [m for m in eligible if id(m) not in preserved_ids]
+
+        to_summarise_ids = _expand_tool_pair_ids(
+            eligible, {id(m) for m in to_summarise}
+        )
+        to_summarise = [m for m in eligible if id(m) in to_summarise_ids]
 
         if not to_summarise:
             logger.debug(

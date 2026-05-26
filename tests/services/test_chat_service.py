@@ -706,6 +706,47 @@ async def test_get_messages_for_llm_uses_most_recent_summary(session):
     assert "middle" not in contents
 
 
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_drops_orphan_tool_message(session):
+    """LLM context never includes tool rows without visible assistant calls."""
+    chat_session = await create_chat_session(session)
+    await save_message(session, chat_session.id, HumanMessage(content="hello"))
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="orphan", tool_call_id="missing_call", name="search"),
+    )
+    await session.commit()
+
+    result = await get_messages_for_llm(session, chat_session.id)
+
+    assert [m.role for m in result] == ["user"]
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_summary_window_drops_orphan_tool_message(session):
+    """Summary + keep_last_n windows are sanitized after window selection."""
+    chat_session = await create_chat_session(session)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="Summary of earlier context."),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="new turn"))
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="orphan", tool_call_id="missing_call", name="search"),
+    )
+    await session.commit()
+
+    result = await get_messages_for_llm(session, chat_session.id)
+
+    assert [m.role for m in result] == ["user", "user"]
+    assert [m.content for m in result] == ["Summary of earlier context.", "new turn"]
+
+
 # ── hide_messages_before_summary ─────────────────────────────────────────────
 
 

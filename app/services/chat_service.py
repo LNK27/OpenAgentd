@@ -426,7 +426,9 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
             db_messages = (
                 await db.exec(_visible_messages_stmt(session_id, boundary))
             ).all()
-            return await asyncio.to_thread(_deserialize_messages, db_messages)
+            return await asyncio.to_thread(
+                _deserialize_messages, db_messages, sanitize_tool_pairs=True
+            )
 
         # Fetch all non-hidden, non-summary messages.  This naturally includes:
         #   - keep_last_n messages (not hidden, created before the summary)
@@ -449,7 +451,9 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
             latest_summary.id,
         )
         # Me run in thread — _deserialize_messages does disk I/O for image hydration
-        return await asyncio.to_thread(_deserialize_messages, db_messages)
+        return await asyncio.to_thread(
+            _deserialize_messages, db_messages, sanitize_tool_pairs=True
+        )
     except Exception as e:
         logger.error("load_llm_messages_failed session_id={} error={}", session_id, e)
         raise
@@ -1074,7 +1078,9 @@ async def get_team_history(
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 
-def _deserialize_messages(db_messages: Sequence[SessionMessage]) -> list[ChatMessage]:
+def _deserialize_messages(
+    db_messages: Sequence[SessionMessage], *, sanitize_tool_pairs: bool = False
+) -> list[ChatMessage]:
     """Convert ORM rows into typed ChatMessage objects via TypeAdapter.
 
     Uses ``model_dump()`` → ``TypeAdapter.validate_python()`` so the
@@ -1143,11 +1149,86 @@ def _deserialize_messages(db_messages: Sequence[SessionMessage]) -> list[ChatMes
             msg.tool_calls = clean or None
 
     if bad_tool_call_ids:
-        result = [
-            m
-            for m in result
-            if not (isinstance(m, ToolMessage) and m.tool_call_id in bad_tool_call_ids)
-        ]
+        kept: list[ChatMessage] = []
+        for msg in result:
+            if isinstance(msg, ToolMessage) and msg.tool_call_id in bad_tool_call_ids:
+                row = _message_row_by_id(db_messages).get(msg.db_id)
+                logger.warning(
+                    "deserialize_drop_orphan_tool_message session_id={} message_id={} tool_call_id={}",
+                    row.session_id if row else None,
+                    msg.db_id,
+                    msg.tool_call_id,
+                )
+                continue
+            kept.append(msg)
+        result = kept
+
+    if sanitize_tool_pairs:
+        result = _sanitize_tool_message_pairs(result, db_messages)
+
+    return result
+
+
+def _message_row_by_id(
+    db_messages: Sequence[SessionMessage],
+) -> dict[UUID | None, SessionMessage]:
+    return {m.id: m for m in db_messages}
+
+
+def _sanitize_tool_message_pairs(
+    messages: list[ChatMessage], db_messages: Sequence[SessionMessage]
+) -> list[ChatMessage]:
+    """Drop LLM-invalid tool outputs and strip incomplete assistant tool calls."""
+    rows_by_id = _message_row_by_id(db_messages)
+    result: list[ChatMessage] = []
+    expected_tool_ids: set[str] = set()
+
+    for idx, msg in enumerate(messages):
+        if isinstance(msg, AssistantMessage):
+            expected_tool_ids.clear()
+            if not msg.tool_calls:
+                result.append(msg)
+                continue
+
+            tool_call_ids = {tc.id for tc in msg.tool_calls if tc.id}
+            following_tool_ids: set[str] = set()
+            for next_msg in messages[idx + 1 :]:
+                if not isinstance(next_msg, ToolMessage):
+                    break
+                if next_msg.tool_call_id:
+                    following_tool_ids.add(next_msg.tool_call_id)
+
+            missing = tool_call_ids - following_tool_ids
+            if tool_call_ids and not missing:
+                expected_tool_ids = set(tool_call_ids)
+                result.append(msg)
+            else:
+                row = rows_by_id.get(msg.db_id)
+                logger.warning(
+                    "deserialize_strip_incomplete_assistant_tool_calls session_id={} message_id={} missing_ids=[{}]",
+                    row.session_id if row else None,
+                    msg.db_id,
+                    ", ".join(sorted(missing or tool_call_ids)),
+                )
+                result.append(msg.model_copy(update={"tool_calls": None}))
+            continue
+
+        if isinstance(msg, ToolMessage):
+            if msg.tool_call_id and msg.tool_call_id in expected_tool_ids:
+                result.append(msg)
+                expected_tool_ids.remove(msg.tool_call_id)
+            else:
+                row = rows_by_id.get(msg.db_id)
+                logger.warning(
+                    "deserialize_drop_orphan_tool_message session_id={} message_id={} tool_call_id={}",
+                    row.session_id if row else None,
+                    msg.db_id,
+                    msg.tool_call_id,
+                )
+            continue
+
+        expected_tool_ids.clear()
+        result.append(msg)
 
     return result
 

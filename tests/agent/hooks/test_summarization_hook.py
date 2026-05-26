@@ -232,6 +232,82 @@ async def test_keep_last_assistants_excluded_from_summary(mock_provider):
     assert "recent2" not in full_text
 
 
+@pytest.mark.asyncio
+async def test_compaction_does_not_leave_orphan_tool_result_when_call_summarised(
+    mock_provider,
+):
+    """If compaction summarises an assistant tool call, it summarises its tool output too."""
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        keep_last_assistants=1,
+    )
+    ctx = _make_ctx()
+    tool_asst = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_1",
+                function=FunctionCall(name="shell", arguments='{"cmd":"ls"}'),
+            )
+        ],
+    )
+    tool_result = ToolMessage(
+        content="file1.txt",
+        tool_call_id="call_1",
+        name="shell",
+    )
+    kept_asst = AssistantMessage(content="final answer")
+    state = AgentState(
+        messages=[HumanMessage(content="run ls"), tool_asst, tool_result, kept_asst],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    await hook.before_model(ctx, state)
+
+    assert tool_asst.exclude_from_context is True
+    assert tool_result.exclude_from_context is True
+    assert kept_asst.exclude_from_context is False
+
+
+@pytest.mark.asyncio
+async def test_compaction_preserves_tool_call_when_result_is_kept(mock_provider):
+    """If a tool result is in the kept window, its assistant call remains visible."""
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        keep_last_assistants=1,
+    )
+    ctx = _make_ctx()
+    old_asst = AssistantMessage(content="old answer")
+    tool_asst = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_1",
+                function=FunctionCall(name="shell", arguments='{"cmd":"ls"}'),
+            )
+        ],
+    )
+    tool_result = ToolMessage(
+        content="file1.txt",
+        tool_call_id="call_1",
+        name="shell",
+    )
+    state = AgentState(
+        messages=[HumanMessage(content="old"), old_asst, tool_asst, tool_result],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    await hook.before_model(ctx, state)
+
+    assert old_asst.exclude_from_context is True
+    assert tool_asst.exclude_from_context is False
+    assert tool_result.exclude_from_context is False
+
+
 # ---------------------------------------------------------------------------
 # No session id — graceful skip
 # ---------------------------------------------------------------------------

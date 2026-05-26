@@ -38,6 +38,7 @@ from .schemas import (
     OpenAITool,
     OpenAIToolCall,
 )
+from .sanitization import sanitize_openai_tool_pairs
 
 if TYPE_CHECKING:
     pass
@@ -203,7 +204,7 @@ class CompletionsHandler:
         max_tokens_value = merged.get("max_tokens")
         req = OpenAIChatRequest(
             model=self.model,
-            messages=self.convert_messages(messages),
+            messages=self.convert_messages(sanitize_openai_tool_pairs(messages)),
             tools=self.convert_tools(tools),
             temperature=merged.get("temperature"),
             top_p=merged.get("top_p"),
