@@ -63,64 +63,44 @@ async def test_track_missing_workspace_returns_none(
 
 
 @pytest.mark.asyncio
-async def test_restore_replaces_modified_file(state_dir: Path, workspace: Path) -> None:
-    file = workspace / "config.txt"
-    file.write_text("v1")
-    baseline = await snapshot_service.track("sess-mod", workspace)
-    assert baseline is not None
-
-    file.write_text("v2-changed-by-tool")
-    await snapshot_service.track("sess-mod", workspace)
-
-    result = await snapshot_service.restore("sess-mod", workspace, baseline)
-    assert result.ok is True
-    assert file.read_text() == "v1"
-    assert "config.txt" in result.modified
-    assert result.added == []
-    assert result.removed == []
-
-
-@pytest.mark.asyncio
-async def test_restore_deletes_files_added_after_snapshot(
+async def test_restore_reports_modified_added_removed_and_round_trips(
     state_dir: Path, workspace: Path
 ) -> None:
-    (workspace / "keep.txt").write_text("anchor")
-    baseline = await snapshot_service.track("sess-add", workspace)
+    """One real-git scenario covers restore partitions and redo-style replay."""
+    modified = workspace / "config.txt"
+    deleted = workspace / "deleted_by_agent.txt"
+    new_file = workspace / "new_artifact.md"
+    modified.write_text("v1")
+    deleted.write_text("important")
+
+    baseline = await snapshot_service.track("sess-restore", workspace)
     assert baseline is not None
 
-    new_file = workspace / "new_artifact.md"
+    modified.write_text("v2-changed-by-tool")
+    deleted.unlink()
     new_file.write_text("agent produced this")
-    await snapshot_service.track("sess-add", workspace)
+    live_snapshot = await snapshot_service.track("sess-restore", workspace)
+    assert live_snapshot is not None
 
-    result = await snapshot_service.restore("sess-add", workspace, baseline)
+    result = await snapshot_service.restore("sess-restore", workspace, baseline)
     assert result.ok is True
+    assert modified.read_text() == "v1"
+    assert deleted.read_text() == "important"
     assert not new_file.exists(), (
         "Newly-added file must be removed when restoring to a snapshot that predates it"
     )
-    assert (workspace / "keep.txt").exists()
-    assert "new_artifact.md" in result.removed
-    assert "new_artifact.md" not in result.added
-    assert "new_artifact.md" not in result.modified
+    assert result.modified == ["config.txt"]
+    assert result.added == ["deleted_by_agent.txt"]
+    assert result.removed == ["new_artifact.md"]
 
-
-@pytest.mark.asyncio
-async def test_restore_brings_back_deleted_file(
-    state_dir: Path, workspace: Path
-) -> None:
-    target = workspace / "deleted_by_agent.txt"
-    target.write_text("important")
-    baseline = await snapshot_service.track("sess-del", workspace)
-    assert baseline is not None
-
-    target.unlink()
-
-    result = await snapshot_service.restore("sess-del", workspace, baseline)
+    result = await snapshot_service.restore("sess-restore", workspace, live_snapshot)
     assert result.ok is True
-    assert target.exists()
-    assert target.read_text() == "important"
-    assert "deleted_by_agent.txt" in result.added
-    assert result.modified == []
-    assert result.removed == []
+    assert modified.read_text() == "v2-changed-by-tool"
+    assert not deleted.exists()
+    assert new_file.read_text() == "agent produced this"
+    assert result.modified == ["config.txt"]
+    assert result.added == ["new_artifact.md"]
+    assert result.removed == ["deleted_by_agent.txt"]
 
 
 @pytest.mark.asyncio
@@ -140,27 +120,6 @@ async def test_restore_unknown_hash_returns_false(
     await snapshot_service.track("sess-bad-hash", workspace)
     result = await snapshot_service.restore("sess-bad-hash", workspace, "0" * 40)
     assert result.ok is False
-
-
-@pytest.mark.asyncio
-async def test_undo_redo_round_trip(state_dir: Path, workspace: Path) -> None:
-    """Two-step round trip mirroring the real /undo → /redo flow."""
-    file = workspace / "doc.md"
-    file.write_text("v1")
-    snap_v1 = await snapshot_service.track("rt", workspace)
-    assert snap_v1 is not None
-
-    file.write_text("v2")
-    snap_live = await snapshot_service.track("rt", workspace)
-    assert snap_live is not None
-
-    result = await snapshot_service.restore("rt", workspace, snap_v1)
-    assert result.ok is True
-    assert file.read_text() == "v1"
-
-    result = await snapshot_service.restore("rt", workspace, snap_live)
-    assert result.ok is True
-    assert file.read_text() == "v2"
 
 
 @pytest.mark.asyncio

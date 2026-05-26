@@ -16,25 +16,23 @@ from __future__ import annotations
 import subprocess
 import sys
 
-import pytest
-
-_FORBIDDEN_MODULES = (
+_FORBIDDEN_MODULES = [
     "faster_whisper",
     "onnxruntime",
     "ctranslate2",
     "av",
     "markitdown",
-)
+]
 
 
-@pytest.mark.parametrize("module", _FORBIDDEN_MODULES)
-def test_app_import_does_not_load_optional_native_dep(module: str) -> None:
-    """``import app.api.app`` must not transitively import ``module``."""
+def test_app_import_does_not_load_optional_native_deps() -> None:
+    """``import app.api.app`` must not transitively import optional native deps."""
     script = (
         "import sys\n"
         "import app.api.app  # noqa: F401\n"
-        f"assert {module!r} not in sys.modules, "
-        f"'app.api.app eagerly imported {module}'\n"
+        f"for module in {_FORBIDDEN_MODULES!r}:\n"
+        "    assert module not in sys.modules, "
+        "f'app.api.app eagerly imported {module}'\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", script],
@@ -43,6 +41,6 @@ def test_app_import_does_not_load_optional_native_dep(module: str) -> None:
         text=True,
     )
     assert result.returncode == 0, (
-        f"app.api.app leaked optional native dep {module!r}.\n"
+        "app.api.app leaked an optional native dependency.\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
