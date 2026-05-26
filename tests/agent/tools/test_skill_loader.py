@@ -9,6 +9,7 @@ from app.agent.tools.builtin.skill import (
     _discover_skills_cached,
     _iter_skill_paths,
     _parse_frontmatter,
+    _skill_tool_description,
     _skills_dir_signature,
     discover_skills,
     load_skill,
@@ -140,6 +141,11 @@ class TestLoadSkill:
         )
         result = await load_skill("anything")
         assert "Skills directory not found" in result
+
+    def test_tool_description_tells_agent_not_to_reload_visible_skills(self):
+        description = _skill_tool_description()
+        assert "at most once per skill" in description
+        assert "reuse those instructions" in description
 
 
 # ---------------------------------------------------------------------------
