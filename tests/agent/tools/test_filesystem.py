@@ -335,8 +335,18 @@ class TestGrepFiles:
         pycache.mkdir()
         (pycache / "cache.py").write_text("SECRET_KEY = 'cache'\n")
 
+        ruff_cache = workspace / ".ruff_cache"
+        ruff_cache.mkdir()
+        (ruff_cache / "cache.py").write_text("SECRET_KEY = 'ruff'\n")
+
+        pytest_cache = workspace / ".pytest_cache"
+        pytest_cache.mkdir()
+        (pytest_cache / "cache.py").write_text("SECRET_KEY = 'pytest'\n")
+
         result = await grep_files.arun(pattern="SECRET_KEY", directory=".")
         assert "No matches" in result
+        assert "ruff" not in result
+        assert ".pytest_cache" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -422,10 +432,20 @@ class TestGlobFiles:
         pycache.mkdir()
         (pycache / "cache.txt").write_text("cache")
 
+        ruff_cache = workspace / ".ruff_cache"
+        ruff_cache.mkdir()
+        (ruff_cache / "cache.txt").write_text("ruff")
+
+        pytest_cache = workspace / ".pytest_cache"
+        pytest_cache.mkdir()
+        (pytest_cache / "cache.txt").write_text("pytest")
+
         result = await glob_files.arun(pattern="**/*.txt", directory=".")
         assert "ignored.txt" not in result
         assert "dep.txt" not in result
         assert "cache.txt" not in result
+        assert "ruff" not in result
+        assert ".pytest_cache" not in result
 
 
 # ---------------------------------------------------------------------------

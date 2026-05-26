@@ -6,7 +6,16 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 _SKIPPED_DIR_NAMES = frozenset(
-    {"node_modules", "dist", "build", ".venv", "venv", "__pycache__"}
+    {
+        "node_modules",
+        "dist",
+        "build",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".ruff_cache",
+        ".pytest_cache",
+    }
 )
 
 

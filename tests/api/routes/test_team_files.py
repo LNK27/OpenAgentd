@@ -129,20 +129,24 @@ class TestWorkspaceFilesListing:
         # Unknown extension falls back to the octet-stream default.
         assert by_name["blob.bin"]["mime"] == "application/octet-stream"
 
-    def test_git_dir_excluded_other_dotentries_allowed(
+    def test_generated_dirs_excluded_other_dotentries_allowed(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """``.git/`` is always pruned (VCS internals — huge and noisy), but
-        other dot-prefixed files and folders flow through so the InputBar
-        @-mention picker can tag things like ``.openagentd/`` skills,
-        ``.github/`` workflows, or ``.env.example``. Filtering beyond
-        ``.git`` is delegated to ``.gitignore``."""
+        """VCS/generated cache dirs are always pruned, but other dot-prefixed
+        files and folders flow through so the InputBar @-mention picker can tag
+        things like ``.openagentd/`` skills, ``.github/`` workflows, or
+        ``.env.example``. Filtering beyond common generated dirs is delegated to
+        ``.gitignore``."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir()
         (fake_root / "visible.txt").write_text("ok")
         (fake_root / ".env.example").write_text("KEY=")
         (fake_root / ".git").mkdir()
         (fake_root / ".git" / "HEAD").write_text("ref: …")
+        (fake_root / ".ruff_cache").mkdir()
+        (fake_root / ".ruff_cache" / "cache").write_text("x")
+        (fake_root / ".pytest_cache").mkdir()
+        (fake_root / ".pytest_cache" / "cache").write_text("x")
         (fake_root / ".github").mkdir()
         (fake_root / ".github" / "ci.yml").write_text("jobs: {}")
         (fake_root / "sub").mkdir()
@@ -160,8 +164,9 @@ class TestWorkspaceFilesListing:
             "sub/.swp",
             "visible.txt",
         ]
-        # ``.git/`` is the one hard exclusion.
         assert not any(p.startswith(".git/") for p in paths)
+        assert not any(p.startswith(".ruff_cache/") for p in paths)
+        assert not any(p.startswith(".pytest_cache/") for p in paths)
 
     def test_gitignore_negation_reincludes_dot_subdir(
         self, client, session_id, tmp_path, monkeypatch
