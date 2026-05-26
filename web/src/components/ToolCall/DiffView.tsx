@@ -9,9 +9,10 @@ interface SingleFileDiffProps {
   lines: DiffLine[]
   oldStart?: number
   newStart?: number
+  onCollapse?: () => void
 }
 
-function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1 }: SingleFileDiffProps) {
+function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1, onCollapse }: SingleFileDiffProps) {
   const [expanded, setExpanded] = useState(true)
   const linesWithNumbers = useMemo(() => {
     let oldLineNum = oldStart
@@ -43,7 +44,13 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1 
       {/* File Header */}
       <button
         type="button"
-        onClick={() => setExpanded((value) => !value)}
+        onClick={() => {
+          if (expanded && onCollapse) {
+            onCollapse()
+            return
+          }
+          setExpanded((value) => !value)
+        }}
         className="flex w-full items-center gap-2 bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) transition-colors hover:text-(--color-accent) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
@@ -117,9 +124,10 @@ interface DiffViewProps {
   toolName: string
   args: string
   result?: string
+  onCollapse?: () => void
 }
 
-export function DiffView({ toolName, args, result }: DiffViewProps) {
+export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) {
   const parsed = useMemo(() => {
     try {
       return JSON.parse(args)
@@ -147,6 +155,7 @@ export function DiffView({ toolName, args, result }: DiffViewProps) {
           lines={lines}
           oldStart={diffMeta?.old_start ?? 1}
           newStart={diffMeta?.new_start ?? 1}
+          onCollapse={onCollapse}
         />
       </div>
     )
@@ -159,7 +168,7 @@ export function DiffView({ toolName, args, result }: DiffViewProps) {
 
     return (
       <div className="overflow-hidden rounded-md">
-        <SingleFileDiff path={path} kind="add" lines={lines} />
+        <SingleFileDiff path={path} kind="add" lines={lines} onCollapse={onCollapse} />
       </div>
     )
   }
@@ -187,6 +196,7 @@ export function DiffView({ toolName, args, result }: DiffViewProps) {
             lines={diff.lines}
             oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
             newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
+            onCollapse={onCollapse}
           />
         ))}
       </div>
