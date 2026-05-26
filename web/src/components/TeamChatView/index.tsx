@@ -27,6 +27,7 @@ import { AgentView } from '../AgentView'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
 import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
+import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
 import { Sidebar } from '../Sidebar'
 import { CommandPalette } from '../CommandPalette'
 import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
@@ -61,7 +62,7 @@ import type { AgentStream } from '@/stores/useTeamStore'
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { type InputBarHandle, type SlashCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
-import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment } from '@/api/types'
+import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment, WorkspaceFileInfo } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
@@ -102,6 +103,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const mainColumnRef = useRef<HTMLDivElement>(null)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'files' | 'diff'>(null)
+  const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
@@ -111,6 +113,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // On mobile, always force agent view — split/unified require a wide screen.
   // Also close any desktop-only panels when shrinking to mobile.
   const effectiveViewMode: ViewMode = isMobile ? 'agent' : viewMode
+  useEffect(() => {
+    setCodingFileViewer(null)
+  }, [workspace])
+
   useEffect(() => {
     if (isMobile) {
       useUIStore.getState().closeAgentCapabilities()
@@ -303,7 +309,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const handleWorkspaceFiles = useCallback(() => {
     if (mode === 'coding') {
       if (workspace) {
-        setCodingPanel((value) => value === null ? 'files' : null)
+        setCodingPanel((value) => {
+          const next = value === null ? 'files' : null
+          if (next === null) setCodingFileViewer(null)
+          return next
+        })
       } else {
         setCodingSidebarCollapsed(false)
         setOpenWorkspaceDialogKey((value) => value + 1)
@@ -902,13 +912,26 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         )}
         </main>
         {mode === 'coding' && workspace && codingPanel !== null && (
+          <CodingFileViewerPanel
+            workspace={workspace}
+            file={codingFileViewer}
+            mobile={isMobile}
+            onClose={() => setCodingFileViewer(null)}
+          />
+        )}
+        {mode === 'coding' && workspace && codingPanel !== null && (
           <CodingWorkspacePanel
             key={codingPanel}
             workspace={workspace}
             open
             initialTab={codingPanel}
             mobile={isMobile}
-            onClose={() => setCodingPanel(null)}
+            selectedFilePath={codingFileViewer?.path ?? null}
+            onFileSelect={setCodingFileViewer}
+            onClose={() => {
+              setCodingPanel(null)
+              setCodingFileViewer(null)
+            }}
           />
         )}
       </div>

@@ -278,6 +278,37 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
     )
 
 
+@router.get("/workspace/files/read")
+async def read_coding_workspace_file(workspace: str, path: str) -> FileResponse:
+    """Serve the raw bytes of a single file from the coding workspace.
+
+    ``path`` is the POSIX-relative path returned by ``/workspace/files/list``
+    (e.g. ``src/main.py`` or ``output/chart.png``).  Path traversal is
+    rejected via containment check on the resolved path — the same guard
+    used by the session media proxy.
+    """
+    try:
+        resolved = team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    root = Path(resolved).resolve(strict=False)
+    target = (root / path).resolve(strict=False)
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path escapes workspace root.")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found.")
+
+    mime, _ = mimetypes.guess_type(str(target))
+    return FileResponse(
+        path=str(target),
+        media_type=mime or "application/octet-stream",
+        filename=target.name,
+    )
+
+
 @router.get("/workspace/files/list", response_model=CodingWorkspaceFilesResponse)
 async def list_coding_workspace_files(workspace: str) -> CodingWorkspaceFilesResponse:
     try:

@@ -283,6 +283,17 @@ export function workspaceMediaUrl(sessionId: string, path: string): string {
   return `${API}/team/${encodeURIComponent(sessionId)}/media/${encoded}`
 }
 
+/** Build the URL for serving a raw file from a *coding* workspace (not a
+ *  session workspace).  Hits ``GET /api/team/workspace/files/read``.
+ *
+ *  Each segment is encoded individually so ``/`` separators survive and
+ *  path-traversal sequences (``../``) are rejected by the server.
+ */
+export function codingWorkspaceFileUrl(workspace: string, path: string): string {
+  const params = new URLSearchParams({ workspace, path })
+  return `${API}/team/workspace/files/read?${params}`
+}
+
 export async function getTodos(sessionId: string): Promise<TodosResponse> {
   const res = await fetch(`${API}/team/sessions/${encodeURIComponent(sessionId)}/todos`)
   if (!res.ok) throw new Error(`getTodos failed: ${res.status}`)

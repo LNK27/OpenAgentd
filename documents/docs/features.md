@@ -160,6 +160,9 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 - **Open any local project folder** `[since v1.0]` — server-local paths only.
   Coding mode shows file tree + live git diff (including untracked files) in
   the side drawer.
+- **Two-layer workspace file viewer** `[v1.28.0]` — clicking a file in the coding
+  workspace side drawer opens a read-only viewer beside it with line numbers,
+  lightweight syntax highlighting, image previews, and binary download fallback.
 - **Persisted coding sessions per workspace** `[v1.18.0]` — `/coding/{session_id}`
   restores workspace context from the saved session. Bare `/coding` is the
   launcher or last-workspace restore. New empty sessions exist before the
