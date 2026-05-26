@@ -180,7 +180,7 @@ async def _read_mention_as_attachment(
     never surface a 4xx to the user just because they typed
     ``@somefile.png`` against a non-vision model.
     """
-    filename = abs_path.name
+    filename = rel_path
     mime, _ = mimetypes.guess_type(str(abs_path))
     category = categorize(filename, mime)
     if category is None:

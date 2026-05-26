@@ -284,7 +284,7 @@ async def test_folder_mention_attaches_agents_md(tmp_path):
         existing_total_bytes=0,
     )
     assert len(out) == 1
-    assert out[0].filename == "AGENTS.md"
+    assert out[0].filename == "manual/AGENTS.md"
     assert out[0].data == b"docs"
 
 

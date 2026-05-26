@@ -7,7 +7,7 @@ then reads the persisted user row directly from the DB and verifies:
   * the small text file was attached with the [File: ...] fence
   * the large text file was attached and head+tail truncated
   * the image mention did NOT produce an attachment (reference-only)
-  * the folder mention did NOT produce an attachment (reference-only)
+  * the folder mention attached that folder's AGENTS.md with its relative path
   * a mention written inside quotes / parens (e.g. ``"@note.txt"``)
     still resolves — guard for the regex boundary fix
 
@@ -26,20 +26,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import asyncio
 import shutil
 import sys
 import tempfile
 import time
 from pathlib import Path
-from uuid import UUID
 
 import httpx
-from sqlmodel import select
 
 from app.agent.multimodal import build_parts_from_metas
-from app.core.db import async_session_factory
-from app.models.chat import SessionMessage
 
 BASE = "http://localhost:8000/api"
 BIG_HEAD = "HEAD_MARKER_ALPHA"
@@ -67,6 +62,7 @@ def make_fixtures(root: Path) -> None:
     sub = root / "subdir"
     sub.mkdir()
     (sub / "inner.txt").write_text("inner\n", encoding="utf-8")
+    (sub / "AGENTS.md").write_text("folder instructions\n", encoding="utf-8")
 
 
 def post_chat(base: str, workspace: str, message: str) -> str:
@@ -79,20 +75,15 @@ def post_chat(base: str, workspace: str, message: str) -> str:
     return r.json()["session_id"]
 
 
-async def fetch_user_attachments(sid: str) -> list[dict]:
-    """Read the first user row directly so internal fields are preserved."""
-    async with async_session_factory() as s:
-        rows = (
-            await s.exec(
-                select(SessionMessage)
-                .where(SessionMessage.session_id == UUID(sid))
-                .where(SessionMessage.role == "user")
-                .order_by(SessionMessage.created_at)
-            )
-        ).all()
-    if not rows:
+def fetch_user_attachments(base: str, sid: str) -> list[dict]:
+    """Read the first user row via the running API history endpoint."""
+    r = httpx.get(f"{base}/team/{sid}/history", timeout=30)
+    r.raise_for_status()
+    messages = r.json()["lead"]["messages"]
+    users = [m for m in messages if m.get("role") == "user"]
+    if not users:
         return []
-    extra = rows[0].extra or {}
+    extra = users[0].get("extra") or {}
     atts = extra.get("attachments") or []
     return list(atts)
 
@@ -115,7 +106,7 @@ def main() -> int:
     try:
         make_fixtures(workspace)
         msg = (
-            'Look at @note.txt and @big.txt and @photo.png and @subdir/ '
+            "Look at @note.txt and @big.txt and @photo.png and @subdir/ "
             'and also "@quoted.txt".'
         )
         sid = post_chat(base, str(workspace), msg)
@@ -124,7 +115,7 @@ def main() -> int:
         # The user row is persisted before the LLM runs; a short wait is
         # enough. We don't care about the assistant reply for this test.
         time.sleep(2.0)
-        atts = asyncio.run(fetch_user_attachments(sid))
+        atts = fetch_user_attachments(base, sid)
         by_name = {a.get("original_name") or a.get("filename"): a for a in atts}
         print(f"attached: {sorted(by_name)}")
 
@@ -133,7 +124,8 @@ def main() -> int:
             check("big.txt attached", "big.txt" in by_name),
             check("quoted.txt attached (inside quotes)", "quoted.txt" in by_name),
             check("photo.png NOT attached", "photo.png" not in by_name),
-            check("subdir NOT attached", "subdir" not in by_name),
+            check("subdir/AGENTS.md attached", "subdir/AGENTS.md" in by_name),
+            check("bare AGENTS.md label not used", "AGENTS.md" not in by_name),
         ]
 
         # Render the LLM-facing parts to verify fence + truncation, since
