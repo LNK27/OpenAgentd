@@ -63,12 +63,18 @@ export const descriptionSchema = z
 // ── Skill field schemas ─────────────────────────────────────────────────────
 
 /**
- * Skill filename (directory stem).  Skills traditionally use kebab-case
- * with additional slashes reserved for future namespacing — but on disk
- * today they are flat directory names, so we keep the same rules as
- * agents.
+ * Skill filename/path. Supports flat names (``research``) and one nested level
+ * (``git/commit``) to mirror ``app/services/agent_fs.py::_validate_skill_name``.
  */
-export const skillNameSchema = agentNameSchema
+export const skillNameSchema = z
+  .string()
+  .min(1, 'Required')
+  .refine((value) => value.split('/').length <= 2, {
+    message: "Only one nested level is allowed (e.g. 'parent/sub')",
+  })
+  .refine((value) => value.split('/').every((part) => agentNameSchema.safeParse(part).success), {
+    message: "Each segment must use letters, digits, '.', '_', '-' and start with a letter or digit",
+  })
 
 /** Skill one-line description that the agent sees when browsing skills. */
 export const skillDescriptionSchema = z

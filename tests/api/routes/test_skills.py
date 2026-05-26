@@ -28,6 +28,10 @@ def fs_dirs(tmp_path: Path, monkeypatch):
     skills.mkdir()
     monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
     monkeypatch.setattr(settings, "SKILLS_DIR", str(skills))
+    from app.agent.tools.builtin import skill as skill_module
+
+    monkeypatch.setattr(skill_module, "_iter_skill_roots", lambda: [skills])
+    skill_module._discover_skills_cached.cache_clear()
     return agents, skills
 
 
@@ -149,6 +153,71 @@ async def test_list_skills_returns_created_skill(client):
     assert skills[0]["name"] == "research"
     assert skills[0]["valid"] is True
     assert skills[0]["built_in"] is False
+    assert skills[0]["editable"] is True
+    assert skills[0]["source"] == "global-openagentd"
+
+
+@pytest.mark.asyncio
+async def test_list_skills_includes_opencode_skill(
+    client, fs_dirs, tmp_path, monkeypatch
+):
+    _, openagentd_skills = fs_dirs
+    opencode_skills = tmp_path / "home" / ".config" / "opencode" / "skills"
+    skill_dir = opencode_skills / "research"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(VALID_SKILL)
+
+    from app.agent.tools.builtin import skill as skill_module
+
+    monkeypatch.setattr(
+        skill_module, "_iter_skill_roots", lambda: [openagentd_skills, opencode_skills]
+    )
+    monkeypatch.setattr(
+        skills_routes.Path, "home", classmethod(lambda cls: tmp_path / "home")
+    )
+    skill_module._discover_skills_cached.cache_clear()
+
+    resp = await client.get("/api/skills")
+
+    assert resp.status_code == 200
+    skills = resp.json()["skills"]
+    assert skills == [
+        {
+            "name": "research",
+            "description": "A research skill.",
+            "valid": True,
+            "error": None,
+            "built_in": False,
+            "editable": True,
+            "source": "global-opencode",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_delete_opencode_skill_removes_source_file(
+    client, fs_dirs, tmp_path, monkeypatch
+):
+    openagentd_skills = fs_dirs[1]
+    opencode_skills = tmp_path / "home" / ".config" / "opencode" / "skills"
+    skill_file = opencode_skills / "research" / "SKILL.md"
+    skill_file.parent.mkdir(parents=True)
+    skill_file.write_text(VALID_SKILL)
+
+    from app.agent.tools.builtin import skill as skill_module
+
+    monkeypatch.setattr(
+        skill_module, "_iter_skill_roots", lambda: [openagentd_skills, opencode_skills]
+    )
+    monkeypatch.setattr(
+        skills_routes.Path, "home", classmethod(lambda cls: tmp_path / "home")
+    )
+    skill_module._discover_skills_cached.cache_clear()
+
+    resp = await client.delete("/api/skills/research")
+
+    assert resp.status_code == 200
+    assert not skill_file.exists()
 
 
 @pytest.mark.asyncio
@@ -159,16 +228,14 @@ async def test_list_skills_includes_read_error(client, fs_dirs, monkeypatch):
     (skills_dir / "broken").mkdir()
     (skills_dir / "broken" / "SKILL.md").write_text("content")
 
-    from app.services import agent_fs
+    original_read_text = Path.read_text
 
-    original_read = agent_fs.read_skill
-
-    def bad_read(name):
-        if name == "broken":
+    def bad_read_text(path, *args, **kwargs):
+        if path.name == "SKILL.md" and path.parent.name == "broken":
             raise OSError("permission denied")
-        return original_read(name)
+        return original_read_text(path, *args, **kwargs)
 
-    monkeypatch.setattr(agent_fs, "read_skill", bad_read)
+    monkeypatch.setattr(Path, "read_text", bad_read_text)
 
     resp = await client.get("/api/skills")
     assert resp.status_code == 200
@@ -203,6 +270,33 @@ async def test_get_skill_returns_detail(client):
     assert data["name"] == "research"
     assert data["description"] == "A research skill."
     assert "Do research" in data["content"]
+
+
+@pytest.mark.asyncio
+async def test_sub_skill_crud_routes_accept_slash_name(client):
+    content = "---\nname: git/commit\ndescription: Commit helper.\n---\nCommit body.\n"
+
+    create = await client.post(
+        "/api/skills",
+        json={"name": "git/commit", "content": content},
+    )
+    assert create.status_code == 201
+
+    detail = await client.get("/api/skills/git/commit")
+    assert detail.status_code == 200
+    assert detail.json()["name"] == "git/commit"
+
+    updated = content.replace("Commit helper.", "Updated helper.")
+    update = await client.put(
+        "/api/skills/git/commit",
+        json={"name": "git/commit", "content": updated},
+    )
+    assert update.status_code == 200
+    assert update.json()["description"] == "Updated helper."
+
+    delete = await client.delete("/api/skills/git/commit")
+    assert delete.status_code == 200
+    assert delete.json() == {"name": "git/commit"}
 
 
 # ── POST /api/skills ──────────────────────────────────────────────────────────
@@ -283,14 +377,12 @@ async def test_update_skill_success(client):
 
 @pytest.mark.asyncio
 async def test_update_skill_bad_path_returns_400(client, monkeypatch):
-    from app.services import agent_fs
-    from app.services.agent_fs import AgentFsPathError
+    await client.post("/api/skills", json={"name": "research", "content": VALID_SKILL})
 
-    monkeypatch.setattr(
-        agent_fs,
-        "write_skill",
-        lambda *a, **kw: (_ for _ in ()).throw(AgentFsPathError("bad")),
-    )
+    def bad_write(*_args, **_kwargs):
+        raise OSError("bad")
+
+    monkeypatch.setattr(skills_routes, "_atomic_write", bad_write)
     resp = await client.put(
         "/api/skills/research",
         json={"name": "research", "content": VALID_SKILL},
@@ -311,10 +403,18 @@ async def test_delete_skill_success(client):
 
 @pytest.mark.asyncio
 async def test_delete_builtin_skill_returns_403(client, monkeypatch):
-    monkeypatch.setattr(skills_routes, "_builtin_skill_names", lambda: {"self-healing"})
+    from app.agent.tools.builtin import skill as skill_module
+
+    monkeypatch.setattr(
+        skill_module,
+        "_iter_skill_roots",
+        lambda: [skills_routes._builtin_skills_root()],
+    )
+    skill_module._discover_skills_cached.cache_clear()
+
     resp = await client.delete("/api/skills/self-healing")
     assert resp.status_code == 403
-    assert "cannot be deleted" in resp.json()["detail"]
+    assert "read-only" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -325,14 +425,12 @@ async def test_delete_skill_not_found_returns_404(client):
 
 @pytest.mark.asyncio
 async def test_delete_skill_bad_path_returns_400(client, monkeypatch):
-    from app.services import agent_fs
-    from app.services.agent_fs import AgentFsPathError
+    await client.post("/api/skills", json={"name": "research", "content": VALID_SKILL})
 
-    monkeypatch.setattr(
-        agent_fs,
-        "delete_skill",
-        lambda *a, **kw: (_ for _ in ()).throw(AgentFsPathError("bad")),
-    )
+    def bad_delete(*_args, **_kwargs):
+        raise OSError("bad")
+
+    monkeypatch.setattr(skills_routes, "_delete_skill_file", bad_delete)
     resp = await client.delete("/api/skills/research")
     assert resp.status_code == 400
 

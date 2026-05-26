@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-05-25
+updated: 2026-05-26
 ---
 
 # Features
@@ -295,11 +295,16 @@ Four orthogonal ways to add capability. Deeper docs:
   any MCP server in Settings to re-detect.
 - **Skills** `[since v1.0]` — markdown `SKILL.md` files, lazy-loaded, hot-reload
   on mtime change, token substitution. Compatible with the opencode skill spec.
+  One nested namespace level (`parent/sub`) is supported `[v1.27.x]`; Settings
+  lists the full runtime-visible catalog and can edit/delete non-bundled skills
+  in place `[v1.27.x]`.
 - **Plugins** `[v1.6.0]` — Python files dropped into `OPENAGENTD_PLUGINS_DIRS`.
   Register `@plugin` functions or `Plugin(BaseAgentHook)` classes with
   `tool.before` / `tool.after` / agent lifecycle hooks. Per `(agent, role)` filter.
 - **Slash commands** `[since v1.0]` — `.md` files with optional frontmatter,
-  available globally or scoped to a coding workspace (`[v1.17.0]`).
+  available globally or scoped to a coding workspace (`[v1.17.0]`). One nested
+  namespace level is supported and displayed in the composer as colon syntax
+  (`/git:commit`) `[v1.27.x]`.
 - **Self-healing skill** `[v1.14.0]` — agent edits its own `.md` config (model,
   tools, skills, MCP) and the runtime picks up the change at end-of-turn.
 

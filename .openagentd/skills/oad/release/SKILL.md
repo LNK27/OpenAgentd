@@ -1,5 +1,6 @@
 ---
-description: Bump the version by PR, then publish the GitHub release.
+name: oad/release
+description: OpenAgentd workflow for version bumps, release PRs, GitHub releases, and release notes.
 ---
 
 ## Steps

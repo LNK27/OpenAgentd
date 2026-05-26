@@ -102,7 +102,15 @@ def _iter_md(root: Path):
     """Yield ``(absolute_path, command_name)`` for every ``*.md`` under *root*.
 
     The command name is the path relative to *root* with the ``.md``
-    suffix stripped — nested folders are preserved as ``a/b/c``.
+    suffix stripped.  Only one level of nesting is honoured:
+
+    * ``commands/commit.md``         → ``"commit"``
+    * ``commands/git/commit.md``     → ``"git/commit"``
+    * ``commands/a/b/c.md``          → skipped (more than one level deep)
+
+    Files nested more than one level deep are silently ignored so the
+    command namespace stays predictable and the slash-picker UI remains
+    manageable.
     """
     if not root.is_dir():
         return
@@ -110,6 +118,9 @@ def _iter_md(root: Path):
         if not path.is_file():
             continue
         rel = path.relative_to(root).with_suffix("")
+        # Allow at most one level of nesting (i.e. at most 2 path parts).
+        if len(rel.parts) > 2:
+            continue
         # ``as_posix`` normalises separators on Windows so command ids
         # stay platform-independent.
         yield path, rel.as_posix()

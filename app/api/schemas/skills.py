@@ -11,6 +11,8 @@ class SkillSummary(BaseModel):
     valid: bool = True
     error: str | None = None
     built_in: bool = False
+    editable: bool = True
+    source: str = "global-openagentd"
 
 
 class SkillDetail(BaseModel):
@@ -20,6 +22,8 @@ class SkillDetail(BaseModel):
     description: str = ""
     error: str | None = None
     built_in: bool = False
+    editable: bool = True
+    source: str = "global-openagentd"
 
 
 class SkillWriteRequest(BaseModel):

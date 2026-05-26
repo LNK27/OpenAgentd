@@ -46,6 +46,8 @@ interface EditorSubHeaderProps {
   /** Form/Raw toggle. Hide by leaving both ``mode`` and ``onModeChange`` unset. */
   mode?: 'form' | 'raw'
   onModeChange?: (next: 'form' | 'raw') => void
+  /** Optional reason to disable saving even when the draft is dirty and valid. */
+  saveDisabledReason?: string | null
   /** Save handler; the button manages its own disabled state. */
   onSave: () => void
 }
@@ -59,6 +61,7 @@ export function EditorSubHeader({
   saving,
   error,
   validationHint,
+  saveDisabledReason,
   mode,
   onModeChange,
   onSave,
@@ -74,12 +77,14 @@ export function EditorSubHeader({
 
   // Save is disabled when there is nothing to save, when the draft is
   // invalid, or when a save is already in flight.
-  const saveDisabled = !dirty || invalid || saving
-  const saveTooltip = invalid
-    ? (validationHint ?? 'Fix validation errors')
-    : !dirty
-      ? 'No unsaved changes'
-      : null
+  const saveDisabled = Boolean(saveDisabledReason) || !dirty || invalid || saving
+  const saveTooltip = saveDisabledReason
+    ? saveDisabledReason
+    : invalid
+      ? (validationHint ?? 'Fix validation errors')
+      : !dirty
+        ? 'No unsaved changes'
+        : null
 
   return (
     <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">

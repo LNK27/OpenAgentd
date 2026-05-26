@@ -2,7 +2,7 @@
 title: Skills
 description: SKILL.md format, registration, and the builtin skill catalog.
 status: stable
-updated: 2026-05-21
+updated: 2026-05-26
 ---
 
 # Skills
@@ -13,15 +13,21 @@ Skills are domain-specific instruction sets that an agent loads **on demand** vi
 
 ## Layout
 
-Each skill lives in its own subdirectory:
+Each skill lives in its own subdirectory. One nested namespace level is also
+supported:
 
 ```
 {OPENAGENTD_CONFIG_DIR}/skills/
-└── my-skill/
-    ├── SKILL.md          ← required — frontmatter + body
-    ├── creating.md       ← optional supporting files the agent can read
-    └── reference/        ← optional subdir with extra reference material
+├── my-skill/
+│   ├── SKILL.md          ← required — frontmatter + body
+│   ├── creating.md       ← optional supporting files the agent can read
+│   └── reference/        ← optional subdir with extra reference material
+└── oad/
+    └── debug/
+        └── SKILL.md      ← registers as oad/debug
 ```
+
+Deeper layouts such as `skills/a/b/c/SKILL.md` are ignored by discovery.
 
 ### Discovery roots
 
@@ -38,10 +44,9 @@ the upstream or builtin copy:
 | 5 | bundled OpenAgentd skills | Read-only operational fallback shipped with the app |
 
 `{cwd}` is the working directory the OpenAgentd server was launched from.
-The Settings UI can create, edit, and delete skills in
-`{OPENAGENTD_CONFIG_DIR}/skills/`. Bundled and opencode skills are read-only
-from OpenAgentd's perspective: they may appear in listings, but delete/edit
-controls are disabled or rejected. Edit those skills where they live.
+The Settings UI lists the same runtime-visible catalog. Non-bundled skills are
+edited and deleted in place, including project-local and opencode skills.
+Bundled app skills are read-only and cannot be deleted.
 
 `SKILL.md` follows this layout:
 
@@ -58,7 +63,7 @@ The full instructions the agent reads when it calls `skill("my-skill")`.
 ```
 
 - The frontmatter is **not** returned to the agent — only the body below.
-- The skill is identified by the frontmatter `name`. If absent, the subdirectory name is used.
+- The skill is identified by the frontmatter `name`. If absent, the directory stem is used (`my-skill` or `parent/sub`).
 
 ## Registering a skill on an agent
 
@@ -67,6 +72,7 @@ Add the name to `skills:` in the agent's `.md` frontmatter:
 ```yaml
 skills:
   - my-skill
+  - oad/debug
 ```
 
 At startup the loader reads each listed skill's `name` + `description` and appends them to the system prompt as:

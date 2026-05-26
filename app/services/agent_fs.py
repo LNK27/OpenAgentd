@@ -52,6 +52,27 @@ def _validate_name(name: str) -> str:
     return name
 
 
+def _validate_skill_name(name: str) -> Path:
+    """Validate a flat or one-level-nested skill name.
+
+    Accepts ``"my-skill"`` (flat) or ``"parent/sub"`` (one nested level).
+    Rejects empty names, names with more than one ``/``, and any segment
+    that fails :func:`_validate_name`.
+
+    Returns a :class:`~pathlib.Path` with 1 or 2 components that can be
+    safely joined under the skills root.
+    """
+    parts = name.split("/")
+    if len(parts) > 2:
+        raise AgentFsPathError(
+            f"Skill name '{name}' is nested more than one level deep. "
+            "Only one level of nesting is allowed (e.g. 'parent/sub')."
+        )
+    if not parts or not parts[0]:
+        raise AgentFsPathError("Skill name cannot be empty.")
+    return Path(*(_validate_name(p) for p in parts))
+
+
 def _validate_agent_name(name: str) -> Path:
     parts = Path(name).parts
     if not parts:
@@ -81,7 +102,7 @@ def _agent_file(name: str) -> Path:
 
 def _skill_file(name: str) -> Path:
     root = skills_dir()
-    file = (root / _validate_name(name) / "SKILL.md").resolve()
+    file = (root / _validate_skill_name(name) / "SKILL.md").resolve()
     if not file.is_relative_to(root):
         raise AgentFsPathError(f"Path escapes skills directory: '{name}'.")
     return file
@@ -171,13 +192,26 @@ def delete_agent(name: str) -> None:
 
 
 def list_skills() -> list[str]:
-    """Return the list of skill names — directories containing SKILL.md."""
+    """Return the list of skill names — directories containing SKILL.md.
+
+    Supports a flat layout (``{root}/{name}/SKILL.md``) and one nested
+    level (``{root}/{parent}/{sub}/SKILL.md``).  Sub-skills are returned
+    as ``"parent/sub"``.
+    """
     root = skills_dir()
     if not root.exists():
         return []
-    return sorted(
-        p.name for p in root.iterdir() if p.is_dir() and (p / "SKILL.md").is_file()
-    )
+    names: list[str] = []
+    for p in root.iterdir():
+        if not p.is_dir():
+            continue
+        if (p / "SKILL.md").is_file():
+            names.append(p.name)
+        # One level of nesting
+        for nested in p.iterdir():
+            if nested.is_dir() and (nested / "SKILL.md").is_file():
+                names.append(f"{p.name}/{nested.name}")
+    return sorted(names)
 
 
 def read_skill(name: str) -> SkillFileRecord:
@@ -207,6 +241,15 @@ def delete_skill(name: str) -> None:
     try:
         file.parent.rmdir()
     except OSError:
-        # Directory not empty (e.g. reference/, scripts/) — leave it.
+        # Directory not empty (e.g. reference/, scripts/, sub-skills) — leave it.
         pass
+    else:
+        # For a nested skill (parent/sub) the parent dir may now also be
+        # empty — attempt to clean it up too.
+        parent = file.parent.parent
+        if parent != skills_dir():
+            try:
+                parent.rmdir()
+            except OSError:
+                pass
     logger.info("skill_fs_delete name={}", name)

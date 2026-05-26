@@ -41,6 +41,7 @@ export function SkillEditorPage() {
     setDraft(data.content)
   }
 
+  const readOnly = data ? !data.editable : false
   const dirty = !!data && !contentEquals(draft, data.content)
   const draftErrors = dirty ? validateSkillDraft(draft) : null
   const invalid = draftErrors !== null
@@ -48,6 +49,10 @@ export function SkillEditorPage() {
 
   const handleSave = async () => {
     setSaveError(null)
+    if (readOnly) {
+      setSaveError(`Read-only skill from ${data?.source ?? 'external source'}.`)
+      return
+    }
     if (invalid) {
       setSaveError(firstDraftError ?? 'Form has validation errors.')
       return
@@ -90,6 +95,7 @@ export function SkillEditorPage() {
         saving={updateMut.isPending}
         error={saveError}
         validationHint={firstDraftError}
+        saveDisabledReason={readOnly ? `Read-only skill from ${data?.source ?? 'external source'}` : null}
         onSave={handleSave}
       />
 
@@ -106,7 +112,8 @@ export function SkillEditorPage() {
                 <CardDescription>
                   Frontmatter (<span className="font-mono">name</span>,{' '}
                   <span className="font-mono">description</span>) is required;
-                  the body is the instruction the agent loads on demand.
+                  use <span className="font-mono">parent/sub</span> for a one-level sub-skill.
+                  The body is the instruction the agent loads on demand.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -114,6 +121,7 @@ export function SkillEditorPage() {
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   disabled={updateMut.isPending}
+                  readOnly={readOnly}
                   rows={28}
                   spellCheck={false}
                   aria-invalid={invalid || undefined}
@@ -143,7 +151,7 @@ export function SkillEditorPage() {
                 </>
               )}
             </div>
-            {data && !data.built_in && (
+            {data && data.editable && !data.built_in && (
               <Button
                 variant="destructive"
                 size="xs"

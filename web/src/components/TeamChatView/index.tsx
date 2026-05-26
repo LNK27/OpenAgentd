@@ -424,12 +424,18 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     { id: 'redo', label: 'Redo', description: 'Restore all undone messages back to the live tip' },
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
     { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
-    ...(commandsQ.data?.commands ?? []).map((c) => ({
-      id: c.name,
-      label: c.name,
-      description: c.description || `Custom command (${c.source})`,
-      keepInputOpen: true,
-    })),
+    ...(commandsQ.data?.commands ?? []).map((c) => {
+      const displayName = c.name.replace('/', ':')
+      return {
+        id: c.name,
+        label: displayName,
+        displayName,
+        insertText: displayName,
+        description: c.description || `Custom command (${c.source})`,
+        category: 'command',
+        keepInputOpen: true,
+      }
+    }),
   ]
 
   const handleSlashCommand = useCallback((id: string) => {
@@ -501,12 +507,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       const tokens = firstLine.split(' ')
       for (let n = tokens.length; n > 0; n--) {
         const candidate = tokens.slice(0, n).join(' ').trim()
-        if (userCommandNames.has(candidate)) {
+        const commandName = candidate.replace(':', '/')
+        if (userCommandNames.has(commandName)) {
           const argsHead = tokens.slice(n).join(' ')
           const restOfMessage = rest.slice(firstLine.length)
           const args = (argsHead + restOfMessage).trim()
           try {
-            const res = await renderCommand(candidate, args, agentWorkspace)
+            const res = await renderCommand(commandName, args, agentWorkspace)
             return res.content
           } catch (err) {
             pushToast({

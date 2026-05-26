@@ -189,3 +189,51 @@ def test_render_substitutes_all_occurrences(roots):
     cmd = discover_commands(workspace=cwd)["echo"]
 
     assert render_command(cmd, "hi") == "hi / hi"
+
+
+# ── One-level nesting enforcement ────────────────────────────────────────────
+
+
+def test_commands_two_levels_deep_are_silently_ignored(roots):
+    """Files more than one level deep must never appear in the listing."""
+    cwd, proj_oad, *_ = roots
+    _write(proj_oad / "a" / "b" / "deep.md", "---\ndescription: too deep\n---\nbody\n")
+    _write(proj_oad / "commit.md", VALID)
+
+    result = discover_commands(workspace=cwd)
+
+    assert "a/b/deep" not in result
+    assert "commit" in result
+
+
+def test_commands_one_level_deep_is_discovered(roots):
+    """Exactly one level of nesting is supported."""
+    cwd, proj_oad, *_ = roots
+    _write(proj_oad / "git" / "commit.md", VALID)
+
+    result = discover_commands(workspace=cwd)
+
+    assert "git/commit" in result
+
+
+def test_commands_only_one_level_when_both_present(roots):
+    """A mix of flat, 1-level-nested, and deeply-nested files in the same root:
+    only the first two kinds must appear."""
+    cwd, proj_oad, *_ = roots
+    _write(proj_oad / "flat.md", VALID)
+    _write(proj_oad / "git" / "commit.md", VALID)
+    _write(proj_oad / "git" / "branch" / "new.md", VALID)  # too deep
+
+    result = discover_commands(workspace=cwd)
+
+    assert set(result.keys()) == {"flat", "git/commit"}
+
+
+def test_commands_three_levels_deep_ignored(roots):
+    """Three levels of nesting must be ignored, not raise."""
+    cwd, proj_oad, *_ = roots
+    _write(proj_oad / "a" / "b" / "c" / "cmd.md", "---\ndescription: x\n---\nbody\n")
+
+    result = discover_commands(workspace=cwd)
+
+    assert result == {}
