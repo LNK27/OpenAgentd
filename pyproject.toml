@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openagentd"
-version = "1.27.0"  # keep in sync with app/version.txt
+version = "1.28.0"  # keep in sync with app/version.txt
 description = "Self-hosted AI agents — streaming chat, tool use, persistent memory, multi-agent teams"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -42,8 +42,8 @@ dependencies = [
     "fastapi>=0.135.2",
     "uvicorn[standard]>=0.42.0",
     "sse-starlette>=3.3.4",
-    "opentelemetry-api>=1.27.0",
-    "opentelemetry-sdk>=1.27.0",
+    "opentelemetry-api>=1.28.0",
+    "opentelemetry-sdk>=1.28.0",
     "python-multipart>=0.0.24",
     "prometheus-client>=0.21.0",
     "python-magic>=0.4.27",
