@@ -377,6 +377,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     return () => window.removeEventListener('focus-chat-input', handler)
   }, [focusInput])
 
+  const handleAddFileComment = useCallback((path: string, startLine: number, endLine: number) => {
+    const ref = startLine === endLine ? `@${path}#L${startLine}` : `@${path}#L${startLine}-L${endLine}`
+    inputRef.current?.appendValue(`${ref} `)
+    inputRef.current?.focus()
+  }, [])
+
   // Restore a queued message's text into the composer (fired by the
   // X button on PendingMessageQueue). Overwrites any current draft —
   // matches the /undo restore semantics above.
@@ -916,6 +922,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             workspace={workspace}
             file={codingFileViewer}
             mobile={isMobile}
+            onAddComment={handleAddFileComment}
             onClose={() => setCodingFileViewer(null)}
           />
         )}

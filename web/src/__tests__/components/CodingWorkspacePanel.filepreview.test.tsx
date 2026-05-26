@@ -59,10 +59,10 @@ async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFileP
   })
 }
 
-async function renderViewer(file: WorkspaceFileInfo | null = readme) {
+async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddComment = mock(() => {})) {
   const { CodingFileViewerPanel } = await import('@/components/CodingFileViewerPanel')
   await act(async () => {
-    render(<CodingFileViewerPanel workspace={WORKSPACE} file={file} onClose={() => {}} />)
+    render(<CodingFileViewerPanel workspace={WORKSPACE} file={file} onClose={() => {}} onAddComment={onAddComment} />)
   })
 }
 
@@ -126,5 +126,17 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(screen.getByRole('button', { name: /copy file contents/i }))
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('const value = 1\n// comment\nreturn value'))
+  })
+
+  it('lets users select preview lines and add a line comment reference', async () => {
+    const user = userEvent.setup()
+    const onAddComment = mock(() => {})
+    await renderViewer(readme, onAddComment)
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
+
+    await user.click(screen.getByRole('button', { name: /const value = 1/i }))
+    await user.click(screen.getByRole('button', { name: /add comment for line 1/i }))
+
+    expect(onAddComment).toHaveBeenCalledWith('README.md', 1, 1)
   })
 })

@@ -127,11 +127,21 @@ function highlightCodeLine(line: string): ReactNode[] {
   return out.length > 0 ? out : [' ']
 }
 
-function TextPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+function TextPreview({
+  workspace,
+  file,
+  onAddComment,
+}: {
+  workspace: string
+  file: WorkspaceFileInfo
+  onAddComment?: (path: string, startLine: number, endLine: number) => void
+}) {
   const tooLarge = file.size > MAX_TEXT_PREVIEW_BYTES
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(!tooLarge)
+  const [selection, setSelection] = useState<{ anchor: number; focus: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   useEffect(() => {
     if (tooLarge) return
@@ -172,15 +182,60 @@ function TextPreview({ workspace, file }: { workspace: string; file: WorkspaceFi
   if (content === null) return null
 
   const lines = content.split('\n')
+  const selectedStart = selection ? Math.min(selection.anchor, selection.focus) : null
+  const selectedEnd = selection ? Math.max(selection.anchor, selection.focus) : null
+  const addLabel = selectedStart === selectedEnd
+    ? `Add comment for line ${selectedStart}`
+    : `Add comment for lines ${selectedStart}-${selectedEnd}`
+  const selectLine = (line: number) => {
+    setSelection({ anchor: line, focus: line })
+    setDragging(true)
+  }
+  const extendSelection = (line: number) => {
+    if (!dragging) return
+    setSelection((prev) => prev ? { ...prev, focus: line } : prev)
+  }
   return (
-    <pre className="h-full overflow-auto font-mono text-xs leading-relaxed">
-      {lines.map((line, index) => (
-        <span key={index} className="flex items-start gap-3 whitespace-pre px-3 text-(--color-text-2)">
-          <LineGutter value={index + 1} />
-          <span className="min-w-0 flex-1">{highlightCodeLine(line)}</span>
-        </span>
-      ))}
-    </pre>
+    <div className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
+      {selection && selectedStart !== null && selectedEnd !== null ? (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-card) px-3 py-2">
+          <span className="truncate font-mono text-[11px] text-(--color-text-subtle)">
+            {file.path}#L{selectedStart}{selectedStart === selectedEnd ? '' : `-L${selectedEnd}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => onAddComment?.(file.path, selectedStart, selectedEnd)}
+            className="shrink-0 rounded-md bg-(--color-accent) px-2.5 py-1 text-xs font-medium text-(--bg-page) hover:opacity-90"
+          >
+            {addLabel}
+          </button>
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1 overflow-auto font-mono text-xs leading-relaxed">
+        {lines.map((line, index) => {
+          const lineNo = index + 1
+          const selected = selectedStart !== null && selectedEnd !== null && lineNo >= selectedStart && lineNo <= selectedEnd
+          return (
+            <button
+              key={index}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                selectLine(lineNo)
+              }}
+              onMouseEnter={() => extendSelection(lineNo)}
+              className={cn(
+                'flex w-full items-start gap-3 whitespace-pre px-3 text-left text-(--color-text-2)',
+                selected && 'bg-(--color-accent)/15',
+              )}
+            >
+              <LineGutter value={lineNo} />
+              <span className="min-w-0 flex-1">{highlightCodeLine(line)}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -218,11 +273,13 @@ export function CodingFileViewerPanel({
   workspace,
   file,
   onClose,
+  onAddComment,
   mobile = false,
 }: {
   workspace: string
   file: WorkspaceFileInfo | null
   onClose: () => void
+  onAddComment?: (path: string, startLine: number, endLine: number) => void
   mobile?: boolean
 }) {
   const prefersReducedMotion = useReducedMotion()
@@ -262,7 +319,7 @@ export function CodingFileViewerPanel({
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
           {kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
-            : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} />
+            : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
             : <BinaryPreview workspace={workspace} file={file} />}
         </div>
       </div>

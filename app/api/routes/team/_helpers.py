@@ -105,6 +105,7 @@ _MAX_MENTION_ATTACHMENTS = 20
 # reference) plus a marker telling it the full content is still reachable
 # via its ``Read`` tool. 32 K chars ≈ 8 K tokens ≈ 10 PDF pages.
 _MENTION_INLINE_MAX_CHARS = 32_000
+_LINE_REF_RE = re.compile(r"^(?P<path>.+)#L(?P<start>\d+)(?:-L?(?P<end>\d+))?$")
 
 
 def _extract_mention_paths(message: str) -> list[str]:
@@ -161,8 +162,37 @@ def _safe_join(root: Path, rel: str) -> Path | None:
     return resolved
 
 
+def _parse_line_ref(rel_path: str) -> tuple[str, str, int | None, int | None]:
+    """Split an optional ``#Lx-Ly`` suffix from a mention path."""
+    match = _LINE_REF_RE.match(rel_path)
+    if match is None:
+        return rel_path, rel_path, None, None
+    path = match.group("path")
+    start = int(match.group("start"))
+    end = int(match.group("end") or start)
+    if start < 1 or end < start:
+        return rel_path, rel_path, None, None
+    label = f"{path}#L{start}" if start == end else f"{path}#L{start}-L{end}"
+    return path, label, start, end
+
+
+def _slice_lines(data: bytes, start: int | None, end: int | None) -> bytes:
+    if start is None or end is None:
+        return data
+    text = data.decode("utf-8")
+    lines = text.splitlines(keepends=True)
+    if start > len(lines):
+        return b""
+    return "".join(lines[start - 1 : end]).encode("utf-8")
+
+
 async def _read_mention_as_attachment(
-    rel_path: str, abs_path: Path, capabilities
+    rel_path: str,
+    abs_path: Path,
+    capabilities,
+    *,
+    line_start: int | None = None,
+    line_end: int | None = None,
 ) -> RawAttachment | None:
     """Read one mentioned file as a ``RawAttachment`` when the lead can use it.
 
@@ -183,6 +213,9 @@ async def _read_mention_as_attachment(
     filename = rel_path
     mime, _ = mimetypes.guess_type(str(abs_path))
     category = categorize(filename, mime)
+    if category is None and line_start is not None:
+        mime = "text/plain"
+        category = "text"
     if category is None:
         return None
     if category == "image":
@@ -196,6 +229,11 @@ async def _read_mention_as_attachment(
     except OSError as exc:
         logger.debug("mention_read_failed path={} error={}", rel_path, exc)
         return None
+    if line_start is not None:
+        try:
+            data = _slice_lines(data, line_start, line_end)
+        except UnicodeDecodeError:
+            return None
     if not data:
         return None
     if len(data) > SIZE_LIMITS[category]:
@@ -249,11 +287,16 @@ async def collect_mention_attachments(
     out: list[RawAttachment] = []
     running_total = existing_total_bytes
     for rel in paths:
-        abs_path = _safe_join(root, rel)
+        file_rel, label, line_start, line_end = _parse_line_ref(rel)
+        abs_path = _safe_join(root, file_rel)
         if abs_path is None:
             continue
         att = await _read_mention_as_attachment(
-            rel, abs_path, team.lead.agent.capabilities
+            label,
+            abs_path,
+            team.lead.agent.capabilities,
+            line_start=line_start,
+            line_end=line_end,
         )
         if att is None:
             continue

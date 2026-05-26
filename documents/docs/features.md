@@ -163,6 +163,8 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 - **Two-layer workspace file viewer** `[v1.28.0]` — clicking a file in the coding
   workspace side drawer opens a read-only viewer beside it with line numbers,
   lightweight syntax highlighting, image previews, and binary download fallback.
+  Select lines and click **Add comment** to insert an `@path#Lx-Ly` composer
+  reference; the backend auto-attaches only the selected file lines.
 - **Persisted coding sessions per workspace** `[v1.18.0]` — `/coding/{session_id}`
   restores workspace context from the saved session. Bare `/coding` is the
   launcher or last-workspace restore. New empty sessions exist before the

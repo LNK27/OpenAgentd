@@ -261,6 +261,11 @@ describe("findCommittedMentions", () => {
     expect(out).toEqual([{ start: 3, end: 14 }])
   })
 
+  it("resolves committed line-reference mentions against the base file", () => {
+    const out = findCommittedMentions("hi @src/api.ts#L2-L4", null, fxRefs)
+    expect(out).toEqual([{ start: 3, end: 20 }])
+  })
+
   it("finds multiple mentions", () => {
     const out = findCommittedMentions("see @a.ts and @b/c.ts please", null, fxRefs)
     expect(out).toEqual([

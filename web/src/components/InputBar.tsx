@@ -127,6 +127,7 @@ interface InputBarProps {
 export interface InputBarHandle {
   focus: () => void
   setValue: (text: string) => void
+  appendValue: (text: string) => void
   setFiles: (files: File[]) => void
 }
 
@@ -262,6 +263,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       // its ``start``/``end`` indices refer to the old text.
       setMentionRange(null)
       // Trigger height recalculation after injecting text programmatically
+      requestAnimationFrame(resize)
+    },
+    appendValue: (text: string) => {
+      setValue((prev) => {
+        const spacer = prev && !/\s$/.test(prev) ? ' ' : ''
+        return `${prev}${spacer}${text}`
+      })
+      setMentionRange(null)
       requestAnimationFrame(resize)
     },
     setFiles: (nextFiles: File[]) => {
