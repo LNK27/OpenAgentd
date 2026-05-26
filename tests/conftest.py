@@ -42,6 +42,12 @@ def _materialise_openagentd_config(tmp_path_factory):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _disable_desktop_token_auth(monkeypatch: pytest.MonkeyPatch):
+    """Keep API tests independent from a desktop launcher token in the shell."""
+    monkeypatch.delenv("OPENAGENTD_DESKTOP_TOKEN", raising=False)
+
+
 def set_openagentd_dirs(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
     """Point all four XDG dirs at subdirectories of ``root``.
 

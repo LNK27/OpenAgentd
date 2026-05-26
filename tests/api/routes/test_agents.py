@@ -35,6 +35,10 @@ def fs_dirs(tmp_path: Path, monkeypatch):
     skills.mkdir()
     monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
     monkeypatch.setattr(settings, "SKILLS_DIR", str(skills))
+    from app.agent.tools.builtin import skill as skill_module
+
+    monkeypatch.setattr(skill_module, "_iter_skill_roots", lambda: [skills])
+    skill_module._discover_skills_cached.cache_clear()
     return agents, skills
 
 
