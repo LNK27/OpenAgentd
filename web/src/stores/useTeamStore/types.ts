@@ -79,7 +79,7 @@ export interface TeamStoreActions {
   connectStream: () => AbortController
   loadTeamStatus: (workspace?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
-  beginResolvedSession: (sessionId: string, options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; skipInitialRestore?: boolean }) => void
+  beginResolvedSession: (sessionId: string | null, options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
   setActiveAgent: (name: string) => void
   cycleActiveAgent: (dir: 'next' | 'prev') => void

@@ -272,13 +272,19 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     }
     abortRef.current?.abort()
     abortRef.current = null
+    inputRef.current?.setValue('')
+    inputRef.current?.setFiles([])
     ;(async () => {
       try {
-        const session = await resolveTeamSession({
+        const sessionOptions = {
           mode,
           workspace: mode === 'coding' ? workspace : null,
           model: sessionModel,
           thinkingLevel: sessionThinkingLevel,
+        }
+        beginResolvedSession(null, sessionOptions)
+        const session = await resolveTeamSession({
+          ...sessionOptions,
           create: true,
         })
         beginResolvedSession(session.id, {
