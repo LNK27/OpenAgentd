@@ -2,7 +2,7 @@
 title: Mobile Layout
 description: Phone-first responsive design — breakpoints, safe areas, master/detail patterns, and per-component mobile behaviour.
 status: stable
-updated: 2026-05-18
+updated: 2026-05-27
 ---
 
 # Mobile layout
@@ -39,6 +39,7 @@ Use `h-dvh` everywhere instead of `h-screen` (iOS Safari dynamic toolbar).
 ### Sidebar (`Sidebar.tsx`)
 - Desktop: inline flex column, animates width between 56 px (icon-only) and 256 px.
 - Mobile: `position: fixed`, slides in/out via `x` transform (`w-[272px]`, `z-40`). Backdrop overlay closes it on tap.
+- Mobile drawer/backdrop start below the 40 px app header so desktop window controls remain usable in small Tauri windows.
 - Prop: `mobileOpen / onMobileClose` (owner: `TeamChatView`).
 - `showIconOnly = !isMobile && collapsed` — icon-only mode is desktop-only.
 - Command palette button hidden on mobile (`onCommandPalette` prop omitted).
@@ -47,6 +48,7 @@ Use `h-dvh` everywhere instead of `h-screen` (iOS Safari dynamic toolbar).
 Mirrors the `Sidebar` pattern for `/coding` mode:
 - Desktop: inline flex column, animates width between 0 (collapsed) and 256 px via the `desktopCollapsed` prop.
 - Mobile: `position: fixed`, slides in/out via `x` transform (`w-[272px]`, `z-40`). Backdrop overlay closes it on tap.
+- Mobile animation sets width explicitly, so a desktop-collapsed sidebar cannot resize to an invisible drawer after crossing the breakpoint.
 - Props: `desktopCollapsed`, `mobileOpen`, `onMobileClose` (owner: `TeamChatView`).
 - Always mounted once — branching happens internally based on `useIsMobile()` to avoid an unmount/remount race when the hook resolves after first paint.
 - Coding session restore and workspace list behavior is shared with desktop; see [Coding sessions UI](./coding-sessions.md).
@@ -56,7 +58,8 @@ Mirrors the `Sidebar` pattern for `/coding` mode:
 ### CodingWorkspacePanel (`CodingWorkspacePanel.tsx`)
 Right-side workspace explorer for `/coding` mode.
 - Desktop (`sm:` and up): inline `relative w-[440px] shrink-0` flex sibling (unchanged).
-- Mobile: `fixed inset-y-0 right-0 w-full max-w-[440px]` with `shadow-xl` — slides over the chat instead of pushing it off-screen.
+- Mobile: fixed right sheet below the 40 px header, `w-full max-w-[440px]` with `shadow-xl` — slides over the chat instead of pushing it off-screen.
+- Selecting a coding file on mobile switches from the file list to the full-width preview; desktop keeps list and preview side-by-side.
 
 ### TeamChatView (`TeamChatView/index.tsx`)
 - `effectiveViewMode = isMobile ? 'agent' : viewMode` — split/unified modes disabled on mobile.

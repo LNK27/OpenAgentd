@@ -16,6 +16,7 @@ const browseResponse = {
 const dialogOpen = mock(async () => '/repo/project')
 let isTauri = true
 let platformOs = 'macos'
+let isMobile = false
 let validateError: Error | null = null
 const deleteSessionMutate = mock(() => {})
 const updateSessionTitleMutate = mock(() => {})
@@ -45,15 +46,46 @@ mock.module('@/hooks/use-platform', () => ({
   getPlatform: () => ({ isTauri, os: platformOs, isMacOverlay: isTauri && platformOs === 'macos' }),
 }))
 
+mock.module('@/hooks/use-mobile', () => ({
+  useIsMobile: () => isMobile,
+}))
+
+mock.module('framer-motion', () => ({
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useReducedMotion: () => false,
+  motion: {
+    aside: ({ children, animate, initial, exit, transition, ...props }: React.ComponentProps<'aside'> & { animate?: unknown; initial?: unknown; exit?: unknown; transition?: unknown }) => {
+      void initial
+      void exit
+      void transition
+      return <aside data-animate={JSON.stringify(animate)} {...props}>{children}</aside>
+    },
+    div: ({ children, initial, animate, exit, transition, ...props }: React.ComponentProps<'div'> & { initial?: unknown; animate?: unknown; exit?: unknown; transition?: unknown }) => {
+      void initial
+      void animate
+      void exit
+      void transition
+      return <div {...props}>{children}</div>
+    },
+  },
+}))
+
 mock.module('@tauri-apps/plugin-dialog', () => ({
   open: dialogOpen,
 }))
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
+  Check: Icon,
   ChevronDown: Icon,
   ChevronRight: Icon,
+  Copy: Icon,
+  Download: Icon,
+  ExternalLink: Icon,
+  FileText: Icon,
   Folder: Icon,
+  GitCompare: Icon,
+  Globe: Icon,
   HelpCircle: Icon,
   Loader2: Icon,
   Plus: Icon,
@@ -61,6 +93,7 @@ mock.module('lucide-react', () => ({
   Settings: Icon,
   Pencil: Icon,
   Trash2: Icon,
+  X: Icon,
 }))
 
 mock.module('@/components/ThemeToggle', () => ({
@@ -125,6 +158,7 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceIsFetchingNextPage = false
     isTauri = true
     platformOs = 'macos'
+    isMobile = false
     useTeamStore.setState({ isTeamWorking: false, sessionId: null })
     navigate.mockClear()
     dialogOpen.mockReset()
@@ -195,6 +229,21 @@ describe('CodingSidebar workspace trust flow', () => {
     return view
   }
 
+  async function renderCodingSidebarWithProps(props: React.ComponentProps<typeof import('@/components/CodingSidebar').CodingSidebar>) {
+    const { CodingSidebar } = await import('@/components/CodingSidebar')
+    const queryClient = new QueryClient()
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => {
+      view = render(
+        <QueryClientProvider client={queryClient}>
+          <CodingSidebar {...props} />
+        </QueryClientProvider>,
+      )
+      await Promise.resolve()
+    })
+    return view!
+  }
+
   it('does not navigate or save the last workspace until the user trusts the validated directory', async () => {
     const user = userEvent.setup()
     let resolveBody: unknown
@@ -263,6 +312,36 @@ describe('CodingSidebar workspace trust flow', () => {
     })
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
     expect(screen.getByText('/repo/project')).toBeTruthy()
+  })
+
+  it('keeps the mobile drawer visible after a desktop-collapsed coding sidebar crosses the breakpoint', async () => {
+    isMobile = true
+
+    const view = await renderCodingSidebarWithProps({
+      desktopCollapsed: true,
+      mobileOpen: true,
+      workspace: '/repo/project',
+    })
+    const drawer = view.container.querySelector('aside')
+
+    expect(drawer).toBeTruthy()
+    expect(drawer?.className).toContain('top-10')
+    expect(drawer?.className).toContain('w-[min(272px,calc(100vw-2rem))]')
+    expect(JSON.parse(drawer?.getAttribute('data-animate') ?? '{}')).toEqual({
+      x: 0,
+      width: 'min(272px, calc(100vw - 2rem))',
+    })
+  })
+
+  it('keeps the mobile backdrop below the app header so macOS traffic lights remain usable', async () => {
+    isMobile = true
+
+    const view = await renderCodingSidebarWithProps({ mobileOpen: true })
+    const backdrop = view.container.querySelector('[aria-hidden="true"]')
+
+    expect(backdrop).toBeTruthy()
+    expect(backdrop?.className).toContain('top-10')
+    expect(backdrop?.className).toContain('bottom-0')
   })
 
   it('lets the user go back from the trust warning without opening the workspace', async () => {

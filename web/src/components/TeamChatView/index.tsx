@@ -391,6 +391,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     inputRef.current?.focus()
   }, [])
 
+  const handleCodingFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
+    setCodingFileViewer(file)
+    if (isMobile && file) setCodingPanel(null)
+  }, [isMobile])
+
   // Restore a queued message's text into the composer (fired by the
   // X button on PendingMessageQueue). Overwrites any current draft —
   // matches the /undo restore semantics above.
@@ -951,7 +956,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           />
         )}
         </main>
-        {mode === 'coding' && workspace && codingPanel !== null && (
+        {mode === 'coding' && workspace && codingFileViewer !== null && (
           <CodingFileViewerPanel
             workspace={workspace}
             file={codingFileViewer}
@@ -968,7 +973,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             initialTab={codingPanel}
             mobile={isMobile}
             selectedFilePath={codingFileViewer?.path ?? null}
-            onFileSelect={setCodingFileViewer}
+            onFileSelect={handleCodingFileSelect}
             onClose={() => {
               setCodingPanel(null)
               setCodingFileViewer(null)

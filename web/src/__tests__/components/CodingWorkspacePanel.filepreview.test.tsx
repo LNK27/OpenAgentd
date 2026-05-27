@@ -34,8 +34,6 @@ mock.module('framer-motion', () => ({
     ),
   },
 }))
-mock.module('@/utils/workspace', () => ({ workspaceLabel: (path: string) => path.split('/').at(-1) ?? path }))
-
 beforeEach(() => {
   diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untracked: [] }
   globalThis.fetch = mock(async (input: unknown) => {
@@ -49,22 +47,22 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
-async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFilePath: string | null = null) {
+async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFilePath: string | null = null, mobile = false) {
   const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open initialTab="files" selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} onClose={() => {}} />
+        <CodingWorkspacePanel workspace={WORKSPACE} open initialTab="files" selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} onClose={() => {}} mobile={mobile} />
       </QueryClientProvider>,
     )
   })
 }
 
-async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddComment = mock(() => {})) {
+async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddComment = mock(() => {}), mobile = false) {
   const { CodingFileViewerPanel } = await import('@/components/CodingFileViewerPanel')
   await act(async () => {
-    render(<CodingFileViewerPanel workspace={WORKSPACE} file={file} onClose={() => {}} onAddComment={onAddComment} />)
+    render(<CodingFileViewerPanel workspace={WORKSPACE} file={file} onClose={() => {}} onAddComment={onAddComment} mobile={mobile} />)
   })
 }
 
@@ -151,6 +149,24 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(screen.getByRole('button', { name: /copy file contents/i }))
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('const value = 1\n// comment\nreturn value'))
+  })
+
+  it('positions the mobile workspace panel below the app header instead of covering desktop window controls', async () => {
+    await renderWorkspacePanel(mock(() => {}), null, true)
+
+    const panel = screen.getByRole('complementary')
+    expect(panel.className).toContain('top-10')
+    expect(panel.className).toContain('fixed')
+    expect(panel.className).toContain('md:relative')
+  })
+
+  it('positions the mobile file viewer below the app header and keeps the preview full-width', async () => {
+    await renderViewer(readme, mock(() => {}), true)
+
+    const viewer = screen.getByLabelText('File viewer')
+    expect(viewer.className).toContain('top-10')
+    expect(viewer.className).toContain('w-full')
+    expect(viewer.className).toContain('md:relative')
   })
 
   it('lets users select preview lines and add a line comment reference', async () => {

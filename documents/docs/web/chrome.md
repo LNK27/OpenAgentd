@@ -2,7 +2,7 @@
 title: App Chrome (Header, Sidebar, Tauri Drag)
 description: Shared header, platform detection, and window-drag plumbing across browser and Tauri desktop.
 status: stable
-updated: 2026-05-19
+updated: 2026-05-27
 ---
 
 # App chrome
@@ -67,6 +67,8 @@ The position is set programmatically in `configure_window_chrome` (`desktop/src-
 ## Sidebar and command palette
 
 Both `Sidebar` and `CodingSidebar` draw `border-r border-(--color-border)` so the boundary between sidebar and content is unambiguous on dark themes.
+
+On narrow desktop windows, mobile drawers and their backdrops start below the 40 px header. This keeps macOS overlay traffic-light buttons accessible while preserving the mobile drawer UX.
 
 Session titles can be renamed directly in the sidebar by double-clicking a session row or using its pencil action. The save path is shared by normal and coding sidebars.
 
