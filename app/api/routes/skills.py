@@ -55,14 +55,16 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 def _skill_source(path: Path) -> str:
     """Return a user-facing source label for a discovered SKILL.md path."""
+    from app.agent.tools.builtin import skill as skill_module
+
     resolved = path.resolve()
     config_skills = Path(settings.SKILLS_DIR).resolve()
     config_dir = Path(settings.OPENAGENTD_CONFIG_DIR).resolve()
     opencode_global = Path.home() / ".config" / "opencode" / "skills"
-    cwd = Path.cwd().resolve()
-    if _is_relative_to(resolved, cwd / ".openagentd" / "skills"):
+    project_root = skill_module._project_root().resolve()
+    if _is_relative_to(resolved, project_root / ".openagentd" / "skills"):
         return "project-openagentd"
-    if _is_relative_to(resolved, cwd / ".opencode" / "skills"):
+    if _is_relative_to(resolved, project_root / ".opencode" / "skills"):
         return "project-opencode"
     if _is_relative_to(resolved, config_skills):
         return "global-openagentd"

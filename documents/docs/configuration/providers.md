@@ -2,7 +2,7 @@
 title: LLM Providers
 description: Every provider registered in build_provider — keys, model IDs, vision defaults, OAuth flows.
 status: stable
-updated: 2026-05-23
+updated: 2026-05-28
 ---
 
 # LLM Providers
@@ -51,13 +51,17 @@ Drop-in provider plugins live in `{OPENAGENTD_CONFIG_DIR}/plugins/` and export a
 - appear in **Settings → Providers** with declared credential fields;
 - save credentials to `{OPENAGENTD_CONFIG_DIR}/.env`;
 - store provider-owned OAuth tokens under `{OPENAGENTD_CACHE_DIR}/provider-plugins/<provider-id>/`;
-- provide model discovery and a factory returning `LLMProviderBase`.
+- provide model discovery and a factory returning `LLMProviderBase`;
+- surface live OAuth usage in **Settings → Providers** via an optional usage hook.
 
 The same directory can also contain agent hook plugins. Files that export
 `provider = ProviderPlugin(...)` are handled by the provider registry and are
 skipped by the agent hook loader.
 
 OAuth plugins can emit a `code_required` event; the UI then shows a paste field and posts the code to `/api/auth/{provider}/callback`.
+
+OAuth plugins without a usage hook are shown as connected but unsupported for
+usage monitoring, rather than as temporarily unavailable.
 
 If an OAuth refresh token is rejected by the upstream provider, the provider should raise `ProviderAuthenticationError`. Team execution maps that to the same actionable `agent_not_configured` stream event as an unconfigured model, so the UI can ask the user to reconnect the provider instead of surfacing an internal stack trace.
 
@@ -104,11 +108,11 @@ Uses Anthropic's Messages API at `https://api.anthropic.com/v1/messages`. API-ke
 
 ### `codex`
 
-Uses your **ChatGPT Plus/Pro subscription** to access OpenAI models via `https://chatgpt.com/backend-api/codex/responses`. The endpoint is Responses API only and requires streaming; non-streaming `chat()` calls are assembled from the stream. `temperature`, `top_p`, and `max_tokens` are ignored because the private endpoint rejects those public API fields. `thinking_level` maps to `reasoning.effort`. OpenAgentd identifies itself with `originator: openagentd`, retries transient `response.failed` stream errors such as overloads, and treats Codex usage-limit/quota responses as immediate fallback candidates. Settings → Providers shows live Codex OAuth usage windows, resets, credits, and spend-cap/limit states from the same token. The same OAuth token also powers `generate_image` when `multimodal.yaml` sets `image.model: codex:<chat-model>`.
+Uses your **ChatGPT Plus/Pro/Business subscription** to access OpenAI models via `https://chatgpt.com/backend-api/codex/responses`. The endpoint is Responses API only and requires streaming; non-streaming `chat()` calls are assembled from the stream. `temperature`, `top_p`, and `max_tokens` are ignored because the private endpoint rejects those public API fields. `thinking_level` maps to `reasoning.effort`. OpenAgentd identifies itself with `originator: openagentd`, retries transient `response.failed` stream errors such as overloads, and treats Codex usage-limit/quota responses as immediate fallback candidates. Settings → Providers shows live Codex OAuth usage windows, resets, credits, spend-cap/limit states, and unlimited-credit plans from the same token. The same OAuth token also powers `generate_image` when `multimodal.yaml` sets `image.model: codex:<chat-model>`.
 
 ### `copilot`
 
-GitHub Copilot OAuth — requires an active Copilot subscription. Models include `copilot:gpt-…`, `copilot:claude-…`, etc. (see Copilot's catalog).
+GitHub Copilot OAuth — requires an active Copilot subscription. Models include `copilot:gpt-…`, `copilot:claude-…`, etc. (see Copilot's catalog). Settings → Providers shows the live Copilot premium request quota from the same token.
 
 ### `bedrock`
 

@@ -2,7 +2,7 @@
 title: Skills
 description: SKILL.md format, registration, and the builtin skill catalog.
 status: stable
-updated: 2026-05-26
+updated: 2026-05-27
 ---
 
 # Skills
@@ -37,14 +37,15 @@ the upstream or builtin copy:
 
 | # | Root | Use it for |
 |---|------|------------|
-| 1 | `{cwd}/.openagentd/skills/`     | Project-specific, OpenAgentd-native |
-| 2 | `{cwd}/.opencode/skills/`       | Project-specific, opencode reuse |
+| 1 | `{workspace}/.openagentd/skills/`     | Project-specific, OpenAgentd-native |
+| 2 | `{workspace}/.opencode/skills/`       | Project-specific, opencode reuse |
 | 3 | `{OPENAGENTD_CONFIG_DIR}/skills/` | Your global OpenAgentd library |
 | 4 | `~/.config/opencode/skills/`    | Your global opencode library (reused as-is) |
 | 5 | bundled OpenAgentd skills | Read-only operational fallback shipped with the app |
 
-`{cwd}` is the working directory the OpenAgentd server was launched from.
-The Settings UI lists the same runtime-visible catalog. Non-bundled skills are
+`{workspace}` is the active coding workspace when a session has one; outside a
+session it falls back to the server working directory. The Settings UI lists the
+same runtime-visible catalog. Non-bundled skills are
 edited and deleted in place, including project-local and opencode skills.
 Bundled app skills are read-only and cannot be deleted.
 

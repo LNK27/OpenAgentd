@@ -15,6 +15,9 @@ from app.cli.seed import SeedDownloadError, SeedResult
 from app.api.routes import settings as settings_routes
 from app.api.routes.settings import router
 from app.agent.providers.codex.oauth import CodexOAuth
+from app.agent.providers.copilot.oauth import CopilotOAuth
+from app.agent.providers.codex import usage as codex_usage
+from app.agent.providers.copilot import usage as copilot_usage
 
 
 def _make_app() -> FastAPI:
@@ -944,7 +947,7 @@ def test_get_codex_provider_usage_returns_active_limits(
             captured["headers"] = headers
             return _FakeResponse()
 
-    monkeypatch.setattr(settings_routes.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(codex_usage.httpx, "AsyncClient", _FakeClient)
 
     client = TestClient(_make_app())
     response = client.get("/api/settings/providers/codex/usage")
@@ -974,6 +977,163 @@ def test_get_codex_provider_usage_returns_active_limits(
     )
     assert body["limits"][1]["limit_id"] == "codex_other"
     assert body["limits"][1]["primary"]["used_percent"] == 88.0
+
+
+def test_get_codex_provider_usage_returns_unlimited_credits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    oauth = CodexOAuth(
+        access_token=SecretStr("chatgpt-token"),
+        refresh_token=SecretStr("refresh-token"),
+        expires_at=time.time() + 3600,
+        account_id="account-123",
+    )
+    monkeypatch.setattr(
+        "app.agent.providers.codex.oauth.CodexOAuth.load", lambda: oauth
+    )
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "plan_type": "business",
+                "rate_limit": None,
+                "additional_rate_limits": None,
+                "credits": {
+                    "has_credits": True,
+                    "unlimited": True,
+                    "balance": None,
+                    "overage_limit_reached": False,
+                    "approx_local_messages": None,
+                    "approx_cloud_messages": None,
+                },
+                "rate_limit_reached_type": None,
+            }
+
+    class _FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _url, *, headers):  # type: ignore[no-untyped-def]
+            return _FakeResponse()
+
+    monkeypatch.setattr(codex_usage.httpx, "AsyncClient", _FakeClient)
+
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/providers/codex/usage")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "provider": "codex",
+        "limits": [
+            {
+                "limit_id": "codex",
+                "limit_name": None,
+                "primary": None,
+                "secondary": None,
+                "credits": {
+                    "has_credits": True,
+                    "unlimited": True,
+                    "balance": None,
+                },
+                "plan_type": "business",
+                "rate_limit_reached_type": None,
+            }
+        ],
+    }
+
+
+def test_get_copilot_provider_usage_returns_premium_quota_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oauth = CopilotOAuth(github_token=SecretStr("github-token"))
+    monkeypatch.setattr(
+        "app.agent.providers.copilot.oauth.CopilotOAuth.load", lambda: oauth
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "copilot_plan": "individual",
+                "quota_reset_date_utc": "2026-06-01T00:00:00.000Z",
+                "quota_snapshots": {
+                    "chat": {
+                        "quota_id": "chat",
+                        "percent_remaining": 100.0,
+                        "remaining": 0,
+                        "entitlement": 0,
+                        "unlimited": True,
+                        "quota_reset_at": 0,
+                    },
+                    "premium_interactions": {
+                        "quota_id": "premium_interactions",
+                        "percent_remaining": 85.6,
+                        "remaining": 257,
+                        "entitlement": 300,
+                        "unlimited": False,
+                        "quota_reset_at": 0,
+                    },
+                },
+            }
+
+    class _FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url, *, headers):  # type: ignore[no-untyped-def]
+            captured["url"] = url
+            captured["headers"] = headers
+            return _FakeResponse()
+
+    monkeypatch.setattr(copilot_usage.httpx, "AsyncClient", _FakeClient)
+
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/providers/copilot/usage")
+
+    assert response.status_code == 200
+    assert captured["url"] == "https://api.github.com/copilot_internal/user"
+    assert captured["headers"] == {
+        "Authorization": "token github-token",
+        "Accept": "application/json",
+        "User-Agent": "openagentd/1.0.0",
+    }
+    body = response.json()
+    assert body["provider"] == "copilot"
+    assert body["limits"][0] == {
+        "limit_id": "premium_interactions",
+        "limit_name": "Premium requests",
+        "primary": {
+            "used_percent": pytest.approx(14.4),
+            "window_minutes": None,
+            "resets_at": 1780272000,
+        },
+        "secondary": None,
+        "credits": {"has_credits": True, "unlimited": False, "balance": "257/300"},
+        "plan_type": "individual",
+        "rate_limit_reached_type": None,
+    }
 
 
 def test_get_provider_usage_rejects_unsupported_provider() -> None:

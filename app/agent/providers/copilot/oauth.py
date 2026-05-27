@@ -86,6 +86,8 @@ class CopilotOAuth(BaseModel):
 # -- Device-flow constants ----------------------------------------------------
 
 _CLIENT_ID = "Ov23li8tweQw6odWQebz"
+# OpenAgentd OAuth App client ID, pending Copilot model-catalog access.
+# _CLIENT_ID = "Ov23li7j8EJwKLcVR4ur"
 _SCOPE = "read:user"
 _DEVICE_CODE_URL = "https://github.com/login/device/code"
 _ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token"

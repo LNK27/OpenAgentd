@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from app.agent.providers.base import LLMProviderBase
+from app.api.schemas.settings import ProviderUsageResponse
 
 ProviderKind = Literal["api_key", "oauth"]
 OAuthEventSink = Callable[[str, dict[str, Any]], None]
@@ -45,6 +46,9 @@ class ProviderPlugin:
     oauth_callback: Callable[[str, OAuthEventSink | None], None] | None = None
     is_configured: Callable[[CredentialStore], bool] | None = None
     discover_models: Callable[[CredentialStore], Awaitable[list[str]]] | None = None
+    get_usage: Callable[[CredentialStore], Awaitable[ProviderUsageResponse]] | None = (
+        None
+    )
     fallback_models: list[str] = field(default_factory=list)
     docs_url: str = ""
     oauth_command: str = ""
