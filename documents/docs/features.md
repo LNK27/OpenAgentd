@@ -73,7 +73,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
 - **Drag-and-drop files into chat** `[since v1.0]` — images, PDFs, text. Multimodal
   parts attach to the user message.
-- **Composer history navigation** `[v1.31.0]` — when the input is empty, `↑` / `↓`
+- **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions. See
   [`web/chat-input.md`](./web/chat-input.md#composer-history-navigation).
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
@@ -245,7 +245,7 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
-| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS default chain |
+| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS default chain `[v1.32.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
 | GitHub Copilot (OAuth) | `copilot:gpt-5.4-mini` | `openagentd auth copilot` |
 | OpenAI Codex (OAuth) | `codex:gpt-5.5` | `openagentd auth codex` |
@@ -266,7 +266,7 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   custom headers or alternate message endpoints are supported.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
-- **Codex usage monitor** `[v1.18.2]` — Settings → Providers shows live Codex
+- **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, and spend-cap/limit states.
 
 ---
@@ -463,12 +463,3 @@ When you cut a release:
 This document is the **canonical** answer to "what does OpenAgentd do?". Slides,
 README copy, comparison docs, marketing posts, and investor decks should all
 trace their claims back to a line here.
-## Supported Providers
-
-- ...
-- **AWS Bedrock**: Claude, Nova, and Amazon foundation models using your AWS credentials. Requires  and .
-## Supported Providers
-
-- **AWS Bedrock**: Claude, Nova, and Amazon foundation models using your AWS credentials. Requires  and .## Supported Providers
-
-- **AWS Bedrock**: Claude, Nova, and Amazon foundation models using your AWS credentials. Requires AWS_REGION and AWS_PROFILE.

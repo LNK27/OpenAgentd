@@ -439,14 +439,14 @@ class TestDeepSeekSettings:
     def test_deepseek_api_key_field_exists(self):
         from app.core.config import Settings
 
-        s = Settings()
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
         assert hasattr(s, "DEEPSEEK_API_KEY")
 
     def test_deepseek_api_key_defaults_to_none(self, monkeypatch):
         from app.core.config import Settings
 
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-        s = Settings()
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
         assert s.DEEPSEEK_API_KEY is None
 
     def test_deepseek_api_key_accepts_string_via_env(self, monkeypatch):

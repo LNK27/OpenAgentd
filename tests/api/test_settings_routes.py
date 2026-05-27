@@ -1132,4 +1132,4 @@ def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> 
     body = response.json()
     providers_seen = {m["provider"] for m in body["models"]}
     assert "openai" not in providers_seen
-    assert providers_seen <= {"anthropic", "googlegenai", "vertexai"}
+    assert providers_seen <= {"anthropic", "bedrock", "googlegenai", "vertexai"}
