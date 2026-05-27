@@ -50,6 +50,9 @@ class ProviderPlugin:
         None
     )
     fallback_models: list[str] = field(default_factory=list)
+    models_dev_provider_id: str = ""
+    metadata_source_provider: str = ""
+    model_registry_aliases: dict[str, str] = field(default_factory=dict)
     docs_url: str = ""
     oauth_command: str = ""
 

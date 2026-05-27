@@ -2,7 +2,7 @@
 
 The resolver does exactly two things:
 
-1. **Exact match** in the bundled ``capabilities.yaml`` → return those
+1. **Exact match** in the model registry → return those
    flags merged onto the all-false defaults.
 2. **Anything else** → return the all-false defaults.
 
@@ -105,7 +105,7 @@ class TestMergeCaps:
 
 
 class TestGetCapabilities:
-    """The bundled ``capabilities.yaml`` is the source of truth."""
+    """The model registry is the source of truth."""
 
     def test_none_returns_default(self) -> None:
         caps = get_capabilities(None)
@@ -130,6 +130,8 @@ class TestGetCapabilities:
         "model_id",
         [
             "openai:gpt-5.5",
+            "codex:gpt-5.5-mini",
+            "codex:gpt-5.2-codex",
             "openai:gpt-5.4-mini",
             "googlegenai:gemini-3.1-pro-preview",
             "vertexai:gemini-2.5-pro",

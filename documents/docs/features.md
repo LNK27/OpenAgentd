@@ -272,6 +272,11 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   premium request quota from the saved OAuth token.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
   surface live usage in the same Settings → Providers panel as built-ins.
+- **Curated multimodal model registry** `[v1.34.0]` — model modality gates,
+  token limits, cost, support flags, and thinking-level metadata are maintained
+  in one exact-match registry: bundled JSON snapshot, runtime `models.dev`
+  cache, explicit compatibility aliases for runtime provider/model IDs that differ
+  from the upstream source IDs, and optional local YAML overlay.
 
 ---
 

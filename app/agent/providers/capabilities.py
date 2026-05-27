@@ -1,11 +1,11 @@
 """Model capability resolution.
 
 Looks up input/output capabilities for a fully-qualified
-``provider:model`` string against a curated YAML registry.
+``provider:model`` string against the curated model registry.
 
 Lookup rule (intentionally trivial):
 
-1. **Exact match** in ``capabilities.yaml`` → return those flags merged
+1. **Exact match** in the model registry → return those flags merged
    onto the all-false defaults.
 2. **Anything else** → return the all-false / text-out-only defaults.
 
@@ -43,11 +43,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from importlib.resources import files
 from typing import Any
 
-import yaml
 from loguru import logger
+
+from app.agent.providers.model_registry import load_model_registry
 
 
 # ── Dataclasses ──────────────────────────────────────────────────────────────
@@ -121,36 +121,33 @@ _DEFAULT = ModelCapabilities()
 
 
 def _load_registry() -> dict[str, ModelCapabilities]:
-    """Load ``capabilities.yaml`` from the installed package.
+    """Load capability entries from the installed model registry.
 
-    Uses :mod:`importlib.resources` rather than a ``__file__``-relative
-    path so the loader also works inside PyInstaller / Tauri-bundled
-    sidecars where package data lives in a zip archive.
+    ``model_registry.load_model_registry`` uses :mod:`importlib.resources` so
+    the loader also works inside PyInstaller / Tauri-bundled sidecars where
+    package data lives in a zip archive.
 
     Malformed entries are logged and skipped — one bad row should not
     crash the whole resolver. The file shipping inside the wheel means
     bad rows are a maintainer bug, not a user-visible failure mode.
     """
-    resource = files("app.agent.providers").joinpath("capabilities.yaml")
-    raw = resource.read_text(encoding="utf-8")
-    parsed = yaml.safe_load(raw) or {}
-    if not isinstance(parsed, dict):
-        logger.warning(
-            "capabilities.yaml did not parse to a mapping (got {}); ignoring",
-            type(parsed).__name__,
-        )
-        return {}
-
     registry: dict[str, ModelCapabilities] = {}
-    for key, value in parsed.items():
-        if not isinstance(key, str) or not isinstance(value, dict):
-            logger.warning("capabilities.yaml: skipping malformed entry key={!r}", key)
+    for key, value in load_model_registry().items():
+        capabilities = value.get("capabilities") or {}
+        if not capabilities:
+            continue
+        if not isinstance(capabilities, dict):
+            logger.warning(
+                "model registry: skipping malformed capabilities for {!r}", key
+            )
             continue
         try:
-            registry[key.lower()] = _merge_caps(value)
+            registry[key] = _merge_caps(capabilities)
         except (TypeError, ValueError) as exc:
-            logger.warning("capabilities.yaml: skipping entry {!r} ({})", key, exc)
-    logger.debug("capabilities.yaml: loaded {} entries", len(registry))
+            logger.warning(
+                "model registry: skipping capabilities for {!r} ({})", key, exc
+            )
+    logger.debug("model registry: loaded {} capability entries", len(registry))
     return registry
 
 
@@ -207,8 +204,8 @@ def get_capabilities(model_id: str | None) -> ModelCapabilities:
             :data:`_DEFAULT`.
 
     Returns:
-        The exact-match entry from ``capabilities.yaml`` if listed; the
-        all-false defaults otherwise.
+        The exact-match capability entry from the model registry if listed;
+        the all-false defaults otherwise.
     """
     if not model_id:
         return _DEFAULT

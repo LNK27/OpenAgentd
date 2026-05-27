@@ -50,6 +50,9 @@ class ProviderEntry(TypedDict, total=False):
     fallback_models: list[str]  # only set for providers without live discovery
     oauth_command: str  # CLI fallback hint for oauth providers
     docs_url: str  # link to provider's API key dashboard
+    models_dev_provider_id: str  # provider id used by models.dev when different
+    metadata_source_provider: str  # source provider for same-model-id metadata aliases
+    model_registry_aliases: dict[str, str]  # target model -> source provider:model
 
 
 _CATALOG: list[ProviderEntry] = [
@@ -88,6 +91,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Google AI Studio — free tier available.",
         "kind": "api_key",
         "env_var": "GOOGLE_API_KEY",
+        "models_dev_provider_id": "google",
         "fallback_models": [
             "gemini-3.1-flash-image-preview",
             "gemini-2.5-flash-image-preview",
@@ -174,6 +178,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Use your Copilot subscription — OAuth, no API key.",
         "kind": "oauth",
         "env_var": "",
+        "models_dev_provider_id": "github-copilot",
         "oauth_command": "openagentd auth copilot",
         "docs_url": "https://github.com/features/copilot",
     },
@@ -183,6 +188,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Use your ChatGPT subscription via Codex OAuth.",
         "kind": "oauth",
         "env_var": "",
+        "metadata_source_provider": "openai",
         "oauth_command": "openagentd auth codex",
         "docs_url": "https://platform.openai.com/docs/codex",
     },
@@ -192,6 +198,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "AWS Bedrock (Claude / Nova / Amazon models) using your AWS credentials.",
         "kind": "cloud_creds",
         "env_var": "",
+        "models_dev_provider_id": "amazon-bedrock",
         "env_vars": ["AWS_REGION", "AWS_PROFILE"],
         "credentials": [
             {
@@ -222,6 +229,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Google Cloud's enterprise-grade Gemini.",
         "kind": "cloud_creds",
         "env_var": "",
+        "models_dev_provider_id": "google-vertex",
         "env_vars": ["GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"],
         # Vertex AI's `publisherModels.list` endpoint returns hundreds
         # of mixed-purpose models (PaLM, Codey, custom-trained, etc.)
@@ -241,9 +249,14 @@ _CATALOG: list[ProviderEntry] = [
 ]
 
 
+def builtin_providers() -> list[ProviderEntry]:
+    """Return built-in providers without loading user plugins."""
+    return list(_CATALOG)
+
+
 def all_providers() -> list[ProviderEntry]:
     """Return the full catalog in display order."""
-    entries = list(_CATALOG)
+    entries = builtin_providers()
     builtins = {entry["id"] for entry in entries}
     from app.agent.providers.plugin_registry import provider_plugins
 
@@ -260,6 +273,9 @@ def all_providers() -> list[ProviderEntry]:
             "fallback_models": list(plugin.fallback_models),
             "oauth_command": plugin.oauth_command,
             "docs_url": plugin.docs_url,
+            "models_dev_provider_id": plugin.models_dev_provider_id,
+            "metadata_source_provider": plugin.metadata_source_provider,
+            "model_registry_aliases": dict(plugin.model_registry_aliases),
         }
         entry["credentials"] = credential_map(plugin.credentials)
         entries.append(entry)

@@ -53,7 +53,7 @@ Summarization has **no operator-facing configuration surface**. All tuning lives
 
 ### Module-level defaults (single source of truth)
 
-The trigger threshold is model-aware when `app/agent/providers/model_metadata.yaml` has a `limits.context_length` entry for the agent model:
+The trigger threshold is model-aware when the model registry has a `limits.context_length` entry for the agent model. Registry data comes from the bundled `app/agent/providers/model_registry.json`, refreshed `models.dev` cache, and optional user overlay:
 
 ```text
 threshold = min(200000, 75% of model context length)

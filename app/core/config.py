@@ -149,6 +149,10 @@ class Settings(BaseSettings):
     OPENAGENTD_CACHE_DIR: str = ""
     OPENAGENTD_WORKSPACE_DIR: str = ""
 
+    # Refresh model metadata from https://models.dev at runtime. Disable in tests
+    # or hermetic deployments; bundled model_registry.json remains the fallback.
+    OPENAGENTD_MODEL_REGISTRY_REFRESH: bool = True
+
     # Agents directory — contains per-agent .md files.
     # Empty string means "derive from OPENAGENTD_CONFIG_DIR" → ``{CONFIG_DIR}/agents``.
     # Override with an absolute or working-directory-relative path.

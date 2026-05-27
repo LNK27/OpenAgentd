@@ -198,7 +198,7 @@ class TestXAICapabilities:
         assert caps.input.vision is True
 
     def test_unlisted_grok_defaults_no_vision(self):
-        # grok-3-mini is not in capabilities.yaml — falls through to
+        # grok-3-mini is not in the model registry — falls through to
         # all-false defaults. Image attachments will be rejected at the
         # gate, which is the safe behaviour for an un-curated model.
         caps = get_capabilities("xai:grok-3-mini")
