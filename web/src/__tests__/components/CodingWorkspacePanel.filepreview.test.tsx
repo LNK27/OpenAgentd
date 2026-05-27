@@ -102,12 +102,17 @@ describe('Coding workspace two-layer file preview', () => {
       untracked: ['assets/logo.png'],
     }
 
+    const user = userEvent.setup()
     await renderWorkspacePanel()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
 
-    expect(screen.getByRole('button', { name: /files 2/i })).toBeTruthy()
+    // Diff is lazy-loaded: switch to Diff tab to trigger the fetch, then back to Files.
+    await user.click(screen.getByRole('button', { name: /diff/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /files 2/i })).toBeTruthy())
+    await user.click(screen.getByRole('button', { name: /files 2/i }))
+
     expect(screen.getByTitle('README.md').textContent).toContain('M')
-    await userEvent.setup().click(screen.getByText('assets'))
+    await user.click(screen.getByText('assets'))
     expect(screen.getByLabelText('Contains modified files')).toBeTruthy()
     expect(screen.getByTitle('assets/logo.png').textContent).toContain('M')
   })
