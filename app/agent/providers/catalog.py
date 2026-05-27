@@ -187,6 +187,36 @@ _CATALOG: list[ProviderEntry] = [
         "docs_url": "https://platform.openai.com/docs/codex",
     },
     {
+        "id": "bedrock",
+        "label": "AWS Bedrock",
+        "description": "AWS Bedrock (Claude / Nova / Amazon models) using your AWS credentials.",
+        "kind": "cloud_creds",
+        "env_var": "",
+        "env_vars": ["AWS_REGION", "AWS_PROFILE"],
+        "credentials": [
+            {
+                "name": "AWS_REGION",
+                "label": "AWS Region",
+                "secret": False,
+                "required": False,
+                "placeholder": "us-east-1",
+            },
+            {
+                "name": "AWS_PROFILE",
+                "label": "AWS Profile",
+                "secret": False,
+                "required": False,
+                "placeholder": "default",
+            },
+        ],
+        "fallback_models": [
+            "bedrock:anthropic.claude-sonnet-4-6",
+            "bedrock:amazon.nova-pro-v1:0",
+            "bedrock:amazon.nova-lite-v1:0",
+        ],
+        "docs_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/setting-up.html",
+    },
+    {
         "id": "vertexai",
         "label": "Google Vertex AI",
         "description": "Google Cloud's enterprise-grade Gemini.",

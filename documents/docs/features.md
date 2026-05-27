@@ -458,3 +458,12 @@ When you cut a release:
 This document is the **canonical** answer to "what does OpenAgentd do?". Slides,
 README copy, comparison docs, marketing posts, and investor decks should all
 trace their claims back to a line here.
+## Supported Providers
+
+- ...
+- **AWS Bedrock**: Claude, Nova, and Amazon foundation models using your AWS credentials. Requires  and .
+## Supported Providers
+
+- **AWS Bedrock**: Claude, Nova, and Amazon foundation models using your AWS credentials. Requires  and .## Supported Providers
+
+- **AWS Bedrock**: Claude, Nova, and Amazon foundation models using your AWS credentials. Requires AWS_REGION and AWS_PROFILE.
