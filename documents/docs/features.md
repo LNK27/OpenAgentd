@@ -180,7 +180,7 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   commands in `.openagentd/commands/**/*.md` and `.opencode/commands/**/*.md`
   load only when a workspace is attached. Local commands win on name conflict.
   Cockpit chat stays global-only.
-- **Snippet picker** `[unreleased]` — in coding workspaces, type `#` anywhere
+- **Snippet picker** `[v1.31.0]` — in coding workspaces, type `#` anywhere
   in the composer to pick prompt snippets from `.openagentd/snippets/**/*.md`
   or `{OPENAGENTD_CONFIG_DIR}/snippets/**/*.md` and insert the rendered body.
 - **Git-backed `/undo` and `/redo`** `[v1.11.0]` — restore workspace files
