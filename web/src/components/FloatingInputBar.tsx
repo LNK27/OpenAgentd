@@ -97,6 +97,7 @@ interface FloatingInputBarProps {
   revertedCount?: number
   revertedMessages?: Array<{ role: string; content: string }>
   onRedo?: () => void
+  historyPrompts?: string[]
 }
 
 /**

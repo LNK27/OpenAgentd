@@ -152,6 +152,144 @@ describe("InputBar", () => {
     expect(submitCount).toBe(0)
   })
 
+  it("navigates submitted input history with arrow keys from an empty input", async () => {
+    const user = userEvent.setup()
+    const submitted: string[] = []
+    render(<InputBar onSubmit={(text) => submitted.push(text)} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "first")
+    await user.keyboard("{Enter}")
+    await user.type(textarea, "second")
+    await user.keyboard("{Enter}")
+
+    expect(submitted).toEqual(["first", "second"])
+    expect(textarea.value).toBe("")
+
+    await user.keyboard("{ArrowDown}")
+    expect(textarea.value).toBe("")
+
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("second")
+
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("first")
+
+    await user.keyboard("{ArrowDown}")
+    expect(textarea.value).toBe("second")
+
+    await user.keyboard("{ArrowDown}")
+    expect(textarea.value).toBe("")
+  })
+
+  it("does not enter input history when the user has typed a draft", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "previous")
+    await user.keyboard("{Enter}")
+    await user.type(textarea, "draft")
+    await user.keyboard("{ArrowUp}")
+
+    expect(textarea.value).toBe("draft")
+  })
+
+  it("navigates supplied chat history prompts before any local submit", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} historyPrompts={["newer persisted", "older persisted"]} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.click(textarea)
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("newer persisted")
+
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("older persisted")
+
+    await user.keyboard("{ArrowDown}")
+    expect(textarea.value).toBe("newer persisted")
+
+    await user.keyboard("{ArrowDown}")
+    expect(textarea.value).toBe("")
+  })
+
+  it("keeps local submissions ahead of supplied chat history and deduplicates", async () => {
+    const user = userEvent.setup()
+    const submitted: string[] = []
+    render(<InputBar onSubmit={(text) => submitted.push(text)} historyPrompts={["persisted", "local"]} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "local")
+    await user.keyboard("{Enter}")
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("local")
+
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("persisted")
+    expect(submitted).toEqual(["local"])
+  })
+
+  it("ignores blank history prompts and trims supplied entries", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} historyPrompts={["   ", "  trimmed persisted  ", "\n"]} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.click(textarea)
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("trimmed persisted")
+
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("trimmed persisted")
+  })
+
+  it("does not hijack modified arrow keys for history navigation", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} historyPrompts={["persisted"]} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.click(textarea)
+    await user.keyboard("{Control>}{ArrowUp}{/Control}")
+    expect(textarea.value).toBe("")
+
+    await user.keyboard("{Shift>}{ArrowUp}{/Shift}")
+    expect(textarea.value).toBe("")
+
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("persisted")
+  })
+
+  it("updates navigable history when supplied chat prompts change", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<InputBar onSubmit={() => {}} historyPrompts={["initial"]} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    rerender(<InputBar onSubmit={() => {}} historyPrompts={["latest", "initial"]} />)
+    await user.click(textarea)
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("latest")
+
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("initial")
+  })
+
+  it("deduplicates repeated local submissions and does not move past oldest entry", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "same")
+    await user.keyboard("{Enter}")
+    await user.type(textarea, "same")
+    await user.keyboard("{Enter}")
+
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("same")
+
+    await user.keyboard("{ArrowUp}")
+    expect(textarea.value).toBe("same")
+  })
+
   it("disables send button when disabled prop is true", () => {
     const onSubmit = () => {}
     render(<InputBar onSubmit={onSubmit} disabled={true} />)

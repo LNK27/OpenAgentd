@@ -171,6 +171,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const activeStatus        = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.status : undefined)
 
   const splitAgentNames = agentNames.filter((name) => agentStreams[name]?.status !== 'offline')
+  const historyPrompts = useMemo(() => {
+    const blocks = leadName ? agentStreams[leadName]?.blocks : undefined
+    if (!blocks) return []
+    return [...blocks]
+      .reverse()
+      .filter((block) => block.type === 'user' && block.content.trim())
+      .map((block) => block.content)
+  }, [agentStreams, leadName])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
@@ -933,6 +941,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             onSnippetCommand={handleSnippetCommand}
             slashCommands={slashCommands}
             snippetCommands={snippetCommands}
+            historyPrompts={historyPrompts}
             fileRefs={fileRefs}
             onFileRefsNeeded={() => setFileRefsEnabled(true)}
             isStreaming={isTeamWorking}

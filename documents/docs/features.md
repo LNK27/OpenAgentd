@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-05-26
+updated: 2026-05-27
 ---
 
 # Features
@@ -73,6 +73,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
 - **Drag-and-drop files into chat** `[since v1.0]` — images, PDFs, text. Multimodal
   parts attach to the user message.
+- **Composer history navigation** `[v1.31.0]` — when the input is empty, `↑` / `↓`
+  walks previous user prompts from the current chat plus local submissions. See
+  [`web/chat-input.md`](./web/chat-input.md#composer-history-navigation).
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits.
 - **Inline diff previews with real line numbers** `[v1.20.0]` — file-changing tools

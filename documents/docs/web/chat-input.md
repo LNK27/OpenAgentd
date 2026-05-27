@@ -2,12 +2,12 @@
 title: Chat Input & Message Queue
 description: How queued follow-up messages work while the team lead is streaming.
 status: stable
-updated: 2026-05-25
+updated: 2026-05-27
 ---
 
 # Chat Input & Message Queue
 
-**Sources:** `web/src/stores/useTeamStore/`, `web/src/components/FloatingInputBar.tsx`, `web/src/components/PendingMessageQueue.tsx`, `web/src/components/InputBar.mentions.ts`, `web/src/components/InputBar.overlay.tsx`, `web/src/components/AgentView.tsx` (`renderMentionSegments`), `app/api/routes/team/_helpers.py` (`collect_mention_attachments`)
+**Sources:** `web/src/stores/useTeamStore/`, `web/src/components/TeamChatView/index.tsx`, `web/src/components/FloatingInputBar.tsx`, `web/src/components/InputBar.tsx`, `web/src/components/PendingMessageQueue.tsx`, `web/src/components/InputBar.mentions.ts`, `web/src/components/InputBar.overlay.tsx`, `web/src/components/AgentView.tsx` (`renderMentionSegments`), `app/api/routes/team/_helpers.py` (`collect_mention_attachments`)
 
 ---
 
@@ -65,6 +65,10 @@ The `InputBarHandle` ref exposes:
 - `setValue(text)` — expand the floating composer when needed, inject text, and trigger height recalculation
 
 `newSession()` aborts any active team SSE stream and resets the live roster/scroll state before focusing the empty composer, so stale tokens or scroll affordances from the previous session do not leak into the fresh chat.
+
+### Composer history navigation
+
+When the composer is empty, `ArrowUp` recalls prior user prompts and `ArrowDown` moves forward until the input is empty again. History combines local submissions with loaded user messages from the current lead chat, newest first, with blank and duplicate prompts skipped. Arrow navigation does not replace a typed draft and modified arrow keys keep their native behaviour.
 
 ---
 
