@@ -976,6 +976,81 @@ def test_get_codex_provider_usage_returns_active_limits(
     assert body["limits"][1]["primary"]["used_percent"] == 88.0
 
 
+def test_get_codex_provider_usage_returns_unlimited_credits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    oauth = CodexOAuth(
+        access_token=SecretStr("chatgpt-token"),
+        refresh_token=SecretStr("refresh-token"),
+        expires_at=time.time() + 3600,
+        account_id="account-123",
+    )
+    monkeypatch.setattr(
+        "app.agent.providers.codex.oauth.CodexOAuth.load", lambda: oauth
+    )
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "plan_type": "business",
+                "rate_limit": None,
+                "additional_rate_limits": None,
+                "credits": {
+                    "has_credits": True,
+                    "unlimited": True,
+                    "balance": None,
+                    "overage_limit_reached": False,
+                    "approx_local_messages": None,
+                    "approx_cloud_messages": None,
+                },
+                "rate_limit_reached_type": None,
+            }
+
+    class _FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _url, *, headers):  # type: ignore[no-untyped-def]
+            return _FakeResponse()
+
+    monkeypatch.setattr(settings_routes.httpx, "AsyncClient", _FakeClient)
+
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/providers/codex/usage")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "provider": "codex",
+        "limits": [
+            {
+                "limit_id": "codex",
+                "limit_name": None,
+                "primary": None,
+                "secondary": None,
+                "credits": {
+                    "has_credits": True,
+                    "unlimited": True,
+                    "balance": None,
+                },
+                "plan_type": "business",
+                "rate_limit_reached_type": None,
+            }
+        ],
+    }
+
+
 def test_get_provider_usage_rejects_unsupported_provider() -> None:
     client = TestClient(_make_app())
     response = client.get("/api/settings/providers/openai/usage")

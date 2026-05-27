@@ -105,6 +105,7 @@ function UsageBar({ label, window }: { label: string; window: NonNullable<Provid
 
 function UsageLimitRows({ limit }: { limit: ProviderUsageLimit }) {
   const base = usageLabel(limit)
+  const credits = limit.credits
   return (
     <>
       {limit.primary && (
@@ -112,6 +113,11 @@ function UsageLimitRows({ limit }: { limit: ProviderUsageLimit }) {
       )}
       {limit.secondary && (
         <UsageBar label={`${base} · ${formatWindowDuration(limit.secondary.window_minutes)}`} window={limit.secondary} />
+      )}
+      {credits && !limit.primary && !limit.secondary && (
+        <p className="text-[11px] text-(--color-text-muted)">
+          {credits.unlimited ? 'Unlimited usage available' : credits.has_credits ? 'Usage credits available' : 'No usage credits available'}
+        </p>
       )}
     </>
   )
@@ -127,7 +133,7 @@ function UsagePanel({ limits }: { limits: ProviderUsageLimit[] }) {
         <p className="text-xs font-semibold text-(--color-text)">Active usage</p>
         <p className="text-[11px] text-(--color-text-muted)">
           {primary?.plan_type ? `Plan: ${primary.plan_type}` : 'Live Codex quota'}
-          {credits?.balance ? ` · credits ${credits.balance}` : ''}
+          {credits?.unlimited ? ' · unlimited' : credits?.balance ? ` · credits ${credits.balance}` : ''}
         </p>
       </div>
       <div className="space-y-2">

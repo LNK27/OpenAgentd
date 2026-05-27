@@ -2,7 +2,7 @@
 title: LLM Providers
 description: Every provider registered in build_provider — keys, model IDs, vision defaults, OAuth flows.
 status: stable
-updated: 2026-05-23
+updated: 2026-05-27
 ---
 
 # LLM Providers
@@ -104,7 +104,7 @@ Uses Anthropic's Messages API at `https://api.anthropic.com/v1/messages`. API-ke
 
 ### `codex`
 
-Uses your **ChatGPT Plus/Pro subscription** to access OpenAI models via `https://chatgpt.com/backend-api/codex/responses`. The endpoint is Responses API only and requires streaming; non-streaming `chat()` calls are assembled from the stream. `temperature`, `top_p`, and `max_tokens` are ignored because the private endpoint rejects those public API fields. `thinking_level` maps to `reasoning.effort`. OpenAgentd identifies itself with `originator: openagentd`, retries transient `response.failed` stream errors such as overloads, and treats Codex usage-limit/quota responses as immediate fallback candidates. Settings → Providers shows live Codex OAuth usage windows, resets, credits, and spend-cap/limit states from the same token. The same OAuth token also powers `generate_image` when `multimodal.yaml` sets `image.model: codex:<chat-model>`.
+Uses your **ChatGPT Plus/Pro/Business subscription** to access OpenAI models via `https://chatgpt.com/backend-api/codex/responses`. The endpoint is Responses API only and requires streaming; non-streaming `chat()` calls are assembled from the stream. `temperature`, `top_p`, and `max_tokens` are ignored because the private endpoint rejects those public API fields. `thinking_level` maps to `reasoning.effort`. OpenAgentd identifies itself with `originator: openagentd`, retries transient `response.failed` stream errors such as overloads, and treats Codex usage-limit/quota responses as immediate fallback candidates. Settings → Providers shows live Codex OAuth usage windows, resets, credits, spend-cap/limit states, and unlimited-credit plans from the same token. The same OAuth token also powers `generate_image` when `multimodal.yaml` sets `image.model: codex:<chat-model>`.
 
 ### `copilot`
 

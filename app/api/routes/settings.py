@@ -463,10 +463,12 @@ def _usage_limit(
     if not isinstance(data, dict):
         return None
     values = cast("dict[str, object]", data)
-    rate_limit = values.get("rate_limit") if "rate_limit" in values else values
-    if not isinstance(rate_limit, dict):
-        return None
-    rate_limit_values = cast("dict[str, object]", rate_limit)
+    raw_rate_limit = values.get("rate_limit")
+    rate_limit_values = (
+        cast("dict[str, object]", raw_rate_limit)
+        if isinstance(raw_rate_limit, dict)
+        else values
+    )
     primary = _usage_window(rate_limit_values.get("primary_window"))
     secondary = _usage_window(rate_limit_values.get("secondary_window"))
     credits = _usage_credits(values.get("credits"))
