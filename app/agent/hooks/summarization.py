@@ -76,8 +76,8 @@ if TYPE_CHECKING:
 #   the full pre-threshold history collapses into the summary. Coding sessions
 #   benefit from a single authoritative "state of the world" record over
 #   partially-summarised history.
-DEFAULT_PROMPT_TOKEN_THRESHOLD = 100000
-MAX_PROMPT_TOKEN_THRESHOLD = 150000
+DEFAULT_PROMPT_TOKEN_THRESHOLD = 200000
+MAX_PROMPT_TOKEN_THRESHOLD = 200000
 PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO = 0.75
 DEFAULT_KEEP_LAST_ASSISTANTS = 3
 CODING_KEEP_LAST_ASSISTANTS = 0
@@ -286,7 +286,7 @@ def _expand_tool_pair_ids(messages: list, seed_ids: set[int]) -> set[int]:
 
 
 def prompt_token_threshold_for_model(model_id: str | None) -> int:
-    """Return summarisation threshold: min(150k, 75% model context)."""
+    """Return summarisation threshold: min(200k, 75% model context)."""
     context_length = get_model_limits(model_id).context_length
     if context_length is None:
         return DEFAULT_PROMPT_TOKEN_THRESHOLD
