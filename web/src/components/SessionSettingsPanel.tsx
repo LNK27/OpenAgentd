@@ -477,7 +477,6 @@ function SessionModelSettings({
           <button
             type="button"
             onClick={() => setThinkingPickerOpen((open) => !open)}
-            onBlur={() => window.setTimeout(() => setThinkingPickerOpen(false), 120)}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
                 e.preventDefault()
@@ -510,9 +509,13 @@ function SessionModelSettings({
                   key={level.value}
                   role="option"
                   aria-selected={level.value === draftThinkingLevel}
-                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    selectThinkingLevel(level.value)
+                  }}
                   onMouseEnter={() => setActiveThinkingIndex(index)}
-                  onClick={() => selectThinkingLevel(level.value)}
+                  onClick={(e) => e.stopPropagation()}
                   className={`block w-full rounded-sm px-2 py-1.5 text-left text-xs text-(--color-text) transition-colors ${index === activeThinkingIndex ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)'}`}
                 >
                   {level.label}
