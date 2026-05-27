@@ -12,6 +12,10 @@ from app.agent.providers.copilot.usage import (
     CopilotUsageUnavailableError,
     get_usage as get_copilot_usage,
 )
+from app.agent.providers.plugin_registry import (
+    ProviderCredentialStore,
+    find_provider_plugin,
+)
 from app.api.schemas.settings import ProviderUsageResponse
 
 
@@ -37,4 +41,13 @@ async def get_provider_usage(provider_id: str) -> ProviderUsageResponse:
         raise ProviderUsageCredentialsError(str(exc)) from exc
     except (CodexUsageUnavailableError, CopilotUsageUnavailableError) as exc:
         raise ProviderUsageUnavailableError(str(exc)) from exc
+
+    plugin = find_provider_plugin(provider_id)
+    if plugin is not None and plugin.get_usage is not None:
+        try:
+            return await plugin.get_usage(ProviderCredentialStore(provider_id))
+        except ValueError as exc:
+            raise ProviderUsageCredentialsError(str(exc)) from exc
+        except Exception as exc:
+            raise ProviderUsageUnavailableError(str(exc)) from exc
     raise ProviderUsageUnsupportedError(provider_id)

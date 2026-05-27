@@ -206,7 +206,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
   })
   const usageQ = useProviderUsageQuery(
     provider.id,
-    (provider.id === 'codex' || provider.id === 'copilot') && provider.is_configured,
+    provider.kind === 'oauth' && provider.is_configured,
   )
 
   // Derived (not state) — single source of truth is the query cache.
@@ -403,7 +403,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
           </div>
         )}
 
-        {(provider.id === 'codex' || provider.id === 'copilot') && provider.is_configured && (
+        {provider.kind === 'oauth' && provider.is_configured && (
           <div className="space-y-2">
             {usageQ.isLoading ? (
               <p className="inline-flex items-center gap-1 text-xs text-(--color-text-muted)">
