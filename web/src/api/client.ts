@@ -30,6 +30,8 @@ import type {
   SkillDeleteResponse,
   CommandListResponse,
   CommandRenderResponse,
+  SnippetListResponse,
+  SnippetRenderResponse,
   TeamCommandResponse,
   WorkspaceFilesResponse,
   CodingWorkspaceFilesResponse,
@@ -664,6 +666,25 @@ export async function renderCommand(
     body: JSON.stringify({ arguments: arguments_ }),
   })
   if (!res.ok) await parseDetailOrThrow(res, `POST /commands/${name}/render`)
+  return res.json()
+}
+
+// ── /snippets ───────────────────────────────────────────────────────────────
+
+export async function listSnippets(workspace: string): Promise<SnippetListResponse> {
+  const params = new URLSearchParams({ workspace })
+  const res = await fetch(`${API}/snippets?${params.toString()}`)
+  if (!res.ok) throw new Error(`listSnippets failed: ${res.status}`)
+  return res.json()
+}
+
+export async function renderSnippet(name: string, workspace: string): Promise<SnippetRenderResponse> {
+  const encoded = name.split('/').map(encodeURIComponent).join('/')
+  const params = new URLSearchParams({ workspace })
+  const res = await fetch(`${API}/snippets/${encoded}/render?${params.toString()}`, {
+    method: 'POST',
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /snippets/${name}/render`)
   return res.json()
 }
 

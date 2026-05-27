@@ -393,6 +393,23 @@ export interface CommandRenderResponse {
   content: string
 }
 
+// ── Snippets ───────────────────────────────────────────────────────────────
+
+export interface SnippetSummary {
+  name: string
+  description: string
+  source: string
+}
+
+export interface SnippetListResponse {
+  snippets: SnippetSummary[]
+}
+
+export interface SnippetRenderResponse {
+  name: string
+  content: string
+}
+
 /**
  * Workspace paths the server's snapshot restore touched during a
  * ``undo`` / ``redo`` command. Empty lists mean the restore had no

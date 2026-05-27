@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
-import { InputBar, type FileRef, type InputBarHandle, type SlashCommand } from './InputBar'
+import { InputBar, type FileRef, type InputBarHandle, type SlashCommand, type SnippetCommand } from './InputBar'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { AgentCapabilities } from '@/api/types'
@@ -82,7 +82,9 @@ interface FloatingInputBarProps {
   onSubmit: (message: string, files?: File[]) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
+  onSnippetCommand?: (id: string) => Promise<string | null> | string | null
   slashCommands?: SlashCommand[]
+  snippetCommands?: SnippetCommand[]
   fileRefs?: FileRef[]
   onFileRefsNeeded?: () => void
   isStreaming?: boolean

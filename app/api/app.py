@@ -25,6 +25,7 @@ from app.api.routes.quote import router as quote_router
 from app.api.routes.scheduler import router as scheduler_router
 from app.api.routes.settings import router as settings_router
 from app.api.routes.skills import router as skills_router
+from app.api.routes.snippets import router as snippets_router
 from app.api.routes.speech import router as speech_router
 from app.api.routes.team import router as team_router
 from app.api.routes.wiki import router as wiki_router
@@ -208,6 +209,7 @@ def create_app() -> FastAPI:
     app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
     app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
     app.include_router(commands_router, prefix="/api/commands", tags=["commands"])
+    app.include_router(snippets_router, prefix="/api/snippets", tags=["snippets"])
     app.include_router(
         observability_router, prefix="/api/observability", tags=["observability"]
     )

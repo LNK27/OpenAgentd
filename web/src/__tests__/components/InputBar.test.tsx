@@ -269,6 +269,53 @@ describe("InputBar", () => {
     expect(textarea.value).toBe("/git:commit ")
   })
 
+  it("inserts snippets from # picker anywhere in the input", async () => {
+    const user = userEvent.setup()
+    render(
+      <InputBar
+        onSubmit={() => {}}
+        snippetCommands={[
+          { id: "git/commit", label: "git:commit", description: "Commit staged changes" },
+          { id: "review", label: "review", description: "Review this change" },
+        ]}
+        onSnippetCommand={(id) => id === "review" ? "Please review this change" : "Commit prompt"}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "start #")
+
+    const listbox = screen.getByRole("listbox", { name: "Snippets" })
+    const options = screen.getAllByRole("option")
+    expect(textarea.getAttribute("aria-controls")).toBe(listbox.id)
+    expect(options[0].getAttribute("aria-selected")).toBe("true")
+
+    await user.keyboard("{ArrowDown}{Enter}")
+
+    expect(textarea.value).toBe("start Please review this change")
+  })
+
+  it("opens snippet picker when caret moves into an existing # token", async () => {
+    const user = userEvent.setup()
+    render(
+      <InputBar
+        onSubmit={() => {}}
+        snippetCommands={[{ id: "oad", label: "oad", description: "Say hi" }]}
+        onSnippetCommand={() => "just say hi"}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "hello #oad world")
+
+    expect(screen.queryByRole("listbox", { name: "Snippets" })).toBeNull()
+
+    textarea.setSelectionRange(10, 10)
+    fireEvent.select(textarea)
+
+    expect(screen.getByRole("listbox", { name: "Snippets" })).toBeTruthy()
+  })
+
   it("clears input after submit", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}

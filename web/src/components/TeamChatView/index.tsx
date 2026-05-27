@@ -37,7 +37,8 @@ import { SchedulerPanel } from '../SchedulerPanel'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery, useTriggerDreamMutation } from '@/queries'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
-import { renderCommand, resolveTeamSession } from '@/api/client'
+import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
+import { renderCommand, renderSnippet, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
@@ -60,7 +61,7 @@ import {
 import { isAgentRole, type AgentRole } from '@/lib/agent-roles'
 import type { AgentStream } from '@/stores/useTeamStore'
 import { AgentTopbar } from '@/components/AgentTopbar'
-import { type InputBarHandle, type SlashCommand } from '../InputBar'
+import { type InputBarHandle, type SlashCommand, type SnippetCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
 import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment, WorkspaceFileInfo } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
@@ -435,6 +436,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // into the textarea (``keepInputOpen``) so the user can append
   // ``$ARGUMENTS`` before submitting.
   const commandsQ = useCommandsQuery(agentWorkspace)
+  const snippetsQ = useSnippetsQuery(mode === 'coding' ? agentWorkspace : null)
   const userCommandNames = useMemo(
     () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
     [commandsQ.data],
@@ -460,6 +462,28 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       }
     }),
   ]
+
+  const snippetCommands: SnippetCommand[] = (snippetsQ.data?.snippets ?? []).map((item) => ({
+    id: item.name,
+    label: item.name.replace('/', ':'),
+    description: item.description || `Snippet (${item.source})`,
+    category: 'snippet',
+  }))
+
+  const handleSnippetCommand = useCallback(async (id: string) => {
+    if (!agentWorkspace) return null
+    try {
+      const res = await renderSnippet(id, agentWorkspace)
+      return res.content
+    } catch (err) {
+      pushToast({
+        tone: 'error',
+        title: `Failed to render #${id.replace('/', ':')}`,
+        description: (err as Error).message,
+      })
+      return null
+    }
+  }, [agentWorkspace, pushToast])
 
   const handleSlashCommand = useCallback((id: string) => {
     switch (id) {
@@ -901,7 +925,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             }}
             onStop={() => useTeamStore.getState().stopTeam()}
             onSlashCommand={handleSlashCommand}
+            onSnippetCommand={handleSnippetCommand}
             slashCommands={slashCommands}
+            snippetCommands={snippetCommands}
             fileRefs={fileRefs}
             onFileRefsNeeded={() => setFileRefsEnabled(true)}
             isStreaming={isTeamWorking}

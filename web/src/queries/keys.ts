@@ -59,6 +59,9 @@ export const queryKeys = {
   commands: {
     list: (workspace?: string | null) => ['commands', 'list', workspace ?? null] as const,
   },
+  snippets: {
+    list: (workspace: string) => ['snippets', 'list', workspace] as const,
+  },
   observability: {
     summary: (days: number) => ['observability', 'summary', days] as const,
     traces: (days: number, limit: number, offset: number) =>

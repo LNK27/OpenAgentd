@@ -48,11 +48,20 @@ export interface SlashCommand {
   isSeparator?: boolean
 }
 
+export interface SnippetCommand {
+  id: string
+  label: string
+  description: string
+  category?: string
+}
+
 interface InputBarProps {
   onSubmit: (message: string, files?: File[]) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
+  onSnippetCommand?: (id: string) => Promise<string | null> | string | null
   slashCommands?: SlashCommand[]
+  snippetCommands?: SnippetCommand[]
   /**
    * Workspace files/folders the user can reference with `@`. When the list is
    * empty (or omitted) the picker stays dormant — the `@` character behaves as
@@ -134,11 +143,21 @@ export interface InputBarHandle {
 
 const CHAR_WARN_THRESHOLD = 500
 
+function findActiveSnippet(text: string, caret: number) {
+  const hash = text.lastIndexOf('#', Math.max(0, caret - 1))
+  if (hash === -1) return null
+  const token = text.slice(hash + 1, caret)
+  if (/\s/.test(token)) return null
+  return { start: hash, end: caret, query: token.toLowerCase() }
+}
+
 export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function InputBar({
   onSubmit,
   onStop,
   onSlashCommand,
+  onSnippetCommand,
   slashCommands = [],
+  snippetCommands = [],
   fileRefs = [],
   onFileRefsNeeded,
   isStreaming = false,
@@ -160,7 +179,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const [value, setValue] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [slashMenuIndex, setSlashMenuIndex] = useState(0)
+  const [snippetMenuIndex, setSnippetMenuIndex] = useState(0)
   const [mentionMenuIndex, setMentionMenuIndex] = useState(0)
+  const [snippetRange, setSnippetRange] = useState<
+    { start: number; end: number; query: string } | null
+  >(null)
   // The active @-mention window (positions in ``value``) — null when no
   // mention is being edited at the caret. Recomputed on every keystroke
   // and on caret-only moves (arrow keys, clicks) via ``syncMention``.
@@ -180,6 +203,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (!el) return
     const caret = el.selectionStart ?? el.value.length
     const next = findActiveMention(el.value, caret)
+    setSnippetRange(next ? null : findActiveSnippet(el.value, caret))
     setMentionRange((prev) => {
       if (!prev && !next) return prev
       if (
@@ -264,6 +288,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       // Programmatic value replacement invalidates any open mention picker —
       // its ``start``/``end`` indices refer to the old text.
       setMentionRange(null)
+      setSnippetRange(null)
       // Trigger height recalculation after injecting text programmatically
       requestAnimationFrame(resize)
     },
@@ -273,6 +298,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         return `${prev}${spacer}${text}`
       })
       setMentionRange(null)
+      setSnippetRange(null)
       requestAnimationFrame(resize)
     },
     setFiles: (nextFiles: File[]) => {
@@ -314,6 +340,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // we just wiped. Without this, a picker that was open at submit time
     // would render above the now-empty textarea on the next paint.
     setMentionRange(null)
+    setSnippetRange(null)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -481,6 +508,28 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const slashMenuOpen = slashFilter !== null && filteredSlashCommands.length > 0
   const slashMenuId = 'inputbar-slash-menu'
   const mentionMenuId = 'inputbar-mention-menu'
+  const snippetMenuId = 'inputbar-snippet-menu'
+
+  const filteredSnippetCommands = useMemo(() => {
+    if (!snippetRange || snippetCommands.length === 0) return []
+    return snippetCommands.filter((cmd) => {
+      if (snippetRange.query === '') return true
+      return cmd.id.toLowerCase().includes(snippetRange.query) ||
+        cmd.label.toLowerCase().includes(snippetRange.query)
+    })
+  }, [snippetCommands, snippetRange])
+
+  const snippetMenuOpen = snippetRange !== null && filteredSnippetCommands.length > 0
+  const clampedSnippetIndex = filteredSnippetCommands.length > 0
+    ? snippetMenuIndex % filteredSnippetCommands.length
+    : 0
+
+  const snippetOptionRefs = useRef<(HTMLButtonElement | null)[]>([])
+  useEffect(() => {
+    snippetOptionRefs.current.length = filteredSnippetCommands.length
+    if (!snippetMenuOpen) return
+    snippetOptionRefs.current[clampedSnippetIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [clampedSnippetIndex, filteredSnippetCommands, snippetMenuOpen])
 
   // Clamp index to valid range (handles filter changes reducing the list).
   // The index tracks position within ``selectableSlashCommands``, not the full
@@ -524,6 +573,29 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     onSlashCommand?.(cmd.id)
   }, [onSlashCommand, resize])
 
+  const insertSnippet = useCallback(async (cmd: SnippetCommand) => {
+    if (!snippetRange) return
+    const rendered = await onSnippetCommand?.(cmd.id)
+    if (rendered == null) return
+    const before = value.slice(0, snippetRange.start)
+    const after = value.slice(snippetRange.end)
+    const spacerBefore = before && !/\s$/.test(before) && rendered ? ' ' : ''
+    const spacerAfter = after && !/^\s/.test(after) && rendered ? ' ' : ''
+    const next = before + spacerBefore + rendered + spacerAfter + after
+    setValue(next)
+    setSnippetRange(null)
+    setSnippetMenuIndex(0)
+    const el = textareaRef.current
+    if (el) {
+      const caret = before.length + spacerBefore.length + rendered.length
+      requestAnimationFrame(() => {
+        el.focus()
+        el.setSelectionRange(caret, caret)
+        resize()
+      })
+    }
+  }, [onSnippetCommand, resize, snippetRange, value])
+
   // ── @-mention filtering ────────────────────────────────────────────────────
 
   const MENTION_MAX_RESULTS = 20
@@ -564,6 +636,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const next = before + insertion + after
     setValue(next)
     setMentionRange(null)
+    setSnippetRange(null)
     setMentionMenuIndex(0)
     // Move the caret to just after the inserted token + trailing space. The
     // textarea state lags by one render so we defer with rAF.
@@ -613,6 +686,29 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       }
     }
 
+    if (snippetMenuOpen && filteredSnippetCommands.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSnippetMenuIndex((i) => (i + 1) % filteredSnippetCommands.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSnippetMenuIndex((i) => (i - 1 + filteredSnippetCommands.length) % filteredSnippetCommands.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        void insertSnippet(filteredSnippetCommands[clampedSnippetIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSnippetRange(null)
+        return
+      }
+    }
+
     // Slash menu navigation
     if (slashMenuOpen && selectableSlashCommands.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -646,6 +742,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setValue(e.target.value)
     setSlashMenuIndex(0)
+    setSnippetMenuIndex(0)
     setMentionMenuIndex(0)
     // ``selectionStart`` is already at the post-change caret position by the
     // time React fires onChange.
@@ -653,6 +750,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const next = findActiveMention(e.target.value, caret)
     if (next) onFileRefsNeeded?.()
     setMentionRange(next)
+    setSnippetRange(next ? null : findActiveSnippet(e.target.value, caret))
     resize()
   }
 
@@ -746,9 +844,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </button>
   ) : null
 
-  const activePopupId = mentionMenuOpen ? mentionMenuId : slashMenuOpen ? slashMenuId : undefined
+  const activePopupId = mentionMenuOpen ? mentionMenuId : snippetMenuOpen ? snippetMenuId : slashMenuOpen ? slashMenuId : undefined
   const activeOptionId = mentionMenuOpen
     ? `${mentionMenuId}-option-${clampedMentionIndex}`
+    : snippetMenuOpen
+      ? `${snippetMenuId}-option-${clampedSnippetIndex}`
     : slashMenuOpen
       ? `${slashMenuId}-option-${clampedIndex}`
       : undefined
@@ -875,7 +975,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // off. Same call Discord/Slack/ChatGPT make for the same reason.
         spellCheck={false}
         aria-label="Message input"
-        aria-expanded={mentionMenuOpen || slashMenuOpen}
+        aria-expanded={mentionMenuOpen || snippetMenuOpen || slashMenuOpen}
         aria-controls={activePopupId}
         aria-activedescendant={activeOptionId}
       />
@@ -936,6 +1036,42 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
                   <span className="min-w-0 flex-1 truncate text-(--color-text-2)">
                     {cmd.description}
                   </span>
+                  {cmd.category && (
+                    <span className="shrink-0 rounded-md bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted) ring-1 ring-(--color-border)">
+                      {cmd.category}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {!minimized && snippetMenuOpen && filteredSnippetCommands.length > 0 && (
+          <div
+            id={snippetMenuId}
+            role="listbox"
+            aria-label="Snippets"
+            className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md"
+          >
+            {filteredSnippetCommands.map((cmd, idx) => {
+              const active = idx === clampedSnippetIndex
+              return (
+                <button
+                  key={cmd.id}
+                  id={`${snippetMenuId}-option-${idx}`}
+                  ref={(node) => { snippetOptionRefs.current[idx] = node }}
+                  role="option"
+                  aria-selected={active}
+                  onMouseDown={(e) => { e.preventDefault(); void insertSnippet(cmd) }}
+                  className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
+                    active
+                      ? 'bg-(--bg-key) text-(--color-text)'
+                      : 'text-(--color-text-muted) hover:bg-(--bg-key)'
+                  }`}
+                >
+                  <span className="shrink-0 font-mono text-xs text-(--color-accent)">#{cmd.label}</span>
+                  <span className="min-w-0 flex-1 truncate text-(--color-text-2)">{cmd.description}</span>
                   {cmd.category && (
                     <span className="shrink-0 rounded-md bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted) ring-1 ring-(--color-border)">
                       {cmd.category}
