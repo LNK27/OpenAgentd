@@ -23,6 +23,7 @@ import yaml
 from loguru import logger
 from pydantic import Field
 
+from app.agent.sandbox import get_sandbox
 from app.agent.tools.registry import tool
 
 
@@ -35,27 +36,35 @@ def _default_skills_dir() -> Path:
 _SKILLS_DIR: Path = _default_skills_dir()
 
 
+def _project_root() -> Path:
+    """Return the active project root for project-local skill discovery."""
+    try:
+        return get_sandbox().workspace_root
+    except Exception:
+        return Path.cwd()
+
+
 def _iter_skill_roots() -> list[Path]:
     """Roots scanned by discovery, in precedence order.
 
     Mirrors the slash-command precedence so a user's curated library
     works in both tools:
 
-    1. ``{cwd}/.openagentd/skills/``  (project, OpenAgentd-native)
-    2. ``{cwd}/.opencode/skills/``    (project, opencode reuse)
-    3. ``_SKILLS_DIR``                (global, OpenAgentd — typically
-                                        ``{OPENAGENTD_CONFIG_DIR}/skills``)
-    4. ``~/.config/opencode/skills/`` (global, opencode reuse)
-    5. bundled OpenAgentd skills      (read-only fallback)
+    1. ``{workspace}/.openagentd/skills/``  (project, OpenAgentd-native)
+    2. ``{workspace}/.opencode/skills/``    (project, opencode reuse)
+    3. ``_SKILLS_DIR``                     (global, OpenAgentd — typically
+                                             ``{OPENAGENTD_CONFIG_DIR}/skills``)
+    4. ``~/.config/opencode/skills/``      (global, opencode reuse)
+    5. bundled OpenAgentd skills           (read-only fallback)
 
     Earlier entries win on a name collision. ``_SKILLS_DIR`` is
     referenced indirectly (via the module-level binding) so existing
     tests that monkeypatch it keep working.
     """
-    cwd = Path.cwd()
+    project_root = _project_root()
     return [
-        cwd / ".openagentd" / "skills",
-        cwd / ".opencode" / "skills",
+        project_root / ".openagentd" / "skills",
+        project_root / ".opencode" / "skills",
         _SKILLS_DIR,
         Path.home() / ".config" / "opencode" / "skills",
         _builtin_skills_dir(),

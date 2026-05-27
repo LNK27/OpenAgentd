@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
 from app.agent.tools.builtin.skill import (
     _builtin_skills_dir,
     _discover_skills_cached,
@@ -273,6 +276,15 @@ class TestMultiRootDiscovery:
         _discover_skills_cached.cache_clear()
 
     @pytest.fixture
+    def sandbox_workspace(self, tmp_path):
+        workspace = tmp_path / "workspace"
+        token = set_sandbox(SandboxConfig(workspace=str(workspace), session_id="s1"))
+        try:
+            yield workspace
+        finally:
+            _sandbox_ctx.reset(token)
+
+    @pytest.fixture
     def roots(self, tmp_path, monkeypatch):
         """Patch ``_iter_skill_roots`` to a fresh four-root layout under tmp_path."""
         project_oad = tmp_path / "proj" / ".openagentd" / "skills"
@@ -333,6 +345,72 @@ class TestMultiRootDiscovery:
         result = discover_skills()
 
         assert set(result.keys()) == {"alpha", "beta", "gamma", "delta"}
+
+    def test_project_skills_use_active_sandbox_workspace(self, sandbox_workspace):
+        project_oad = sandbox_workspace / ".openagentd" / "skills"
+        self._write_skill(project_oad, "oad/commit", "Commit workflow", "Body.")
+
+        result = discover_skills()
+
+        assert "oad/commit" in result
+        assert result["oad/commit"]["description"] == "Commit workflow"
+        assert str(project_oad / "oad" / "commit") == result["oad/commit"]["dir"]
+
+    def test_sandbox_project_skill_shadows_process_cwd_skill(
+        self, tmp_path, monkeypatch, sandbox_workspace
+    ):
+        process_cwd = tmp_path / "process-cwd"
+        self._write_skill(
+            process_cwd / ".openagentd" / "skills",
+            "oad/commit",
+            "Wrong cwd skill",
+            "Wrong body.",
+        )
+        self._write_skill(
+            sandbox_workspace / ".openagentd" / "skills",
+            "oad/commit",
+            "Workspace skill",
+            "Workspace body.",
+        )
+        monkeypatch.chdir(process_cwd)
+
+        result = discover_skills()
+
+        assert result["oad/commit"]["description"] == "Workspace skill"
+        assert result["oad/commit"]["dir"] == str(
+            sandbox_workspace / ".openagentd" / "skills" / "oad" / "commit"
+        )
+
+    def test_sandbox_project_skills_precede_global_openagentd(
+        self, tmp_path, monkeypatch, sandbox_workspace
+    ):
+        global_oad = tmp_path / "config" / "skills"
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", global_oad)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+        self._write_skill(global_oad, "oad/commit", "Global skill", "Global body.")
+        self._write_skill(
+            sandbox_workspace / ".openagentd" / "skills",
+            "oad/commit",
+            "Workspace skill",
+            "Workspace body.",
+        )
+
+        result = discover_skills()
+
+        assert result["oad/commit"]["description"] == "Workspace skill"
+
+    @pytest.mark.asyncio
+    async def test_load_skill_reads_sandbox_project_body(self, sandbox_workspace):
+        self._write_skill(
+            sandbox_workspace / ".openagentd" / "skills",
+            "oad/commit",
+            "Commit workflow",
+            "Workspace commit body.",
+        )
+
+        body = await load_skill("oad/commit")
+
+        assert body == "Workspace commit body."
 
     @pytest.mark.asyncio
     async def test_load_skill_finds_opencode_skill(self, roots):
