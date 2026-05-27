@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 
 import {
+  ApiValidationError,
   installSeed,
   listProviderModels,
   oauthLoginStream,
@@ -413,7 +414,11 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
             ) : usageQ.data ? (
               <UsagePanel limits={usageQ.data.limits} />
             ) : usageQ.isError ? (
-              <p className="text-xs text-(--color-text-muted)">Usage monitor unavailable right now.</p>
+              <p className="text-xs text-(--color-text-muted)">
+                {usageQ.error instanceof ApiValidationError && usageQ.error.status === 404
+                  ? 'Usage monitoring is not supported for this OAuth provider yet.'
+                  : 'Usage monitor unavailable right now.'}
+              </p>
             ) : null}
           </div>
         )}
