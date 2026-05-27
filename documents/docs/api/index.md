@@ -229,13 +229,11 @@ User-editable runtime settings persisted under `{OPENAGENTD_CONFIG_DIR}`. Sandbo
 | `PUT` | `/api/settings/title-generation` | Persist title generation runtime settings |
 | `GET` | `/api/settings/multimodal` | `{image, video}` from `multimodal.yaml` |
 | `PUT` | `/api/settings/multimodal` | Persist image/video generation defaults |
-| `GET` | `/api/settings/providers/{provider}/usage` | Live usage snapshot when supported (`codex` only) |
+| `GET` | `/api/settings/providers/{provider}/usage` | Live usage snapshot when supported (`codex`, `copilot`) |
 
-Codex usage responses return `{provider, limits}`. Each limit may include rolling
-`primary` / `secondary` windows (`used_percent`, reset time, window length),
-`credits` (`has_credits`, `unlimited`, optional balance), plan type, and any
-reached limit state. Unlimited Business-style accounts can return credits without
-rate-limit windows.
+Provider usage responses return `{provider, limits}`. Codex may include rolling
+windows, credits, unlimited plans, and reached limit states. Copilot returns the
+premium request quota only.
 
 | Method | Path | Returns |
 |--------|------|---------|

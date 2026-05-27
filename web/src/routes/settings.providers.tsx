@@ -84,6 +84,16 @@ function formatWindowDuration(minutes?: number | null): string {
   return `${Math.round(minutes / (60 * 24))}d window`
 }
 
+function deviceCodeHelp(providerId: string): string {
+  if (providerId === 'codex') {
+    return 'Use this code for personal ChatGPT accounts. Keep this dialog open while the browser approves access.'
+  }
+  if (providerId === 'copilot') {
+    return 'Use this code on GitHub to authorize Copilot. Keep this dialog open while GitHub approves access.'
+  }
+  return 'Use this code on the authorization page. Keep this dialog open while access is approved.'
+}
+
 function UsageBar({ label, window }: { label: string; window: NonNullable<ProviderUsageLimit['primary']> }) {
   const percent = Math.max(0, Math.min(100, window.used_percent))
   const reset = formatResetTime(window.resets_at)
@@ -132,7 +142,7 @@ function UsagePanel({ limits }: { limits: ProviderUsageLimit[] }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold text-(--color-text)">Active usage</p>
         <p className="text-[11px] text-(--color-text-muted)">
-          {primary?.plan_type ? `Plan: ${primary.plan_type}` : 'Live Codex quota'}
+          {primary?.plan_type ? `Plan: ${primary.plan_type}` : 'Live usage'}
           {credits?.unlimited ? ' · unlimited' : credits?.balance ? ` · credits ${credits.balance}` : ''}
         </p>
       </div>
@@ -196,7 +206,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
   })
   const usageQ = useProviderUsageQuery(
     provider.id,
-    provider.id === 'codex' && provider.is_configured,
+    (provider.id === 'codex' || provider.id === 'copilot') && provider.is_configured,
   )
 
   // Derived (not state) — single source of truth is the query cache.
@@ -393,7 +403,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
           </div>
         )}
 
-        {provider.id === 'codex' && provider.is_configured && (
+        {(provider.id === 'codex' || provider.id === 'copilot') && provider.is_configured && (
           <div className="space-y-2">
             {usageQ.isLoading ? (
               <p className="inline-flex items-center gap-1 text-xs text-(--color-text-muted)">
@@ -692,7 +702,7 @@ function OAuthLoginDialog({
                 <p className="text-xs font-medium tracking-[0.18em] text-(--color-text-muted) uppercase">Device code</p>
                 <p className="mt-2 font-mono text-3xl font-semibold tracking-[0.18em] text-(--color-text)">{deviceEvent.user_code}</p>
                 <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-(--color-text-muted)">
-                  Use this code for personal ChatGPT accounts. Keep this dialog open while the browser approves access.
+                  {deviceCodeHelp(provider.id)}
                 </p>
                 {deviceEvent.verification_uri && (
                   <Button className="mt-4" size="sm" onClick={() => void openExternalUrl(deviceEvent.verification_uri!)}>

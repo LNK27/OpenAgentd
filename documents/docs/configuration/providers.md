@@ -108,7 +108,7 @@ Uses your **ChatGPT Plus/Pro/Business subscription** to access OpenAI models via
 
 ### `copilot`
 
-GitHub Copilot OAuth — requires an active Copilot subscription. Models include `copilot:gpt-…`, `copilot:claude-…`, etc. (see Copilot's catalog).
+GitHub Copilot OAuth — requires an active Copilot subscription. Models include `copilot:gpt-…`, `copilot:claude-…`, etc. (see Copilot's catalog). Settings → Providers shows the live Copilot premium request quota from the same token.
 
 ### `bedrock`
 

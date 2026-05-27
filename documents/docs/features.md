@@ -268,6 +268,8 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   built-in OAuth helper.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
+- **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
+  premium request quota from the saved OAuth token.
 
 ---
 

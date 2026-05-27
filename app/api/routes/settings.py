@@ -13,7 +13,7 @@ import asyncio
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -32,16 +32,19 @@ from app.api.schemas.settings import (
     ProviderSaveResponse,
     ProviderTestRequest,
     ProviderTestResponse,
-    ProviderUsageCredits,
-    ProviderUsageLimit,
     ProviderUsageResponse,
-    ProviderUsageWindow,
     ProvidersListBody,
     MultimodalSettingsBody,
     SandboxSettingsBody,
     SeedInstallRequest,
     SeedInstallResponse,
     TitleGenerationSettingsBody,
+)
+from app.services.provider_usage import (
+    ProviderUsageCredentialsError,
+    ProviderUsageUnavailableError,
+    ProviderUsageUnsupportedError,
+    get_provider_usage as load_provider_usage,
 )
 
 router = APIRouter()
@@ -419,158 +422,21 @@ async def list_provider_models(
     )
 
 
-def _usage_window(data: object) -> ProviderUsageWindow | None:
-    if not isinstance(data, dict):
-        return None
-    values = cast("dict[str, object]", data)
-    used = values.get("used_percent")
-    if not isinstance(used, int | float):
-        return None
-    seconds = values.get("limit_window_seconds")
-    minutes = (seconds + 59) // 60 if isinstance(seconds, int) and seconds > 0 else None
-    reset_at = values.get("reset_at")
-    return ProviderUsageWindow(
-        used_percent=float(used),
-        window_minutes=minutes,
-        resets_at=reset_at if isinstance(reset_at, int) else None,
-    )
-
-
-def _usage_credits(data: object) -> ProviderUsageCredits | None:
-    if not isinstance(data, dict):
-        return None
-    values = cast("dict[str, object]", data)
-    has_credits = values.get("has_credits")
-    unlimited = values.get("unlimited")
-    if not isinstance(has_credits, bool) or not isinstance(unlimited, bool):
-        return None
-    balance = values.get("balance")
-    return ProviderUsageCredits(
-        has_credits=has_credits,
-        unlimited=unlimited,
-        balance=balance if isinstance(balance, str) else None,
-    )
-
-
-def _usage_limit(
-    data: object,
-    *,
-    limit_id: str | None,
-    limit_name: str | None = None,
-    plan_type: str | None = None,
-    rate_limit_reached_type: str | None = None,
-) -> ProviderUsageLimit | None:
-    if not isinstance(data, dict):
-        return None
-    values = cast("dict[str, object]", data)
-    raw_rate_limit = values.get("rate_limit")
-    rate_limit_values = (
-        cast("dict[str, object]", raw_rate_limit)
-        if isinstance(raw_rate_limit, dict)
-        else values
-    )
-    primary = _usage_window(rate_limit_values.get("primary_window"))
-    secondary = _usage_window(rate_limit_values.get("secondary_window"))
-    credits = _usage_credits(values.get("credits"))
-    if primary is None and secondary is None and credits is None:
-        return None
-    return ProviderUsageLimit(
-        limit_id=limit_id,
-        limit_name=limit_name,
-        primary=primary,
-        secondary=secondary,
-        credits=credits,
-        plan_type=plan_type,
-        rate_limit_reached_type=rate_limit_reached_type,
-    )
-
-
-def _codex_usage_headers() -> dict[str, str]:
-    from app.agent.providers.codex.oauth import CodexOAuth
-
-    oauth = CodexOAuth.load()
-    if oauth is None:
-        raise HTTPException(
-            status_code=404, detail="Codex OAuth credentials not found."
-        )
-    if oauth.is_expired():
-        oauth = oauth.refresh()
-    headers = {
-        "Authorization": f"Bearer {oauth.access_token.get_secret_value()}",
-        "Accept": "application/json",
-        "User-Agent": "openagentd/1.0.0",
-        "originator": "openagentd",
-    }
-    if oauth.account_id:
-        headers["ChatGPT-Account-Id"] = oauth.account_id
-    return headers
-
-
 @router.get("/providers/{provider_id}/usage")
 async def get_provider_usage(provider_id: str) -> ProviderUsageResponse:
     """Return live provider usage details when the provider exposes them."""
-    if provider_id != "codex":
+    try:
+        return await load_provider_usage(provider_id)
+    except ProviderUsageUnsupportedError as exc:
         raise HTTPException(
             status_code=404, detail=f"Usage monitoring unsupported for '{provider_id}'."
-        )
-
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(
-                "https://chatgpt.com/backend-api/wham/usage",
-                headers=_codex_usage_headers(),
-            )
-            response.raise_for_status()
-        payload = response.json()
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.info("provider_usage_unavailable provider={} error={}", provider_id, exc)
+        ) from exc
+    except ProviderUsageCredentialsError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProviderUsageUnavailableError as exc:
         raise HTTPException(
             status_code=502, detail="Provider usage unavailable."
         ) from exc
-
-    if not isinstance(payload, dict):
-        raise HTTPException(
-            status_code=502, detail="Provider usage response was invalid."
-        )
-
-    plan_type = payload.get("plan_type")
-    reached = payload.get("rate_limit_reached_type")
-    reached_type = None
-    if isinstance(reached, dict):
-        type_value = reached.get("type")
-        reached_type = type_value if isinstance(type_value, str) else None
-    elif isinstance(reached, str):
-        reached_type = reached
-
-    common_plan = plan_type if isinstance(plan_type, str) else None
-    limits: list[ProviderUsageLimit] = []
-    primary = _usage_limit(
-        payload,
-        limit_id="codex",
-        plan_type=common_plan,
-        rate_limit_reached_type=reached_type,
-    )
-    if primary is not None:
-        limits.append(primary)
-    additional = payload.get("additional_rate_limits")
-    if isinstance(additional, list):
-        for item in additional:
-            if not isinstance(item, dict):
-                continue
-            metered = item.get("metered_feature")
-            name = item.get("limit_name")
-            limit = _usage_limit(
-                item,
-                limit_id=metered if isinstance(metered, str) else None,
-                limit_name=name if isinstance(name, str) else None,
-                plan_type=common_plan,
-            )
-            if limit is not None:
-                limits.append(limit)
-
-    return ProviderUsageResponse(provider=provider_id, limits=limits)
 
 
 @router.post("/providers/{provider_id}/test")

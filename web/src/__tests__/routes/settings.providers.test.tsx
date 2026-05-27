@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 
@@ -85,5 +85,43 @@ describe('ProvidersSettingsPage', () => {
 
     expect(screen.getAllByText('Failed').length).toBeGreaterThan(0)
     expect(screen.queryByText('Connected')).toBeNull()
+  })
+
+  it('shows GitHub device-code copy for Copilot OAuth', async () => {
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: true,
+        providers: [
+          {
+            id: 'copilot',
+            label: 'Copilot',
+            description: 'Copilot OAuth provider',
+            kind: 'oauth',
+            credentials: [],
+            env_var: '',
+            env_vars: [],
+            fallback_models: [],
+            oauth_command: '',
+            docs_url: '',
+            is_configured: false,
+            is_saved: true,
+            is_reachable: false,
+          },
+        ],
+      })),
+      http.get('http://localhost/api/auth/copilot/login', () => new HttpResponse(
+        'event: device_code\ndata: {"user_code":"ABCD-1234"}\n\n',
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      )),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('Copilot')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Connect/i }))
+
+    expect(await screen.findByText('ABCD-1234')).toBeTruthy()
+    expect(screen.getByText('Use this code on GitHub to authorize Copilot. Keep this dialog open while GitHub approves access.')).toBeTruthy()
+    expect(screen.queryByText(/personal ChatGPT accounts/)).toBeNull()
   })
 })
