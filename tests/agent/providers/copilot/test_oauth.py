@@ -12,6 +12,7 @@ from pydantic import SecretStr
 
 from app.agent.providers.copilot.oauth import (
     CopilotOAuth,
+    _CLIENT_ID,
     _DEVICE_CODE_URL,
     _COPILOT_MODELS_URL,
     _poll_for_token,
@@ -103,6 +104,10 @@ class TestRequestDeviceCode:
         result = _request_device_code()
         assert result["device_code"] == "dev_code_123"
         assert result["user_code"] == "ABCD-1234"
+        request = respx.calls.last.request
+        body = json.loads(request.content)
+        assert body["client_id"] == _CLIENT_ID
+        assert body["scope"] == "read:user"
 
     @respx.mock
     def test_raises_on_http_error(self):
