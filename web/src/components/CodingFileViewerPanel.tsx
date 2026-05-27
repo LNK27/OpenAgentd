@@ -295,12 +295,12 @@ export function CodingFileViewerPanel({
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
       transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
-        'fixed inset-y-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-xl sm:relative sm:z-auto sm:w-auto sm:shrink-0 sm:shadow-none',
+        'fixed inset-y-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-xl md:relative md:z-auto md:w-auto md:shrink-0 md:shadow-none',
         mobile ? 'max-w-none' : 'max-w-[560px]',
       )}
       aria-label="File viewer"
     >
-      <div className={cn('flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'max-w-[560px] sm:w-[560px]')}>
+      <div className={cn('flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'max-w-[560px] md:w-[560px]')}>
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-3 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">File</p>
