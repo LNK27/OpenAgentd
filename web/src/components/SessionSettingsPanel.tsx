@@ -353,13 +353,10 @@ function SessionModelSettings({
     trimmedDraftModel === '' ||
     trimmedDraftModel === defaultModel ||
     validModelIds.has(trimmedDraftModel)
-  const pickerOptions = useMemo(() => {
-    const options = [{ id: defaultModel ?? '', label: defaultModel ?? 'Default' }]
-    for (const model of visibleModelOptions) {
-      if (model.id !== defaultModel) options.push({ id: model.id, label: model.id })
-    }
-    return options
-  }, [defaultModel, visibleModelOptions])
+  const pickerOptions = useMemo(
+    () => visibleModelOptions.map((model) => ({ id: model.id, label: model.id })),
+    [visibleModelOptions],
+  )
 
   const selectModel = (modelId: string) => {
     setDraftModel(modelId)
@@ -454,7 +451,7 @@ function SessionModelSettings({
                     onMouseDown={(e) => e.preventDefault()}
                     onMouseEnter={() => setActiveModelIndex(index)}
                     onClick={() => selectModel(model.id)}
-                    className={`block w-full rounded-sm px-2 py-1.5 text-left font-mono text-xs text-(--color-text) ${index === activeModelIndex ? 'bg-(--bg-hover)' : 'hover:bg-(--bg-hover)'}`}
+                    className={`block w-full rounded-sm px-2 py-1.5 text-left font-mono text-xs text-(--color-text) transition-colors ${index === activeModelIndex ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)'}`}
                   >
                     {model.label}
                   </button>
@@ -516,7 +513,7 @@ function SessionModelSettings({
                   onMouseDown={(e) => e.preventDefault()}
                   onMouseEnter={() => setActiveThinkingIndex(index)}
                   onClick={() => selectThinkingLevel(level.value)}
-                  className={`block w-full rounded-sm px-2 py-1.5 text-left text-xs text-(--color-text) ${index === activeThinkingIndex ? 'bg-(--bg-hover)' : 'hover:bg-(--bg-hover)'}`}
+                  className={`block w-full rounded-sm px-2 py-1.5 text-left text-xs text-(--color-text) transition-colors ${index === activeThinkingIndex ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)'}`}
                 >
                   {level.label}
                 </button>

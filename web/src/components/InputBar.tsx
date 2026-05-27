@@ -132,6 +132,8 @@ interface InputBarProps {
    * collapsed and the new file invisible.
    */
   onHasContentChange?: (hasContent: boolean) => void
+  /** Newest-first prompt history supplied by the parent, e.g. loaded chat history. */
+  historyPrompts?: string[]
 }
 
 export interface InputBarHandle {
@@ -175,12 +177,15 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   onFocus,
   onBlur,
   onHasContentChange,
+  historyPrompts = [],
 }, ref) {
   const [value, setValue] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [slashMenuIndex, setSlashMenuIndex] = useState(0)
   const [snippetMenuIndex, setSnippetMenuIndex] = useState(0)
   const [mentionMenuIndex, setMentionMenuIndex] = useState(0)
+  const [localHistory, setLocalHistory] = useState<string[]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
   const [snippetRange, setSnippetRange] = useState<
     { start: number; end: number; query: string } | null
   >(null)
@@ -194,6 +199,18 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
   const prefersReducedMotion = useReducedMotion()
+
+  const history = useMemo(() => {
+    const seen = new Set<string>()
+    const entries: string[] = []
+    for (const prompt of [...localHistory, ...historyPrompts]) {
+      const trimmed = prompt.trim()
+      if (!trimmed || seen.has(trimmed)) continue
+      seen.add(trimmed)
+      entries.push(trimmed)
+    }
+    return entries
+  }, [localHistory, historyPrompts])
 
   // Refresh the active mention window from the current caret position. Called
   // whenever the caret might have moved without the value changing (arrow keys,
@@ -285,6 +302,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     focus: () => textareaRef.current?.focus(),
     setValue: (text: string) => {
       setValue(text)
+      setHistoryIndex(-1)
       // Programmatic value replacement invalidates any open mention picker —
       // its ``start``/``end`` indices refer to the old text.
       setMentionRange(null)
@@ -297,6 +315,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         const spacer = prev && !/\s$/.test(prev) ? ' ' : ''
         return `${prev}${spacer}${text}`
       })
+      setHistoryIndex(-1)
       setMentionRange(null)
       setSnippetRange(null)
       requestAnimationFrame(resize)
@@ -334,6 +353,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const trimmed = value.trim()
     if (!trimmed || disabled) return
     onSubmit(trimmed, files.length > 0 ? files : undefined)
+    setLocalHistory((prev) => prev[0] === trimmed ? prev : [trimmed, ...prev].slice(0, 100))
+    setHistoryIndex(-1)
     setValue('')
     setFiles([])
     // Clear the mention picker too — it tracks positions inside the value
@@ -733,6 +754,37 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       }
     }
 
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0) {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      const direction = e.key === 'ArrowUp' ? 1 : -1
+      const canEnterHistory = e.key === 'ArrowUp' && value.length === 0 && historyIndex === -1
+      const inHistory = historyIndex >= 0
+      if (canEnterHistory || inHistory) {
+        e.preventDefault()
+        const nextIndex = canEnterHistory ? 0 : historyIndex + direction
+        if (nextIndex < 0) {
+          setHistoryIndex(-1)
+          setValue('')
+          setMentionRange(null)
+          setSnippetRange(null)
+          requestAnimationFrame(resize)
+          return
+        }
+        if (nextIndex >= history.length) return
+        const next = history[nextIndex]
+        setHistoryIndex(nextIndex)
+        setValue(next)
+        setMentionRange(null)
+        setSnippetRange(null)
+        requestAnimationFrame(() => {
+          const el = textareaRef.current
+          el?.setSelectionRange(next.length, next.length)
+          resize()
+        })
+        return
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       submit()
@@ -741,6 +793,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setValue(e.target.value)
+    setHistoryIndex(-1)
     setSlashMenuIndex(0)
     setSnippetMenuIndex(0)
     setMentionMenuIndex(0)

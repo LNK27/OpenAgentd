@@ -171,6 +171,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const activeStatus        = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.status : undefined)
 
   const splitAgentNames = agentNames.filter((name) => agentStreams[name]?.status !== 'offline')
+  const historyPrompts = useMemo(() => {
+    const blocks = leadName ? agentStreams[leadName]?.blocks : undefined
+    if (!blocks) return []
+    return [...blocks]
+      .reverse()
+      .filter((block) => block.type === 'user' && block.content.trim())
+      .map((block) => block.content)
+  }, [agentStreams, leadName])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
@@ -390,6 +398,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     inputRef.current?.appendValue(`${ref} `)
     inputRef.current?.focus()
   }, [])
+
+  const handleCodingFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
+    setCodingFileViewer(file)
+    if (isMobile && file) setCodingPanel(null)
+  }, [isMobile])
 
   // Restore a queued message's text into the composer (fired by the
   // X button on PendingMessageQueue). Overwrites any current draft —
@@ -928,6 +941,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             onSnippetCommand={handleSnippetCommand}
             slashCommands={slashCommands}
             snippetCommands={snippetCommands}
+            historyPrompts={historyPrompts}
             fileRefs={fileRefs}
             onFileRefsNeeded={() => setFileRefsEnabled(true)}
             isStreaming={isTeamWorking}
@@ -951,7 +965,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           />
         )}
         </main>
-        {mode === 'coding' && workspace && codingPanel !== null && (
+        {mode === 'coding' && workspace && codingFileViewer !== null && (
           <CodingFileViewerPanel
             workspace={workspace}
             file={codingFileViewer}
@@ -968,7 +982,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             initialTab={codingPanel}
             mobile={isMobile}
             selectedFilePath={codingFileViewer?.path ?? null}
-            onFileSelect={setCodingFileViewer}
+            onFileSelect={handleCodingFileSelect}
             onClose={() => {
               setCodingPanel(null)
               setCodingFileViewer(null)

@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 
 const navigate = mock(() => {})
 const updateSessionTitleMutate = mock(() => {})
+let isMobile = false
 let sessionsData = [
   {
     id: 'session-1',
@@ -28,7 +29,7 @@ mock.module('@tanstack/react-router', () => ({
 }))
 
 mock.module('@/hooks/use-mobile', () => ({
-  useIsMobile: () => false,
+  useIsMobile: () => isMobile,
 }))
 
 mock.module('@/hooks/useReducedMotion', () => ({
@@ -37,7 +38,15 @@ mock.module('@/hooks/useReducedMotion', () => ({
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
+  Check: Icon,
+  ChevronRight: Icon,
+  Copy: Icon,
+  Download: Icon,
+  ExternalLink: Icon,
+  FileText: Icon,
   Folder: Icon,
+  GitCompare: Icon,
+  Globe: Icon,
   HelpCircle: Icon,
   Loader2: Icon,
   Pencil: Icon,
@@ -46,13 +55,20 @@ mock.module('lucide-react', () => ({
   Search: Icon,
   Settings: Icon,
   Trash2: Icon,
+  X: Icon,
 }))
 
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   motion: {
-    aside: ({ children, ...props }: React.ComponentProps<'aside'>) => <aside {...props}>{children}</aside>,
-    div: ({ children, ...props }: React.ComponentProps<'div'>) => <div {...props}>{children}</div>,
+    aside: ({ children, animate, ...props }: React.ComponentProps<'aside'> & { animate?: unknown }) => <aside data-animate={JSON.stringify(animate)} {...props}>{children}</aside>,
+    div: ({ children, initial, animate, exit, transition, ...props }: React.ComponentProps<'div'> & { initial?: unknown; animate?: unknown; exit?: unknown; transition?: unknown }) => {
+      void initial
+      void animate
+      void exit
+      void transition
+      return <div {...props}>{children}</div>
+    },
     p: ({ children, ...props }: React.ComponentProps<'p'>) => <p {...props}>{children}</p>,
   },
 }))
@@ -94,6 +110,10 @@ mock.module('@/queries', () => ({
         detail: (id: string) => ['team', 'sessions', id],
       },
     },
+    coding: {
+      files: (workspace: string) => ['coding', 'files', workspace],
+      diff: (workspace: string) => ['coding', 'diff', workspace],
+    },
   },
   useTeamSessionsQuery: () => ({
     data: { pages: [{ data: sessionsData }] },
@@ -116,6 +136,7 @@ mock.module('@/queries', () => ({
 
 describe('Sidebar session title editing', () => {
   beforeEach(() => {
+    localStorage.clear()
     sessionsData = [
       {
         id: 'session-1',
@@ -126,15 +147,16 @@ describe('Sidebar session title editing', () => {
         mode: 'normal',
       },
     ]
+    isMobile = false
     navigate.mockClear()
     updateSessionTitleMutate.mockClear()
   })
 
   afterEach(() => cleanup())
 
-  async function renderSidebar() {
+  async function renderSidebar(props: Partial<React.ComponentProps<typeof import('@/components/Sidebar').Sidebar>> = {}) {
     const { Sidebar } = await import('@/components/Sidebar')
-    return render(<Sidebar currentSessionId="session-1" />)
+    return render(<Sidebar currentSessionId="session-1" {...props} />)
   }
 
   it('opens the title editor from the edit affordance and submits a trimmed title', async () => {
@@ -175,5 +197,31 @@ describe('Sidebar session title editing', () => {
     expect(screen.getByRole('button', { name: /^save$/i }).hasAttribute('disabled')).toBe(true)
     await user.keyboard('{Enter}')
     expect(updateSessionTitleMutate).not.toHaveBeenCalled()
+  })
+
+  it('uses explicit width for the mobile drawer even when the persisted desktop sidebar is collapsed', async () => {
+    isMobile = true
+    localStorage.setItem('oa-sidebar-collapsed', 'true')
+
+    const view = await renderSidebar()
+    const drawer = view.container.querySelector('aside')
+
+    expect(drawer?.className).toContain('top-10')
+    expect(drawer?.className).toContain('w-[min(272px,calc(100vw-2rem))]')
+    expect(JSON.parse(drawer?.getAttribute('data-animate') ?? '{}')).toEqual({
+      x: -280,
+      width: 'min(272px, calc(100vw - 2rem))',
+    })
+  })
+
+  it('keeps the cockpit mobile backdrop below the app header', async () => {
+    isMobile = true
+
+    const view = await renderSidebar({ mobileOpen: true })
+    const backdrop = view.container.querySelector('[aria-hidden="true"]')
+
+    expect(backdrop).toBeTruthy()
+    expect(backdrop?.className).toContain('top-10')
+    expect(backdrop?.className).toContain('bottom-0')
   })
 })

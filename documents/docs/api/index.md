@@ -229,6 +229,7 @@ User-editable runtime settings persisted under `{OPENAGENTD_CONFIG_DIR}`. Sandbo
 | `PUT` | `/api/settings/title-generation` | Persist title generation runtime settings |
 | `GET` | `/api/settings/multimodal` | `{image, video}` from `multimodal.yaml` |
 | `PUT` | `/api/settings/multimodal` | Persist image/video generation defaults |
+| `GET` | `/api/settings/providers/{provider}/usage` | Live usage snapshot when supported (`codex` only) |
 
 | Method | Path | Returns |
 |--------|------|---------|

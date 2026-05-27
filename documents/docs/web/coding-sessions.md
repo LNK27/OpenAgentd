@@ -2,7 +2,7 @@
 title: Coding Sessions UI
 description: Coding-mode session restore, workspace sidebar pagination, and reload/error handling.
 status: stable
-updated: 2026-05-22
+updated: 2026-05-27
 ---
 
 # Coding sessions UI
@@ -27,6 +27,7 @@ updated: 2026-05-22
 - New coding sessions appear in the sidebar immediately. They are prepended only into the global cache and the matching workspace cache, while detail caches are ignored by list-only patching. Workspace prepends keep a short stale window so a 5-row list can temporarily show 6 rows instead of immediately dropping the previous fifth row.
 - Session titles are editable from the sidebar: double-click a session row or use the pencil action. Saves call `PATCH /api/team/sessions/{id}` and patch the global/workspace/detail session caches in-place.
 - Deleting a session selects the next available session when possible instead of attempting to reload the deleted session.
+- On mobile-width screens, the workspace files drawer switches to a full-width file preview after file selection; desktop keeps the file tree visible beside the preview.
 
 ## Running and reload states
 

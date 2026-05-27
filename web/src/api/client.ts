@@ -948,6 +948,31 @@ export type ProviderModelsResponse = {
   source: 'provider' | 'fallback'
 }
 
+export type ProviderUsageWindow = {
+  used_percent: number
+  window_minutes?: number | null
+  resets_at?: number | null
+}
+
+export type ProviderUsageLimit = {
+  limit_id?: string | null
+  limit_name?: string | null
+  primary?: ProviderUsageWindow | null
+  secondary?: ProviderUsageWindow | null
+  credits?: {
+    has_credits: boolean
+    unlimited: boolean
+    balance?: string | null
+  } | null
+  plan_type?: string | null
+  rate_limit_reached_type?: string | null
+}
+
+export type ProviderUsageResponse = {
+  provider: string
+  limits: ProviderUsageLimit[]
+}
+
 export type ProviderSaveResponse = {
   saved: boolean
   is_first_provider: boolean
@@ -1019,6 +1044,12 @@ export async function listProviderModels(
     body: JSON.stringify(body),
   })
   if (!res.ok) await parseDetailOrThrow(res, `POST /settings/providers/${providerId}/models`)
+  return res.json()
+}
+
+export async function getProviderUsage(providerId: string): Promise<ProviderUsageResponse> {
+  const res = await fetch(`${API}/settings/providers/${encodeURIComponent(providerId)}/usage`)
+  if (!res.ok) await parseDetailOrThrow(res, `GET /settings/providers/${providerId}/usage`)
   return res.json()
 }
 

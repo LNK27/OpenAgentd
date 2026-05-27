@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-05-26
+updated: 2026-05-27
 ---
 
 # Features
@@ -73,6 +73,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
 - **Drag-and-drop files into chat** `[since v1.0]` — images, PDFs, text. Multimodal
   parts attach to the user message.
+- **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
+  walks previous user prompts from the current chat plus local submissions. See
+  [`web/chat-input.md`](./web/chat-input.md#composer-history-navigation).
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits.
 - **Inline diff previews with real line numbers** `[v1.20.0]` — file-changing tools
@@ -242,7 +245,7 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
-| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS default chain |
+| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS default chain `[v1.32.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
 | GitHub Copilot (OAuth) | `copilot:gpt-5.4-mini` | `openagentd auth copilot` |
 | OpenAI Codex (OAuth) | `codex:gpt-5.5` | `openagentd auth codex` |
@@ -263,6 +266,8 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   custom headers or alternate message endpoints are supported.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
+- **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
+  OAuth usage windows, resets, credits, and spend-cap/limit states.
 
 ---
 

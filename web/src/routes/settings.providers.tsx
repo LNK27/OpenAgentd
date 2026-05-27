@@ -21,6 +21,7 @@ import {
   submitOAuthCallback,
   type OAuthLoginEvent,
   type ProviderInfo,
+  type ProviderUsageLimit,
 } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,6 +30,7 @@ import { Input } from '@/components/ui/input'
 import {
   queryKeys,
   useProviderModelsMutation,
+  useProviderUsageQuery,
   useProvidersQuery,
   useSaveProviderMutation,
 } from '@/queries'
@@ -62,6 +64,84 @@ function eventLabel(event: OAuthLoginEvent): string {
   if (event.event === 'success') return 'Connected'
   if (event.event === 'failed') return 'Connection failed'
   return event.message || event.event.replaceAll('_', ' ')
+}
+
+function formatResetTime(timestamp?: number | null): string | null {
+  if (typeof timestamp !== 'number') return null
+  return new Date(timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function usageLabel(limit: ProviderUsageLimit): string {
+  if (limit.limit_name) return limit.limit_name
+  if (limit.limit_id === 'codex') return 'Codex'
+  return limit.limit_id || 'Usage'
+}
+
+function formatWindowDuration(minutes?: number | null): string {
+  if (typeof minutes !== 'number') return 'window'
+  if (minutes < 60) return `${minutes}m window`
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h window`
+  return `${Math.round(minutes / (60 * 24))}d window`
+}
+
+function UsageBar({ label, window }: { label: string; window: NonNullable<ProviderUsageLimit['primary']> }) {
+  const percent = Math.max(0, Math.min(100, window.used_percent))
+  const reset = formatResetTime(window.resets_at)
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2 text-[11px] text-(--color-text-muted)">
+        <span>{label}</span>
+        <span>{Math.round(percent)}% used{reset ? `, resets ${reset}` : ''}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-(--bg-key)">
+        <div
+          className="h-full rounded-full bg-(--color-accent)"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function UsageLimitRows({ limit }: { limit: ProviderUsageLimit }) {
+  const base = usageLabel(limit)
+  return (
+    <>
+      {limit.primary && (
+        <UsageBar label={`${base} · ${formatWindowDuration(limit.primary.window_minutes)}`} window={limit.primary} />
+      )}
+      {limit.secondary && (
+        <UsageBar label={`${base} · ${formatWindowDuration(limit.secondary.window_minutes)}`} window={limit.secondary} />
+      )}
+    </>
+  )
+}
+
+function UsagePanel({ limits }: { limits: ProviderUsageLimit[] }) {
+  if (limits.length === 0) return null
+  const primary = limits[0]
+  const credits = primary?.credits
+  return (
+    <div className="space-y-2 rounded-md border border-(--color-border) bg-(--bg-subtle) p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-(--color-text)">Active usage</p>
+        <p className="text-[11px] text-(--color-text-muted)">
+          {primary?.plan_type ? `Plan: ${primary.plan_type}` : 'Live Codex quota'}
+          {credits?.balance ? ` · credits ${credits.balance}` : ''}
+        </p>
+      </div>
+      <div className="space-y-2">
+        {limits.map((limit, index) => (
+          <UsageLimitRows key={`${limit.limit_id || 'usage'}-${index}`} limit={limit} />
+        ))}
+      </div>
+      {primary?.rate_limit_reached_type && (
+        <p className="text-[11px] font-medium text-(--color-error)">
+          Limit reached: {primary.rate_limit_reached_type.replaceAll('_', ' ')}
+        </p>
+      )}
+    </div>
+  )
 }
 
 function ProviderCard({ provider }: { provider: ProviderInfo }) {
@@ -108,6 +188,10 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
     enabled: autoFetchEnabled,
     staleTime: 60_000,
   })
+  const usageQ = useProviderUsageQuery(
+    provider.id,
+    provider.id === 'codex' && provider.is_configured,
+  )
 
   // Derived (not state) — single source of truth is the query cache.
   const models = useMemo<string[]>(
@@ -300,6 +384,21 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
               <ShieldCheck size={14} aria-hidden="true" />
               Connect
             </Button>
+          </div>
+        )}
+
+        {provider.id === 'codex' && provider.is_configured && (
+          <div className="space-y-2">
+            {usageQ.isLoading ? (
+              <p className="inline-flex items-center gap-1 text-xs text-(--color-text-muted)">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                Loading active usage…
+              </p>
+            ) : usageQ.data ? (
+              <UsagePanel limits={usageQ.data.limits} />
+            ) : usageQ.isError ? (
+              <p className="text-xs text-(--color-text-muted)">Usage monitor unavailable right now.</p>
+            ) : null}
           </div>
         )}
 

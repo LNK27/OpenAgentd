@@ -8,11 +8,13 @@ from unittest.mock import Mock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.agent.sandbox_config import DEFAULT_DENIED_PATTERNS
 from app.cli.seed import SeedDownloadError, SeedResult
 from app.api.routes import settings as settings_routes
 from app.api.routes.settings import router
+from app.agent.providers.codex.oauth import CodexOAuth
 
 
 def _make_app() -> FastAPI:
@@ -868,6 +870,118 @@ def test_list_provider_models_does_not_mutate_os_environ(
     assert captured["overrides"] == {"OPENAI_API_KEY": "candidate-key"}
 
 
+def test_get_codex_provider_usage_returns_active_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    oauth = CodexOAuth(
+        access_token=SecretStr("chatgpt-token"),
+        refresh_token=SecretStr("refresh-token"),
+        expires_at=time.time() + 3600,
+        account_id="account-123",
+    )
+    monkeypatch.setattr(
+        "app.agent.providers.codex.oauth.CodexOAuth.load", lambda: oauth
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "plan_type": "pro",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 42,
+                        "limit_window_seconds": 3600,
+                        "reset_at": 1_735_689_720,
+                    },
+                    "secondary_window": {
+                        "used_percent": 5,
+                        "limit_window_seconds": 86400,
+                        "reset_at": 1_735_776_000,
+                    },
+                },
+                "credits": {
+                    "has_credits": True,
+                    "unlimited": False,
+                    "balance": "9.99",
+                },
+                "rate_limit_reached_type": {
+                    "type": "workspace_member_usage_limit_reached"
+                },
+                "additional_rate_limits": [
+                    {
+                        "limit_name": "codex_other",
+                        "metered_feature": "codex_other",
+                        "rate_limit": {
+                            "primary_window": {
+                                "used_percent": 88,
+                                "limit_window_seconds": 1800,
+                                "reset_at": 1_735_693_200,
+                            }
+                        },
+                    }
+                ],
+            }
+
+    class _FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url, *, headers):  # type: ignore[no-untyped-def]
+            captured["url"] = url
+            captured["headers"] = headers
+            return _FakeResponse()
+
+    monkeypatch.setattr(settings_routes.httpx, "AsyncClient", _FakeClient)
+
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/providers/codex/usage")
+
+    assert response.status_code == 200
+    assert captured["url"] == "https://chatgpt.com/backend-api/wham/usage"
+    assert captured["headers"] == {
+        "Authorization": "Bearer chatgpt-token",
+        "Accept": "application/json",
+        "User-Agent": "openagentd/1.0.0",
+        "originator": "openagentd",
+        "ChatGPT-Account-Id": "account-123",
+    }
+    body = response.json()
+    assert body["provider"] == "codex"
+    assert body["limits"][0]["limit_id"] == "codex"
+    assert body["limits"][0]["primary"] == {
+        "used_percent": 42.0,
+        "window_minutes": 60,
+        "resets_at": 1_735_689_720,
+    }
+    assert body["limits"][0]["secondary"]["window_minutes"] == 1440
+    assert body["limits"][0]["credits"]["balance"] == "9.99"
+    assert (
+        body["limits"][0]["rate_limit_reached_type"]
+        == "workspace_member_usage_limit_reached"
+    )
+    assert body["limits"][1]["limit_id"] == "codex_other"
+    assert body["limits"][1]["primary"]["used_percent"] == 88.0
+
+
+def test_get_provider_usage_rejects_unsupported_provider() -> None:
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/providers/openai/usage")
+    assert response.status_code == 404
+
+
 def test_provider_configuration_reads_saved_config_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1018,4 +1132,4 @@ def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> 
     body = response.json()
     providers_seen = {m["provider"] for m in body["models"]}
     assert "openai" not in providers_seen
-    assert providers_seen <= {"anthropic", "googlegenai", "vertexai"}
+    assert providers_seen <= {"anthropic", "bedrock", "googlegenai", "vertexai"}

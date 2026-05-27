@@ -89,6 +89,49 @@ class TestResponsesStreaming:
         assert exc_info.value.response.status_code == 503
         assert "overloaded" in exc_info.value.response.text
 
+    async def test_parse_stream_response_failed_codex_usage_limit_is_429(self, handler):
+        """Codex OAuth quota exhaustion should enter rate-limit fallback handling."""
+        lines = [
+            "event: response.failed",
+            'data: {"type": "response.failed", "response": {"error": {"type": "usage_limit_reached", "message": "You have hit your usage limit."}}}',
+        ]
+
+        async def async_iter_lines():
+            for line in lines:
+                yield line
+
+        response = MagicMock()
+        response.aiter_lines = lambda: async_iter_lines()
+
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            async for _chunk in handler._parse_stream(response):
+                pass
+
+        assert exc_info.value.response.status_code == 429
+        assert "usage_limit_reached" in exc_info.value.response.text
+
+    async def test_parse_stream_response_failed_insufficient_quota_is_429(
+        self, handler
+    ):
+        lines = [
+            "event: response.failed",
+            'data: {"type": "response.failed", "response": {"error": {"code": "insufficient_quota", "message": "You exceeded your current quota."}}}',
+        ]
+
+        async def async_iter_lines():
+            for line in lines:
+                yield line
+
+        response = MagicMock()
+        response.aiter_lines = lambda: async_iter_lines()
+
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            async for _chunk in handler._parse_stream(response):
+                pass
+
+        assert exc_info.value.response.status_code == 429
+        assert "insufficient_quota" in exc_info.value.response.text
+
     async def test_parse_stream_tool_call(self, handler):
         """Parse streaming tool call response."""
         lines = [

@@ -28,7 +28,7 @@ from app.agent.providers.openai.responses import ResponsesHandler
 from app.agent.schemas.chat import AssistantMessage, ChatMessage, SystemMessage
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
-CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 300.0
+CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 10.0
 
 # Identify requests honestly as OpenAgentd.
 _DEFAULT_HEADERS = {
