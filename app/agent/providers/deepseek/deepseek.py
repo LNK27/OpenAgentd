@@ -12,9 +12,16 @@ Models:
     deepseek-v4-flash  — fast general-purpose chat
     deepseek-v4-pro    — higher-quality variant
 
-Reasoning-model outputs via ``reasoning_content`` are already supported
-by the OpenAI schema layer (see ``app/agent/providers/openai/schemas.py``),
-so no extra wiring is required here.
+DeepSeek thinking mode quirks (vs plain OpenAI):
+    1. ``max_tokens`` only — rejects ``max_completion_tokens``.
+    2. Thinking mode requires ``thinking: {"type": "enabled"}`` alongside
+       ``reasoning_effort``; ``reasoning_effort`` alone is not enough.
+    3. When an assistant message contains tool calls AND thinking was active,
+       the ``reasoning_content`` field MUST be echoed back in the next
+       request or the API returns a 400.  The canonical ``AssistantMessage``
+       carries ``reasoning_content`` with ``exclude=True`` (other providers
+       don't want it), so this handler uses its own ``DeepSeekMessage``
+       schema that includes the field.
 
 Token resolution order:
     1. ``Settings.DEEPSEEK_API_KEY`` (from ``.env`` or environment)
@@ -32,23 +39,193 @@ from typing import Any
 
 from app.agent.providers.openai import OpenAIProvider
 from app.agent.providers.openai.completions import CompletionsHandler
+from app.agent.providers.openai.sanitization import sanitize_openai_tool_pairs
+from app.agent.providers.openai.schemas import OpenAIStreamOptions
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    ChatMessage,
+    HumanMessage,
+    ImageDataBlock,
+    ImageUrlBlock,
+    SystemMessage,
+    TextBlock,
+    ToolMessage,
+)
+
+from .schemas import (
+    DeepSeekChatRequest,
+    DeepSeekMessage,
+    DeepSeekThinking,
+)
 
 DEEPSEEK_API_BASE = "https://api.deepseek.com/v1"
 
+_NO_THINKING = frozenset({"none", "off", ""})
+
 
 class _DeepSeekCompletionsHandler(CompletionsHandler):
-    """DeepSeek's /chat/completions accepts ``max_tokens`` only.
+    """DeepSeek-specific completions handler.
 
-    The shared OpenAI handler defaults to ``max_completion_tokens`` (the
-    field name OpenAI's reasoning models require since 2024-09).  As of
-    2026-Q2 the DeepSeek API reference at
-    https://api-docs.deepseek.com/api/create-chat-completion documents
-    only ``max_tokens`` — sending ``max_completion_tokens`` is silently
-    dropped, causing unbounded responses.  Pin this subclass to the
-    legacy field name until DeepSeek catches up.
+    Differences from the base ``CompletionsHandler``:
+
+    1. ``max_tokens`` only — DeepSeek rejects ``max_completion_tokens``.
+    2. Uses ``DeepSeekMessage`` instead of ``OpenAIMessage`` so that
+       ``reasoning_content`` on assistant messages is a proper schema
+       field and survives ``model_dump``.
+    3. ``build_request`` uses ``DeepSeekChatRequest`` which carries the
+       DeepSeek-specific ``thinking`` + ``reasoning_effort`` fields.
+    4. ``customize_thinking`` sends both ``thinking: {type: enabled}``
+       and ``reasoning_effort`` when ``thinking_level`` is configured.
     """
 
     uses_max_completion_tokens = False
+
+    def _convert_messages_deepseek(
+        self, messages: list[ChatMessage]
+    ) -> list[DeepSeekMessage]:
+        """Convert canonical chat messages to DeepSeek wire messages.
+
+        Identical to the base ``convert_messages`` but produces
+        ``DeepSeekMessage`` objects and echoes ``reasoning_content`` on
+        assistant messages that had tool calls — required by DeepSeek when
+        thinking mode was active for that turn.
+        """
+        result: list[DeepSeekMessage] = []
+        for msg in messages:
+            if isinstance(msg, SystemMessage):
+                result.append(DeepSeekMessage(role="system", content=msg.content))
+
+            elif isinstance(msg, HumanMessage):
+                if msg.parts:
+                    parts: list[dict] = []
+                    for part in msg.parts:
+                        if isinstance(part, TextBlock):
+                            parts.append({"type": "text", "text": part.text})
+                        elif isinstance(part, ImageUrlBlock):
+                            img: dict = {"url": part.url}
+                            if part.detail:
+                                img["detail"] = part.detail
+                            parts.append({"type": "image_url", "image_url": img})
+                        elif isinstance(part, ImageDataBlock):
+                            data_url = f"data:{part.media_type};base64,{part.data}"
+                            parts.append(
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": data_url, "detail": "auto"},
+                                }
+                            )
+                    result.append(DeepSeekMessage(role="user", content=parts))
+                else:
+                    result.append(DeepSeekMessage(role="user", content=msg.content))
+
+            elif isinstance(msg, AssistantMessage):
+                from app.agent.providers.openai.schemas import (
+                    OpenAIFunctionCall,
+                    OpenAIToolCall,
+                )
+
+                tool_calls = None
+                if msg.tool_calls:
+                    tool_calls = [
+                        OpenAIToolCall(
+                            id=tc.id,
+                            function=OpenAIFunctionCall(
+                                name=tc.function.name,
+                                arguments=tc.function.arguments
+                                if isinstance(tc.function.arguments, str)
+                                else "{}",
+                            ),
+                        )
+                        for tc in msg.tool_calls
+                    ]
+                result.append(
+                    DeepSeekMessage(
+                        role="assistant",
+                        content=msg.content,
+                        tool_calls=tool_calls,
+                        # Echo reasoning_content only when tool_calls were present —
+                        # DeepSeek mandates this for thinking-mode tool turns.
+                        reasoning_content=(
+                            msg.reasoning_content
+                            if msg.tool_calls and msg.reasoning_content
+                            else None
+                        ),
+                    )
+                )
+
+            elif isinstance(msg, ToolMessage):
+                if msg.parts:
+                    parts = []
+                    for part in msg.parts:
+                        if isinstance(part, TextBlock):
+                            parts.append({"type": "text", "text": part.text})
+                        elif isinstance(part, ImageUrlBlock):
+                            img = {"url": part.url}
+                            if part.detail:
+                                img["detail"] = part.detail
+                            parts.append({"type": "image_url", "image_url": img})
+                        elif isinstance(part, ImageDataBlock):
+                            data_url = f"data:{part.media_type};base64,{part.data}"
+                            parts.append(
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": data_url, "detail": "auto"},
+                                }
+                            )
+                    result.append(
+                        DeepSeekMessage(
+                            role="tool",
+                            content=parts,
+                            tool_call_id=msg.tool_call_id,
+                            name=msg.name,
+                        )
+                    )
+                else:
+                    result.append(
+                        DeepSeekMessage(
+                            role="tool",
+                            content=msg.content,
+                            tool_call_id=msg.tool_call_id,
+                            name=msg.name,
+                        )
+                    )
+        return result
+
+    def build_request(
+        self,
+        messages: list[ChatMessage],
+        tools: list[dict[str, Any]] | None,
+        stream: bool,
+        merged: dict[str, Any],
+    ) -> dict[str, Any]:
+        req = DeepSeekChatRequest(
+            model=self.model,
+            messages=self._convert_messages_deepseek(
+                sanitize_openai_tool_pairs(messages)
+            ),
+            tools=self.convert_tools(tools),
+            temperature=merged.get("temperature"),
+            top_p=merged.get("top_p"),
+            max_tokens=merged.get("max_tokens"),
+            stream=stream,
+            stream_options=OpenAIStreamOptions(include_usage=True) if stream else None,
+        )
+        body = req.model_dump(exclude_none=True)
+        self.customize_thinking(merged, body)
+        return body
+
+    def customize_thinking(self, merged: dict[str, Any], body: dict[str, Any]) -> None:
+        """Map ``thinking_level`` to DeepSeek's thinking toggle + reasoning_effort.
+
+        DeepSeek requires both ``thinking: {type: enabled}`` and
+        ``reasoning_effort`` to activate thinking mode.  Sending
+        ``reasoning_effort`` alone without the ``thinking`` object is
+        insufficient.
+        """
+        thinking_level = merged.get("thinking_level", "")
+        if thinking_level and thinking_level not in _NO_THINKING:
+            body["thinking"] = DeepSeekThinking(type="enabled").model_dump()
+            body["reasoning_effort"] = thinking_level
 
 
 class DeepSeekProvider(OpenAIProvider):

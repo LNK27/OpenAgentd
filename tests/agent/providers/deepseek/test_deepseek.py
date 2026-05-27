@@ -231,6 +231,162 @@ class TestDeepSeekProviderFactory:
 
 
 # ============================================================================
+# thinking_level → thinking object + reasoning_effort
+# ============================================================================
+
+
+class TestDeepSeekThinking:
+    """DeepSeek thinking mode requires both ``thinking`` object and ``reasoning_effort``.
+
+    The base ``CompletionsHandler.customize_thinking`` only sends ``reasoning_effort``.
+    DeepSeek needs ``thinking: {type: enabled}`` alongside it.
+    When thinking_level is absent/disabled, neither field should be sent.
+    """
+
+    def _build_body(self, thinking_level: str | None = None) -> dict:
+        from app.agent.schemas.chat import HumanMessage
+
+        kwargs = {}
+        if thinking_level is not None:
+            kwargs["model_kwargs"] = {"thinking_level": thinking_level}
+        p = DeepSeekProvider(api_key="ds-test-key", model="deepseek-v4-flash", **kwargs)
+        return p._completions.build_request(
+            [HumanMessage(content="hi")],
+            None,
+            stream=False,
+            merged=p._merged_kwargs(),
+        )
+
+    def test_thinking_object_sent_when_thinking_level_high(self):
+        body = self._build_body("high")
+        assert body.get("thinking") == {"type": "enabled"}
+        assert body.get("reasoning_effort") == "high"
+
+    def test_thinking_object_sent_when_thinking_level_medium(self):
+        body = self._build_body("medium")
+        assert body.get("thinking") == {"type": "enabled"}
+        assert body.get("reasoning_effort") == "medium"
+
+    def test_thinking_object_sent_when_thinking_level_low(self):
+        body = self._build_body("low")
+        assert body.get("thinking") == {"type": "enabled"}
+        assert body.get("reasoning_effort") == "low"
+
+    def test_thinking_not_sent_when_thinking_level_none(self):
+        body = self._build_body("none")
+        assert "thinking" not in body
+        assert "reasoning_effort" not in body
+
+    def test_thinking_not_sent_when_thinking_level_off(self):
+        body = self._build_body("off")
+        assert "thinking" not in body
+        assert "reasoning_effort" not in body
+
+    def test_thinking_not_sent_when_thinking_level_absent(self):
+        body = self._build_body()
+        assert "thinking" not in body
+        assert "reasoning_effort" not in body
+
+
+# ============================================================================
+# reasoning_content echoed back on tool-call assistant messages
+# ============================================================================
+
+
+class TestDeepSeekReasoningContentEcho:
+    """DeepSeek requires reasoning_content to be echoed back when a tool call was made.
+
+    The canonical AssistantMessage has reasoning_content marked exclude=True so
+    other providers never see it.  The DeepSeek handler re-reads it directly and
+    injects it into the wire message for assistant turns that contain tool_calls.
+    Without this DeepSeek returns a 400.
+    """
+
+    def _make_handler(self) -> object:
+        p = DeepSeekProvider(api_key="ds-test-key", model="deepseek-v4-flash")
+        return p._completions
+
+    def test_reasoning_content_in_wire_body_on_tool_call_assistant_message(self):
+        """reasoning_content must survive model_dump and appear in the request body."""
+        from app.agent.schemas.chat import (
+            AssistantMessage,
+            FunctionCall,
+            HumanMessage,
+            ToolCall,
+            ToolMessage,
+        )
+
+        p = DeepSeekProvider(api_key="ds-test-key", model="deepseek-v4-flash")
+        tool_call = ToolCall(id="c1", function=FunctionCall(name="f", arguments="{}"))
+        messages = [
+            HumanMessage(content="hi"),
+            AssistantMessage(
+                content=None,
+                reasoning_content="I should call the tool",
+                tool_calls=[tool_call],
+            ),
+            ToolMessage(content="result", tool_call_id="c1"),
+        ]
+        body = p._completions.build_request(
+            messages, None, stream=False, merged=p._merged_kwargs()
+        )
+        assistant_msg = body["messages"][1]
+        assert assistant_msg.get("reasoning_content") == "I should call the tool"
+
+    def test_reasoning_content_absent_from_wire_body_without_tool_calls(self):
+        """reasoning_content must NOT appear on non-tool-call assistant turns."""
+        from app.agent.schemas.chat import AssistantMessage
+
+        p = DeepSeekProvider(api_key="ds-test-key", model="deepseek-v4-flash")
+        messages = [
+            AssistantMessage(content="answer", reasoning_content="some thoughts")
+        ]
+        body = p._completions.build_request(
+            messages, None, stream=False, merged=p._merged_kwargs()
+        )
+        assert "reasoning_content" not in body["messages"][0]
+
+    def test_reasoning_content_absent_from_wire_body_when_none(self):
+        """No reasoning_content field when assistant message has tool_calls but no reasoning."""
+        from app.agent.schemas.chat import (
+            AssistantMessage,
+            FunctionCall,
+            HumanMessage,
+            ToolCall,
+            ToolMessage,
+        )
+
+        p = DeepSeekProvider(api_key="ds-test-key", model="deepseek-v4-flash")
+        tool_call = ToolCall(id="c1", function=FunctionCall(name="f", arguments="{}"))
+        messages = [
+            HumanMessage(content="hi"),
+            AssistantMessage(
+                content=None, reasoning_content=None, tool_calls=[tool_call]
+            ),
+            ToolMessage(content="result", tool_call_id="c1"),
+        ]
+        body = p._completions.build_request(
+            messages, None, stream=False, merged=p._merged_kwargs()
+        )
+        assert "reasoning_content" not in body["messages"][1]
+
+    def test_reasoning_content_not_injected_when_absent(self):
+        from app.agent.schemas.chat import AssistantMessage
+        from app.agent.schemas.chat import FunctionCall, ToolCall
+
+        handler = self._make_handler()
+        msg = AssistantMessage(
+            content=None,
+            reasoning_content=None,
+            tool_calls=[
+                ToolCall(id="c1", function=FunctionCall(name="f", arguments="{}"))
+            ],
+        )
+        wire = handler.convert_messages([msg])
+        assert wire[0].__dict__.get("reasoning_content") is None
+
+
+# ============================================================================
 # Capabilities — deepseek: prefix
 # ============================================================================
 
