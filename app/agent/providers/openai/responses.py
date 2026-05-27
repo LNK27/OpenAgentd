@@ -525,7 +525,14 @@ class ResponsesHandler:
             error_type == "service_unavailable_error"
         ):
             status_code = 503
-        elif code == "rate_limit_exceeded":
+        elif code in {"rate_limit_exceeded", "insufficient_quota"} or error_type in {
+            "usage_limit_reached",
+            "usage_not_included",
+            "workspace_owner_credits_depleted",
+            "workspace_member_credits_depleted",
+            "workspace_owner_usage_limit_reached",
+            "workspace_member_usage_limit_reached",
+        }:
             status_code = 429
         else:
             status_code = 400
@@ -536,6 +543,6 @@ class ResponsesHandler:
         failed_response = httpx.Response(
             status_code,
             request=request,
-            content=message.encode(),
+            content=json.dumps({"error": error}).encode(),
         )
         raise httpx.HTTPStatusError(message, request=request, response=failed_response)

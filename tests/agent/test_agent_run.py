@@ -5,7 +5,11 @@ from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 from app.agent.agent_loop import Agent
-from app.agent.agent_loop.retry import parse_retry_after, stream_with_retry
+from app.agent.agent_loop.retry import (
+    is_non_retryable_429,
+    parse_retry_after,
+    stream_with_retry,
+)
 from app.agent.errors import ProviderRateLimitError
 from app.agent.providers.base import LLMProviderBase
 from app.agent.tools.registry import Tool
@@ -1340,6 +1344,35 @@ def test_parse_retry_after_no_match_returns_zero():
         "rate limited", request=response.request, response=response
     )
     assert parse_retry_after(exc) == 0
+
+
+def test_parse_retry_after_from_codex_try_again_text():
+    import httpx
+
+    body = "Rate limit exceeded. Please try again in 11.054s."
+    response = httpx.Response(
+        429,
+        content=body.encode(),
+        request=httpx.Request("POST", "http://x"),
+    )
+    exc = httpx.HTTPStatusError(
+        "rate limited", request=response.request, response=response
+    )
+    assert parse_retry_after(exc) == 11
+
+
+def test_codex_workspace_usage_limit_is_non_retryable_429():
+    import httpx
+
+    response = httpx.Response(
+        429,
+        json={"error": {"type": "workspace_owner_usage_limit_reached"}},
+        request=httpx.Request("POST", "http://x"),
+    )
+    exc = httpx.HTTPStatusError(
+        "usage limit reached", request=response.request, response=response
+    )
+    assert is_non_retryable_429(exc) is True
 
 
 # ---------------------------------------------------------------------------

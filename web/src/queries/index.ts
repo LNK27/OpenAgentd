@@ -59,6 +59,7 @@ export {
 export {
   useProvidersQuery,
   useProviderModelsMutation,
+  useProviderUsageQuery,
   useSaveProviderMutation,
   useTestProviderMutation,
   useInstallSeedMutation,

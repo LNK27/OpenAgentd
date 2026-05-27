@@ -93,6 +93,41 @@ class ProviderModelsResponse(BaseModel):
     source: Literal["provider", "fallback"]
 
 
+class ProviderUsageWindow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    used_percent: float
+    window_minutes: int | None = None
+    resets_at: int | None = None
+
+
+class ProviderUsageCredits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    has_credits: bool
+    unlimited: bool
+    balance: str | None = None
+
+
+class ProviderUsageLimit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    limit_id: str | None = None
+    limit_name: str | None = None
+    primary: ProviderUsageWindow | None = None
+    secondary: ProviderUsageWindow | None = None
+    credits: ProviderUsageCredits | None = None
+    plan_type: str | None = None
+    rate_limit_reached_type: str | None = None
+
+
+class ProviderUsageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    limits: list[ProviderUsageLimit] = Field(default_factory=list)
+
+
 class ProviderTestRequest(BaseModel):
     """``POST /api/settings/providers/{id}/test`` request body."""
 

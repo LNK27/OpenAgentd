@@ -266,6 +266,8 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   custom headers or alternate message endpoints are supported.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
+- **Codex usage monitor** `[v1.18.2]` — Settings → Providers shows live Codex
+  OAuth usage windows, resets, credits, and spend-cap/limit states.
 
 ---
 

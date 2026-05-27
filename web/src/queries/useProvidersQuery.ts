@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   installSeed,
+  getProviderUsage,
   listProviderModels,
   listProviders,
   saveProvider,
@@ -35,6 +36,16 @@ export function useProviderModelsMutation() {
   return useMutation<ProviderModelsResponse, Error, { providerId: string; apiKey?: string; extra?: Record<string, string> }>({
     mutationFn: ({ providerId, apiKey, extra }) =>
       listProviderModels(providerId, { api_key: apiKey, extra }),
+  })
+}
+
+export function useProviderUsageQuery(providerId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.settings.providerUsage(providerId),
+    queryFn: () => getProviderUsage(providerId),
+    enabled,
+    refetchInterval: enabled ? 60_000 : false,
+    staleTime: 30_000,
   })
 }
 

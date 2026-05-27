@@ -115,6 +115,11 @@ async def _notify_provider_fallback(
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _NON_RETRYABLE_429_MARKERS = (
     "usage_limit_reached",
+    "usage_not_included",
+    "workspace_owner_credits_depleted",
+    "workspace_member_credits_depleted",
+    "workspace_owner_usage_limit_reached",
+    "workspace_member_usage_limit_reached",
     "quota_exceeded",
     "insufficient_quota",
     "insufficient balance",
@@ -152,6 +157,16 @@ def parse_retry_after(exc: httpx.HTTPStatusError) -> int:
     # Fallback: "reset after Ns"
     for match in re.finditer(r"reset after (\d+)s", body):
         return int(match.group(1))
+
+    # Codex/OpenAI stream errors: "try again in 11.054s" or "35 seconds".
+    for match in re.finditer(
+        r"try again in\s+(\d+(?:\.\d+)?)\s*(ms|s|seconds?)", body, re.I
+    ):
+        value = float(match.group(1))
+        unit = match.group(2).lower()
+        if unit == "ms":
+            return max(1, int(value / 1000))
+        return max(1, int(value))
 
     return 0
 
