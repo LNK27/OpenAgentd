@@ -31,6 +31,11 @@ export function formatUsd(n: number): string {
   return usdFmt.format(n)
 }
 
+export function formatPercent(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0%'
+  return `${n.toFixed(n >= 10 ? 0 : 1)}%`
+}
+
 /**
  * Format a millisecond duration.  0 becomes an em-dash so empty cells read
  * cleanly in tables; sub-second values render as whole ms; values ≥1s switch

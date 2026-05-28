@@ -33,7 +33,11 @@ export {
   useDeleteSkillMutation,
 } from './useSkillFilesQuery'
 export { useObservabilitySummaryQuery } from './useObservabilitySummaryQuery'
-export { useTracesQuery, useTraceDetailQuery } from './useTracesQuery'
+export {
+  useInfiniteTracesQuery,
+  useTracesQuery,
+  useTraceDetailQuery,
+} from './useTracesQuery'
 export {
   useScheduledTasksQuery,
   useCreateScheduledTaskMutation,

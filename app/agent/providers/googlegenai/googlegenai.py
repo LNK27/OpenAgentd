@@ -6,6 +6,7 @@ import httpx
 from loguru import logger
 from pydantic.types import SecretStr
 
+from app.agent.usage import usage_to_dict
 from app.agent.providers.base import LLMProviderBase
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -344,10 +345,23 @@ class GeminiProviderBase(LLMProviderBase):
                     )
                 )
 
+        usage = None
+        if gemini_resp.usage_metadata is not None:
+            meta = gemini_resp.usage_metadata
+            usage = Usage(
+                prompt_tokens=meta.prompt_token_count or 0,
+                completion_tokens=meta.candidates_token_count or 0,
+                total_tokens=meta.total_token_count or 0,
+                cached_tokens=meta.cached_content_token_count,
+                thoughts_tokens=meta.thoughts_token_count,
+                tool_use_tokens=meta.tool_use_prompt_token_count,
+            )
+
         return AssistantMessage(
             content=content if content else None,
             reasoning_content=reasoning if reasoning else None,
             tool_calls=tool_calls if tool_calls else None,
+            extra={"usage": usage_to_dict(usage, self.model)} if usage else None,
         )
 
     async def stream(

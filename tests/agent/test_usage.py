@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.agent.agent_loop import usage as usage_module
+from app.agent import usage as usage_module
 from app.agent.providers.model_metadata import ModelCost
 from app.agent.schemas.chat import Usage
 

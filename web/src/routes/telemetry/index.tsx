@@ -10,12 +10,12 @@
  * structured 503 that we surface as a dedicated empty state.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import {
   useObservabilitySummaryQuery,
+  useInfiniteTracesQuery,
   useTraceDetailQuery,
-  useTracesQuery,
 } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { formatShortId } from '@/utils/telemetryFormat'
@@ -33,6 +33,8 @@ const RANGES: { value: WindowDays; label: string }[] = [
   { value: 30, label: '30 d' },
   { value: 90, label: '90 d' },
 ]
+
+const TRACE_PAGE_SIZE = 25
 
 export function TelemetryPage() {
   const [days, setDays] = useState<WindowDays>(7)
@@ -68,8 +70,22 @@ function SummaryRoute({
   onSelectTrace: (traceId: string) => void
 }) {
   const summary = useObservabilitySummaryQuery(days)
-  const traces = useTracesQuery(days, 50, 0)
+  const traces = useInfiniteTracesQuery(days, TRACE_PAGE_SIZE)
   const isFetching = summary.isFetching || traces.isFetching
+  const traceRows = useMemo(
+    () => traces.data?.pages.flatMap((page) => page.traces) ?? [],
+    [traces.data],
+  )
+  const traceTotal = traces.data?.pages[0]?.total ?? traceRows.length
+
+  function changeDays(nextDays: WindowDays) {
+    onChangeDays(nextDays)
+  }
+
+  function loadMoreTraces() {
+    if (!traces.hasNextPage || traces.isFetchingNextPage) return
+    void traces.fetchNextPage()
+  }
 
   return (
     <>
@@ -81,7 +97,7 @@ function SummaryRoute({
               {RANGES.map((r) => (
                 <button
                   key={r.value}
-                  onClick={() => onChangeDays(r.value)}
+                  onClick={() => changeDays(r.value)}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     days === r.value
                       ? 'bg-(--bg-key) text-(--color-accent)'
@@ -109,6 +125,11 @@ function SummaryRoute({
             <SummaryView data={summary.data} />
             <TracesSection
               query={traces}
+              traces={traceRows}
+              limit={TRACE_PAGE_SIZE}
+              total={traceTotal}
+              hasNext={traces.hasNextPage}
+              onLoadMore={loadMoreTraces}
               onSelectTrace={onSelectTrace}
             />
           </div>

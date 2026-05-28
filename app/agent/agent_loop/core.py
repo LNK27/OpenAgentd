@@ -24,7 +24,7 @@ from loguru import logger
 from app.agent.agent_loop.streaming import stream_and_assemble
 from app.agent.agent_loop.tool_dispatch import gather_or_cancel
 from app.agent.agent_loop.tool_executor import make_tool_executor
-from app.agent.agent_loop.usage import usage_to_dict
+from app.agent.usage import usage_to_dict
 from app.agent.checkpointer import Checkpointer
 from app.agent.hooks import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase

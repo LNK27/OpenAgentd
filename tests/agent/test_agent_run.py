@@ -5,7 +5,7 @@ from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 from app.agent.agent_loop import Agent
-from app.agent.agent_loop import usage as usage_module
+from app.agent import usage as usage_module
 from app.agent.agent_loop.retry import (
     is_non_retryable_429,
     parse_retry_after,

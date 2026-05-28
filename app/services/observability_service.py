@@ -40,12 +40,16 @@ class TraceListItem:
     run_id: str | None
     session_id: str | None
     agent_name: str | None
+    provider: str | None
     model: str | None
+    provider_model: str | None
     start_ms: int  # UNIX epoch ms (so JS ``new Date(...)`` works directly)
     end_ms: int
     duration_ms: float
     input_tokens: int
     output_tokens: int
+    cached_tokens: int
+    estimated_cost_usd: float
     tool_calls: int  # number of execute_tool spans in this trace
     llm_calls: int  # number of chat spans in this trace
     error: bool
@@ -57,12 +61,16 @@ class TraceListItem:
             "run_id": self.run_id,
             "session_id": self.session_id,
             "agent_name": self.agent_name,
+            "provider": self.provider,
             "model": self.model,
+            "provider_model": self.provider_model,
             "start_ms": self.start_ms,
             "end_ms": self.end_ms,
             "duration_ms": self.duration_ms,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
+            "cached_tokens": self.cached_tokens,
+            "estimated_cost_usd": self.estimated_cost_usd,
             "tool_calls": self.tool_calls,
             "llm_calls": self.llm_calls,
             "error": self.error,
@@ -132,6 +140,8 @@ class ObservabilitySummary:
     total_tool_calls: int
     total_input_tokens: int
     total_output_tokens: int
+    total_cached_tokens: int
+    total_estimated_cost_usd: float
     total_errors: int
 
     # Latency (ms)
@@ -145,6 +155,7 @@ class ObservabilitySummary:
 
     # Per-model + per-tool breakdowns
     by_model: list[dict]  # [{"model": "gpt-4o", "calls": 40, "input_tokens": …}]
+    cache_by_step: list[dict]
     by_tool: list[dict]  # [{"tool": "read", "calls": 12, "errors": 0}]
 
     def to_dict(self) -> dict:
@@ -158,6 +169,11 @@ class ObservabilitySummary:
                 "tool_calls": self.total_tool_calls,
                 "input_tokens": self.total_input_tokens,
                 "output_tokens": self.total_output_tokens,
+                "cached_tokens": self.total_cached_tokens,
+                "cache_percent": _percent(
+                    self.total_cached_tokens, self.total_input_tokens
+                ),
+                "estimated_cost_usd": self.total_estimated_cost_usd,
                 "errors": self.total_errors,
             },
             "latency_ms": {
@@ -168,6 +184,7 @@ class ObservabilitySummary:
             },
             "daily_turns": self.daily_turns,
             "by_model": self.by_model,
+            "cache_by_step": self.cache_by_step,
             "by_tool": self.by_tool,
         }
 
@@ -205,6 +222,8 @@ def _empty_summary(
         total_tool_calls=0,
         total_input_tokens=0,
         total_output_tokens=0,
+        total_cached_tokens=0,
+        total_estimated_cost_usd=0.0,
         total_errors=0,
         turn_p50_ms=0.0,
         turn_p95_ms=0.0,
@@ -212,6 +231,7 @@ def _empty_summary(
         llm_p95_ms=0.0,
         daily_turns=[],
         by_model=[],
+        cache_by_step=[],
         by_tool=[],
     )
 
@@ -229,6 +249,12 @@ def _candidate_files(window_start: datetime) -> list[Path]:
         return []
     cutoff_key = window_start.strftime("%Y-%m-%d-%H")
     return sorted(p for p in spans_dir.glob("*.jsonl") if p.stem >= cutoff_key)
+
+
+def _percent(part: int | float, total: int | float) -> float:
+    if total <= 0:
+        return 0.0
+    return round(float(part) / float(total) * 100, 1)
 
 
 def _create_spans_window_view(
@@ -300,8 +326,10 @@ def _run_queries(
             count_if(name LIKE 'chat%')      AS llm_calls,
             count_if(name LIKE 'execute_tool%') AS tool_calls,
             count_if(status = 'ERROR')       AS errors,
-            coalesce(sum(try_cast(attributes['gen_ai.usage.input_tokens'] AS BIGINT)), 0)  AS input_tokens,
-            coalesce(sum(try_cast(attributes['gen_ai.usage.output_tokens'] AS BIGINT)), 0) AS output_tokens,
+            coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.input_tokens'] AS BIGINT) END), 0)  AS input_tokens,
+            coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.output_tokens'] AS BIGINT) END), 0) AS output_tokens,
+            coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.cache_read.input_tokens'] AS BIGINT) END), 0) AS cached_tokens,
+            coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.estimated_cost_usd'] AS DOUBLE) END), 0.0) AS estimated_cost_usd,
             coalesce(quantile_cont(CASE WHEN name LIKE 'agent_run%' THEN duration_ms END, 0.5), 0.0) AS turn_p50,
             coalesce(quantile_cont(CASE WHEN name LIKE 'agent_run%' THEN duration_ms END, 0.95), 0.0) AS turn_p95,
             coalesce(quantile_cont(CASE WHEN name LIKE 'chat%'      THEN duration_ms END, 0.5), 0.0) AS llm_p50,
@@ -320,6 +348,8 @@ def _run_queries(
         errors,
         in_tokens,
         out_tokens,
+        cached_tokens,
+        estimated_cost_usd,
         turn_p50,
         turn_p95,
         llm_p50,
@@ -348,26 +378,82 @@ def _run_queries(
     model_rows = con.execute(
         """
         SELECT
+            coalesce(attributes['gen_ai.provider.name'], 'unknown') AS provider,
             coalesce(attributes['gen_ai.request.model'], 'unknown') AS model,
             count(*) AS calls,
             coalesce(sum(try_cast(attributes['gen_ai.usage.input_tokens']  AS BIGINT)), 0) AS input_tokens,
             coalesce(sum(try_cast(attributes['gen_ai.usage.output_tokens'] AS BIGINT)), 0) AS output_tokens,
+            coalesce(sum(try_cast(attributes['gen_ai.usage.cache_read.input_tokens'] AS BIGINT)), 0) AS cached_tokens,
+            coalesce(sum(try_cast(attributes['gen_ai.usage.estimated_cost_usd'] AS DOUBLE)), 0.0) AS estimated_cost_usd,
             coalesce(quantile_cont(duration_ms, 0.95), 0.0) AS p95_ms
         FROM spans_window
-        WHERE name LIKE 'chat%'
-        GROUP BY model
-        ORDER BY calls DESC
+        WHERE name NOT LIKE 'agent_run%'
+          AND (
+            attributes['gen_ai.usage.input_tokens'] IS NOT NULL
+            OR attributes['gen_ai.usage.output_tokens'] IS NOT NULL
+          )
+        GROUP BY provider, model
+        ORDER BY estimated_cost_usd DESC, calls DESC
         """
     ).fetchall()
     by_model = [
         {
+            "provider": provider,
             "model": m,
+            "provider_model": f"{provider}:{m}",
             "calls": int(c),
             "input_tokens": int(it),
             "output_tokens": int(ot),
+            "cached_tokens": int(ct),
+            "cache_percent": _percent(int(ct), int(it)),
+            "estimated_cost_usd": round(float(cost), 8),
             "p95_ms": round(float(p95), 1),
         }
-        for m, c, it, ot, p95 in model_rows
+        for provider, m, c, it, ot, ct, cost, p95 in model_rows
+    ]
+
+    cache_step_rows = con.execute(
+        """
+        SELECT
+            coalesce(
+              attributes['gen_ai.operation.name'],
+              CASE
+                WHEN name LIKE 'summarization%' THEN 'summarization'
+                WHEN name LIKE 'title_generation%' THEN 'title_generation'
+                WHEN name LIKE 'chat%' THEN 'chat'
+                ELSE name
+              END
+            ) AS step,
+            coalesce(attributes['gen_ai.provider.name'], 'unknown') AS provider,
+            coalesce(attributes['gen_ai.request.model'], 'unknown') AS model,
+            count(*) AS calls,
+            coalesce(sum(try_cast(attributes['gen_ai.usage.input_tokens'] AS BIGINT)), 0) AS input_tokens,
+            coalesce(sum(try_cast(attributes['gen_ai.usage.cache_read.input_tokens'] AS BIGINT)), 0) AS cached_tokens,
+            coalesce(sum(try_cast(attributes['gen_ai.usage.estimated_cost_usd'] AS DOUBLE)), 0.0) AS estimated_cost_usd
+        FROM spans_window
+        WHERE name NOT LIKE 'agent_run%'
+          AND (
+            attributes['gen_ai.usage.input_tokens'] IS NOT NULL
+            OR attributes['gen_ai.usage.cache_read.input_tokens'] IS NOT NULL
+          )
+        GROUP BY step, provider, model
+        ORDER BY estimated_cost_usd DESC, input_tokens DESC
+        """
+    ).fetchall()
+    cache_by_step = [
+        {
+            "step": step,
+            "provider": provider,
+            "model": model,
+            "provider_model": f"{provider}:{model}",
+            "calls": int(calls),
+            "input_tokens": int(input_tokens),
+            "cached_tokens": int(cached_tokens),
+            "miss_tokens": max(int(input_tokens) - int(cached_tokens), 0),
+            "cache_percent": _percent(int(cached_tokens), int(input_tokens)),
+            "estimated_cost_usd": round(float(cost), 8),
+        }
+        for step, provider, model, calls, input_tokens, cached_tokens, cost in cache_step_rows
     ]
 
     # ── By tool ──────────────────────────────────────────────────────────
@@ -403,6 +489,8 @@ def _run_queries(
         total_tool_calls=int(tool_calls),
         total_input_tokens=int(in_tokens),
         total_output_tokens=int(out_tokens),
+        total_cached_tokens=int(cached_tokens),
+        total_estimated_cost_usd=round(float(estimated_cost_usd), 8),
         total_errors=int(errors),
         turn_p50_ms=round(float(turn_p50), 1),
         turn_p95_ms=round(float(turn_p95), 1),
@@ -410,6 +498,7 @@ def _run_queries(
         llm_p95_ms=round(float(llm_p95), 1),
         daily_turns=daily_turns,
         by_model=by_model,
+        cache_by_step=cache_by_step,
         by_tool=by_tool,
     )
 
@@ -461,7 +550,11 @@ def list_traces(
                 SELECT
                   trace_id,
                   count_if(name LIKE 'chat%')         AS llm_calls,
-                  count_if(name LIKE 'execute_tool%') AS tool_calls
+                  count_if(name LIKE 'execute_tool%') AS tool_calls,
+                  coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.input_tokens'] AS BIGINT) END), 0) AS input_tokens,
+                  coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.output_tokens'] AS BIGINT) END), 0) AS output_tokens,
+                  coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.cache_read.input_tokens'] AS BIGINT) END), 0) AS cached_tokens,
+                  coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.estimated_cost_usd'] AS DOUBLE) END), 0.0) AS estimated_cost_usd
                 FROM spans_window
                 GROUP BY trace_id
               )
@@ -471,12 +564,15 @@ def list_traces(
               runs.attributes['run_id']                  AS run_id,
               runs.attributes['gen_ai.conversation.id']  AS session_id,
               runs.attributes['gen_ai.agent.name']       AS agent_name,
+              runs.attributes['gen_ai.provider.name']    AS provider,
               runs.attributes['gen_ai.request.model']    AS model,
               runs.start_time // 1000000                 AS start_ms,
               runs.end_time   // 1000000                 AS end_ms,
               runs.duration_ms                           AS duration_ms,
-              coalesce(try_cast(runs.attributes['gen_ai.usage.input_tokens']  AS BIGINT), 0) AS in_tok,
-              coalesce(try_cast(runs.attributes['gen_ai.usage.output_tokens'] AS BIGINT), 0) AS out_tok,
+              coalesce(counts.input_tokens, 0) AS in_tok,
+              coalesce(counts.output_tokens, 0) AS out_tok,
+              coalesce(counts.cached_tokens, 0) AS cached_tokens,
+              coalesce(counts.estimated_cost_usd, 0.0) AS estimated_cost_usd,
               coalesce(counts.llm_calls,  0) AS llm_calls,
               coalesce(counts.tool_calls, 0) AS tool_calls,
               (runs.status = 'ERROR')        AS error
@@ -496,12 +592,20 @@ def list_traces(
             run_id=str(run_id) if run_id is not None else None,
             session_id=str(session_id) if session_id is not None else None,
             agent_name=str(agent_name) if agent_name is not None else None,
+            provider=str(provider) if provider is not None else None,
             model=str(model) if model is not None else None,
+            provider_model=(
+                f"{provider}:{model}"
+                if provider is not None and model is not None
+                else None
+            ),
             start_ms=int(start_ms),
             end_ms=int(end_ms),
             duration_ms=round(float(duration_ms), 1),
             input_tokens=int(in_tok),
             output_tokens=int(out_tok),
+            cached_tokens=int(cached_tokens),
+            estimated_cost_usd=round(float(estimated_cost_usd), 8),
             llm_calls=int(llm_calls),
             tool_calls=int(tool_calls),
             error=bool(error),
@@ -512,17 +616,45 @@ def list_traces(
             run_id,
             session_id,
             agent_name,
+            provider,
             model,
             start_ms,
             end_ms,
             duration_ms,
             in_tok,
             out_tok,
+            cached_tokens,
+            estimated_cost_usd,
             llm_calls,
             tool_calls,
             error,
         ) in rows
     ]
+
+
+def count_traces(days: int = 7) -> int:
+    """Return total agent-run rows in the window for trace pagination."""
+    days = max(1, min(90, days))
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(days=days)
+
+    files = _candidate_files(window_start)
+    if not files:
+        return 0
+
+    con = duckdb.connect(":memory:")
+    try:
+        _create_spans_window_view(con, files, window_start, now)
+        row = con.execute(
+            """
+            SELECT count(*)
+            FROM spans_window
+            WHERE name LIKE 'agent_run%'
+            """
+        ).fetchone()
+    finally:
+        con.close()
+    return int(row[0]) if row is not None else 0
 
 
 def get_trace(trace_id: str, days: int = 30) -> TraceDetail | None:

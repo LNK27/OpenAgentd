@@ -8,14 +8,15 @@ import type { ObservabilitySummary } from '@/api/client'
 import {
   formatCompact,
   formatInt,
-  formatMs,
+  formatPercent,
+  formatUsd,
 } from '@/utils/telemetryFormat'
 import { EmptyTable, SectionHeader, Stat, Table } from '../primitives'
-import { DailyBars } from './DailyBars'
 
 export function SummaryView({ data }: { data: ObservabilitySummary }) {
   const sampled = data.sample_ratio < 1.0
-  const { totals, latency_ms } = data
+  const { totals } = data
+  const cacheMissTokens = Math.max(totals.input_tokens - totals.cached_tokens, 0)
 
   return (
     <div className="flex flex-col gap-5">
@@ -34,13 +35,12 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
       )}
 
       <section>
-        <SectionHeader>Totals</SectionHeader>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Stat label="Turns" value={formatInt(totals.turns)} />
-          <Stat label="LLM calls" value={formatInt(totals.llm_calls)} />
-          <Stat label="Tool calls" value={formatInt(totals.tool_calls)} />
-          <Stat label="Input tokens" value={formatCompact(totals.input_tokens)} />
-          <Stat label="Output tokens" value={formatCompact(totals.output_tokens)} />
+        <SectionHeader>Usage</SectionHeader>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <Stat label="Input" value={formatCompact(totals.input_tokens)} />
+          <Stat label="Output" value={formatCompact(totals.output_tokens)} />
+          <Stat label="Cache hit" value={formatPercent(totals.cache_percent)} />
+          <Stat label="Est. cost" value={formatUsd(totals.estimated_cost_usd)} />
           <Stat
             label="Errors"
             value={formatInt(totals.errors)}
@@ -50,57 +50,49 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
       </section>
 
       <section>
-        <SectionHeader>Latency</SectionHeader>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Turn p50" value={formatMs(latency_ms.turn_p50)} />
-          <Stat label="Turn p95" value={formatMs(latency_ms.turn_p95)} />
-          <Stat label="LLM p50" value={formatMs(latency_ms.llm_p50)} />
-          <Stat label="LLM p95" value={formatMs(latency_ms.llm_p95)} />
-        </div>
-      </section>
-
-      <section>
-        <SectionHeader>Turns per day</SectionHeader>
-        <DailyBars rows={data.daily_turns} />
-      </section>
-
-      <section>
-        <SectionHeader>By model</SectionHeader>
+        <SectionHeader>Provider:model</SectionHeader>
         {data.by_model.length === 0 ? (
           <EmptyTable label="No LLM calls recorded in this window." />
         ) : (
           <Table
-            headers={['Model', 'Calls', 'Input', 'Output', 'p95 ms']}
+            headers={['Provider:model', 'Calls', 'Input', 'Output', 'Cache hit', 'Cost']}
             rows={data.by_model.map((m) => [
-              m.model,
+              m.provider_model,
               formatInt(m.calls),
               formatCompact(m.input_tokens),
               formatCompact(m.output_tokens),
-              formatMs(m.p95_ms),
+              formatPercent(m.cache_percent),
+              formatUsd(m.estimated_cost_usd),
             ])}
-            align={['left', 'right', 'right', 'right', 'right']}
+            align={['left', 'right', 'right', 'right', 'right', 'right']}
           />
         )}
       </section>
 
       <section>
-        <SectionHeader>By tool</SectionHeader>
-        {data.by_tool.length === 0 ? (
-          <EmptyTable label="No tool invocations recorded in this window." />
+        <SectionHeader>Cache hit/miss</SectionHeader>
+        <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Stat label="Hit tokens" value={formatCompact(totals.cached_tokens)} />
+          <Stat label="Miss tokens" value={formatCompact(cacheMissTokens)} />
+          <Stat label="Hit rate" value={formatPercent(totals.cache_percent)} />
+        </div>
+        {data.cache_by_step.length === 0 ? (
+          <EmptyTable label="No cache usage recorded in this window." />
         ) : (
           <Table
-            headers={['Tool', 'Calls', 'Errors', 'p95 ms']}
-            rows={data.by_tool.map((t) => [
-              t.tool,
-              formatInt(t.calls),
-              t.errors > 0 ? (
-                <span className="text-(--color-error)">{formatInt(t.errors)}</span>
-              ) : (
-                '0'
-              ),
-              formatMs(t.p95_ms),
-            ])}
-            align={['left', 'right', 'right', 'right']}
+            headers={['Step', 'Provider:model', 'Calls', 'Hit', 'Miss', 'Hit rate', 'Cost']}
+            rows={data.cache_by_step.map((step) => {
+              return [
+                step.step,
+                step.provider_model,
+                formatInt(step.calls),
+                formatCompact(step.cached_tokens),
+                formatCompact(step.miss_tokens),
+                formatPercent(step.cache_percent),
+                formatUsd(step.estimated_cost_usd),
+              ]
+            })}
+            align={['left', 'left', 'right', 'right', 'right', 'right', 'right']}
           />
         )}
       </section>

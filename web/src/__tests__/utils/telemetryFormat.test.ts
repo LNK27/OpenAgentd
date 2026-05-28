@@ -3,6 +3,7 @@ import {
   formatCompact,
   formatInt,
   formatMs,
+  formatPercent,
   formatShortId,
   formatUsd,
   timeAgo,
@@ -53,6 +54,14 @@ describe('formatUsd', () => {
   it('formats small estimated model costs with useful precision', () => {
     expect(formatUsd(0.00135)).toBe('$0.00135')
     expect(formatUsd(12.5)).toBe('$12.50')
+  })
+})
+
+describe('formatPercent', () => {
+  it('formats cache percentages compactly', () => {
+    expect(formatPercent(0)).toBe('0%')
+    expect(formatPercent(8.25)).toBe('8.3%')
+    expect(formatPercent(42.2)).toBe('42%')
   })
 })
 

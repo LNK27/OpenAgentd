@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 from loguru import logger
 from opentelemetry.trace import SpanKind, StatusCode
 
+from app.agent.usage import set_usage_span_attributes, usage_to_dict
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.model_metadata import get_model_limits
@@ -711,10 +712,23 @@ class SummarizationHook(BaseAgentHook):
             kind=SpanKind.CLIENT,
         ) as span:
             t0 = time.monotonic()
+            last_usage = None
+            model_id = getattr(self._llm_provider, "model", None)
+            provider_name = getattr(self._llm_provider, "provider_name", None)
+            span.set_attribute("gen_ai.operation.name", "summarization")
+            if provider_name:
+                span.set_attribute("gen_ai.provider.name", provider_name)
+            if model_id:
+                span.set_attribute("gen_ai.request.model", model_id)
+                if not provider_name and ":" in model_id:
+                    provider_name, _, _ = model_id.partition(":")
+                    span.set_attribute("gen_ai.provider.name", provider_name)
             try:
                 stream = self._llm_provider.stream(messages=messages, **kwargs)
                 full_text = ""
                 async for chunk in stream:
+                    if chunk.usage is not None:
+                        last_usage = chunk.usage
                     if not chunk.choices:
                         continue
                     delta = chunk.choices[0].delta
@@ -729,5 +743,7 @@ class SummarizationHook(BaseAgentHook):
             elapsed = time.monotonic() - t0
             span.set_attribute("summarization.llm_duration_s", round(elapsed, 3))
             span.set_attribute("summarization.response_length", len(full_text))
+            if last_usage is not None:
+                set_usage_span_attributes(span, usage_to_dict(last_usage, model_id))
             span.set_status(StatusCode.OK)
             return full_text.strip()

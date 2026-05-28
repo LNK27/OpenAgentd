@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.services.observability_service import (
+    count_traces,
     get_trace,
     list_traces,
     summarize,
@@ -34,10 +35,13 @@ async def traces(
     uses ``trace_id`` to fetch the full span tree via ``GET /traces/{id}``.
     """
     items = list_traces(days=days, limit=limit, offset=offset)
+    total = count_traces(days=days)
     return {
         "traces": [t.to_dict() for t in items],
         "limit": limit,
         "offset": offset,
+        "total": total,
+        "has_next": offset + limit < total,
     }
 
 

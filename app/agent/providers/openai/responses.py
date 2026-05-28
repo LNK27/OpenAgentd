@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator
 import httpx
 from loguru import logger
 
+from app.agent.usage import usage_to_dict
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatCompletionChunk,
@@ -231,6 +232,7 @@ class ResponsesHandler:
                     )
                 )
 
+        usage_dict = self._usage_dict(data.get("usage") or {})
         return AssistantMessage(
             content="\n".join(content_parts) if content_parts else None,
             # Me: reasoning parts each carry their own bold header
@@ -240,7 +242,22 @@ class ResponsesHandler:
                 "\n\n".join(reasoning_parts) if reasoning_parts else None
             ),
             tool_calls=tool_calls if tool_calls else None,
+            extra={"usage": usage_dict} if usage_dict is not None else None,
         )
+
+    def _usage_dict(self, usage_data: dict[str, Any]) -> dict[str, Any] | None:
+        if not usage_data:
+            return None
+        input_details = usage_data.get("input_tokens_details", {})
+        output_details = usage_data.get("output_tokens_details", {})
+        usage = Usage(
+            prompt_tokens=usage_data.get("input_tokens", 0),
+            completion_tokens=usage_data.get("output_tokens", 0),
+            total_tokens=usage_data.get("total_tokens", 0),
+            cached_tokens=input_details.get("cached_tokens") or None,
+            thoughts_tokens=output_details.get("reasoning_tokens") or None,
+        )
+        return usage_to_dict(usage, self.model)
 
     # ------------------------------------------------------------------
     # Public API

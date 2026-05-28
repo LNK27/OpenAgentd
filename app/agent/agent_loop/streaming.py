@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from app.agent.agent_loop.retry import stream_with_retry
-from app.agent.agent_loop.usage import usage_to_dict
+from app.agent.usage import usage_to_dict
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,

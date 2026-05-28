@@ -66,6 +66,8 @@ export const queryKeys = {
     summary: (days: number) => ['observability', 'summary', days] as const,
     traces: (days: number, limit: number, offset: number) =>
       ['observability', 'traces', days, limit, offset] as const,
+    infiniteTraces: (days: number, limit: number) =>
+      ['observability', 'traces', 'infinite', days, limit] as const,
     trace: (traceId: string) => ['observability', 'trace', traceId] as const,
   },
   scheduler: {

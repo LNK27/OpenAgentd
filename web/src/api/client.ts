@@ -322,6 +322,9 @@ export interface ObservabilitySummary {
     tool_calls: number
     input_tokens: number
     output_tokens: number
+    cached_tokens: number
+    cache_percent: number
+    estimated_cost_usd: number
     errors: number
   }
   latency_ms: {
@@ -331,7 +334,30 @@ export interface ObservabilitySummary {
     llm_p95: number
   }
   daily_turns: Array<{ day: string; turns: number; errors: number }>
-  by_model: Array<{ model: string; calls: number; input_tokens: number; output_tokens: number; p95_ms: number }>
+  by_model: Array<{
+    provider: string
+    model: string
+    provider_model: string
+    calls: number
+    input_tokens: number
+    output_tokens: number
+    cached_tokens: number
+    cache_percent: number
+    estimated_cost_usd: number
+    p95_ms: number
+  }>
+  cache_by_step: Array<{
+    step: string
+    provider: string
+    model: string
+    provider_model: string
+    calls: number
+    input_tokens: number
+    cached_tokens: number
+    miss_tokens: number
+    cache_percent: number
+    estimated_cost_usd: number
+  }>
   by_tool: Array<{ tool: string; calls: number; errors: number; p95_ms: number }>
 }
 
@@ -350,12 +376,16 @@ export interface TraceListItem {
   run_id: string | null
   session_id: string | null
   agent_name: string | null
+  provider: string | null
   model: string | null
+  provider_model: string | null
   start_ms: number
   end_ms: number
   duration_ms: number
   input_tokens: number
   output_tokens: number
+  cached_tokens: number
+  estimated_cost_usd: number
   llm_calls: number
   tool_calls: number
   error: boolean
@@ -365,6 +395,8 @@ export interface TracesListResponse {
   traces: TraceListItem[]
   limit: number
   offset: number
+  total: number
+  has_next: boolean
 }
 
 /** One span inside a trace — shape mirrors backend `SpanDetail`. */

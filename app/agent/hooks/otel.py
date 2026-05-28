@@ -66,6 +66,7 @@ from opentelemetry import trace
 from opentelemetry.context import Context as OtelContext
 from opentelemetry.trace import SpanKind, StatusCode
 
+from app.agent.usage import set_usage_span_attributes
 from app.agent.hooks.base import BaseAgentHook
 from app.core.otel import get_meter, get_tracer
 
@@ -263,30 +264,7 @@ class OpenTelemetryHook(BaseAgentHook):
             usage = result.extra.get("usage", {}) if result.extra else {}
             input_tokens: int = usage.get("input", 0)
             output_tokens: int = usage.get("output", 0)
-            cached_tokens: int = usage.get("cache", 0)
-            thoughts_tokens: int = usage.get("thoughts", 0) or 0
-            tool_use_tokens: int = usage.get("tool_use", 0) or 0
-
-            if input_tokens:
-                span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
-            if output_tokens:
-                span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
-            if cached_tokens:
-                span.set_attribute(
-                    "gen_ai.usage.cache_read.input_tokens", cached_tokens
-                )
-            # Me capture reasoning / tool-use tokens too — surfaced in the
-            # span-detail panel for reasoning models (gpt-5, gemini-thinking).
-            if thoughts_tokens:
-                span.set_attribute("gen_ai.usage.reasoning_tokens", thoughts_tokens)
-            if tool_use_tokens:
-                span.set_attribute("gen_ai.usage.tool_use_tokens", tool_use_tokens)
-            cost = usage.get("cost")
-            estimated_cost = (
-                cost.get("estimated_usd") if isinstance(cost, dict) else None
-            )
-            if isinstance(estimated_cost, int | float) and estimated_cost > 0:
-                span.set_attribute("gen_ai.usage.estimated_cost_usd", estimated_cost)
+            set_usage_span_attributes(span, usage)
 
             # Me response model if provider returns it
             resp_model = (result.extra or {}).get("model")
