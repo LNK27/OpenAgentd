@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator
 import httpx
 from loguru import logger
 
+from app.agent.usage import usage_to_dict
 from app.agent.providers.streaming import iter_sse_data
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -262,10 +263,16 @@ class CompletionsHandler:
                         ),
                     )
                 )
+        usage_dict = None
+        if parsed.usage is not None:
+            usage_dict = usage_to_dict(
+                self._usage_from_openai(parsed.usage), self.model
+            )
         return AssistantMessage(
             content=msg.content or None,
             reasoning_content=msg.reasoning_content or None,
             tool_calls=tool_calls if tool_calls else None,
+            extra={"usage": usage_dict} if usage_dict is not None else None,
         )
 
     # ------------------------------------------------------------------

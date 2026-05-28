@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from app.services.observability_service import (
+    count_traces,
     get_trace,
     list_traces,
     summarize,
@@ -124,9 +125,12 @@ def test_summarize_aggregates_turns_llm_tools(
             end_time_ns=ts_ns,
             duration_ms=500.0,
             attributes={
+                "gen_ai.provider.name": "openai",
                 "gen_ai.request.model": "gpt-4o",
                 "gen_ai.usage.input_tokens": 1000,
                 "gen_ai.usage.output_tokens": 200,
+                "gen_ai.usage.cache_read.input_tokens": 250,
+                "gen_ai.usage.estimated_cost_usd": 0.004,
             },
         ),
         _span(
@@ -134,9 +138,12 @@ def test_summarize_aggregates_turns_llm_tools(
             end_time_ns=ts_ns,
             duration_ms=700.0,
             attributes={
+                "gen_ai.provider.name": "openai",
                 "gen_ai.request.model": "gpt-4o",
                 "gen_ai.usage.input_tokens": 500,
                 "gen_ai.usage.output_tokens": 100,
+                "gen_ai.usage.cache_read.input_tokens": 50,
+                "gen_ai.usage.estimated_cost_usd": 0.002,
             },
         ),
         _span(
@@ -144,9 +151,25 @@ def test_summarize_aggregates_turns_llm_tools(
             end_time_ns=ts_ns,
             duration_ms=200.0,
             attributes={
+                "gen_ai.provider.name": "google",
                 "gen_ai.request.model": "gemini-flash",
                 "gen_ai.usage.input_tokens": 400,
                 "gen_ai.usage.output_tokens": 80,
+                "gen_ai.usage.estimated_cost_usd": 0.001,
+            },
+        ),
+        _span(
+            name="title_generation",
+            end_time_ns=ts_ns,
+            duration_ms=120.0,
+            attributes={
+                "gen_ai.operation.name": "title_generation",
+                "gen_ai.provider.name": "openai",
+                "gen_ai.request.model": "gpt-4o-mini",
+                "gen_ai.usage.input_tokens": 100,
+                "gen_ai.usage.output_tokens": 20,
+                "gen_ai.usage.cache_read.input_tokens": 80,
+                "gen_ai.usage.estimated_cost_usd": 0.0001,
             },
         ),
         # 2 tool calls (one errored)
@@ -171,8 +194,10 @@ def test_summarize_aggregates_turns_llm_tools(
     assert result.total_turns == 2
     assert result.total_llm_calls == 3
     assert result.total_tool_calls == 2
-    assert result.total_input_tokens == 1900
-    assert result.total_output_tokens == 380
+    assert result.total_input_tokens == 2000
+    assert result.total_output_tokens == 400
+    assert result.total_cached_tokens == 380
+    assert result.total_estimated_cost_usd == 0.0071
     # 1 agent_run + 1 tool in ERROR status
     assert result.total_errors == 2
 
@@ -188,8 +213,25 @@ def test_summarize_aggregates_turns_llm_tools(
     # Per-model breakdown
     models = {m["model"]: m for m in result.by_model}
     assert models["gpt-4o"]["calls"] == 2
+    assert models["gpt-4o"]["provider"] == "openai"
+    assert models["gpt-4o"]["provider_model"] == "openai:gpt-4o"
     assert models["gpt-4o"]["input_tokens"] == 1500
+    assert models["gpt-4o"]["cached_tokens"] == 300
+    assert models["gpt-4o"]["cache_percent"] == 20.0
+    assert models["gpt-4o"]["estimated_cost_usd"] == 0.006
     assert models["gemini-flash"]["calls"] == 1
+
+    cache_steps = {
+        (row["step"], row["provider_model"]): row for row in result.cache_by_step
+    }
+    chat_openai = cache_steps[("chat", "openai:gpt-4o")]
+    assert chat_openai["input_tokens"] == 1500
+    assert chat_openai["cached_tokens"] == 300
+    assert chat_openai["miss_tokens"] == 1200
+    title_generation = cache_steps[("title_generation", "openai:gpt-4o-mini")]
+    assert title_generation["input_tokens"] == 100
+    assert title_generation["cached_tokens"] == 80
+    assert title_generation["cache_percent"] == 80.0
 
     # Per-tool breakdown
     tools = {t["tool"]: t for t in result.by_tool}
@@ -232,6 +274,7 @@ def test_to_dict_round_trips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "latency_ms",
         "daily_turns",
         "by_model",
+        "cache_by_step",
         "by_tool",
     }
     assert set(d["totals"].keys()) == {
@@ -240,6 +283,9 @@ def test_to_dict_round_trips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "tool_calls",
         "input_tokens",
         "output_tokens",
+        "cached_tokens",
+        "cache_percent",
+        "estimated_cost_usd",
         "errors",
     }
 
@@ -273,6 +319,7 @@ def _write_trace(
             status="ERROR" if error else "OK",
             attributes={
                 "gen_ai.agent.name": agent_name,
+                "gen_ai.provider.name": "openai",
                 "gen_ai.request.model": model,
                 "gen_ai.conversation.id": session_id,
                 "run_id": run_id,
@@ -288,9 +335,14 @@ def _write_trace(
             duration_ms=400.0,
             attributes={
                 "gen_ai.operation.name": "chat",
+                "gen_ai.provider.name": "openai",
                 "gen_ai.request.model": model,
                 "gen_ai.agent.name": agent_name,
                 "run_id": run_id,
+                "gen_ai.usage.input_tokens": 900,
+                "gen_ai.usage.output_tokens": 150,
+                "gen_ai.usage.cache_read.input_tokens": 300,
+                "gen_ai.usage.estimated_cost_usd": 0.0035,
             },
             trace_id=trace_id,
             span_id="0x" + "b" * 16,
@@ -356,10 +408,14 @@ def test_list_traces_returns_one_row_per_agent_run(
     assert rows[1].error is True
     # Attributes are unpacked into typed columns
     assert rows[0].agent_name == "lead"
+    assert rows[0].provider == "openai"
     assert rows[0].model == "gpt-4o"
+    assert rows[0].provider_model == "openai:gpt-4o"
     assert rows[0].session_id == "sess-a"
-    assert rows[0].input_tokens == 1000
-    assert rows[0].output_tokens == 200
+    assert rows[0].input_tokens == 900
+    assert rows[0].output_tokens == 150
+    assert rows[0].cached_tokens == 300
+    assert rows[0].estimated_cost_usd == 0.0035
     # start_ms/end_ms are epoch milliseconds (JS-friendly)
     assert rows[0].end_ms == now_ns // 1_000_000
     assert rows[0].duration_ms == 1500.0
@@ -380,6 +436,7 @@ def test_list_traces_pagination(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     second = list_traces(days=7, limit=2, offset=2)
     assert [r.run_id for r in first] == ["run-0", "run-1"]
     assert [r.run_id for r in second] == ["run-2", "run-3"]
+    assert count_traces(days=7) == 5
 
 
 def test_list_traces_clamps_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -451,18 +508,21 @@ def test_get_trace_strips_null_attributes_unioned_across_span_types(
     assert detail is not None
 
     chat = next(s for s in detail.spans if s.name.startswith("chat"))
-    # The chat span only sets these four keys — no usage tokens, no
-    # conversation id.  The service must not forward Nones from the union.
+    # The chat span only sets its own keys, not conversation id inherited from
+    # agent_run. The service must not forward Nones from the union.
     assert set(chat.attributes.keys()) == {
         "gen_ai.operation.name",
+        "gen_ai.provider.name",
         "gen_ai.request.model",
         "gen_ai.agent.name",
         "run_id",
+        "gen_ai.usage.input_tokens",
+        "gen_ai.usage.output_tokens",
+        "gen_ai.usage.cache_read.input_tokens",
+        "gen_ai.usage.estimated_cost_usd",
     }
-    # And in particular, usage/conversation keys (set only by agent_run) must
-    # not appear as None on the chat row.
-    assert "gen_ai.usage.input_tokens" not in chat.attributes
-    assert "gen_ai.usage.output_tokens" not in chat.attributes
+    # And in particular, conversation keys (set only by agent_run) must not
+    # appear as None on the chat row.
     assert "gen_ai.conversation.id" not in chat.attributes
 
 

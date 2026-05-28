@@ -3,7 +3,9 @@ import {
   formatCompact,
   formatInt,
   formatMs,
+  formatPercent,
   formatShortId,
+  formatUsd,
   timeAgo,
 } from '@/utils/telemetryFormat'
 
@@ -40,6 +42,26 @@ describe('formatMs', () => {
   it('switches to seconds at and above 1000', () => {
     expect(formatMs(1500)).toBe('1.5 s')
     expect(formatMs(60_000)).toBe('60.0 s')
+  })
+})
+
+describe('formatUsd', () => {
+  it('returns an em-dash for non-positive or invalid values', () => {
+    expect(formatUsd(0)).toBe('—')
+    expect(formatUsd(Number.NaN)).toBe('—')
+  })
+
+  it('formats small estimated model costs with useful precision', () => {
+    expect(formatUsd(0.00135)).toBe('$0.00135')
+    expect(formatUsd(12.5)).toBe('$12.50')
+  })
+})
+
+describe('formatPercent', () => {
+  it('formats cache percentages compactly', () => {
+    expect(formatPercent(0)).toBe('0%')
+    expect(formatPercent(8.25)).toBe('8.3%')
+    expect(formatPercent(42.2)).toBe('42%')
   })
 })
 

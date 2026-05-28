@@ -19,6 +19,7 @@ from uuid import UUID
 from loguru import logger
 from opentelemetry.trace import SpanKind, StatusCode
 
+from app.agent.usage import set_usage_span_attributes
 from app.agent.providers.base import LLMProviderBase
 from app.agent.schemas.chat import ChatMessage, HumanMessage, SystemMessage
 from app.agent.schemas.events import TitleUpdateEvent
@@ -138,6 +139,12 @@ async def generate_and_save_title(
                     "title_generation.llm_duration_s", round(time.monotonic() - t0, 3)
                 )
 
+            _attach_usage(
+                span,
+                result,
+                getattr(provider, "model", None),
+                getattr(provider, "provider_name", None),
+            )
             title = _clean_title(result.content or "")
             if not title:
                 logger.debug("title_generation_empty session_id={}", session_id_str)
@@ -171,3 +178,22 @@ async def generate_and_save_title(
         except Exception:
             logger.warning("title_generation_failed session_id={}", session_id_str)
             span.set_status(StatusCode.ERROR, "unexpected error")
+
+
+def _attach_usage(
+    span,
+    result,
+    model_id: str | None,
+    provider_name: str | None = None,
+) -> None:
+    span.set_attribute("gen_ai.operation.name", "title_generation")
+    if provider_name:
+        span.set_attribute("gen_ai.provider.name", provider_name)
+    if model_id:
+        span.set_attribute("gen_ai.request.model", model_id)
+        if not provider_name and ":" in model_id:
+            provider_name, _, _ = model_id.partition(":")
+            span.set_attribute("gen_ai.provider.name", provider_name)
+    usage = (result.extra or {}).get("usage") if result.extra else None
+    if isinstance(usage, dict):
+        set_usage_span_attributes(span, usage)

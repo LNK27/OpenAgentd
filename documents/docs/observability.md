@@ -77,11 +77,13 @@ agent_run {agent_name}        parent_id=null   ← full turn, before_agent…aft
         └── summarization_llm_call             ← the actual LLM call inside the hook
 ```
 
-`summarization` and `summarization_llm_call` are emitted directly by `SummarizationHook`, not via `OpenTelemetryHook`. `title_generation` is emitted independently by `title_service.generate_and_save_title` (spawned as a fire-and-forget task by `TitleGenerationHook.before_agent()`, so its span has no agent parent):
+`summarization` and `summarization_llm_call` are emitted directly by `SummarizationHook`, not via `OpenTelemetryHook`. `title_generation` is emitted independently by `title_service.generate_and_save_title` (spawned as a fire-and-forget task by `TitleGenerationHook.before_agent()`, so its span has no agent parent). Both direct LLM paths set `gen_ai.operation.name`, provider/model, and usage/cost attributes when the provider adapter returns usage metadata:
 
 ```
 title_generation              parent_id=null   ← concurrent with agent_run, first turn only
 ```
+
+Session model overrides apply to lead title generation and summarization. If a session is using `googlegenai:gemini-3.1-flash-lite`, direct title/summarization spans should report `gen_ai.provider.name=googlegenai` and `gen_ai.request.model=gemini-3.1-flash-lite` instead of the agent's default model.
 
 ### Team (multi-agent)
 
@@ -142,11 +144,23 @@ trace_id = stable per conversation  (anchored to lead_session_id / session_id)
 | `gen_ai.usage.input_tokens` | prompt tokens for this call |
 | `gen_ai.usage.output_tokens` | completion tokens for this call |
 | `gen_ai.usage.cache_read.input_tokens` | cached tokens (if provider reports it) |
+| `gen_ai.usage.estimated_cost_usd` | estimated call cost when registry pricing and usage tokens are available |
 | `gen_ai.usage.reasoning_tokens` | thoughts / reasoning tokens (reasoning models only — gpt-5, gemini-thinking) |
 | `gen_ai.usage.tool_use_tokens` | tool-use tokens (reasoning models that bill tool dispatch separately) |
 | `error.type` | exception class name (only on error) |
 
-Token attributes are populated by `OpenTelemetryHook.wrap_model_call` from the `AssistantMessage.extra["usage"]` dict that `Agent._stream_and_assemble` attaches on every streamed response. `None`-valued keys are stripped inside `observability_service.get_trace` before reaching the API response (DuckDB's `read_json(..., union_by_name=true)` would otherwise surface every attribute key on every span row as `None`, so the span-detail panel would show empty em-dashes for unrelated keys).
+Token and cost attributes are populated by shared usage helpers from the `AssistantMessage.extra["usage"]` dict. Normal streamed chat responses get that dict from `Agent._stream_and_assemble`; direct title-generation and summarization calls reuse the same shape when provider adapters expose non-streaming/streaming usage metadata. Cost is estimated from model-registry pricing and omitted when pricing is unknown. `None`-valued keys are stripped inside `observability_service.get_trace` before reaching the API response (DuckDB's `read_json(..., union_by_name=true)` would otherwise surface every attribute key on every span row as `None`, so the span-detail panel would show empty em-dashes for unrelated keys).
+
+## Dashboard Aggregates
+
+`GET /api/observability/summary` powers the `/telemetry` overview. The UI intentionally keeps the top-level view narrow:
+
+- Usage cards: input tokens, output tokens, cache hit percentage, estimated cost, and errors.
+- Provider:model table: calls, input/output, cache hit, and cost per model.
+- Cache hit/miss table: hit tokens, miss tokens, hit rate, cost, and provider:model per operation step (`chat`, `title_generation`, `summarization`, and other `gen_ai.operation.name` values).
+- Recent traces: scroll-paginated `agent_run` rows from `GET /api/observability/traces`, with row-click drilldown into the waterfall.
+
+Root `agent_run` usage is excluded from token/cost aggregates to avoid double-counting child LLM spans.
 
 ### `execute_tool {name}` (tool call)
 

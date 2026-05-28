@@ -38,6 +38,7 @@ def _write_agent_run(
         "status": "OK",
         "attributes": {
             "gen_ai.agent.name": "lead",
+            "gen_ai.provider.name": "openai",
             "gen_ai.request.model": "gpt-4o",
             "gen_ai.conversation.id": "sess-a",
             "run_id": run_id,
@@ -59,7 +60,12 @@ def _write_agent_run(
         "status": "OK",
         "attributes": {
             "gen_ai.operation.name": "chat",
+            "gen_ai.provider.name": "openai",
             "gen_ai.request.model": "gpt-4o",
+            "gen_ai.usage.input_tokens": 900,
+            "gen_ai.usage.output_tokens": 150,
+            "gen_ai.usage.cache_read.input_tokens": 300,
+            "gen_ai.usage.estimated_cost_usd": 0.0035,
         },
         "events": [],
         "resource": {"service.name": "openagentd"},
@@ -120,7 +126,13 @@ def test_traces_list_returns_empty_when_no_spans(
     resp = client.get("/api/observability/traces")
     assert resp.status_code == 200
     body = resp.json()
-    assert body == {"traces": [], "limit": 50, "offset": 0}
+    assert body == {
+        "traces": [],
+        "limit": 50,
+        "offset": 0,
+        "total": 0,
+        "has_next": False,
+    }
 
 
 def test_traces_list_returns_turn_rows(tmp_path, monkeypatch: pytest.MonkeyPatch):
@@ -140,10 +152,16 @@ def test_traces_list_returns_turn_rows(tmp_path, monkeypatch: pytest.MonkeyPatch
     assert row["trace_id"] == "0x" + "1" * 32
     assert row["run_id"] == "run-1"
     assert row["agent_name"] == "lead"
+    assert row["provider"] == "openai"
     assert row["model"] == "gpt-4o"
-    assert row["input_tokens"] == 1000
+    assert row["provider_model"] == "openai:gpt-4o"
+    assert row["input_tokens"] == 900
+    assert row["cached_tokens"] == 300
+    assert row["estimated_cost_usd"] == 0.0035
     assert row["llm_calls"] == 1
     assert row["error"] is False
+    assert body["total"] == 1
+    assert body["has_next"] is False
 
 
 def test_traces_list_respects_query_bounds(tmp_path, monkeypatch: pytest.MonkeyPatch):

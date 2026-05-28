@@ -11,6 +11,8 @@ updated: 2026-05-19
 
 Drop a `.py` file into `{OPENAGENTD_CONFIG_DIR}/plugins/` (default `.openagentd/config/plugins/`) to hook into the agent loop without touching the codebase. The hook loader discovers hook plugins at agent-build time and adapts them into [`BaseAgentHook`](hooks.md) instances. Provider plugins in the same directory expose `provider = ProviderPlugin(...)` and are ignored by the hook loader because they are loaded by the provider registry instead.
 
+Provider plugin credential, discovery, usage, and model-metadata alias fields are documented in [`configuration/providers.md`](../configuration/providers.md#provider-plugins).
+
 Set `OPENAGENTD_PLUGINS_DIRS` to point elsewhere; separate multiple directories with the OS path separator (`:` on macOS/Linux, `;` on Windows — same convention as `PATH`/`PYTHONPATH`). Files prefixed with `_` are skipped — useful for helper modules.
 
 ---

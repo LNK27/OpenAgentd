@@ -13,6 +13,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.agent.schemas.chat import HumanMessage, SystemMessage
 from app.models.chat import ChatSession
 from app.services.title_service import (
+    _attach_usage,
     _clean_title,
     generate_and_save_title,
 )
@@ -121,6 +122,30 @@ class TestCleanTitle:
         # First strips outer double quotes: "'hello'"
         # Then strips inner single quotes: "hello"
         assert _clean_title("\"'hello'\"") == "hello"
+
+
+def test_attach_usage_adds_title_generation_token_attributes():
+    span = MagicMock()
+    result = MagicMock(
+        extra={
+            "usage": {
+                "input": 100,
+                "output": 10,
+                "cache": 40,
+                "cost": {"estimated_usd": 0.00012},
+            }
+        }
+    )
+
+    _attach_usage(span, result, "gpt-test", "openai")
+
+    span.set_attribute.assert_any_call("gen_ai.operation.name", "title_generation")
+    span.set_attribute.assert_any_call("gen_ai.provider.name", "openai")
+    span.set_attribute.assert_any_call("gen_ai.request.model", "gpt-test")
+    span.set_attribute.assert_any_call("gen_ai.usage.input_tokens", 100)
+    span.set_attribute.assert_any_call("gen_ai.usage.output_tokens", 10)
+    span.set_attribute.assert_any_call("gen_ai.usage.cache_read.input_tokens", 40)
+    span.set_attribute.assert_any_call("gen_ai.usage.estimated_cost_usd", 0.00012)
 
 
 # ── Integration Tests: generate_and_save_title ────────────────────────────────

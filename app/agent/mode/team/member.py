@@ -831,7 +831,7 @@ class TeamMemberBase(abc.ABC):
         # unconfigured — non-fatal, sessions just keep the fallback title.
         if self._role_label == "lead" and self.db_factory:
             title_hook = build_title_generation_hook(
-                default_provider=self.agent.llm_provider,
+                default_provider=runtime_provider or self.agent.llm_provider,
                 db_factory=self.db_factory,
             )
             if title_hook is not None:
@@ -857,16 +857,18 @@ class TeamMemberBase(abc.ABC):
             # Tool result offload uses the hook's module-level defaults
             # (see app.agent.hooks.tool_result_offload.DEFAULT_CHAR_THRESHOLD).
             hooks.append(ToolResultOffloadHook())
+            summarization_provider = runtime_provider or self.agent.llm_provider
+            summarization_model = runtime_model or self.agent.model_id
             summ_hook = build_summarization_hook(
-                self.agent.llm_provider,
+                summarization_provider,
                 mode=self._team.mode,
-                model_id=self.agent.model_id,
+                model_id=summarization_model,
             )
             if summ_hook:
                 # Flush memory before the summariser compresses the window —
                 # same threshold so both fire on the same turn, flush first.
                 flush_hook = build_memory_flush_hook(
-                    llm_provider=self.agent.llm_provider,
+                    llm_provider=summarization_provider,
                     prompt_token_threshold=summ_hook.prompt_token_threshold,
                 )
                 if flush_hook is not None:

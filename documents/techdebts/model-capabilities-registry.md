@@ -3,7 +3,7 @@ title: Model capabilities registry
 status: open
 owner: providers
 opened: 2026-05-17
-updated: 2026-05-18
+updated: 2026-05-28
 ---
 
 # Tech debt: per-model capability metadata
@@ -11,22 +11,28 @@ updated: 2026-05-18
 ## Current state
 
 `app/agent/providers/capabilities.py` resolves capability flags via an
-**exact-match lookup** against a curated YAML registry shipped inside
-the wheel (`app/agent/providers/capabilities.yaml`).
+**exact-match lookup** against the shared model registry. Registry data comes
+from the bundled minimized JSON snapshot (`app/agent/providers/model_registry.json`),
+the cached/refreshed `https://models.dev/api.json` feed, and an optional local
+YAML overlay at `{OPENAGENTD_CONFIG_DIR}/model_registry.yaml`. The same registry
+also contains token limits, cost, support flags, status/release metadata, and
+advertised thinking levels consumed by `app/agent/providers/model_metadata.py`.
 
 Lookup rule:
 
-1. Exact `provider:model` match in the YAML → those flags, sparse-merged
+1. Exact `provider:model` match with a `capabilities:` block → those flags, sparse-merged
    onto the all-false defaults.
 2. Otherwise → all-false / text-out-only defaults.
 
-There are no prefix fallbacks and no name-substring heuristics. The
-YAML is therefore the authoritative document — reading it tells you
-exactly what every flagship model can do.
+There are no prefix fallbacks and no name-substring heuristics. Exact model
+metadata is refreshed from models.dev at runtime unless
+`OPENAGENTD_MODEL_REGISTRY_REFRESH=false` is set. Runtime provider/model IDs
+that differ from models.dev source IDs are handled through provider-owned
+compatibility aliases.
 
 ## Why this shape
 
-- **YAML lists only special-capability models.** A model that does
+- **Bundled JSON lists only special-capability models for modalities.** A model that does
   plain text-in / text-out doesn't need an entry — it gets the right
   defaults by virtue of *not* being listed. That keeps the file small
   and the maintenance question trivial: "does this new model have
@@ -35,16 +41,16 @@ exactly what every flagship model can do.
 - **Conservative on unknowns.** An un-curated model can't accidentally
   trip the chat attachment gate or the read tool's image handler. The
   worst-case for a forgotten entry is a vision-capable model refusing
-  images until someone notices and adds a one-liner.
+  images until someone notices and adds a small registry entry.
 
-- **Fresh on every release.** The YAML ships inside the wheel
-  (`[tool.hatch.build.targets.wheel] packages = ["app"]`). Users
-  upgrading the CLI (`uv tool upgrade openagentd` / `pip install -U`)
-  or the desktop app (Tauri auto-update) get the new file atomically
-  as part of package replacement — no merge, no migration, no init
-  step. The YAML deliberately does *not* live under
-  `{OPENAGENTD_CONFIG_DIR}` to avoid the "user copy shadows the bundle
-  forever" trap that bites our agents/skills/`mcp.json` seeds.
+- **One registry shape.** Modality, limits, cost, support flags, lifecycle data,
+  and thinking metadata now live together, so adding a new flagship model does
+  not require keeping multiple exact-match files in sync.
+
+- **Fresh before and after release.** Maintainers refresh the bundled JSON with
+  `uv run python scripts/update_model_registry.py` before shipping. Installed
+  apps also refresh from models.dev into `{OPENAGENTD_CACHE_DIR}/models-dev.json`
+  so users do not need a new app release for routine model metadata updates.
 
 ## Why the previous prefix-fallback design was discarded
 
@@ -62,15 +68,15 @@ than a per-model table but had two failure modes:
   small) models. Real Claude-on-Bedrock requests rejected image
   attachments needlessly.
 
-The exact-match table fixes both — but only as long as someone keeps
-the YAML current, which is the actual tech debt.
+The exact-match table fixes both while models.dev plus the release script reduces
+the curation burden.
 
 ## Long-term direction
 
-If we ever need richer per-model metadata (context length,
-image-output, audio in/out, thinking levels, etc.), or if the curation
-burden becomes painful, replace the YAML with a **runtime-fetched
-registry**. The clearest reference is CLIProxyAPI's `models.json`:
+The runtime-fetched registry is now in place through models.dev. If we need
+metadata that models.dev does not expose, evaluate extending the upstream schema
+or introducing a project-owned supplemental feed. The closest historical
+reference remains CLIProxyAPI's `models.json`:
 
 - <https://github.com/router-for-me/CLIProxyAPI/blob/main/internal/registry/models/models.json>
 - <https://github.com/router-for-me/CLIProxyAPI/blob/main/internal/registry/model_definitions.go>
@@ -80,23 +86,11 @@ That schema carries `display_name`, `context_length`,
 `thinking: {min, max, levels}`, and `supported_parameters` per model,
 grouped by channel/provider.
 
-If we adopt it:
-
-- Replace the YAML resolver with a JSON registry fetched at daemon
-  startup (and cached on disk with a TTL for offline use).
-- Hot-refresh from a URL we control, the way CLIProxyAPI does
-  (`model_updater.go`).
-- Keep an embedded snapshot of the JSON as the offline-fallback so
-  first-launch / air-gapped installs still resolve common models.
-
 ## Out of scope until then
 
 - Re-introducing prefix fallbacks or name-substring heuristics. They
   drift faster than provider catalogs evolve.
-- Per-user override files at `{OPENAGENTD_CONFIG_DIR}/capabilities.yaml`.
-  If users start asking for that, it's the signal that the curated
-  YAML is too stale and we should be doing the runtime-fetched
-  registry instead.
+- Per-user override files other than `{OPENAGENTD_CONFIG_DIR}/model_registry.yaml`.
 
 ## Symptoms that warrant prioritising this
 

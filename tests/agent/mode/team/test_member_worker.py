@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid7
 
 import pytest_asyncio
 
@@ -12,6 +13,7 @@ from app.agent.agent_loop import Agent
 from app.agent.mode.team.mailbox import Message
 from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
+from app.models.chat import ChatSession
 from tests.agent.mode.team.conftest import MockTeamProvider
 
 
@@ -22,6 +24,22 @@ def _make_mock_db_factory():
     mock_db.flush = AsyncMock()
     mock_db.refresh = AsyncMock()
     mock_db.get = AsyncMock(return_value=None)
+    mock_db.exec = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+    mock_db.add = MagicMock()
+
+    @asynccontextmanager
+    async def factory():
+        yield mock_db
+
+    return factory
+
+
+def _make_mock_db_factory_with_session(session_row: ChatSession):
+    mock_db = MagicMock()
+    mock_db.commit = AsyncMock()
+    mock_db.flush = AsyncMock()
+    mock_db.refresh = AsyncMock()
+    mock_db.get = AsyncMock(return_value=session_row)
     mock_db.exec = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
     mock_db.add = MagicMock()
 
@@ -62,6 +80,51 @@ class TestOnDemandActivation:
         assert team.members["worker"]._active_task is None
 
         await team.stop()
+
+    async def test_lead_summarization_uses_session_model_override(self, monkeypatch):
+        session_uuid = uuid7()
+        session_id = str(session_uuid)
+        session_row = ChatSession(
+            id=session_uuid,
+            title="s",
+            model="googlegenai:gemini-3.1-flash-lite",
+        )
+        db_factory = _make_mock_db_factory_with_session(session_row)
+        default_provider = MockTeamProvider("default")
+        override_provider = MockTeamProvider("override")
+        captured: dict[str, object] = {}
+
+        async def fake_run(*_args, **_kwargs):
+            return []
+
+        def provider_factory(model: str, model_kwargs=None):
+            captured["factory_model"] = model
+            return override_provider
+
+        def fake_build_summarization_hook(provider, *, mode=None, model_id=None):
+            captured["summary_provider"] = provider
+            captured["summary_model"] = model_id
+            return None
+
+        lead = TeamLead(
+            Agent(name="lead", llm_provider=default_provider), db_factory=db_factory
+        )
+        lead.session_id = session_id
+        team = AgentTeam(
+            lead=lead, provider_factory=provider_factory, db_factory=db_factory
+        )
+        lead.register(team)
+        monkeypatch.setattr(lead.agent, "run", fake_run)
+        monkeypatch.setattr(
+            "app.agent.mode.team.member.build_summarization_hook",
+            fake_build_summarization_hook,
+        )
+
+        await lead._handle_messages(force_compaction=True)
+
+        assert captured["factory_model"] == "googlegenai:gemini-3.1-flash-lite"
+        assert captured["summary_provider"] is override_provider
+        assert captured["summary_model"] == "googlegenai:gemini-3.1-flash-lite"
 
     async def test_worker_activates_on_inbox_message(self, team_with_db):
         """Worker activates when a message arrives in inbox."""

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { listTraces, getTraceDetail } from '@/api/client'
 import { queryKeys } from './keys'
 
@@ -8,6 +8,19 @@ export function useTracesQuery(days: number, limit = 50, offset = 0) {
     queryKey: queryKeys.observability.traces(days, limit, offset),
     queryFn: () => listTraces(days, limit, offset),
     // Traces are append-only — moderate staleness is fine.
+    staleTime: 30_000,
+  })
+}
+
+/** Scroll-paginated list of ``agent_run`` spans. */
+export function useInfiniteTracesQuery(days: number, limit = 25) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.observability.infiniteTraces(days, limit),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => listTraces(days, limit, pageParam),
+    getNextPageParam: (lastPage) => (
+      lastPage.has_next ? lastPage.offset + lastPage.limit : undefined
+    ),
     staleTime: 30_000,
   })
 }

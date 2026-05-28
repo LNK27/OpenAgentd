@@ -90,6 +90,13 @@ def require_api_key(secret: SecretStr | None, env_var: str, label: str) -> str:
     raise ValueError(f"{label} API key is required. Set {env_var} in your .env file.")
 
 
+def _with_provider_name(
+    provider: LLMProviderBase, provider_name: str
+) -> LLMProviderBase:
+    provider.provider_name = provider_name
+    return provider
+
+
 def build_provider(
     model_str: str | None,
     model_kwargs: dict[str, object] | None = None,
@@ -129,10 +136,15 @@ def build_provider(
 
     match name:
         case "openai":
-            return OpenAIProvider(
-                api_key=require_api_key(s.OPENAI_API_KEY, "OPENAI_API_KEY", "OpenAI"),
-                model=model,
-                model_kwargs=kwargs,
+            return _with_provider_name(
+                OpenAIProvider(
+                    api_key=require_api_key(
+                        s.OPENAI_API_KEY, "OPENAI_API_KEY", "OpenAI"
+                    ),
+                    model=model,
+                    model_kwargs=kwargs,
+                ),
+                name,
             )
         case _ if name in OPENAI_COMPATIBLE_PROVIDER_SPECS:
             spec = OPENAI_COMPATIBLE_PROVIDER_SPECS[name]
@@ -149,68 +161,98 @@ def build_provider(
                     or spec.base_url
                 )
             if name == "deepseek":
-                return DeepSeekProvider(
-                    api_key=cast(str, typed_api_key),
-                    model=model,
-                    model_kwargs=kwargs,
+                return _with_provider_name(
+                    DeepSeekProvider(
+                        api_key=cast(str, typed_api_key),
+                        model=model,
+                        model_kwargs=kwargs,
+                    ),
+                    name,
                 )
             if name == "xai":
-                return XAIProvider(
-                    api_key=cast(str, typed_api_key),
-                    model=model,
-                    model_kwargs=kwargs,
+                return _with_provider_name(
+                    XAIProvider(
+                        api_key=cast(str, typed_api_key),
+                        model=model,
+                        model_kwargs=kwargs,
+                    ),
+                    name,
                 )
             if name == "ollama":
-                return OllamaProvider(
-                    api_key=typed_api_key,
+                return _with_provider_name(
+                    OllamaProvider(
+                        api_key=typed_api_key,
+                        model=model,
+                        base_url=base_url,
+                        model_kwargs=kwargs,
+                    ),
+                    name,
+                )
+            return _with_provider_name(
+                OpenAIProvider(
+                    api_key=cast(str | SecretStr, typed_api_key),
                     model=model,
                     base_url=base_url,
                     model_kwargs=kwargs,
-                )
-            return OpenAIProvider(
-                api_key=cast(str | SecretStr, typed_api_key),
-                model=model,
-                base_url=base_url,
-                model_kwargs=kwargs,
+                ),
+                name,
             )
         case "anthropic":
-            return AnthropicProvider(
-                api_key=require_api_key(
-                    s.ANTHROPIC_API_KEY, "ANTHROPIC_API_KEY", "Anthropic"
+            return _with_provider_name(
+                AnthropicProvider(
+                    api_key=require_api_key(
+                        s.ANTHROPIC_API_KEY, "ANTHROPIC_API_KEY", "Anthropic"
+                    ),
+                    model=model,
+                    base_url=os.getenv("ANTHROPIC_BASE_URL")
+                    or s.ANTHROPIC_BASE_URL
+                    or "https://api.anthropic.com",
+                    model_kwargs=kwargs,
                 ),
-                model=model,
-                base_url=os.getenv("ANTHROPIC_BASE_URL")
-                or s.ANTHROPIC_BASE_URL
-                or "https://api.anthropic.com",
-                model_kwargs=kwargs,
+                name,
             )
         case "googlegenai":
-            return GoogleGenAIProvider(
-                api_key=require_api_key(s.GOOGLE_API_KEY, "GOOGLE_API_KEY", "Google"),
-                model=model,
-                model_kwargs=kwargs,
+            return _with_provider_name(
+                GoogleGenAIProvider(
+                    api_key=require_api_key(
+                        s.GOOGLE_API_KEY, "GOOGLE_API_KEY", "Google"
+                    ),
+                    model=model,
+                    model_kwargs=kwargs,
+                ),
+                name,
             )
         case "vertexai":
-            return VertexAIProvider(
-                api_key=require_api_key(
-                    s.VERTEXAI_API_KEY, "VERTEXAI_API_KEY", "Vertex AI"
+            return _with_provider_name(
+                VertexAIProvider(
+                    api_key=require_api_key(
+                        s.VERTEXAI_API_KEY, "VERTEXAI_API_KEY", "Vertex AI"
+                    ),
+                    model=model,
+                    model_kwargs=kwargs,
+                    project=s.GOOGLE_CLOUD_PROJECT,
+                    location=s.GOOGLE_CLOUD_LOCATION,
                 ),
-                model=model,
-                model_kwargs=kwargs,
-                project=s.GOOGLE_CLOUD_PROJECT,
-                location=s.GOOGLE_CLOUD_LOCATION,
+                name,
             )
         case "copilot":
             # copilot uses OAuth tokens — no API key.
-            return CopilotProvider(model=model, model_kwargs=kwargs)
+            return _with_provider_name(
+                CopilotProvider(model=model, model_kwargs=kwargs), name
+            )
         case "codex":
             # codex uses OAuth tokens — no API key.
-            return CodexProvider(model=model, model_kwargs=kwargs)
+            return _with_provider_name(
+                CodexProvider(model=model, model_kwargs=kwargs), name
+            )
         case "zai":
-            return ZAIProvider(
-                api_key=require_api_key(s.ZAI_API_KEY, "ZAI_API_KEY", "ZAI"),
-                model=model,
-                model_kwargs=kwargs,
+            return _with_provider_name(
+                ZAIProvider(
+                    api_key=require_api_key(s.ZAI_API_KEY, "ZAI_API_KEY", "ZAI"),
+                    model=model,
+                    model_kwargs=kwargs,
+                ),
+                name,
             )
         case "bedrock":
             # Auth: explicit API key pair → named profile → boto3 default chain.
@@ -225,13 +267,16 @@ def build_provider(
 
                 access_key = _os.getenv("AWS_ACCESS_KEY_ID") or None
                 secret_key = _os.getenv("AWS_SECRET_ACCESS_KEY") or None
-            return BedrockProvider(
-                model=model,
-                region_name=s.AWS_BEDROCK_REGION,
-                profile_name=s.AWS_BEDROCK_PROFILE,
-                aws_access_key_id=access_key,
-                aws_secret_access_key=secret_key,
-                model_kwargs=kwargs,
+            return _with_provider_name(
+                BedrockProvider(
+                    model=model,
+                    region_name=s.AWS_BEDROCK_REGION,
+                    profile_name=s.AWS_BEDROCK_PROFILE,
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    model_kwargs=kwargs,
+                ),
+                name,
             )
         case _:
             from app.agent.providers.plugin_registry import (
@@ -243,13 +288,16 @@ def build_provider(
             if plugin is not None:
                 from app.agent.providers.plugin_api import ProviderBuildContext
 
-                return plugin.factory(
-                    ProviderBuildContext(
-                        provider_id=name,
-                        model=model,
-                        model_kwargs=kwargs,
-                        credentials=ProviderCredentialStore(name),
-                    )
+                return _with_provider_name(
+                    plugin.factory(
+                        ProviderBuildContext(
+                            provider_id=name,
+                            model=model,
+                            model_kwargs=kwargs,
+                            credentials=ProviderCredentialStore(name),
+                        )
+                    ),
+                    name,
                 )
             raise UnconfiguredProviderError(
                 message=(

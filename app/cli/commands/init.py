@@ -191,7 +191,7 @@ def cmd_init(_args: argparse.Namespace) -> None:  # noqa: C901
         "xai          — xAI Grok (grok-4, grok-code-fast-1)",
         "deepseek     — DeepSeek (deepseek-v4, deepseek-r1)",
         "router9      — 9Router local proxy (40+ providers, OpenAI-compatible)",
-        "cliproxy     — CLIProxyAPI local proxy (Gemini/Codex/Claude OAuth)",
+        "cliproxy     — CLIProxyAPI local proxy (multiple CLI-backed models)",
         "ollama       — Ollama local daemon (no API key; cloud via -cloud suffix)",
     ]
     idx = _menu("Choose your LLM provider:", provider_labels)

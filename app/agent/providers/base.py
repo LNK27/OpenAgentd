@@ -23,6 +23,7 @@ class LLMProviderBase(ABC):
     """
 
     model: str
+    provider_name: str | None = None
 
     def __init__(
         self,

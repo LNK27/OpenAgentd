@@ -272,6 +272,11 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   premium request quota from the saved OAuth token.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
   surface live usage in the same Settings → Providers panel as built-ins.
+- **Curated multimodal model registry** `[v1.34.0]` — model modality gates,
+  token limits, cost, support flags, and thinking-level metadata are maintained
+  in one exact-match registry: bundled JSON snapshot, runtime `models.dev`
+  cache, explicit compatibility aliases for runtime provider/model IDs that differ
+  from the upstream source IDs, and optional local YAML overlay.
 
 ---
 
@@ -354,9 +359,13 @@ Everything stays local. No third-party telemetry SaaS. Deeper doc:
 [`observability.md`](./observability.md), [`logging.md`](./logging.md).
 
 - **Built-in telemetry dashboard** `[since v1.0]` — `/telemetry` route in the web
-  UI. Token usage, latency, trace waterfall, per-agent breakdown.
+  UI. Focused usage/cost cards, cache hit/miss by step and provider:model,
+  scroll-paginated traces, and trace waterfall details.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
+- **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,
+  and summarization spans include estimated USD cost when model-registry pricing
+  and provider usage tokens are available.
 - **DuckDB-backed query API** `[since v1.0]` — `/api/observability/*` queries
   the local DuckDB span store.
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,

@@ -10,6 +10,12 @@ const compactFmt = new Intl.NumberFormat('en-US', {
   notation: 'compact',
   maximumFractionDigits: 1,
 })
+const usdFmt = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 6,
+})
 
 export function formatInt(n: number): string {
   return intFmt.format(n)
@@ -18,6 +24,16 @@ export function formatInt(n: number): string {
 export function formatCompact(n: number): string {
   if (n < 1000) return intFmt.format(n)
   return compactFmt.format(n)
+}
+
+export function formatUsd(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '—'
+  return usdFmt.format(n)
+}
+
+export function formatPercent(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0%'
+  return `${n.toFixed(n >= 10 ? 0 : 1)}%`
 }
 
 /**

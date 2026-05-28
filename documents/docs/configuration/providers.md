@@ -7,7 +7,7 @@ updated: 2026-05-28
 
 # LLM Providers
 
-**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/catalog.py`, `app/agent/providers/plugin_registry.py`, `app/api/routes/settings.py`, `app/agent/providers/capabilities.py`, `app/agent/providers/model_metadata.py`
+**Sources:** `app/agent/providers/factory.py`, `app/agent/providers/catalog.py`, `app/agent/providers/plugin_registry.py`, `app/api/routes/settings.py`, `app/agent/providers/model_registry.json`, `app/agent/providers/model_registry.py`, `app/agent/providers/capabilities.py`, `app/agent/providers/model_metadata.py`
 
 A model is selected by setting `model: <prefix>:<model-id>` in an agent's `.md` frontmatter. The prefix selects the provider; the rest is passed verbatim to that provider's API.
 
@@ -26,7 +26,7 @@ Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are
 
 | Prefix | Auth | Notes |
 |--------|------|-------|
-| `anthropic` | `ANTHROPIC_API_KEY` (+ optional `ANTHROPIC_BASE_URL`) | Built-in Anthropic Messages API support. OAuth Claude Pro/Max access remains plugin-based. |
+| `anthropic` | `ANTHROPIC_API_KEY` (+ optional `ANTHROPIC_BASE_URL`) | Built-in Anthropic Messages API support. |
 | `googlegenai` | `GOOGLE_API_KEY` | Google Gemini Developer API. |
 | `vertexai` | `VERTEXAI_API_KEY` *or* ADC + `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` | Vertex AI (express or normal mode). |
 | `zai` | `ZAI_API_KEY` | ZAI / GLM. |
@@ -52,6 +52,7 @@ Drop-in provider plugins live in `{OPENAGENTD_CONFIG_DIR}/plugins/` and export a
 - save credentials to `{OPENAGENTD_CONFIG_DIR}/.env`;
 - store provider-owned OAuth tokens under `{OPENAGENTD_CACHE_DIR}/provider-plugins/<provider-id>/`;
 - provide model discovery and a factory returning `LLMProviderBase`;
+- declare `models.dev` metadata aliases with `models_dev_provider_id`, `metadata_source_provider`, or exact `model_registry_aliases` when runtime IDs differ from upstream IDs;
 - surface live OAuth usage in **Settings → Providers** via an optional usage hook.
 
 The same directory can also contain agent hook plugins. Files that export
@@ -67,19 +68,31 @@ If an OAuth refresh token is rejected by the upstream provider, the provider sho
 
 ## Capability detection
 
-Each model's input/output capabilities (vision, document text, audio, video, etc.) are resolved by `get_capabilities(model_id)` in `capabilities.py`:
+Each model's input/output capabilities (vision, document text, audio, video, etc.) are resolved by `get_capabilities(model_id)` in `capabilities.py` from the model registry:
 
-1. Longest prefix match (e.g. `openai:`) → use that prefix's default.
-2. Global default → text-only.
+1. Bundled `app/agent/providers/model_registry.json` snapshot → cold/offline baseline.
+2. Cached/refreshed `https://models.dev/api.json` → normal runtime metadata source.
+3. Optional `{OPENAGENTD_CONFIG_DIR}/model_registry.yaml` → local override for private or newly released models.
+4. Anything still unknown → text input/output defaults.
 
-There are no per-model overrides and no name-substring heuristics. Edge cases (e.g. attaching an image to a text-only model under a vision prefix, or vice versa) surface as a provider-side error on first use. See `documents/techdebts/model-capabilities-registry.md` for the long-term direction.
+There are no prefix fallbacks and no name-substring heuristics. Model IDs are exact `provider:model` keys after provider alias normalization. Runtime provider/model IDs that differ from `models.dev` source IDs are handled through provider-owned compatibility aliases, not inferred from prefixes or substrings.
+
+Release maintainers refresh the bundled JSON before shipping with:
+
+```bash
+uv run python scripts/update_model_registry.py
+```
+
+Set `OPENAGENTD_MODEL_REGISTRY_REFRESH=false` to disable runtime fetches and use only the bundled JSON plus local YAML overlay.
 
 ## Model metadata
 
-Non-modality model metadata lives in `app/agent/providers/model_metadata.yaml` and is resolved through `model_metadata.py`. It currently tracks token limits and advertised `thinking_level` values:
+Model metadata lives beside modality flags and is resolved through `model_metadata.py`. It currently tracks token limits, cost, support flags (`tool_call`, `attachment`, `temperature`, `reasoning`), status/release date, and advertised `thinking_level` values:
 
 ```yaml
 "openai:gpt-5":
+  capabilities:
+    input: { vision: true }
   limits: { context_length: 272000, max_completion_tokens: 128000 }
   thinking: { levels: [minimal, low, medium, high] }
 ```
@@ -102,7 +115,7 @@ On Chat Completions, callers still use the provider-agnostic `max_tokens` settin
 
 ### `anthropic`
 
-Uses Anthropic's Messages API at `https://api.anthropic.com/v1/messages`. API-key support is built in and configured with `ANTHROPIC_API_KEY`; set `ANTHROPIC_BASE_URL` only for compatible gateways. Claude Pro/Max OAuth flows stay out of core and should be implemented as provider plugins such as `anthropic-oauth`.
+Uses Anthropic's Messages API at `https://api.anthropic.com/v1/messages`. API-key support is built in and configured with `ANTHROPIC_API_KEY`; set `ANTHROPIC_BASE_URL` only for compatible gateways.
 
 `thinking_level` maps to Anthropic `thinking` controls on supported Claude models. Sampling fields are omitted for newer Claude 4.5+ families that reject legacy sampling parameters.
 

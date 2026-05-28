@@ -24,6 +24,7 @@ from loguru import logger
 from app.agent.agent_loop.streaming import stream_and_assemble
 from app.agent.agent_loop.tool_dispatch import gather_or_cancel
 from app.agent.agent_loop.tool_executor import make_tool_executor
+from app.agent.usage import usage_to_dict
 from app.agent.checkpointer import Checkpointer
 from app.agent.hooks import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase
@@ -388,16 +389,9 @@ class Agent(Generic[TContext]):
 
             # Me attach usage to message + state (single dict, shared reference)
             if last_usage:
-                usage_dict: dict = {
-                    "input": last_usage.prompt_tokens,
-                    "output": last_usage.completion_tokens,
-                }
-                if last_usage.cached_tokens is not None:
-                    usage_dict["cache"] = last_usage.cached_tokens
-                if last_usage.thoughts_tokens is not None:
-                    usage_dict["thoughts"] = last_usage.thoughts_tokens
-                if last_usage.tool_use_tokens is not None:
-                    usage_dict["tool_use"] = last_usage.tool_use_tokens
+                usage_dict = usage_to_dict(
+                    last_usage, effective_model or active_model_id
+                )
                 message_extra["usage"] = usage_dict
                 total_tokens += last_usage.total_tokens
                 state.usage.last_prompt_tokens = last_usage.prompt_tokens
