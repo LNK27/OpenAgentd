@@ -192,6 +192,7 @@ class TestWrapModelCall:
                         "cache": 25,
                         "thoughts": 10,
                         "tool_use": 5,
+                        "cost": {"estimated_usd": 0.00125},
                     },
                     "model": "gpt-4o-2024-08-06",
                 },
@@ -207,6 +208,7 @@ class TestWrapModelCall:
         assert chat.attributes["gen_ai.usage.cache_read.input_tokens"] == 25
         assert chat.attributes["gen_ai.usage.reasoning_tokens"] == 10
         assert chat.attributes["gen_ai.usage.tool_use_tokens"] == 5
+        assert chat.attributes["gen_ai.usage.estimated_cost_usd"] == 0.00125
         assert chat.attributes["gen_ai.response.model"] == "gpt-4o-2024-08-06"
 
     async def test_handler_exception_marks_error_status(self, span_exporter):

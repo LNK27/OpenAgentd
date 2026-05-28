@@ -5,6 +5,7 @@ from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 from app.agent.agent_loop import Agent
+from app.agent.agent_loop import usage as usage_module
 from app.agent.agent_loop.retry import (
     is_non_retryable_429,
     parse_retry_after,
@@ -12,6 +13,7 @@ from app.agent.agent_loop.retry import (
 )
 from app.agent.errors import ProviderRateLimitError
 from app.agent.providers.base import LLMProviderBase
+from app.agent.providers.model_metadata import ModelCost
 from app.agent.tools.registry import Tool
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -568,6 +570,34 @@ async def test_agent_run_usage_tracked():
     await agent.run([HumanMessage(content="go")])
 
     assert agent.stats.total_tokens == 15
+
+
+async def test_agent_run_persists_estimated_usage_cost(monkeypatch):
+    monkeypatch.setattr(
+        usage_module,
+        "get_model_cost",
+        lambda model_id: ModelCost(input=1.0, output=5.0, cache_read=0.25),
+    )
+    usage = Usage(
+        prompt_tokens=1000,
+        completion_tokens=100,
+        total_tokens=1100,
+        cached_tokens=200,
+    )
+    provider = MockProvider([[make_text_chunk("hi", usage=usage)]])
+    agent = Agent(name="bot", llm_provider=provider, model_id="mock:model")
+
+    msgs = await agent.run([HumanMessage(content="go")])
+
+    assistant = last_assistant(msgs)
+    assert assistant is not None
+    assert assistant.extra is not None
+    assert assistant.extra["usage"]["cost"] == {
+        "estimated_usd": 0.00135,
+        "cache_read_usd": 0.00005,
+        "input_usd": 0.0008,
+        "output_usd": 0.0005,
+    }
 
 
 async def test_agent_run_tool_call_delta_update_existing():

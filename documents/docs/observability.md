@@ -142,11 +142,12 @@ trace_id = stable per conversation  (anchored to lead_session_id / session_id)
 | `gen_ai.usage.input_tokens` | prompt tokens for this call |
 | `gen_ai.usage.output_tokens` | completion tokens for this call |
 | `gen_ai.usage.cache_read.input_tokens` | cached tokens (if provider reports it) |
+| `gen_ai.usage.estimated_cost_usd` | estimated call cost when registry pricing and usage tokens are available |
 | `gen_ai.usage.reasoning_tokens` | thoughts / reasoning tokens (reasoning models only — gpt-5, gemini-thinking) |
 | `gen_ai.usage.tool_use_tokens` | tool-use tokens (reasoning models that bill tool dispatch separately) |
 | `error.type` | exception class name (only on error) |
 
-Token attributes are populated by `OpenTelemetryHook.wrap_model_call` from the `AssistantMessage.extra["usage"]` dict that `Agent._stream_and_assemble` attaches on every streamed response. `None`-valued keys are stripped inside `observability_service.get_trace` before reaching the API response (DuckDB's `read_json(..., union_by_name=true)` would otherwise surface every attribute key on every span row as `None`, so the span-detail panel would show empty em-dashes for unrelated keys).
+Token and cost attributes are populated by `OpenTelemetryHook.wrap_model_call` from the `AssistantMessage.extra["usage"]` dict that `Agent._stream_and_assemble` attaches on every streamed response. Cost is estimated from model-registry pricing and omitted when pricing is unknown. `None`-valued keys are stripped inside `observability_service.get_trace` before reaching the API response (DuckDB's `read_json(..., union_by_name=true)` would otherwise surface every attribute key on every span row as `None`, so the span-detail panel would show empty em-dashes for unrelated keys).
 
 ### `execute_tool {name}` (tool call)
 

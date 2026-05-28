@@ -362,6 +362,8 @@ Everything stays local. No third-party telemetry SaaS. Deeper doc:
   UI. Token usage, latency, trace waterfall, per-agent breakdown.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
+- **Estimated model-call cost telemetry** `[v1.34.0]` — chat spans include estimated
+  USD cost when model-registry pricing and provider usage tokens are available.
 - **DuckDB-backed query API** `[since v1.0]` — `/api/observability/*` queries
   the local DuckDB span store.
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,

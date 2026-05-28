@@ -281,6 +281,12 @@ class OpenTelemetryHook(BaseAgentHook):
                 span.set_attribute("gen_ai.usage.reasoning_tokens", thoughts_tokens)
             if tool_use_tokens:
                 span.set_attribute("gen_ai.usage.tool_use_tokens", tool_use_tokens)
+            cost = usage.get("cost")
+            estimated_cost = (
+                cost.get("estimated_usd") if isinstance(cost, dict) else None
+            )
+            if isinstance(estimated_cost, int | float) and estimated_cost > 0:
+                span.set_attribute("gen_ai.usage.estimated_cost_usd", estimated_cost)
 
             # Me response model if provider returns it
             resp_model = (result.extra or {}).get("model")

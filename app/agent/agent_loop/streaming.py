@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from app.agent.agent_loop.retry import stream_with_retry
+from app.agent.agent_loop.usage import usage_to_dict
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
@@ -317,17 +318,8 @@ async def stream_and_assemble(
     # rare case of a hook replacing `assistant_msg` wholesale.
     extra: dict | None = None
     if last_usage is not None:
-        usage_dict: dict = {
-            "input": last_usage.prompt_tokens,
-            "output": last_usage.completion_tokens,
-        }
-        if last_usage.cached_tokens is not None:
-            usage_dict["cache"] = last_usage.cached_tokens
-        if last_usage.thoughts_tokens is not None:
-            usage_dict["thoughts"] = last_usage.thoughts_tokens
-        if last_usage.tool_use_tokens is not None:
-            usage_dict["tool_use"] = last_usage.tool_use_tokens
-        extra = {"usage": usage_dict}
+        model_id = state.metadata.get("effective_model") or primary_label
+        extra = {"usage": usage_to_dict(last_usage, model_id)}
 
     msg = AssistantMessage(
         content=full_content or None,

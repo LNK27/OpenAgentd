@@ -10,7 +10,7 @@
 import { useMemo } from 'react'
 import { X } from 'lucide-react'
 import type { SpanDetail } from '@/api/client'
-import { formatInt, formatMs, formatShortId } from '@/utils/telemetryFormat'
+import { formatInt, formatMs, formatShortId, formatUsd } from '@/utils/telemetryFormat'
 import { Kv } from '../primitives'
 
 export function SpanDetailPanel({
@@ -28,6 +28,10 @@ export function SpanDetailPanel({
     [span.attributes],
   )
   const tokens = useMemo(() => extractTokens(span.attributes), [span.attributes])
+  const estimatedCost = useMemo(
+    () => extractEstimatedCost(span.attributes),
+    [span.attributes],
+  )
 
   return (
     <aside className={`flex shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-key) ${fullWidth ? 'w-full' : 'w-96'}`}>
@@ -89,6 +93,22 @@ export function SpanDetailPanel({
           </>
         )}
 
+        {estimatedCost !== null && (
+          <>
+            <h4 className="mb-2 mt-5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
+              Estimated cost
+            </h4>
+            <div className="rounded-md border border-(--color-border) bg-(--bg-card) p-3">
+              <p className="text-lg font-semibold tabular-nums text-(--color-text)">
+                {formatUsd(estimatedCost)}
+              </p>
+              <p className="mt-1 text-[10px] text-(--color-text-muted)">
+                Based on registry pricing and provider usage tokens.
+              </p>
+            </div>
+          </>
+        )}
+
         <h4 className="mb-2 mt-5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
           Attributes
         </h4>
@@ -109,6 +129,12 @@ export function SpanDetailPanel({
       </div>
     </aside>
   )
+}
+
+function extractEstimatedCost(attrs: Record<string, unknown>): number | null {
+  const raw = attrs['gen_ai.usage.estimated_cost_usd']
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : null
 }
 
 /**
