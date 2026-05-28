@@ -2,7 +2,7 @@
 title: Roadmap
 description: Public roadmap for OpenAgentd — short priority list plus links to GitHub issues.
 status: living
-updated: 2026-05-25
+updated: 2026-05-28
 ---
 
 # Roadmap
@@ -34,7 +34,7 @@ backlog is on GitHub:
 
 | Track | Issues |
 |---|---|
-| Chat usage and cost visibility | [#112 Show per-response and cumulative token totals](https://github.com/lthoangg/OpenAgentd/issues/112), [#113 Add per-provider cost calculation](https://github.com/lthoangg/OpenAgentd/issues/113) |
+| Chat usage visibility | [#112 Show per-response and cumulative token totals](https://github.com/lthoangg/OpenAgentd/issues/112) |
 | Inspector and cockpit navigation | [#85 Group explored tool calls](https://github.com/lthoangg/OpenAgentd/issues/85), [#86 Add menubar navigation](https://github.com/lthoangg/OpenAgentd/issues/86) |
 | Local-first UI state | [#87 Persist UI state on disk instead of localStorage](https://github.com/lthoangg/OpenAgentd/issues/87) |
 | Provider and migration coverage | [#105 Qwen](https://github.com/lthoangg/OpenAgentd/issues/105), [#106 LM Studio](https://github.com/lthoangg/OpenAgentd/issues/106), [#107 Claude access](https://github.com/lthoangg/OpenAgentd/issues/107), [#108 Claude Code / Codex CLI / opencode migrations](https://github.com/lthoangg/OpenAgentd/issues/108) |
