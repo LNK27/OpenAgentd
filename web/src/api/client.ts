@@ -85,11 +85,15 @@ export async function postTeamChat(
 
   const res = await fetch(`${apiBaseUrl()}/team/chat`, {
     method: 'POST',
+    headers: { Accept: 'application/json' },
     body: formData,
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
-    throw new Error(body?.detail || `POST /team/chat failed: ${res.status}`)
+    const detail = Array.isArray(body?.detail)
+      ? body.detail.map((item: { msg?: string }) => item.msg).filter(Boolean).join('; ')
+      : body?.detail
+    throw new Error(detail || `POST /team/chat failed: ${res.status}`)
   }
   return res.json()
 }

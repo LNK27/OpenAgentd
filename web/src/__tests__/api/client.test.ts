@@ -22,6 +22,15 @@ describe('postTeamChat', () => {
     )
   })
 
+  it('uses backend validation messages for 422 detail arrays', async () => {
+    globalThis.fetch = mock(() => Promise.resolve(new Response(
+      JSON.stringify({ detail: [{ msg: 'message is required when interrupt=false.' }] }),
+      { status: 422 },
+    ))) as typeof fetch
+
+    await expect(postTeamChat('hello')).rejects.toThrow('message is required when interrupt=false.')
+  })
+
   it('sends coding mode and workspace with the chat form', async () => {
     let body: BodyInit | null | undefined
     globalThis.fetch = mock((_url, init) => {
@@ -46,6 +55,8 @@ describe('postTeamChat', () => {
 
     await postTeamChat('hello')
 
+    const init = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0][1] as RequestInit | undefined
+    expect(init?.headers).toEqual({ Accept: 'application/json' })
     const form = body as FormData
     expect(form.has('model')).toBe(false)
     expect(form.has('thinking_level')).toBe(false)
