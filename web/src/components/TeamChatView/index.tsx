@@ -47,7 +47,8 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FileText, FolderOpen, FolderCode, Home, ListTodo, Menu, MessageSquarePlus, Moon, MoreHorizontal, PencilLine, RotateCcw, SlidersHorizontal, Square, Users, X } from 'lucide-react'
+import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FolderOpen, FolderCode, Home, ListTodo, Menu, MoreHorizontal, SlidersHorizontal, X } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
@@ -148,7 +149,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const agentNames     = useTeamStore((s) => s.agentNames)
   const isTeamWorking  = useTeamStore((s) => s.isTeamWorking)
   const isContinuing   = useTeamStore((s) => s.isContinuing)
-  const pendingMessages = useTeamStore((s) => s._pendingMessages)
   const sessionIdState = useTeamStore((s) => s.sessionId)
   const sessionTitle   = useTeamStore((s) => s.sessionTitle)
   const sessionModel   = useTeamStore((s) => s.sessionModel)
@@ -262,7 +262,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       if (cancelled) return
       const controller = connectStream()
       if (controller) abortRef.current = controller
-      requestAnimationFrame(() => inputRef.current?.focus())
+      if (!isMobile) requestAnimationFrame(() => inputRef.current?.focus())
     })()
 
     return () => {
@@ -278,7 +278,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   const handleNewSession = useCallback(() => {
     if (isEmptyIdleSession()) {
-      requestAnimationFrame(() => inputRef.current?.focus())
+      if (!isMobile) requestAnimationFrame(() => inputRef.current?.focus())
       return
     }
     abortRef.current?.abort()
@@ -315,14 +315,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         } else {
           navigate({ to: '/cockpit/$sessionId', params: { sessionId: session.id } })
         }
-        requestAnimationFrame(() => inputRef.current?.focus())
+        if (!isMobile) requestAnimationFrame(() => inputRef.current?.focus())
       } catch (err) {
         useTeamStore.setState((state) => {
           state.error = err instanceof Error ? err.message : 'Failed to create session'
         })
       }
     })()
-  }, [beginResolvedSession, isEmptyIdleSession, mode, navigate, queryClient, sessionModel, sessionThinkingLevel, workspace])
+  }, [beginResolvedSession, isEmptyIdleSession, isMobile, mode, navigate, queryClient, sessionModel, sessionThinkingLevel, workspace])
 
   const handleWorkspaceFiles = useCallback(() => {
     if (mode === 'coding') {
@@ -755,63 +755,46 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             )}
           </div>
 
-          {/* Right cluster — desktop gets the full action row. Mobile gets
-              one compact menu so chat/coding headers stay readable. */}
-          <div className="flex shrink-0 items-center">
+          {/* Right cluster — desktop gets the full action row. Mobile keeps
+              frequent actions visible and leaves secondary panels in More. */}
+          <div className="flex shrink-0 items-center gap-0.5">
           {isMobile ? (
-            <MobileChatActions
-              open={showMobileActions}
-              onOpenChange={setShowMobileActions}
-              mode={mode}
-              workspace={workspace}
-              activeAgent={activeAgent}
-              agents={agentNames}
-              streams={agentStreams}
-              onSelectAgent={setActiveAgent}
-              todos={todos}
-              sessionId={sessionIdState}
-              onCommands={() => { setShowPalette(true); closeMobileActionsMenu() }}
-              onTodos={() => { setShowTodos(true); closeMobileActionsMenu() }}
-              onFiles={mode === 'coding'
-                ? workspace ? () => { handleWorkspaceFiles(); closeMobileActionsMenu() } : undefined
-                : sessionIdState ? () => { setShowFilesPanel((v) => !v); closeMobileActionsMenu() } : undefined}
-              onAgentSettings={() => { toggleAgentCapabilities(); closeMobileActionsMenu() }}
-              onWiki={() => { toggleWiki(); closeMobileActionsMenu() }}
-              onScheduler={() => { toggleScheduler(); closeMobileActionsMenu() }}
-              onDream={() => { handleDreamRun(); closeMobileActionsMenu() }}
-              onNewChat={() => { handleNewSession(); closeMobileActionsMenu() }}
-              onFocusInput={() => { focusInput(); closeMobileActionsMenu() }}
-              onStop={() => { useTeamStore.getState().stopTeam(); closeMobileActionsMenu() }}
-              onContinue={() => { continueTeam(); closeMobileActionsMenu() }}
-              onCompact={() => { useTeamStore.getState().compactTeam(); closeMobileActionsMenu() }}
-              onUndo={() => {
-                void useTeamStore.getState().undoTeam().then(async (response) => {
-                  const message = response?.message
-                  if (!message || message.role !== 'user' || message.is_summary) return
-                  inputRef.current?.setValue(message.content ?? '')
-                  const attachments = message.attachments ?? []
-                  const files = (await Promise.all(attachments.map((att) => attachmentToFile(att)))).filter((file): file is File => file !== null)
-                  inputRef.current?.setFiles(files)
-                  inputRef.current?.focus()
-                })
-                closeMobileActionsMenu()
-              }}
-              onRedo={() => {
-                void useTeamStore.getState().redoTeam().then(() => {
-                  inputRef.current?.setValue('')
-                  inputRef.current?.setFiles([])
-                })
-                closeMobileActionsMenu()
-              }}
-              canStop={isTeamWorking}
-              canContinue={Boolean(sessionIdState) && !isTeamWorking && !isContinuing}
-              canUndo={Boolean(sessionIdState) && !isTeamWorking}
-              canRedo={Boolean(sessionIdState) && !isTeamWorking && pendingMessages.length === 0}
-              canCompact={Boolean(sessionIdState) && !isTeamWorking}
-              dreamRunning={dreamMutation.isPending}
-              codingPanelOpen={codingPanel !== null}
-              agentSettingsOpen={agentCapabilitiesOpen}
-            />
+            <>
+              <MobileHeaderAction
+                Icon={ListTodo}
+                label="Tasks"
+                onClick={() => setShowTodos(true)}
+                disabled={!sessionIdState}
+                badge={todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length}
+              />
+              <MobileHeaderAction
+                Icon={FolderOpen}
+                label={mode === 'coding' ? 'Workspace files' : 'Session files'}
+                onClick={mode === 'coding'
+                  ? workspace ? handleWorkspaceFiles : undefined
+                  : sessionIdState ? () => setShowFilesPanel((v) => !v) : undefined}
+                active={mode === 'coding' ? codingPanel !== null : showFilesPanel}
+                disabled={mode === 'coding' ? !workspace : !sessionIdState}
+              />
+              <MobileHeaderAction
+                Icon={SlidersHorizontal}
+                label="Agent settings"
+                onClick={toggleAgentCapabilities}
+                active={agentCapabilitiesOpen}
+              />
+              <MobileChatActions
+                open={showMobileActions}
+                onOpenChange={setShowMobileActions}
+                mode={mode}
+                workspace={workspace}
+                activeAgent={activeAgent}
+                agents={agentNames}
+                streams={agentStreams}
+                onSelectAgent={setActiveAgent}
+                onWiki={() => { toggleWiki(); closeMobileActionsMenu() }}
+                onScheduler={() => { toggleScheduler(); closeMobileActionsMenu() }}
+              />
+            </>
           ) : (
             <AgentTopbar
               isMobile={false}
@@ -1017,7 +1000,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             onFileRefsNeeded={() => setFileRefsEnabled(true)}
             isStreaming={isTeamWorking}
             disabled={mode === 'coding' && isCodingSessionLoading}
-            autoFocus={!sessionId}
+            autoFocus={!isMobile && !sessionId}
             placeholder={
               dreamMutation.isPending
                 ? 'Dream is running…'
@@ -1099,6 +1082,44 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
 // ─── MobileChatActions ─────────────────────────────────────────────────────
 
+function MobileHeaderAction({
+  Icon,
+  label,
+  onClick,
+  active = false,
+  disabled = false,
+  badge = 0,
+}: {
+  Icon: LucideIcon
+  label: string
+  onClick?: () => void
+  active?: boolean
+  disabled?: boolean
+  badge?: number
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || !onClick}
+      className={`relative flex h-9 w-9 items-center justify-center rounded-md transition-colors disabled:opacity-45 ${
+        active
+          ? 'bg-(--bg-key) text-(--color-text)'
+          : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)'
+      }`}
+      aria-label={label}
+      title={label}
+    >
+      <Icon size={16} aria-hidden="true" />
+      {badge > 0 && (
+        <span className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-[9px] leading-3.5 text-(--bg-page)">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
+    </button>
+  )
+}
+
 interface MobileChatActionsProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1108,30 +1129,8 @@ interface MobileChatActionsProps {
   agents: string[]
   streams: Record<string, AgentStream>
   onSelectAgent: (agent: string) => void
-  todos: Array<{ status: string }>
-  sessionId: string | null
-  onCommands: () => void
-  onTodos: () => void
-  onFiles?: () => void
-  onAgentSettings: () => void
   onWiki: () => void
   onScheduler: () => void
-  onDream: () => void
-  onNewChat: () => void
-  onFocusInput: () => void
-  onStop: () => void
-  onContinue: () => void
-  onCompact: () => void
-  onUndo: () => void
-  onRedo: () => void
-  canStop: boolean
-  canContinue: boolean
-  canUndo: boolean
-  canRedo: boolean
-  canCompact: boolean
-  dreamRunning: boolean
-  codingPanelOpen: boolean
-  agentSettingsOpen: boolean
 }
 
 function MobileChatActions({
@@ -1143,33 +1142,9 @@ function MobileChatActions({
   agents,
   streams,
   onSelectAgent,
-  todos,
-  sessionId,
-  onCommands,
-  onTodos,
-  onFiles,
-  onAgentSettings,
   onWiki,
   onScheduler,
-  onDream,
-  onNewChat,
-  onFocusInput,
-  onStop,
-  onContinue,
-  onCompact,
-  onUndo,
-  onRedo,
-  canStop,
-  canContinue,
-  canUndo,
-  canRedo,
-  canCompact,
-  dreamRunning,
-  codingPanelOpen,
-  agentSettingsOpen,
 }: MobileChatActionsProps) {
-  const activeTodos = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
-
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
@@ -1207,55 +1182,7 @@ function MobileChatActions({
           </>
         )}
 
-        <div className="px-2 pt-2 text-xs font-medium text-muted-foreground">Compose</div>
-        <DropdownMenuItem onClick={onCommands} className="min-h-10 px-2">
-          <Menu size={15} aria-hidden="true" />
-          <span className="flex-1">Commands</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onFocusInput} className="min-h-10 px-2">
-          <PencilLine size={15} aria-hidden="true" />
-          <span className="flex-1">Focus input</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onNewChat} className="min-h-10 px-2">
-          <MessageSquarePlus size={15} aria-hidden="true" />
-          <span className="flex-1">New chat</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onStop} disabled={!canStop} className="min-h-10 px-2">
-          <Square size={15} aria-hidden="true" />
-          <span className="flex-1">Stop team</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onContinue} disabled={!canContinue} className="min-h-10 px-2">
-          <RotateCcw size={15} aria-hidden="true" />
-          <span className="flex-1">Continue</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onUndo} disabled={!canUndo} className="min-h-10 px-2">
-          <RotateCcw size={15} aria-hidden="true" />
-          <span className="flex-1">Undo last message</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onRedo} disabled={!canRedo} className="min-h-10 px-2">
-          <RotateCcw size={15} className="scale-x-[-1]" aria-hidden="true" />
-          <span className="flex-1">Redo messages</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onCompact} disabled={!canCompact} className="min-h-10 px-2">
-          <FileText size={15} aria-hidden="true" />
-          <span className="flex-1">Compact session</span>
-        </DropdownMenuItem>
-
         <div className="px-2 pt-2 text-xs font-medium text-muted-foreground">Session</div>
-        <DropdownMenuItem onClick={onTodos} disabled={!sessionId} className="min-h-10 px-2">
-          <ListTodo size={15} aria-hidden="true" />
-          <span className="flex-1">Tasks</span>
-          {activeTodos > 0 && <span className="font-mono text-[10px] text-(--color-text-muted)">{activeTodos}</span>}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onFiles} disabled={!onFiles} className="min-h-10 px-2">
-          <FolderOpen size={15} aria-hidden="true" />
-          <span className="flex-1">{mode === 'coding' ? (codingPanelOpen ? 'Close workspace files' : 'Workspace files') : 'Session files'}</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onAgentSettings} className="min-h-10 px-2">
-          <Users size={15} aria-hidden="true" />
-          <span className="flex-1">Agent settings</span>
-          {agentSettingsOpen && <Check size={13} className="text-(--color-accent)" aria-hidden="true" />}
-        </DropdownMenuItem>
         <DropdownMenuItem onClick={onWiki} className="min-h-10 px-2">
           <Brain size={15} aria-hidden="true" />
           <span className="flex-1">Wiki</span>
@@ -1263,10 +1190,6 @@ function MobileChatActions({
         <DropdownMenuItem onClick={onScheduler} className="min-h-10 px-2">
           <CalendarClock size={15} aria-hidden="true" />
           <span className="flex-1">Scheduler</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onDream} disabled={dreamRunning} className="min-h-10 px-2">
-          <Moon size={15} className={dreamRunning ? 'animate-pulse' : undefined} aria-hidden="true" />
-          <span className="flex-1">{dreamRunning ? 'Dream running…' : 'Run dream'}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
