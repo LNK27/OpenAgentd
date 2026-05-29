@@ -22,9 +22,9 @@ function QueuedMessageContent({ content }: { content: string }) {
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
           title={expanded ? 'Collapse' : 'Expand'}
-          className="absolute top-1.5 right-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
+          className="absolute top-1.5 right-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90 md:h-5 md:w-5"
         >
-          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          {expanded ? <ChevronUp size={14} className="md:h-3 md:w-3" /> : <ChevronDown size={14} className="md:h-3 md:w-3" />}
         </button>
       )}
       <p className="break-words whitespace-pre-wrap">{visibleContent}</p>
@@ -72,9 +72,9 @@ export function PendingMessageQueue() {
                 onClick={() => handleRemove(msg.id, msg.content)}
                 aria-label="Edit queued message"
                 title="Edit queued message"
-                className="mt-1 rounded-full p-1 text-(--color-text-muted) opacity-70 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100"
+                className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 md:opacity-70 md:group-hover:opacity-100"
               >
-                <X size={13} />
+                <X size={14} className="md:h-[13px] md:w-[13px]" />
               </button>
             </div>
             <span className="pr-8 text-[11px] text-(--color-text-subtle)">Queued</span>
