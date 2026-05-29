@@ -32,8 +32,7 @@ interface VoiceMicButtonProps {
   unavailableReason?: string | null
 }
 
-const DISABLED_TOOLTIP =
-  'Voice mode is disabled. Enable it in settings to use voice input.'
+const DISABLED_TOOLTIP = 'Voice input is disabled.'
 
 const UNAVAILABLE_TOOLTIP =
   'Speech recognition is unavailable in this browser or WebView.'

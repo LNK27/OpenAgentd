@@ -130,7 +130,7 @@ describe('VoiceMicButton — disabled state', () => {
   it('shows the disabled tooltip', () => {
     render(<VoiceMicButton voiceEnabled={false} onTranscript={() => {}} />)
     const btn = screen.getByLabelText('Voice input disabled')
-    expect(btn.getAttribute('title')).toBe('Voice mode is disabled. Enable it in settings to use voice input.')
+    expect(btn.getAttribute('title')).toBe('Voice input is disabled.')
   })
 
   it('shows unavailable reason when speech recognition is unsupported', () => {
