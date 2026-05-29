@@ -272,7 +272,7 @@ def _skill_tool_description() -> str:
             "Load a specialized skill that provides domain-specific instructions and workflows.",
             "",
             "When a task matches one of the available skills listed below, use this tool to load the full skill instructions.",
-            "Call this at most once per skill in a session. If the same skill was already loaded earlier in the visible conversation, reuse those instructions instead of calling this tool again.",
+            "Call this at most once per skill. If the same skill was already loaded earlier in the visible conversation, reuse those instructions instead of calling this tool again.",
             "",
             format_available_skills(verbose=False),
         ]

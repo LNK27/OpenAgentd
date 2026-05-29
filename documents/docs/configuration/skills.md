@@ -2,7 +2,7 @@
 title: Skills
 description: SKILL.md format, registration, and the builtin skill catalog.
 status: stable
-updated: 2026-05-27
+updated: 2026-05-29
 ---
 
 # Skills
@@ -84,6 +84,7 @@ At startup the loader reads each listed skill's `name` + `description` and appen
 - **my-skill**: One-sentence description.
 
 Call `skill` with the skill name to load its full instructions.
+Call each skill at most once; if it is already visible in the conversation, reuse the loaded instructions.
 ```
 
 The `skill` tool itself is **always injected** into every agent — do not list it in `tools:`.

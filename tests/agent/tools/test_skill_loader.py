@@ -147,8 +147,10 @@ class TestLoadSkill:
 
     def test_tool_description_tells_agent_not_to_reload_visible_skills(self):
         description = _skill_tool_description()
-        assert "at most once per skill" in description
-        assert "reuse those instructions" in description
+        assert "Call this at most once per skill." in description
+        assert (
+            "reuse those instructions instead of calling this tool again" in description
+        )
 
 
 # ---------------------------------------------------------------------------
