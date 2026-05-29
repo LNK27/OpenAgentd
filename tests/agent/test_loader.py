@@ -188,6 +188,10 @@ def test_default_tool_registry_keys():
         "skill",
         "todo_manage",
         "memory_search",
+        "hermes_propose",
+        "vault_write",
+        "vault_read",
+        "vault_search",
     }
     assert expected.issubset(registry.keys())
 
@@ -1318,41 +1322,71 @@ def test_factory_raises_clear_error_when_api_key_missing(
 
 
 def test_note_tool_auto_injected_into_lead():
-    """note tool is always present on lead agents."""
+    """Lead agents always get note and vault tools."""
     factory, _ = _make_provider_factory()
     cfg = AgentConfig(name="lead", role="lead", system_prompt="Lead agent")
     agent = _build_agent(cfg, {}, factory)
     assert "note" in agent._tools
     assert agent._tools["note"].name == "note"
+    assert "hermes_propose" in agent._tools
+    assert agent._tools["hermes_propose"].name == "hermes_propose"
+    assert "vault_write" in agent._tools
+    assert agent._tools["vault_write"].name == "vault_write"
+    assert "vault_read" in agent._tools
+    assert agent._tools["vault_read"].name == "vault_read"
+    assert "vault_search" in agent._tools
+    assert agent._tools["vault_search"].name == "vault_search"
 
 
 def test_note_tool_not_injected_into_member():
-    """note tool is NOT present on member agents."""
+    """Member agents do not get note or vault tools auto-injected."""
     factory, _ = _make_provider_factory()
     cfg = AgentConfig(name="worker", role="member", system_prompt="Member agent")
     agent = _build_agent(cfg, {}, factory)
     assert "note" not in agent._tools
+    assert "hermes_propose" not in agent._tools
+    assert "vault_write" not in agent._tools
+    assert "vault_read" not in agent._tools
+    assert "vault_search" not in agent._tools
 
 
 def test_note_in_frontmatter_tools_silently_skipped_for_lead():
-    """If a lead agent lists 'note' in tools, it's silently skipped (no duplicate, no error)."""
+    """Auto-injected lead-only tools are silently deduped when listed explicitly."""
     factory, _ = _make_provider_factory()
-    cfg = AgentConfig(name="lead", role="lead", system_prompt="Lead", tools=["note"])
+    cfg = AgentConfig(
+        name="lead",
+        role="lead",
+        system_prompt="Lead",
+        tools=["note", "hermes_propose", "vault_write", "vault_read", "vault_search"],
+    )
     agent = _build_agent(cfg, {}, factory)
-    # note should appear exactly once (from auto-injection, not from tools list)
     assert "note" in agent._tools
     assert list(agent._tools.keys()).count("note") == 1
+    assert "hermes_propose" in agent._tools
+    assert list(agent._tools.keys()).count("hermes_propose") == 1
+    assert "vault_write" in agent._tools
+    assert list(agent._tools.keys()).count("vault_write") == 1
+    assert "vault_read" in agent._tools
+    assert list(agent._tools.keys()).count("vault_read") == 1
+    assert "vault_search" in agent._tools
+    assert list(agent._tools.keys()).count("vault_search") == 1
 
 
 def test_note_in_frontmatter_tools_silently_skipped_for_member():
-    """If a member agent lists 'note' in tools, it's silently skipped (no error, no injection)."""
+    """Members listing lead-only tools still do not receive them."""
     factory, _ = _make_provider_factory()
     cfg = AgentConfig(
-        name="worker", role="member", system_prompt="Member", tools=["note"]
+        name="worker",
+        role="member",
+        system_prompt="Member",
+        tools=["note", "hermes_propose", "vault_write", "vault_read", "vault_search"],
     )
     agent = _build_agent(cfg, {}, factory)
-    # note should NOT be present (member doesn't get auto-injection, and frontmatter is skipped)
     assert "note" not in agent._tools
+    assert "hermes_propose" not in agent._tools
+    assert "vault_write" not in agent._tools
+    assert "vault_read" not in agent._tools
+    assert "vault_search" not in agent._tools
 
 
 def test_note_from_registry_overrides_default():
@@ -1371,7 +1405,7 @@ def test_note_from_registry_overrides_default():
 
 
 def test_note_tools_injected_into_lead_only_integration(tmp_path):
-    """Integration test: load_team_from_dir — lead gets note, member does not."""
+    """Integration test: lead gets note/vault_write, member does not."""
     from app.agent.loader import load_team_from_dir, rebuild_agent_from_disk
 
     d = _make_agents_dir(
@@ -1394,27 +1428,50 @@ def test_note_tools_injected_into_lead_only_integration(tmp_path):
 
     assert "note" in lead_tool_names
     assert "note" not in worker_tool_names
+    assert "hermes_propose" in lead_tool_names
+    assert "hermes_propose" not in worker_tool_names
+    assert "vault_write" in lead_tool_names
+    assert "vault_write" not in worker_tool_names
+    assert "vault_read" in lead_tool_names
+    assert "vault_read" not in worker_tool_names
+    assert "vault_search" in lead_tool_names
+    assert "vault_search" not in worker_tool_names
 
 
 def test_note_and_todo_both_injected_into_lead():
-    """Both note and todo_manage are injected into lead agents."""
+    """Lead agents receive note, todo_manage, schedule_task, and vault tools."""
     factory, _ = _make_provider_factory()
     cfg = AgentConfig(name="lead", role="lead", system_prompt="Lead")
     agent = _build_agent(cfg, {}, factory)
     assert "note" in agent._tools
     assert "todo_manage" in agent._tools
     assert "schedule_task" in agent._tools
+    assert "hermes_propose" in agent._tools
+    assert "vault_write" in agent._tools
+    assert "vault_read" in agent._tools
+    assert "vault_search" in agent._tools
 
 
 def test_note_deduped_with_other_injected_tools():
-    """If lead agent lists both 'note' and 'todo_manage' in tools, both are deduped."""
+    """Lead-only injected tools are deduped against frontmatter entries."""
     factory, _ = _make_provider_factory()
     cfg = AgentConfig(
         name="lead",
         role="lead",
         system_prompt="Lead",
-        tools=["note", "todo_manage"],
+        tools=[
+            "note",
+            "todo_manage",
+            "hermes_propose",
+            "vault_write",
+            "vault_read",
+            "vault_search",
+        ],
     )
     agent = _build_agent(cfg, {}, factory)
     assert list(agent._tools.keys()).count("note") == 1
     assert list(agent._tools.keys()).count("todo_manage") == 1
+    assert list(agent._tools.keys()).count("hermes_propose") == 1
+    assert list(agent._tools.keys()).count("vault_write") == 1
+    assert list(agent._tools.keys()).count("vault_read") == 1
+    assert list(agent._tools.keys()).count("vault_search") == 1

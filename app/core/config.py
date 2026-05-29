@@ -184,6 +184,20 @@ class Settings(BaseSettings):
     # ``~/.local/share/openagentd-wiki`` in production).
     OPENAGENTD_WIKI_DIR: str = ""
 
+    # Obsidian vault directory — durable human-editable source of truth.
+    # Agent writes must go through the vault gatekeeper, never a general
+    # write-capable filesystem MCP server.
+    OPENAGENTD_OBSIDIAN_VAULT_DIR: str = ""
+
+    # Hermes sidecar connector — proposal-only adapter. Hermes may return
+    # structured write-intents, but OpenAgentd remains the vault writer.
+    OPENAGENTD_HERMES_ENABLED: bool = False
+    OPENAGENTD_HERMES_BASE_URL: str = ""
+    OPENAGENTD_HERMES_TOKEN: SecretStr | None = None
+    OPENAGENTD_HERMES_TIMEOUT_SECONDS: float = 5.0
+    OPENAGENTD_HERMES_MAX_CONTEXT_CHARS: int = 8000
+    OPENAGENTD_HERMES_MAX_BODY_CHARS_PER_INTENT: int = 4000
+
     model_config = SettingsConfigDict(
         # Load order: project .env first, then ~/.config/openagentd/.env on top.
         # Values in later files take priority, so the user's home config
@@ -238,6 +252,13 @@ class Settings(BaseSettings):
         # Wiki directory.
         if not self.OPENAGENTD_WIKI_DIR:
             self.OPENAGENTD_WIKI_DIR = str(defaults["wiki"])
+
+        # Obsidian vault directory. Keep it near the XDG data root by default;
+        # local project setups can override this to e.g. D:\ai-agents\ObsidianVault.
+        if not self.OPENAGENTD_OBSIDIAN_VAULT_DIR:
+            self.OPENAGENTD_OBSIDIAN_VAULT_DIR = str(
+                Path(self.OPENAGENTD_WIKI_DIR).parent / "ObsidianVault"
+            )
 
         return self
 

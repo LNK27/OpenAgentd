@@ -269,6 +269,7 @@ def _default_tool_registry() -> dict[str, Tool]:
         get_date,
         glob_files,
         grep_files,
+        hermes_propose,
         list_directory,
         load_skill,
         memory_search,
@@ -278,6 +279,9 @@ def _default_tool_registry() -> dict[str, Tool]:
         schedule_task,
         shell_tool,
         todo_manage,
+        vault_read,
+        vault_search,
+        vault_write,
         web_fetch,
         web_search,
         write_file,
@@ -303,6 +307,10 @@ def _default_tool_registry() -> dict[str, Tool]:
         "skill": load_skill,
         "schedule_task": schedule_task,
         "todo_manage": todo_manage,
+        "hermes_propose": hermes_propose,
+        "vault_read": vault_read,
+        "vault_search": vault_search,
+        "vault_write": vault_write,
         "wiki_search": wiki_search,
         "memory_search": memory_search,
         "note": note_tool,
@@ -369,18 +377,47 @@ def _build_agent(
 
     # These tools are always available to the lead agent — not listed in frontmatter.
     if cfg.role == "lead":
+        from app.agent.tools.builtin.hermes_propose import (
+            hermes_propose as _hermes_propose_tool,
+        )
         from app.agent.tools.builtin.note import note_tool as _note_tool
+        from app.agent.tools.builtin.vault_read import vault_read as _vault_read_tool
+        from app.agent.tools.builtin.vault_search import (
+            vault_search as _vault_search_tool,
+        )
+        from app.agent.tools.builtin.vault_write import vault_write as _vault_write_tool
 
         _todo_manage = tool_registry.get("todo_manage", todo_manage)
         _schedule_task = tool_registry.get("schedule_task", _schedule_task_tool)
+        _hermes_propose = tool_registry.get("hermes_propose", _hermes_propose_tool)
         _note = tool_registry.get("note", _note_tool)
-        tools += [_todo_manage, _schedule_task, _note]
+        _vault_read = tool_registry.get("vault_read", _vault_read_tool)
+        _vault_search = tool_registry.get("vault_search", _vault_search_tool)
+        _vault_write = tool_registry.get("vault_write", _vault_write_tool)
+        tools += [
+            _todo_manage,
+            _schedule_task,
+            _hermes_propose,
+            _note,
+            _vault_read,
+            _vault_search,
+            _vault_write,
+        ]
 
     seen: set[str] = {t.name for t in tools}
     cfg.tools = list(dict.fromkeys(cfg.tools))
     cfg.mcp = list(dict.fromkeys(cfg.mcp))
     for tool_name in cfg.tools:
-        if tool_name in ("skill", "todo_manage", "schedule_task", "note"):
+        if tool_name in (
+            "skill",
+            "todo_manage",
+            "schedule_task",
+            "hermes_propose",
+            "note",
+            "vault_read",
+            "vault_search",
+            "vault_write",
+        ):
             continue
         if tool_name not in tool_registry:
             # Soft-skip: settings/self-healing edits and disabled-then-rebuild
