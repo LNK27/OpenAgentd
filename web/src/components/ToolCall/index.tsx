@@ -250,7 +250,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                         </span>
                         <button
                           onClick={handleCopyArgs}
-                          className="rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:opacity-0 md:group-hover:opacity-100"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
                           aria-label="Copy arguments"
                           title="Copy"
                         >
@@ -316,7 +316,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                         </span>
                         <button
                           onClick={handleCopyResult}
-                          className="rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:opacity-0 md:group-hover:opacity-100"
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
                           aria-label="Copy result"
                           title="Copy result"
                         >

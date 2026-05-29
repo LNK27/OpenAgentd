@@ -949,6 +949,24 @@ describe("ToolCall — copy buttons", () => {
       expect(screen.getByLabelText("Copy result")).toBeTruthy()
     })
   })
+
+  it("keeps copy buttons visible and large enough for touch before desktop hover reveal", async () => {
+    const user = userEvent.setup()
+    render(
+      <ToolCall name="custom_tool" args='{"path":"hi.txt"}' done={true} result="some result" />
+    )
+    await user.click(screen.getByRole("button"))
+
+    for (const copyBtn of [screen.getByLabelText("Copy arguments"), screen.getByLabelText("Copy result")]) {
+      expect(copyBtn.className).toContain("opacity-100")
+      expect(copyBtn.className).toContain("h-8")
+      expect(copyBtn.className).toContain("w-8")
+      expect(copyBtn.className).toContain("md:h-6")
+      expect(copyBtn.className).toContain("md:w-6")
+      expect(copyBtn.className).toContain("md:opacity-0")
+      expect(copyBtn.className).toContain("md:group-hover:opacity-100")
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
