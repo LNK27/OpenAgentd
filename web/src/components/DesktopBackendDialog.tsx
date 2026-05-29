@@ -4,9 +4,15 @@ import { Server } from 'lucide-react'
 import { apiBaseUrl } from '@/api/base-url'
 import {
   getDesktopBackendStatus,
+  removeDesktopBackendServer,
+  saveDesktopBackendServer,
   setDesktopBackendBaseUrl,
+  useBundledDesktopBackend,
+  type SavedDesktopServer,
   type DesktopBackendStatus,
 } from '@/lib/desktop-backend'
+
+const DEFAULT_SERVERS: SavedDesktopServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local CLI server' }]
 
 interface DesktopBackendDialogProps {
   /** Whether the connection dialog is visible. */
@@ -18,6 +24,7 @@ interface DesktopBackendDialogProps {
 export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialogProps) {
   const [status, setStatus] = useState<DesktopBackendStatus | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
+  const [serverName, setServerName] = useState('')
   const [serverHealth, setServerHealth] = useState<Record<string, 'checking' | 'online' | 'offline'>>({})
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,12 +36,13 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
       if (cancelled) return
       setStatus(next)
       setBaseUrl('')
-      const servers = next?.servers ?? ['http://127.0.0.1:4082']
-      setServerHealth(Object.fromEntries(servers.map((server) => [server, 'checking'])))
+      setServerName('')
+      const servers = next?.servers ?? DEFAULT_SERVERS
+      setServerHealth(Object.fromEntries(servers.map((server) => [server.base_url, 'checking'])))
       for (const server of servers) {
-        void pingServer(server).then((online) => {
+        void pingServer(server.base_url).then((online) => {
           if (cancelled) return
-          setServerHealth((prev) => ({ ...prev, [server]: online ? 'online' : 'offline' }))
+          setServerHealth((prev) => ({ ...prev, [server.base_url]: online ? 'online' : 'offline' }))
         })
       }
     })
@@ -50,10 +58,60 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
       setError(validationError)
       return
     }
+    await runConnectionSwitch(() => setDesktopBackendBaseUrl(target))
+  }
+
+  async function connectBundled() {
+    await runConnectionSwitch(() => useBundledDesktopBackend())
+  }
+
+  async function saveServer() {
+    const target = baseUrl.trim()
+    const validationError = validateServerUrl(target)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
     setPending(true)
     setError(null)
     try {
-      await setDesktopBackendBaseUrl(target)
+      const next = await saveDesktopBackendServer(target, serverName)
+      setStatus(next)
+      setBaseUrl('')
+      setServerName('')
+      const normalized = target.replace(/\/+$/, '')
+      setServerHealth((prev) => ({ ...prev, [normalized]: 'checking' }))
+      const online = await pingServer(normalized)
+      setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function removeServer(baseUrl: string) {
+    setPending(true)
+    setError(null)
+    try {
+      const next = await removeDesktopBackendServer(baseUrl)
+      setStatus(next)
+      setServerHealth((prev) => {
+        const { [baseUrl]: _removed, ...rest } = prev
+        return rest
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function runConnectionSwitch(action: () => Promise<void>) {
+    setPending(true)
+    setError(null)
+    try {
+      await action()
       onOpenChange(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -97,20 +155,54 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
           <div>
             <div className="mb-2 text-xs font-medium text-(--color-text)">Saved servers</div>
             <div className="space-y-1">
-              {(status?.servers ?? ['http://127.0.0.1:4082']).map((server) => (
-                <button
-                  key={server}
-                  type="button"
-                  onClick={() => { setBaseUrl(server); void connectExternal(server) }}
-                  className="flex w-full items-center justify-between rounded-md border border-(--color-border) px-3 py-2 text-left font-mono text-xs hover:bg-(--bg-page)"
-                  disabled={pending}
+              <button
+                type="button"
+                onClick={() => { void connectBundled() }}
+                className="flex w-full items-center justify-between rounded-md border border-(--color-border) px-3 py-2 text-left text-xs hover:bg-(--bg-page)"
+                disabled={pending}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <ServerStatusDot status={status?.sidecar_running ? 'online' : undefined} />
+                  <span className="truncate font-medium">Builtin Desktop App server</span>
+                </span>
+                <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 font-sans text-[10px] text-(--color-text-muted)">
+                  {status?.external ? 'connect' : 'active'}
+                </span>
+              </button>
+              {(status?.servers ?? DEFAULT_SERVERS).map((server) => (
+                <div
+                  key={server.base_url}
+                  className="flex items-center gap-2 rounded-md border border-(--color-border) px-3 py-2 text-xs hover:bg-(--bg-page)"
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <ServerStatusDot status={serverHealth[server]} />
-                    <span className="truncate">{server}</span>
-                  </span>
-                  <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 font-sans text-[10px] text-(--color-text-muted)">connect</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => { setBaseUrl(server.base_url); void connectExternal(server.base_url) }}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    disabled={pending}
+                  >
+                    <ServerStatusDot status={serverHealth[server.base_url]} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{server.name || server.base_url}</span>
+                      {server.name ? <span className="block truncate font-mono text-[10px] text-(--color-text-muted)">{server.base_url}</span> : null}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setBaseUrl(server.base_url); setServerName(server.name ?? '') }}
+                    className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
+                    disabled={pending}
+                  >
+                    edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void removeServer(server.base_url) }}
+                    className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-error) hover:bg-(--color-error)/10"
+                    disabled={pending}
+                  >
+                    remove
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -135,8 +227,28 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
               {pending ? 'Connecting…' : 'Connect'}
             </button>
           </div>
+          <label className="block text-xs font-medium text-(--color-text)" htmlFor="desktop-backend-name">
+            Server name
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="desktop-backend-name"
+              value={serverName}
+              onChange={(event) => setServerName(event.target.value)}
+              placeholder="Work laptop, Home server, Local CLI"
+              className="min-w-0 flex-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:border-(--focus-ring) focus:ring-3 focus:ring-(--focus-ring)/30"
+            />
+            <button
+              type="button"
+              onClick={() => void saveServer()}
+              className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-2 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={pending}
+            >
+              Save
+            </button>
+          </div>
           <p className="text-xs leading-5 text-(--color-text-muted)">
-            Checks if it is running before switching.
+            Connect checks if the server is running before switching. Save stores or renames it without switching.
           </p>
 
           {error ? (

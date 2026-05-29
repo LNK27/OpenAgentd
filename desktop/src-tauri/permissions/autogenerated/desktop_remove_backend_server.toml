@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-desktop-remove-backend-server"
+description = "Enables the desktop_remove_backend_server command without any pre-configured scope."
+commands.allow = ["desktop_remove_backend_server"]
+
+[[permission]]
+identifier = "deny-desktop-remove-backend-server"
+description = "Denies the desktop_remove_backend_server command without any pre-configured scope."
+commands.deny = ["desktop_remove_backend_server"]

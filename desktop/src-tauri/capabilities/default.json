@@ -28,6 +28,8 @@
     "allow-backend-health",
     "allow-backend-logs-path",
     "allow-desktop-backend-status",
+    "allow-desktop-remove-backend-server",
+    "allow-desktop-save-backend-server",
     "allow-desktop-set-backend-base-url",
     "allow-desktop-use-bundled-backend",
     "allow-open-macos-microphone-settings",

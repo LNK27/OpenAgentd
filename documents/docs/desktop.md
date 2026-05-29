@@ -40,7 +40,7 @@ no Python install, no `uv tool install`, no terminal.
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-The Tauri shell normally runs the bundled sidecar, but can be pointed at an externally managed OpenAgentd server from the desktop UI itself: open **Settings → Backend connection** or click the sidebar health dot, enter a base URL such as `http://127.0.0.1:4082`, and choose **Connect**. The shell validates `/api/health/live`, persists the selection, stops the sidecar if it was running, and reloads the WebView against the external server. **Use bundled sidecar** switches back to the built-in backend. `OPENAGENTD_DESKTOP_BASE_URL` and the legacy `OPENAGENTD_DEV_BACKEND_URL` are still accepted as startup defaults for development/automation.
+The Tauri shell normally runs the bundled sidecar, but can be pointed at an externally managed OpenAgentd server from the desktop UI itself: open **Settings → Backend connection** or click the sidebar health dot, enter a base URL such as `http://127.0.0.1:4082`, and choose **Connect**. Saved servers can be named, renamed, removed, and show live status indicators. The shell validates `/api/health/live`, persists the selection, stops the sidecar if it was running, and reloads the WebView against the external server. **Builtin Desktop App server** switches back to the built-in backend. `OPENAGENTD_DESKTOP_BASE_URL` and the legacy `OPENAGENTD_DEV_BACKEND_URL` are still accepted as startup defaults for development/automation.
 
 The Tauri shell:
 

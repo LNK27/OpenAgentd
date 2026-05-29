@@ -11,6 +11,8 @@
 #                       ``make sidecar`` first). Use this to test the
 #                       sidecar handshake / auth wiring end-to-end.
 #   make build          Build a release desktop app.
+#   make open           Open the dev macOS app bundle.
+#   make open-prod      Open the production macOS app bundle.
 #   make clean          Remove build artefacts.
 #
 # Dev-mode two-terminal flow (``make dev``):
@@ -26,7 +28,7 @@
 # Use :8000 when the repo-root ``make dev`` backend is running; use :4082
 # when testing against a standalone ``openagentd`` CLI server.
 
-.PHONY: sidecar sidecar-full icons dev dev-bundled build-dev-app build clean open
+.PHONY: sidecar sidecar-full icons dev dev-bundled build-dev-app build clean open open-prod
 
 ROOT       := $(abspath ..)
 BUNDLE     := sidecar-bundle
@@ -42,11 +44,10 @@ sidecar:
 		$(if $(EXTRAS),--extras "$(EXTRAS)",)
 
 open:
-	@if [ -d "src-tauri/target/release/bundle/macos/OpenAgentd (dev).app" ]; then \
-		open "src-tauri/target/release/bundle/macos/OpenAgentd (dev).app"; \
-	else \
-		open "src-tauri/target/release/bundle/macos/OpenAgentd.app"; \
-	fi
+	@open "src-tauri/target/release/bundle/macos/OpenAgentd (dev).app"
+
+open-prod:
+	@open "src-tauri/target/release/bundle/macos/OpenAgentd.app"
 
 sidecar-full:
 	@$(MAKE) sidecar EXTRAS="audio,azure-doc-intel"
