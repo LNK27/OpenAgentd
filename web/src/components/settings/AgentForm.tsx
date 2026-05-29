@@ -217,7 +217,7 @@ export function AgentForm({
               disabled={disabled}
               rows={28}
               spellCheck={false}
-              className="font-mono text-[13px] leading-relaxed"
+              className="min-h-72 font-mono text-[13px] leading-relaxed"
             />
           </CardContent>
         </Card>
@@ -240,7 +240,7 @@ function ParseErrorBanner({
         <p className="font-medium">Parse error</p>
         <p className="mt-0.5 opacity-90">{message}</p>
       </div>
-      <Button size="xs" variant="outline" onClick={onSwitchToRaw}>
+      <Button size="xs" variant="outline" className="min-h-11 md:min-h-0" onClick={onSwitchToRaw}>
         Open raw
       </Button>
     </div>
@@ -364,7 +364,7 @@ function FormFields({
               disabled={disabled || !isNew}
               placeholder="orchestrator"
               aria-invalid={!!nameError || undefined}
-              className="font-mono"
+              className="min-h-11 font-mono md:min-h-9"
             />
           </Field>
 
@@ -376,7 +376,7 @@ function FormFields({
               }
               disabled={disabled}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="min-h-11 w-full md:min-h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -394,6 +394,7 @@ function FormFields({
           >
             <Input
               type="text"
+              className="min-h-11 md:min-h-9"
               value={fm.description ?? ''}
               onChange={(e) =>
                 updateFromForm({ ...fm, description: e.target.value || null }, body)
@@ -451,7 +452,7 @@ function FormFields({
               disabled={disabled}
               placeholder="0.2"
               aria-invalid={!!tempError || undefined}
-              className="font-mono"
+              className="min-h-11 font-mono md:min-h-9"
             />
           </Field>
 
@@ -467,7 +468,7 @@ function FormFields({
               }}
               disabled={disabled}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="min-h-11 w-full md:min-h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -564,7 +565,7 @@ function FormFields({
             disabled={disabled}
             rows={14}
             placeholder="You are …"
-            className="font-mono text-[13px] leading-relaxed"
+            className="min-h-72 font-mono text-[13px] leading-relaxed"
           />
         </CardContent>
       </Card>

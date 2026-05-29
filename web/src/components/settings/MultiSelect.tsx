@@ -120,7 +120,7 @@ export function MultiSelect({
             aria-haspopup="listbox"
             tabIndex={0}
             className={cn(
-              'flex min-h-8 w-full cursor-text flex-wrap items-center gap-1 rounded-lg border border-(--color-border) bg-(--bg-input) px-1.5 py-1 text-sm text-(--color-text) transition-colors outline-none',
+              'flex min-h-11 w-full cursor-text flex-wrap items-center gap-1 rounded-lg border border-(--color-border) bg-(--bg-input) px-1.5 py-1 text-sm text-(--color-text) transition-colors outline-none md:min-h-8',
               'focus-visible:border-(--focus-ring) focus-visible:ring-3 focus-visible:ring-(--focus-ring)/50',
               'aria-expanded:border-(--focus-ring)',
             )}
@@ -145,7 +145,7 @@ export function MultiSelect({
                     remove(v)
                   }}
                   aria-label={`Remove ${v}`}
-                  className="text-(--color-text-muted) transition-colors hover:text-(--color-text)"
+                  className="flex h-7 w-7 items-center justify-center text-(--color-text-muted) transition-colors hover:text-(--color-text) md:h-auto md:w-auto"
                 >
                   <X size={11} />
                 </button>
@@ -208,7 +208,7 @@ export function MultiSelect({
                     }}
                     onMouseEnter={() => setHighlight(i)}
                     className={cn(
-                      'flex w-full items-start gap-2 px-2.5 py-1.5 text-left transition-colors',
+                      'flex min-h-11 w-full items-start gap-2 px-2.5 py-1.5 text-left transition-colors md:min-h-0',
                       isHi && 'bg-(--bg-key)',
                     )}
                   >

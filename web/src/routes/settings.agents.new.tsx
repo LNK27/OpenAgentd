@@ -100,6 +100,7 @@ export function NewAgentPage() {
               <Button
                 type="button"
                 size="xs"
+                className="min-h-11 md:min-h-0"
                 variant={agentMode === 'normal' ? 'default' : 'outline'}
                 onClick={() => setAgentMode('normal')}
               >
@@ -108,6 +109,7 @@ export function NewAgentPage() {
               <Button
                 type="button"
                 size="xs"
+                className="min-h-11 md:min-h-0"
                 variant={agentMode === 'coding' ? 'default' : 'outline'}
                 onClick={() => setAgentMode('coding')}
               >

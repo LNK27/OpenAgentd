@@ -141,6 +141,7 @@ export function AgentEditorPage() {
                   <Button
                     variant="ghost"
                     size="xs"
+                    className="min-h-11 md:min-h-0"
                     onClick={() => data && setDraft(data.content)}
                   >
                     Discard changes
@@ -148,6 +149,7 @@ export function AgentEditorPage() {
                   <Button
                     variant="ghost"
                     size="xs"
+                    className="min-h-11 md:min-h-0"
                     onClick={() => navigate({ to: '/settings/agents' })}
                   >
                     Leave without saving
@@ -159,6 +161,7 @@ export function AgentEditorPage() {
               <Button
                 variant="destructive"
                 size="xs"
+                className="min-h-11 md:min-h-0"
                 onClick={() => setDeleteOpen(true)}
                 disabled={deleteMut.isPending}
               >
