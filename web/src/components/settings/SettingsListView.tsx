@@ -230,7 +230,7 @@ function ListCardLink({ row }: { row: ListViewRow }) {
       params={row.params as never}
       aria-current={row.active ? 'page' : undefined}
       className={cn(
-        'group flex items-start gap-3 rounded-lg border bg-(--bg-card) px-4 py-3 transition-colors',
+        'group flex min-h-11 items-start gap-3 rounded-lg border bg-(--bg-card) px-4 py-3 transition-colors',
         'hover:border-(--color-border-strong)',
         'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
         row.active
