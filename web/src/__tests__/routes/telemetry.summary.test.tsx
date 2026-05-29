@@ -170,4 +170,27 @@ describe('TracesSection', () => {
     expect(onSelectTrace).toHaveBeenCalledWith(trace.trace_id)
     expect(screen.getByText('openai:gpt-test')).toBeTruthy()
   })
+
+  it('keeps trace rows keyboard-focusable and touch-sized before desktop compact sizing', () => {
+    render(
+      <TracesSection
+        query={query()}
+        traces={[trace]}
+        limit={25}
+        total={1}
+        hasNext={false}
+        onLoadMore={() => {}}
+        onSelectTrace={() => {}}
+      />,
+    )
+
+    const row = screen.getByRole('button', { name: /Open trace/ })
+    expect(row.className).toContain('focus-visible:ring-2')
+    expect(row.className).toContain('focus:bg-(--bg-key)/40')
+    const affordance = row.querySelector('td:last-child span')
+    expect(affordance?.className).toContain('h-8')
+    expect(affordance?.className).toContain('w-8')
+    expect(affordance?.className).toContain('md:h-6')
+    expect(affordance?.className).toContain('md:w-6')
+  })
 })

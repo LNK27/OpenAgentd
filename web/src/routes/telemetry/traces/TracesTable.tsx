@@ -59,7 +59,7 @@ export function TracesTable({
             tabIndex={0}
             role="button"
             aria-label={`Open trace ${formatShortId(t.trace_id)}`}
-            className="cursor-pointer border-b border-(--color-border) transition-colors last:border-b-0 hover:bg-(--bg-key)/40 focus-within:bg-(--bg-key)/40"
+            className="cursor-pointer border-b border-(--color-border) transition-colors last:border-b-0 hover:bg-(--bg-key)/40 focus:bg-(--bg-key)/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)"
           >
             <Td>
               <span title={new Date(t.start_ms).toLocaleString()}>
@@ -89,8 +89,8 @@ export function TracesTable({
               )}
             </Td>
             <Td align="right">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md text-(--color-text-muted)">
-                <ChevronRight size={14} aria-hidden="true" />
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) md:h-6 md:w-6">
+                <ChevronRight size={15} className="md:h-3.5 md:w-3.5" aria-hidden="true" />
               </span>
             </Td>
           </tr>
