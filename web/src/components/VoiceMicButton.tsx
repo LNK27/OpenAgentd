@@ -41,6 +41,33 @@ const DISABLED_TOOLTIP =
 const UNAVAILABLE_TOOLTIP =
   'Voice runtime unavailable on this machine. See Settings → Voice for help.'
 
+const RECORDING_MIME_TYPES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/mp4',
+  'audio/mpeg',
+] as const
+
+function getSupportedRecordingMimeType(): string | undefined {
+  if (typeof MediaRecorder.isTypeSupported !== 'function') return undefined
+  return RECORDING_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
+}
+
+function recordingFilename(mimeType: string): string {
+  const normalized = mimeType.toLowerCase()
+  if (normalized.includes('mp4')) return 'recording.m4a'
+  if (normalized.includes('mpeg')) return 'recording.mp3'
+  return 'recording.webm'
+}
+
+function mobileMicrophoneMessage(): string {
+  const platform = getPlatform()
+  if (platform.isTauri && (platform.os === 'ios' || platform.os === 'android')) {
+    return 'Microphone access is blocked for OpenAgentd. Enable microphone permission in system settings, then reopen the app.'
+  }
+  return 'Microphone access denied.'
+}
+
 async function handleDesktopMicrophoneDenied(): Promise<void> {
   const { ask } = await import('@tauri-apps/plugin-dialog')
   const shouldOpen = await ask(
@@ -92,8 +119,26 @@ export function VoiceMicButton({
 
   const startRecording = useCallback(async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        pushToast({
+          tone: 'error',
+          title: 'Microphone unavailable',
+          description: 'This browser or WebView does not expose microphone recording.',
+        })
+        return
+      }
+      if (typeof MediaRecorder === 'undefined') {
+        pushToast({
+          tone: 'error',
+          title: 'Voice input unsupported',
+          description: 'This browser or WebView does not support audio recording for transcription.',
+        })
+        return
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+      const mimeType = getSupportedRecordingMimeType()
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
       chunksRef.current = []
 
       recorder.ondataavailable = (e) => {
@@ -115,7 +160,7 @@ export function VoiceMicButton({
 
         setVoiceState('transcribing')
 
-        postTranscribe(blob)
+        postTranscribe(blob, recordingFilename(blob.type))
           .then((result) => {
             if (!mountedRef.current) return
             if (result.text) onTranscript(result.text)
@@ -145,7 +190,7 @@ export function VoiceMicButton({
           })
         })
       } else {
-        const msg = err instanceof Error ? err.message : 'Microphone access denied.'
+        const msg = err instanceof Error ? err.message : mobileMicrophoneMessage()
         pushToast({ tone: 'error', title: 'Microphone error', description: msg })
       }
       setVoiceState('idle')

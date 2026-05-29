@@ -1173,9 +1173,9 @@ export async function putSpeechConfig(body: SpeechConfig): Promise<SpeechConfig>
   return res.json()
 }
 
-export async function postTranscribe(audioBlob: Blob): Promise<{ text: string }> {
+export async function postTranscribe(audioBlob: Blob, filename = 'recording.webm'): Promise<{ text: string }> {
   const formData = new FormData()
-  formData.append('file', audioBlob, 'recording.webm')
+  formData.append('file', audioBlob, filename)
   const res = await fetch(`${apiBaseUrl()}/speech/transcribe`, {
     method: 'POST',
     body: formData,

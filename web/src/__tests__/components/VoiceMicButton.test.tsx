@@ -72,9 +72,15 @@ mock.module('@tauri-apps/api/core', () => ({
 
 // MediaRecorder stub — not available in Happy DOM.
 class MockMediaRecorder extends EventTarget {
+  static isTypeSupported = mock((type: unknown) => String(type).startsWith('audio/webm'))
   mimeType = 'audio/webm'
   ondataavailable: ((e: { data: Blob }) => void) | null = null
   onstop: (() => void) | null = null
+
+  constructor(_stream?: MediaStream, options?: MediaRecorderOptions) {
+    super()
+    if (options?.mimeType) this.mimeType = options.mimeType
+  }
 
   start() {
     // Immediately fire a data chunk
@@ -101,6 +107,8 @@ beforeEach(() => {
   invokeCalls.length = 0
   useToastStoreMock.setState({ toasts: [] })
   transcribeMode = 'success'
+  MockMediaRecorder.isTypeSupported.mockReset()
+  MockMediaRecorder.isTypeSupported.mockImplementation((type: unknown) => String(type).startsWith('audio/webm'))
   globalThis.fetch = mock(async (input: unknown) => {
     if (!String(input).startsWith('/api/speech/transcribe')) {
       return new Response(null, { status: 404 })
@@ -317,6 +325,60 @@ describe('VoiceMicButton — error handling', () => {
 
     // Should remain in idle state
     expect(screen.getByLabelText('Start voice input')).toBeTruthy()
+  })
+
+  it('shows an actionable error when microphone APIs are unavailable', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    })
+
+    const user = userEvent.setup()
+    render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)
+
+    await user.click(screen.getByLabelText('Start voice input'))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalled())
+    const call = mockPush.mock.calls[0][0] as Toast
+    expect(call.title).toBe('Microphone unavailable')
+    expect(call.description).toContain('does not expose microphone recording')
+    expect(screen.getByLabelText('Start voice input')).toBeTruthy()
+  })
+
+  it('shows an actionable error when MediaRecorder is unavailable', async () => {
+    delete (global as Record<string, unknown>).MediaRecorder
+
+    const user = userEvent.setup()
+    render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)
+
+    await user.click(screen.getByLabelText('Start voice input'))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalled())
+    const call = mockPush.mock.calls[0][0] as Toast
+    expect(call.title).toBe('Voice input unsupported')
+    expect(call.description).toContain('does not support audio recording')
+    expect(screen.getByLabelText('Start voice input')).toBeTruthy()
+  })
+
+  it('uses an iOS-friendly MIME type when recording mp4 audio', async () => {
+    MockMediaRecorder.isTypeSupported.mockImplementation((type: unknown) => type === 'audio/mp4')
+
+    const user = userEvent.setup()
+    render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)
+
+    await user.click(screen.getByLabelText('Start voice input'))
+    await waitFor(() => screen.getByLabelText('Stop recording'))
+    await user.click(screen.getByLabelText('Stop recording'))
+
+    await waitFor(() => screen.getByLabelText('Start voice input'))
+
+    const request = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]
+    const formData = request[1] instanceof Object && 'body' in request[1]
+      ? (request[1] as RequestInit).body as FormData
+      : null
+    const file = formData?.get('file') as File | null
+    expect(file?.type).toBe('audio/mp4')
   })
 
   it('uses a native desktop dialog for macOS microphone denial', async () => {
