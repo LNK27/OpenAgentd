@@ -507,7 +507,7 @@ export function CodingSidebar({
       }
     >
       {isMobile && (
-        <nav aria-label="Primary" className="px-2 pt-2">
+        <nav aria-label="Primary" className="px-2 pt-3">
           <button
             type="button"
             onClick={() => { navigate({ to: '/' }); onMobileClose?.() }}
@@ -521,7 +521,7 @@ export function CodingSidebar({
 
       {/* Search trigger — opens the command palette (Ctrl+P). */}
       {onCommandPalette && (
-        <div className="px-3 pt-3">
+        <div className={isMobile ? 'px-3 pt-3' : 'px-3 py-3'}>
           <button
             type="button"
             onClick={onCommandPalette}

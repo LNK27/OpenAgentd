@@ -146,7 +146,7 @@ describe('AppBackendDialog', () => {
     await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4999')
     await user.click(screen.getByRole('button', { name: 'Check' }))
 
-    expect(await screen.findByText('Server did not respond to /api/health/live.')).toBeTruthy()
+    expect(await screen.findByText(/Server did not respond to \/api\/health\/live/)).toBeTruthy()
     expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:5999')
     expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
   })

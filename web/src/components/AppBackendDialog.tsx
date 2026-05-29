@@ -64,7 +64,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       const online = await pingServer(normalized)
       setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
       if (!online) {
-        setError('Server did not respond to /api/health/live.')
+        setError('Server did not respond to /api/health/live. Check that OpenAgentd is running with --host 0.0.0.0, this device is on the same network, and the URL uses the backend machine LAN IP.')
         return
       }
       setApiBaseUrl(normalized)
@@ -159,7 +159,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           <div className="min-w-0 flex-1">
             <h2 id="app-backend-title" className="text-sm font-semibold">Backend connection</h2>
             <p className="mt-1 text-xs leading-5 text-(--color-text-muted)">
-              Connect this app to a running OpenAgentd server.
+              Connect this app to a running OpenAgentd server. Mobile apps use a remote backend only.
             </p>
           </div>
         </div>
@@ -170,6 +170,15 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px]">
               {status?.external ? 'external' : 'bundled'}
             </span>
+          </div>
+
+          <div className="rounded-lg border border-(--accent-blue)/35 bg-(--accent-blue-soft) px-3 py-2 text-xs leading-5 text-(--color-text-muted)">
+            <p className="font-medium text-(--color-text)">Connecting from iPhone or another device?</p>
+            <ol className="mt-1 list-decimal space-y-1 pl-4">
+              <li>Run the backend with <code className="rounded bg-(--bg-card) px-1 py-0.5 font-mono text-[10px]">--host 0.0.0.0 --port 8000</code>.</li>
+              <li>Keep this device on the same Wi‑Fi/LAN as the backend machine.</li>
+              <li>Enter that machine's LAN URL, for example <code className="rounded bg-(--bg-card) px-1 py-0.5 font-mono text-[10px]">http://192.168.1.62:8000</code>.</li>
+            </ol>
           </div>
 
           <div>
@@ -237,7 +246,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               id="app-backend-url"
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="http://127.0.0.1:4082"
+              placeholder="http://192.168.1.62:8000"
               className="min-w-0 flex-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:border-(--focus-ring) focus:ring-3 focus:ring-(--focus-ring)/30"
             />
             <button
@@ -270,7 +279,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             </button>
           </div>
           <p className="text-xs leading-5 text-(--color-text-muted)">
-            Check verifies the server and uses it for this app session. Save persists or renames it for future use.
+            Check verifies the server and uses it for this app session. Save persists or renames it for future use. If the check fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.
           </p>
 
           {error ? (

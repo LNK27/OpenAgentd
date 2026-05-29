@@ -47,7 +47,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FileText, FolderOpen, FolderCode, ListTodo, Menu, MessageSquarePlus, Moon, MoreHorizontal, PencilLine, RotateCcw, SlidersHorizontal, Square, Users, X } from 'lucide-react'
+import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FileText, FolderOpen, FolderCode, Home, ListTodo, Menu, MessageSquarePlus, Moon, MoreHorizontal, PencilLine, RotateCcw, SlidersHorizontal, Square, Users, X } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
@@ -148,6 +148,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const agentNames     = useTeamStore((s) => s.agentNames)
   const isTeamWorking  = useTeamStore((s) => s.isTeamWorking)
   const isContinuing   = useTeamStore((s) => s.isContinuing)
+  const pendingMessages = useTeamStore((s) => s._pendingMessages)
   const sessionIdState = useTeamStore((s) => s.sessionId)
   const sessionTitle   = useTeamStore((s) => s.sessionTitle)
   const sessionModel   = useTeamStore((s) => s.sessionModel)
@@ -661,11 +662,33 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           isMacOverlay ? 'select-none pl-[70px]' : ''
         }`}
       >
+          {/* Desktop keeps a Home affordance in the menubar. Mobile uses
+              one global nav entry and places Home inside the drawer. */}
+          {!isMobile && (
+            <div
+              className={`flex h-full shrink-0 items-center justify-center ${
+                isMacOverlay ? 'pl-2' : 'md:w-14'
+              }`}
+            >
+              <a
+                href="/"
+                aria-label="Home"
+                title="Home"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                onClick={(event) => {
+                  event.preventDefault()
+                  navigate({ to: '/' })
+                }}
+              >
+                <Home size={16} aria-hidden="true" />
+              </a>
+            </div>
+          )}
+
           {/* Hamburger target depends on mode: coding sidebar toggle,
               mobile drawer, or synthetic Ctrl+B for the normal sidebar
-              (whose collapse state is owned by Sidebar). On mobile it is
-              the single global navigation entry; Home lives in the drawer. */}
-          <div className={isMacOverlay ? 'mr-1 flex min-w-0 shrink items-center gap-1 pl-2 md:mr-2' : 'mr-1 flex min-w-0 shrink items-center gap-1 pl-2 md:mr-2 md:w-14 md:justify-center md:pl-0'}>
+              (whose collapse state is owned by Sidebar). */}
+          <div className={isMacOverlay ? 'mr-1 flex min-w-0 shrink items-center gap-1 pl-2 md:mr-2' : 'mr-1 flex min-w-0 shrink items-center gap-1 pl-2 md:mr-2 md:pl-0'}>
             <button
               type="button"
               onClick={() => {
@@ -747,6 +770,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               onSelectAgent={setActiveAgent}
               todos={todos}
               sessionId={sessionIdState}
+              onCommands={() => { setShowPalette(true); closeMobileActionsMenu() }}
               onTodos={() => { setShowTodos(true); closeMobileActionsMenu() }}
               onFiles={mode === 'coding'
                 ? workspace ? () => { handleWorkspaceFiles(); closeMobileActionsMenu() } : undefined
@@ -779,6 +803,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 })
                 closeMobileActionsMenu()
               }}
+              canStop={isTeamWorking}
+              canContinue={Boolean(sessionIdState) && !isTeamWorking && !isContinuing}
+              canUndo={Boolean(sessionIdState) && !isTeamWorking}
+              canRedo={Boolean(sessionIdState) && !isTeamWorking && pendingMessages.length === 0}
+              canCompact={Boolean(sessionIdState) && !isTeamWorking}
               dreamRunning={dreamMutation.isPending}
               codingPanelOpen={codingPanel !== null}
               agentSettingsOpen={agentCapabilitiesOpen}
@@ -843,7 +872,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             workspace={workspace}
             onCollapse={() => setCodingSidebarCollapsed(true)}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
-            onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
+            onCommandPalette={() => setShowPalette(true)}
             desktopCollapsed={codingSidebarCollapsed}
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
@@ -851,7 +880,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         ) : (
           <Sidebar
             currentSessionId={sessionIdState || undefined}
-            onCommandPalette={isMobile ? undefined : () => setShowPalette(true)}
+            onCommandPalette={() => setShowPalette(true)}
             onNewChat={handleNewSession}
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
@@ -1061,7 +1090,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         contextMode={mode}
         contextWorkspace={workspace ?? null}
       />
-      {!isMobile && showPalette && (
+      {showPalette && (
         <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />
       )}
     </div>
@@ -1081,6 +1110,7 @@ interface MobileChatActionsProps {
   onSelectAgent: (agent: string) => void
   todos: Array<{ status: string }>
   sessionId: string | null
+  onCommands: () => void
   onTodos: () => void
   onFiles?: () => void
   onAgentSettings: () => void
@@ -1094,6 +1124,11 @@ interface MobileChatActionsProps {
   onCompact: () => void
   onUndo: () => void
   onRedo: () => void
+  canStop: boolean
+  canContinue: boolean
+  canUndo: boolean
+  canRedo: boolean
+  canCompact: boolean
   dreamRunning: boolean
   codingPanelOpen: boolean
   agentSettingsOpen: boolean
@@ -1110,6 +1145,7 @@ function MobileChatActions({
   onSelectAgent,
   todos,
   sessionId,
+  onCommands,
   onTodos,
   onFiles,
   onAgentSettings,
@@ -1123,6 +1159,11 @@ function MobileChatActions({
   onCompact,
   onUndo,
   onRedo,
+  canStop,
+  canContinue,
+  canUndo,
+  canRedo,
+  canCompact,
   dreamRunning,
   codingPanelOpen,
   agentSettingsOpen,
@@ -1167,6 +1208,10 @@ function MobileChatActions({
         )}
 
         <div className="px-2 pt-2 text-xs font-medium text-muted-foreground">Compose</div>
+        <DropdownMenuItem onClick={onCommands} className="min-h-10 px-2">
+          <Menu size={15} aria-hidden="true" />
+          <span className="flex-1">Commands</span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={onFocusInput} className="min-h-10 px-2">
           <PencilLine size={15} aria-hidden="true" />
           <span className="flex-1">Focus input</span>
@@ -1175,23 +1220,23 @@ function MobileChatActions({
           <MessageSquarePlus size={15} aria-hidden="true" />
           <span className="flex-1">New chat</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onStop} className="min-h-10 px-2">
+        <DropdownMenuItem onClick={onStop} disabled={!canStop} className="min-h-10 px-2">
           <Square size={15} aria-hidden="true" />
           <span className="flex-1">Stop team</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onContinue} disabled={!sessionId} className="min-h-10 px-2">
+        <DropdownMenuItem onClick={onContinue} disabled={!canContinue} className="min-h-10 px-2">
           <RotateCcw size={15} aria-hidden="true" />
           <span className="flex-1">Continue</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onUndo} disabled={!sessionId} className="min-h-10 px-2">
+        <DropdownMenuItem onClick={onUndo} disabled={!canUndo} className="min-h-10 px-2">
           <RotateCcw size={15} aria-hidden="true" />
           <span className="flex-1">Undo last message</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onRedo} disabled={!sessionId} className="min-h-10 px-2">
+        <DropdownMenuItem onClick={onRedo} disabled={!canRedo} className="min-h-10 px-2">
           <RotateCcw size={15} className="scale-x-[-1]" aria-hidden="true" />
           <span className="flex-1">Redo messages</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onCompact} disabled={!sessionId} className="min-h-10 px-2">
+        <DropdownMenuItem onClick={onCompact} disabled={!canCompact} className="min-h-10 px-2">
           <FileText size={15} aria-hidden="true" />
           <span className="flex-1">Compact session</span>
         </DropdownMenuItem>
