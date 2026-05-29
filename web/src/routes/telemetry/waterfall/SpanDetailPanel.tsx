@@ -41,10 +41,10 @@ export function SpanDetailPanel({
         </h3>
         <button
           onClick={onClose}
-          className="flex h-6 w-6 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+          className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
           aria-label="Close span detail"
         >
-          <X size={14} />
+          <X size={16} className="md:h-3.5 md:w-3.5" />
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">

@@ -89,7 +89,7 @@ function WaterfallRow({
       type="button"
       onClick={onSelect}
       aria-label={`${node.span.name}, ${category}, ${isError ? 'error' : 'ok'}, duration ${formatMs(node.span.duration_ms)}`}
-      className={`flex w-full items-center px-3 py-2 text-left text-xs transition-colors hover:bg-(--bg-key)/30 ${
+      className={`flex min-h-11 w-full items-center px-3 py-2 text-left text-xs transition-colors hover:bg-(--bg-key)/30 focus:bg-(--bg-key)/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring) md:min-h-0 ${
         selected ? 'bg-(--bg-key)/60' : ''
       }`}
     >
