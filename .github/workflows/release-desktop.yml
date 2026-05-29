@@ -191,7 +191,9 @@ jobs:
 
       - name: Generate platform icons
         working-directory: desktop/src-tauri
-        run: cargo tauri icon icons/icon.png
+        run: |
+          rm -f icons/32x32.png icons/64x64.png icons/128x128.png icons/128x128@2x.png icons/icon.icns icons/icon.ico
+          cargo tauri icon icons/icon.png
 
       # Build web/dist once before sidecar + Tauri packaging. The sidecar is
       # API-only; Tauri packages web/dist via frontendDist.
