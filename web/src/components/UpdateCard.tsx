@@ -44,7 +44,7 @@ export function UpdateCard() {
 
   useEffect(() => {
     let cleanup: (() => void) | undefined
-    let interval: ReturnType<typeof window.setInterval> | undefined
+    let interval: number | undefined
     let cancelled = false
 
     async function start() {

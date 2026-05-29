@@ -68,6 +68,7 @@ class _TurnState:
         # isTeamWorking flag would stay false even while tokens were still
         # streaming in. Overwritten per event so only the latest sticks.
         self.agent_statuses: dict[str, str] = {}
+        self.agent_errors: dict[str, dict[str, Any]] = {}
         # Me in-flight summarisation state per agent.  Carries the streaming
         # summary text and a done flag so a mid-compaction reconnect can
         # rebuild the "Session compacting" divider with the right state.
@@ -88,6 +89,7 @@ class _TurnState:
         self.thinking = {}
         self.tool_calls = []
         self.agent_statuses = {}
+        self.agent_errors = {}
         self.summarization = {}
         self.usage = None
         self.error = None
@@ -218,6 +220,10 @@ async def push_event(session_id: str, envelope: StreamEnvelope) -> None:
             status = data.get("status", "")
             if agent and status:
                 state.agent_statuses[agent] = status
+                if status == "error":
+                    state.agent_errors[agent] = data.get("metadata", {})
+                else:
+                    state.agent_errors.pop(agent, None)
 
         elif event_type == "summarization_start":
             agent = envelope.agent
@@ -423,6 +429,7 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
                             Literal["idle", "working", "offline", "error"],
                             status,
                         ),
+                        metadata=state.agent_errors.get(agent, {}),
                     )
                 ).to_wire()
 

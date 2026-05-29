@@ -1,9 +1,12 @@
 import { Suspense } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
 import { UpdateCard } from './components/UpdateCard'
+import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 
 function App() {
+  useAppBackendBootstrap()
+
   return (
     <Suspense fallback={<AppLoadingScreen />}>
       <RouterProvider router={router} />

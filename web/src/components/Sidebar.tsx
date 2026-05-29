@@ -617,7 +617,7 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
           e.stopPropagation()
           onEdit(session)
         }}
-        className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text) opacity-100 md:opacity-0 md:group-hover:opacity-100"
+        className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100"
         aria-label={`Edit session ${session.title || 'Untitled'}`}
       >
         <Pencil size={12} />
@@ -626,7 +626,7 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
       {/* Delete on hover */}
       <button
         onClick={(e) => onDelete(e, session)}
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) opacity-100 md:opacity-0 md:group-hover:opacity-100"
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
         aria-label={`Delete session ${session.title || 'Untitled'}`}
       >
         <Trash2 size={12} />

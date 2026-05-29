@@ -1,0 +1,55 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, render, waitFor } from '@testing-library/react'
+import App from '@/App'
+
+const TEST_BACKEND_URL = 'http://10.0.2.2:8000'
+
+let statusPayload: { base_url: string } | null = { base_url: TEST_BACKEND_URL }
+
+const invokeMock = mock(async (...args: unknown[]) => {
+  const command = String(args[0])
+  if (command === 'app_backend_status') return statusPayload
+  throw new Error(`unexpected command: ${command}`)
+})
+
+mock.module('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}))
+
+mock.module('@tanstack/react-router', () => ({
+  RouterProvider: () => null,
+}))
+
+mock.module('@/components/UpdateCard', () => ({
+  UpdateCard: () => null,
+}))
+
+beforeEach(() => {
+  delete window.__OAD_API_BASE_URL__
+  statusPayload = { base_url: TEST_BACKEND_URL }
+  invokeMock.mockClear()
+})
+
+afterEach(() => {
+  cleanup()
+  delete window.__OAD_API_BASE_URL__
+})
+
+describe('App backend bootstrap', () => {
+  it('hydrates the active mobile app backend URL on app startup', async () => {
+    render(<App />)
+
+    await waitFor(() => {
+      expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
+    })
+  })
+
+  it('leaves the default web API base URL when no app backend is configured', async () => {
+    statusPayload = null
+
+    render(<App />)
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalled())
+    expect(window.__OAD_API_BASE_URL__).toBeUndefined()
+  })
+})

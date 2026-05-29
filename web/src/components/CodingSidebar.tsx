@@ -589,7 +589,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => { void selectWorkspace(path, { create: true }) }}
-                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                   aria-label={`New session in ${workspaceLabel(path)}`}
                   title={`New session in ${workspaceLabel(path)}`}
                 >
