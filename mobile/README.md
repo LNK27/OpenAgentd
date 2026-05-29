@@ -35,6 +35,26 @@ Run on simulator/device:
 make ios-dev
 ```
 
+For a physical iPhone, expose the dev servers on the LAN first:
+
+```bash
+cd ../web && bun dev --host 0.0.0.0
+cd .. && uv run uvicorn app.server:app --host 0.0.0.0 --port 8000
+```
+
+Then run the iOS app:
+
+```bash
+make ios-dev-device IOS_DEVICE=00008110-001455560199801E
+```
+
+If the generated Xcode project gets stale after changing signing or identifiers, clean and regenerate it:
+
+```bash
+make ios-clean
+make ios-init
+```
+
 Build:
 
 ```bash
@@ -42,3 +62,5 @@ make ios-build
 ```
 
 Use **Backend connection** in the app to save/check a remote server. Simulator builds can usually reach the Mac with `http://localhost:8000`; physical devices normally need a LAN IP or HTTPS endpoint.
+
+For local developer builds, set a unique iOS bundle identifier in `src-tauri/tauri.conf.json` if `com.openagentd.mobile` is already registered to another Apple developer team.

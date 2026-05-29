@@ -24,10 +24,12 @@ For simulator development, `http://localhost:8000` usually reaches the Mac backe
 
 ```bash
 cd mobile
-make dev       # Tauri shell against Vite :5173
-make ios-init  # generate iOS project files
-make ios-dev   # run on simulator/device
-make ios-build # build iOS app
+make dev                    # Tauri shell against Vite :5173
+make ios-init               # generate iOS project files
+make ios-dev                # run on simulator/device with --host
+make ios-dev-device         # run on a known physical iPhone
+make ios-clean              # remove generated iOS/Xcode state
+make ios-build              # build iOS app
 ```
 
 Run a backend separately, for example:
@@ -35,3 +37,12 @@ Run a backend separately, for example:
 ```bash
 make run
 ```
+
+Physical iPhone development needs LAN-reachable dev servers:
+
+```bash
+cd web && bun dev --host 0.0.0.0
+uv run uvicorn app.server:app --host 0.0.0.0 --port 8000
+```
+
+Generated iOS projects are local artifacts. If signing, bundle identifiers, or Xcode settings become stale, run `make ios-clean && make ios-init` and reapply local signing settings in Xcode. Local developer builds may temporarily use a unique identifier in `mobile/src-tauri/tauri.conf.json`; the source default is `com.openagentd.mobile`.
