@@ -106,6 +106,23 @@ describe("FileCard", () => {
     expect(removeBtn).toBeTruthy()
   })
 
+  it("keeps the removable file action visible and large enough for touch before desktop hover reveal", () => {
+    render(
+      <FileCard
+        name="file.txt"
+        removable={true}
+        onRemove={mock(() => {})}
+      />
+    )
+
+    const removeBtn = screen.getByLabelText("Remove file")
+    expect(removeBtn.className).toContain("opacity-100")
+    expect(removeBtn.className).toContain("h-7")
+    expect(removeBtn.className).toContain("w-7")
+    expect(removeBtn.className).toContain("md:opacity-0")
+    expect(removeBtn.className).toContain("md:group-hover:opacity-100")
+  })
+
   it("clicking remove button calls onRemove callback", async () => {
     const user = userEvent.setup()
     const onRemove = mock(() => {})

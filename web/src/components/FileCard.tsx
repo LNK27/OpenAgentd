@@ -66,11 +66,11 @@ export function FileCard({
             e.stopPropagation()
             onRemove()
           }}
-          className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border) shadow-sm transition-opacity opacity-100 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100"
+          className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border) shadow-sm transition-opacity opacity-100 hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
           aria-label="Remove file"
           title="Remove"
         >
-          <X size={10} />
+          <X size={12} className="md:h-2.5 md:w-2.5" />
         </button>
       )}
     </div>
