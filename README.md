@@ -239,6 +239,8 @@ Click the mic button in the chat input to start voice input. Click again to stop
 
 There is no backend speech service, no `faster-whisper` dependency, and no `speech.yaml` setting. If the current browser/WebView does not expose speech recognition, the mic button is disabled with an explanatory tooltip. Platform privacy and cloud/local processing semantics are controlled by the browser or operating system speech service.
 
+On macOS, voice input depends on the system speech service. If **Siri & Dictation** / **Dictation** is disabled in System Settings, Screen Time, or device management policy, speech recognition can fail with errors such as `Siri and Dictation are disabled` or `Microphone permission check has failed`. Enable **System Settings → Keyboard → Dictation**, then retry the mic flow.
+
 ---
 
 ## Scheduler

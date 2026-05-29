@@ -2,7 +2,7 @@
 title: Voice input
 description: Client-side speech recognition and transcript insertion contract.
 status: stable
-updated: 2026-05-28
+updated: 2026-05-29
 ---
 
 # Voice input
@@ -29,6 +29,18 @@ explanatory tooltip. There is no Settings → Voice page and no backend toggle.
   object exposed by the WebView (`SpeechRecognition` or `webkitSpeechRecognition`).
 - Platform privacy and cloud/local processing semantics are controlled by the
   operating system or browser speech service, not by OpenAgentd.
+- macOS requires the system speech service to be enabled. If **Siri & Dictation**
+  / **Dictation** is disabled by System Settings, Screen Time, or device
+  management policy, WebKit speech recognition may fail with errors such as
+  `Siri and Dictation are disabled` or `Microphone permission check has failed`.
+  Enable **System Settings → Keyboard → Dictation** and allow OpenAgentd's
+  microphone/speech-recognition prompts, then retry.
+- Desktop macOS bundles merge `desktop/src-tauri/Info.plist`, which declares
+  `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`.
+  The dev bundle identifier is `com.openagentd.desktop.dev`; reset only the dev
+  app permissions with `tccutil reset Microphone com.openagentd.desktop.dev`
+  and `tccutil reset SpeechRecognition com.openagentd.desktop.dev` when testing
+  rebuilt dev app bundles.
 - iOS mobile builds declare microphone and speech-recognition usage descriptions
   in `mobile/src-tauri/Info.ios.plist`.
 

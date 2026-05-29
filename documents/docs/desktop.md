@@ -142,7 +142,7 @@ On install, Rust verifies the updater signature, shuts down the Python sidecar, 
 
 macOS uses the **Overlay** title-bar style (`tauri.conf.json` + `configure_window_chrome` in `main.rs`) — the OS keeps drawing the traffic-light buttons but the WebView extends edge-to-edge underneath. The React app reserves a 70 px left inset and provides the window-drag region itself.
 
-The bundle includes `Info.plist` with `NSMicrophoneUsageDescription` so WebView microphone requests can show the native permission prompt. `entitlements.plist` grants `com.apple.security.device.audio-input` for signed builds. If macOS has already denied access, the frontend shows a native dialog and calls `open_macos_microphone_settings` to open **System Settings → Privacy & Security → Microphone**.
+The bundle includes `Info.plist` with `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription` so WebView voice input can show native permission prompts. `entitlements.plist` grants `com.apple.security.device.audio-input` for signed builds. macOS voice input also requires the system speech service: if **Siri & Dictation** / **Dictation** is disabled in System Settings, Screen Time, or device management policy, WebKit speech recognition can fail with `Siri and Dictation are disabled` or `Microphone permission check has failed`. Enable **System Settings → Keyboard → Dictation**, then retry.
 
 Windows and Linux keep their native title bars (`decorations: true`).
 
