@@ -125,7 +125,7 @@ export function SkillEditorPage() {
                   rows={28}
                   spellCheck={false}
                   aria-invalid={invalid || undefined}
-                  className="font-mono text-[13px] leading-relaxed"
+                  className="min-h-96 font-mono text-[13px] leading-relaxed"
                 />
               </CardContent>
             </Card>
@@ -137,6 +137,7 @@ export function SkillEditorPage() {
                   <Button
                     variant="ghost"
                     size="xs"
+                    className="min-h-11 md:min-h-0"
                     onClick={() => data && setDraft(data.content)}
                   >
                     Discard changes
@@ -144,6 +145,7 @@ export function SkillEditorPage() {
                   <Button
                     variant="ghost"
                     size="xs"
+                    className="min-h-11 md:min-h-0"
                     onClick={() => navigate({ to: '/settings/skills' })}
                   >
                     Leave without saving
@@ -155,6 +157,7 @@ export function SkillEditorPage() {
               <Button
                 variant="destructive"
                 size="xs"
+                className="min-h-11 md:min-h-0"
                 onClick={() => setDeleteOpen(true)}
                 disabled={deleteMut.isPending}
               >

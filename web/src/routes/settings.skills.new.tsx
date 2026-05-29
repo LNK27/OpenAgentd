@@ -92,7 +92,7 @@ export function NewSkillPage() {
                 rows={28}
                 spellCheck={false}
                 aria-invalid={invalid || undefined}
-                className="font-mono text-[13px] leading-relaxed"
+                className="min-h-96 font-mono text-[13px] leading-relaxed"
               />
             </CardContent>
           </Card>
