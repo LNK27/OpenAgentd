@@ -62,6 +62,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { SessionResponse } from '@/api/types'
+import { LongPressButton } from '@/components/ui/long-press-button'
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -85,19 +86,21 @@ function WorkspaceSessionList({
   currentSessionId,
   runningSessions,
   collapsed = false,
-  mobileActionsVisible = false,
+  mobileLongPressActions = false,
   onSessionSelect,
   onSessionDelete,
   onSessionEdit,
+  onSessionLongPress,
 }: {
   path: string
   currentSessionId?: string
   runningSessions?: SessionResponse[]
   collapsed?: boolean
-  mobileActionsVisible?: boolean
+  mobileLongPressActions?: boolean
   onSessionSelect: (session: SessionResponse, workspacePath: string) => void
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onSessionEdit: (session: SessionResponse) => void
+  onSessionLongPress: (session: SessionResponse) => void
 }) {
   const sessions = useCodingWorkspaceSessionsQuery(path, !collapsed)
   const workspaceSessions = collapsed
@@ -114,7 +117,9 @@ function WorkspaceSessionList({
         const isRunning = session.running === true
         return (
           <div key={session.id} className="group relative">
-            <button
+            <LongPressButton
+              enabled={mobileLongPressActions}
+              onLongPress={() => onSessionLongPress(session)}
               type="button"
               onClick={() => onSessionSelect(session, path)}
               onDoubleClick={(e) => {
@@ -139,14 +144,14 @@ function WorkspaceSessionList({
                   <Loader2 size={11} className="animate-spin" aria-hidden="true" />
                 </span>
               )}
-            </button>
+            </LongPressButton>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
                 onSessionEdit(session)
               }}
-              className={`absolute right-6 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text) ${mobileActionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+              className="absolute right-6 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100"
               aria-label={`Edit session ${session.title || 'Untitled'}`}
             >
               <Pencil size={11} />
@@ -154,7 +159,7 @@ function WorkspaceSessionList({
             <button
               type="button"
               onClick={(e) => onSessionDelete(e, session)}
-              className={`absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileActionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
               aria-label={`Delete session ${session.title || 'Untitled'}`}
             >
               <Trash2 size={11} />
@@ -190,7 +195,7 @@ export function CodingSidebar({
   const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
-  const mobileActionsVisible = isMobile && isTauriMobile && mobileOpen
+  const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
   // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
   // We don't render an inline collapse toggle anymore — the topbar
@@ -272,6 +277,8 @@ export function CodingSidebar({
   const [editTitle, setEditTitle] = useState('')
   const editTitleInputRef = useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
+  const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
+  const [mobileWorkspaceActions, setMobileWorkspaceActions] = useState<string | null>(null)
   // Workspace pending removal — null when no confirmation is open. The
   // confirmation dialog reads this; ``confirmRemoveWorkspace`` commits.
   const [removeWorkspaceTarget, setRemoveWorkspaceTarget] = useState<string | null>(null)
@@ -559,7 +566,9 @@ export function CodingSidebar({
             <div key={path} className="relative">
               {/* Workspace row */}
               <div className="group flex h-8 items-center pl-3 pr-2">
-                <button
+                <LongPressButton
+                  enabled={mobileLongPressActions}
+                  onLongPress={() => setMobileWorkspaceActions(path)}
                   type="button"
                   onClick={() => toggleWorkspaceExpanded(path)}
                   className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-md px-1.5 py-1 text-left text-xs transition-colors"
@@ -576,11 +585,11 @@ export function CodingSidebar({
                       <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
                     </span>
                   )}
-                </button>
+                </LongPressButton>
                 <button
                   type="button"
                   onClick={() => { void selectWorkspace(path, { create: true }) }}
-                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileActionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label={`New session in ${workspaceLabel(path)}`}
                   title={`New session in ${workspaceLabel(path)}`}
                 >
@@ -589,7 +598,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => setRemoveWorkspaceTarget(path)}
-                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileActionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
                   aria-label={`Remove ${workspaceLabel(path)} from sidebar`}
                   title="Remove from sidebar"
                 >
@@ -604,10 +613,11 @@ export function CodingSidebar({
                   currentSessionId={currentSessionId}
                   runningSessions={runningSessions}
                   collapsed={!isExpanded}
-                  mobileActionsVisible={mobileActionsVisible}
+                  mobileLongPressActions={mobileLongPressActions}
                   onSessionSelect={handleSessionSelect}
                   onSessionDelete={handleSessionDelete}
                   onSessionEdit={handleSessionEdit}
+                  onSessionLongPress={setMobileSessionActions}
                 />
               )}
             </div>
@@ -755,6 +765,86 @@ export function CodingSidebar({
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={mobileWorkspaceActions !== null}
+        onOpenChange={(open) => { if (!open) setMobileWorkspaceActions(null) }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{mobileWorkspaceActions ? workspaceLabel(mobileWorkspaceActions) : 'Workspace actions'}</DialogTitle>
+            <DialogDescription>Choose a workspace action.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                const path = mobileWorkspaceActions
+                setMobileWorkspaceActions(null)
+                if (path) void selectWorkspace(path, { create: true })
+              }}
+            >
+              <Plus size={14} aria-hidden="true" />
+              New session
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start text-(--color-error)"
+              onClick={() => {
+                const path = mobileWorkspaceActions
+                setMobileWorkspaceActions(null)
+                if (path) setRemoveWorkspaceTarget(path)
+              }}
+            >
+              <Trash2 size={14} aria-hidden="true" />
+              Remove from sidebar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={mobileSessionActions !== null}
+        onOpenChange={(open) => { if (!open) setMobileSessionActions(null) }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{mobileSessionActions?.title || 'Untitled'}</DialogTitle>
+            <DialogDescription>Choose a session action.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                const session = mobileSessionActions
+                setMobileSessionActions(null)
+                if (session) handleSessionEdit(session)
+              }}
+            >
+              <Pencil size={14} aria-hidden="true" />
+              Edit title
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start text-(--color-error)"
+              onClick={() => {
+                const session = mobileSessionActions
+                setMobileSessionActions(null)
+                if (session) setDeleteTarget(session)
+              }}
+            >
+              <Trash2 size={14} aria-hidden="true" />
+              Delete session
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

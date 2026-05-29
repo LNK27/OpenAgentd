@@ -30,6 +30,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { LongPressButton } from '@/components/ui/long-press-button'
+import { usePlatform } from '@/hooks/use-platform'
 import type { SessionResponse } from '@/api/types'
 
 interface DateGroup {
@@ -77,6 +79,9 @@ export function Sidebar({
   onMobileClose,
 }: SidebarProps) {
   const isMobile = useIsMobile()
+  const { isTauri, os } = usePlatform()
+  const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
+  const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
   const navigate = useNavigate()
   const sessions = useTeamSessionsQuery()
@@ -100,6 +105,7 @@ export function Sidebar({
 
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
   const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
+  const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
   const [editTitle, setEditTitle] = useState('')
 
   const toggleCollapse = useCallback(() => {
@@ -351,6 +357,8 @@ export function Sidebar({
                                 onSelect={handleSelect}
                                 onDelete={(e, s) => handleDelete(e, s)}
                                 onEdit={handleEdit}
+                                mobileLongPressActions={mobileLongPressActions}
+                                onLongPress={setMobileSessionActions}
                               />
                             ))}
                           </div>
@@ -435,7 +443,44 @@ export function Sidebar({
         )
       })()}
 
-        {/* Delete confirmation dialog */}
+        <Dialog open={mobileSessionActions !== null} onOpenChange={(open) => { if (!open) setMobileSessionActions(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{mobileSessionActions?.title || 'Untitled'}</DialogTitle>
+            <DialogDescription>Choose a session action.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                const session = mobileSessionActions
+                setMobileSessionActions(null)
+                if (session) handleEdit(session)
+              }}
+            >
+              <Pencil size={14} aria-hidden="true" />
+              Edit title
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start text-(--color-error)"
+              onClick={() => {
+                const session = mobileSessionActions
+                setMobileSessionActions(null)
+                if (session) setDeleteTarget(session)
+              }}
+            >
+              <Trash2 size={14} aria-hidden="true" />
+              Delete session
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
        <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
          <DialogContent showCloseButton={false}>
            <DialogHeader>
@@ -498,6 +543,8 @@ interface SessionRowProps {
   onSelect: (id: string) => void
   onDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onEdit: (session: SessionResponse) => void
+  mobileLongPressActions?: boolean
+  onLongPress?: (session: SessionResponse) => void
 }
 
 /**
@@ -505,13 +552,15 @@ interface SessionRowProps {
  * brightens its text from ``--color-text-2`` to ``--color-text`` as the
  * hover affordance. Active rows keep the solid ``--bg-key`` background.
  */
-function SessionRow({ session, isActive, onSelect, onDelete, onEdit }: SessionRowProps) {
+function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongPressActions = false, onLongPress }: SessionRowProps) {
   const isScheduled = Boolean(session.scheduled_task_name)
   const isRunning = session.running === true
 
   return (
     <div className="group relative">
-      <button
+      <LongPressButton
+        enabled={mobileLongPressActions}
+        onLongPress={() => onLongPress?.(session)}
         onClick={() => onSelect(session.id)}
         onDoubleClick={(e) => {
           e.stopPropagation()
@@ -561,7 +610,7 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit }: SessionRo
             {formatRelativeDate(session.created_at)}
           </p>
         </div>
-      </button>
+      </LongPressButton>
 
       <button
         onClick={(e) => {

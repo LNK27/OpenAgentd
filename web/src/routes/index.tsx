@@ -52,7 +52,7 @@ export function HomePage() {
         initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
         animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         transition={{ duration: prefersReducedMotion ? 0.01 : 0.45, ease: 'easeOut' }}
-        className={`mx-auto flex w-full max-w-sm flex-1 flex-col items-center ${isTauriMobile ? 'justify-start gap-5 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))]' : 'justify-center gap-8 py-6'}`}
+        className={`mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center ${isTauriMobile ? 'gap-5 py-[max(1.25rem,env(safe-area-inset-top))]' : 'gap-8 py-6'}`}
       >
         {/* Logo */}
         <div className={`flex select-none flex-col items-center ${isTauriMobile ? 'gap-3' : 'gap-4'}`}>
