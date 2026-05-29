@@ -56,12 +56,6 @@ jobs:
       - name: Install dependencies
         run: uv sync --no-dev
 
-      - name: Build web UI
-        run: |
-          cd web && bun install && bun run build && cd ..
-          mkdir -p app/_web_dist
-          cp -r web/dist/* app/_web_dist/
-
       - name: Build package
         run: uv build
 

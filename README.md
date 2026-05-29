@@ -90,7 +90,7 @@ cd /Volumes/OpenAgentd*
 
 Then right-click **OpenAgentd.app → Open** the first time (single-click won't work).
 
-**CLI / API server** (terminal install — ships the same UI on `http://localhost:4082`):
+**CLI / API server** (terminal install — backend only; connect from the desktop app via **Backend connection**):
 
 ```bash
 # macOS / Linux
@@ -101,7 +101,7 @@ curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh
 
 ```bash
 openagentd init   # pick provider + API key, install default agents
-openagentd        # http://localhost:4082
+openagentd        # API server on http://localhost:4082
 ```
 
 ![Installing openagentd with uv tool install](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/openagentd-install.gif)

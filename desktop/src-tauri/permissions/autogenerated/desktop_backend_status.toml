@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-backend-status"
+description = "Enables the desktop_backend_status command without any pre-configured scope."
+commands.allow = ["desktop_backend_status"]
+
+[[permission]]
+identifier = "deny-desktop-backend-status"
+description = "Denies the desktop_backend_status command without any pre-configured scope."
+commands.deny = ["desktop_backend_status"]

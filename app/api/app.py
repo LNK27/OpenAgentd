@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from app.agent.mcp import mcp_manager
@@ -40,67 +37,6 @@ from app.scheduler.scheduler import task_scheduler
 from app.services import memory_stream_store as stream_store, team_manager
 
 from app.core.version import VERSION
-
-
-# ── Bundled web UI discovery ─────────────────────────────────────────────────
-# Checked in order: 1) package-embedded assets  2) dev build in web/dist/
-
-
-def _find_web_dist() -> Path | None:
-    """Return the path to the built web UI assets, or None if not found."""
-    # 1. Inside the installed package (pip install / wheel)
-    pkg_dist = Path(__file__).resolve().parent.parent / "_web_dist"
-    if (pkg_dist / "index.html").is_file():
-        return pkg_dist
-    # 2. Development: built via `make build-web` in the project tree
-    dev_dist = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
-    if (dev_dist / "index.html").is_file():
-        return dev_dist
-    return None
-
-
-def _mount_web_ui(app: FastAPI) -> None:
-    """Mount the pre-built web UI as static files with SPA fallback.
-
-    Only activates when built assets exist (i.e. after `make build-web` or in a
-    wheel that includes them).  In dev mode with `bun dev`, the Vite dev server
-    handles the frontend — this mount is silently skipped.
-    """
-    dist = _find_web_dist()
-    if dist is None:
-        logger.debug("web_ui_not_found serving_api_only")
-        return
-
-    logger.info("web_ui_mounted path={}", dist)
-
-    # Serve /assets/<hash>.js, /assets/<hash>.css, etc.
-    assets_dir = dist / "assets"
-    if assets_dir.is_dir():
-        app.mount(
-            "/assets",
-            StaticFiles(directory=str(assets_dir)),
-            name="web-assets",
-        )
-
-    # Serve other static files at root (favicon, vite.svg, etc.)
-    # Using a catch-all route rather than mounting "/" to avoid conflicts with
-    # /api routes. FastAPI evaluates routes top-down, so /api/* wins first.
-    index_html = dist / "index.html"
-
-    @app.get("/{full_path:path}")
-    async def _serve_spa(full_path: str):
-        """SPA fallback: serve the file if it exists, otherwise index.html.
-
-        Explicitly 404s for unmatched /api/* and /metrics paths so typo'd API
-        routes surface clearly during client dev instead of being masked by
-        the index.html fallback.
-        """
-        if full_path.startswith(("api/", "metrics")):
-            raise HTTPException(status_code=404)
-        file = (dist / full_path).resolve()
-        if file.is_file() and file.is_relative_to(dist):
-            return FileResponse(str(file))
-        return FileResponse(str(index_html))
 
 
 @asynccontextmanager
@@ -223,7 +159,6 @@ def create_app() -> FastAPI:
         diagnostics_router, prefix="/api/diagnostics", tags=["diagnostics"]
     )
 
-    # ── Static web UI (production: bundled assets) ────────────────────────
-    _mount_web_ui(app)
+    logger.debug("api_only_app_ready")
 
     return app

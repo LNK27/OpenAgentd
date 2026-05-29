@@ -20,6 +20,8 @@
  * The patch is a no-op when `__OAD_TOKEN__` is not set.
  */
 
+import { apiBaseUrl } from './base-url'
+
 declare global {
   interface Window {
     __OAD_TOKEN__?: string
@@ -38,12 +40,15 @@ function getToken(): string | undefined {
  * The token must NEVER be attached to cross-origin requests.
  */
 function isLocalApiRequest(url: string): boolean {
-  if (url.startsWith('/api/') || url === '/api') return true
   if (typeof window === 'undefined') return false
   try {
-    const u = new URL(url, window.location.origin)
-    if (u.origin !== window.location.origin) return false
-    return u.pathname.startsWith('/api/') || u.pathname === '/api'
+    const requestUrl = new URL(url, window.location.origin)
+    const apiUrl = new URL(apiBaseUrl(), window.location.origin)
+    return (
+      requestUrl.origin === apiUrl.origin &&
+      (requestUrl.pathname === apiUrl.pathname ||
+        requestUrl.pathname.startsWith(`${apiUrl.pathname}/`))
+    )
   } catch {
     return false
   }

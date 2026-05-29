@@ -1,12 +1,10 @@
-"""Helpers for launching the uvicorn server subprocess and detecting assets."""
+"""Helpers for launching the uvicorn server subprocess."""
 
 from __future__ import annotations
 
 import shutil
 import sys
 from pathlib import Path
-
-from app.cli.paths import _ROOT
 
 
 def _resolve_uvicorn() -> list[str]:
@@ -44,14 +42,3 @@ def _server_cmd(*, host: str, port: int) -> list[str]:
         "--port",
         str(port),
     ]
-
-
-def _has_bundled_web() -> bool:
-    """Check if the pre-built web UI is available (in package or web/dist/)."""
-    # Inside installed package
-    pkg_dist = Path(__file__).resolve().parent.parent / "_web_dist" / "index.html"
-    if pkg_dist.is_file():
-        return True
-    # Dev build
-    dev_dist = _ROOT / "web" / "dist" / "index.html"
-    return dev_dist.is_file()

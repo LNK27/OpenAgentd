@@ -47,19 +47,17 @@ migrate: ## Run Alembic migrations (dev only — production auto-migrates on sta
 revision: ## Create a new Alembic revision (usage: make revision MSG="message")
 	uv run alembic -c app/alembic.ini revision --autogenerate -m "$(MSG)"
 
-build-web: ## Build web UI and copy into app/_web_dist/
+build-web: ## Build web UI into web/dist/ for desktop packaging
 	cd web && bun install && bun run build
-	rm -rf app/_web_dist
-	cp -r web/dist app/_web_dist
 
-build: build-web ## Build Python wheel (includes bundled web UI)
+build: ## Build Python wheel (API server only)
 	uv build
 
 dist: build ## Alias for build
 
 clean: ## Remove build and cache artifacts
 	rm -rf .pytest_cache .ruff_cache .coverage .ty_cache htmlcov
-	rm -rf app/_web_dist dist
+	rm -rf web/dist dist
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 
 help: ## Show this help message

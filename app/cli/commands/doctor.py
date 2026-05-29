@@ -16,7 +16,6 @@ from pathlib import Path
 
 from app.cli.commands.init import _PROVIDER_KEY_VAR
 from app.cli.paths import _config_dir, _data_dir
-from app.cli.server import _has_bundled_web
 from app.cli.ui import _bold, _cyan, _dim, _green, _red, _yellow
 
 #: All provider env vars we recognise. Sourced from the canonical map in
@@ -147,13 +146,7 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
     else:
         _ok(f"Port {default_port} available")
 
-    # ── 7. Bundled web UI ───────────────────────────────────────────────────
-    if _has_bundled_web():
-        _ok("Web UI bundled")
-    else:
-        _warn(f"Web UI not bundled  {_dim('(run: make build-web)')}")
-
-    # ── 8. Agents directory ─────────────────────────────────────────────────
+    # ── 7. Agents directory ─────────────────────────────────────────────────
     agents_dir = config_dir / "agents"
     display_agents = str(agents_dir).replace(str(Path.home()), "~")
     if agents_dir.is_dir() and any(agents_dir.glob("*.md")):

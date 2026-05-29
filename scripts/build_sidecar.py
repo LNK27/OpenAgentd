@@ -8,7 +8,7 @@ Layout produced under ``<out>/``::
         bin/python3
         lib/python3.14/
       site-packages/         ← openagentd + dependencies
-        app/                 ← our package (incl. _web_dist/)
+        app/                 ← API server package
         fastapi/
         pydantic/
         …
@@ -75,7 +75,11 @@ def detect_target_triple() -> str:
     system = platform.system()
     machine = platform.machine().lower()
     if system == "Darwin":
-        return "aarch64-apple-darwin" if machine in ("arm64", "aarch64") else "x86_64-apple-darwin"
+        return (
+            "aarch64-apple-darwin"
+            if machine in ("arm64", "aarch64")
+            else "x86_64-apple-darwin"
+        )
     if system == "Linux":
         if machine in ("aarch64", "arm64"):
             return "aarch64-unknown-linux-gnu"
@@ -106,17 +110,20 @@ def fetch_python(version: str, out: Path) -> Path:
     # We must find the real directory, not the major-version symlink, or
     # ``shutil.move()`` later will move the symlink and leave us with a
     # broken pointer at the destination.
-    run([
-        "uv", "python", "install",
-        "--install-dir", str(out),
-        version,
-    ])
+    run(
+        [
+            "uv",
+            "python",
+            "install",
+            "--install-dir",
+            str(out),
+            version,
+        ]
+    )
     binary = _find_python_binary(out, version)
     if binary is None:
         listing = "\n  ".join(sorted(str(p) for p in out.iterdir()))
-        raise SystemExit(
-            f"no python binary found under {out}. Contents:\n  {listing}"
-        )
+        raise SystemExit(f"no python binary found under {out}. Contents:\n  {listing}")
     return binary
 
 
@@ -196,12 +203,19 @@ def install_packages(
     if extras:
         spec = f".[{','.join(extras)}]"
     # uv pip install --target: PEP 668-safe, no virtualenv needed.
-    run([
-        "uv", "pip", "install",
-        "--python", str(python_bin),
-        "--target", str(site_packages),
-        spec,
-    ], cwd=project_root)
+    run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(python_bin),
+            "--target",
+            str(site_packages),
+            spec,
+        ],
+        cwd=project_root,
+    )
 
 
 def strip_bundle(site_packages: Path) -> int:
@@ -285,14 +299,27 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         "runpy.run_path(_entry, run_name='__main__')"
     )
 
-    smoke_cmd = [str(python_bin), "-c", bootstrap, str(site_packages), str(cli_entry), "serve",
-                 "--host", "127.0.0.1", "--port", "0",
-                 "--handshake", "--generate-token"]
+    smoke_cmd = [
+        str(python_bin),
+        "-c",
+        bootstrap,
+        str(site_packages),
+        str(cli_entry),
+        "serve",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "0",
+        "--handshake",
+        "--generate-token",
+    ]
     print(">> " + " ".join(smoke_cmd))
     proc = subprocess.Popen(
         smoke_cmd,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        env=env, text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        text=True,
         # New process group so the smoke test can hard-kill the child
         # (and any uvicorn worker it spawns) on timeout.
         start_new_session=True,
@@ -384,7 +411,9 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         # ── /api/team/status without token → must 401 ──────────────────────
         try:
             urllib.request.urlopen(f"{base}/api/team/status", timeout=5)
-            raise SystemExit("smoke test: protected endpoint accepted request without token")
+            raise SystemExit(
+                "smoke test: protected endpoint accepted request without token"
+            )
         except urllib.error.HTTPError as e:
             if e.code != 401:
                 raise SystemExit(
@@ -439,40 +468,34 @@ def report_size(root: Path, label: str) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", default=".", help="Project root containing pyproject.toml.")
-    ap.add_argument("--out", default="desktop/sidecar-bundle", help="Output bundle directory.")
-    ap.add_argument("--python-version", default="3.14",
-                    help="Major.minor Python version to bundle (default: 3.14).")
-    ap.add_argument("--extras", default="",
-                    help="Comma-separated optional-dep extras to install (e.g. audio,azure-doc-intel,full).")
-    ap.add_argument("--no-smoke", action="store_true",
-                    help="Skip the post-build smoke test (not recommended).")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--root", default=".", help="Project root containing pyproject.toml."
+    )
+    ap.add_argument(
+        "--out", default="desktop/sidecar-bundle", help="Output bundle directory."
+    )
+    ap.add_argument(
+        "--python-version",
+        default="3.14",
+        help="Major.minor Python version to bundle (default: 3.14).",
+    )
+    ap.add_argument(
+        "--extras",
+        default="",
+        help="Comma-separated optional-dep extras to install (e.g. audio,azure-doc-intel,full).",
+    )
+    ap.add_argument(
+        "--no-smoke",
+        action="store_true",
+        help="Skip the post-build smoke test (not recommended).",
+    )
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
     out = Path(args.out).resolve()
-
-    # ── Fail fast on stale frontend ─────────────────────────────────────
-    # The wheel built by ``uv pip install .`` packages ``app/_web_dist/``
-    # — *not* ``web/dist/``. If a developer runs ``bun run build`` but
-    # forgets to sync ``app/_web_dist/``, the sidecar silently ships the
-    # last-synced UI and the user sees stale code in the desktop app.
-    # Catch it here rather than at runtime.
-    web_dist = root / "web" / "dist" / "index.html"
-    app_web_dist = root / "app" / "_web_dist" / "index.html"
-    if not app_web_dist.is_file():
-        raise SystemExit(
-            f"error: {app_web_dist} is missing.\n"
-            f"       Run ``make build-web`` first to build the web UI and copy it\n"
-            f"       into app/_web_dist/."
-        )
-    if web_dist.is_file() and web_dist.stat().st_mtime > app_web_dist.stat().st_mtime + 1:
-        raise SystemExit(
-            f"error: {app_web_dist} is older than {web_dist}.\n"
-            f"       The sidecar bundle would ship a stale UI. Run ``make build-web``\n"
-            f"       to copy web/dist/ → app/_web_dist/ before building the sidecar."
-        )
 
     if out.exists():
         print(f"removing existing {out}")

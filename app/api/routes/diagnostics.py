@@ -115,31 +115,6 @@ def _provider_status() -> dict[str, bool]:
     return out
 
 
-def _frontend_bundle_version() -> str | None:
-    """Return the hash of the bundled ``index.html``, or None if not mounted.
-
-    There's no version manifest in the SPA build, but its contents
-    change on every release. A 12-char hash is plenty to distinguish
-    "frontend matches sidecar" from "frontend drifted after an update."
-    """
-    import hashlib
-
-    candidates = (
-        Path(__file__).resolve().parent.parent.parent / "_web_dist" / "index.html",
-        Path(__file__).resolve().parent.parent.parent.parent
-        / "web"
-        / "dist"
-        / "index.html",
-    )
-    for p in candidates:
-        if p.is_file():
-            try:
-                return hashlib.sha256(p.read_bytes()).hexdigest()[:12]
-            except OSError:
-                return None
-    return None
-
-
 def _safe_env_keys(allowed_prefixes: Iterable[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     prefixes = tuple(allowed_prefixes)
@@ -195,7 +170,6 @@ async def diagnostics(tail: int = 200) -> dict[str, Any]:
             # in an auto-update window: the Tauri shell and the Python
             # sidecar. Frontend matches whichever bundle is mounted.
             "sidecar_version": VERSION,
-            "frontend_bundle": _frontend_bundle_version(),
         },
         "dirs": {
             "data": _dir_info(settings.OPENAGENTD_DATA_DIR),

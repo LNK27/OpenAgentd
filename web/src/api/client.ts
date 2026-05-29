@@ -6,6 +6,7 @@
  *   2. teamStream(callbacks, signal) → SSE bus
  */
 
+import { apiBaseUrl, apiUrl } from './base-url'
 import { readSSE, type SSECallbacks } from './sse'
 import type {
   SessionDetailResponse,
@@ -41,7 +42,7 @@ import type {
   TodosResponse,
 } from './types'
 
-const API = '/api'
+const API = apiBaseUrl()
 
 // ── /team ─────────────────────────────────────────────────────────────────────
 
@@ -282,7 +283,7 @@ export async function listWorkspaceFiles(sessionId: string): Promise<WorkspaceFi
  */
 export function workspaceMediaUrl(sessionId: string, path: string): string {
   const encoded = path.split('/').map(encodeURIComponent).join('/')
-  return `${API}/team/${encodeURIComponent(sessionId)}/media/${encoded}`
+  return apiUrl(`/team/${encodeURIComponent(sessionId)}/media/${encoded}`)
 }
 
 /** Build the URL for serving a raw file from a *coding* workspace (not a
@@ -293,7 +294,7 @@ export function workspaceMediaUrl(sessionId: string, path: string): string {
  */
 export function codingWorkspaceFileUrl(workspace: string, path: string): string {
   const params = new URLSearchParams({ workspace, path })
-  return `${API}/team/workspace/files/read?${params}`
+  return apiUrl(`/team/workspace/files/read?${params}`)
 }
 
 export async function getTodos(sessionId: string): Promise<TodosResponse> {

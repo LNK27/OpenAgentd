@@ -1,9 +1,4 @@
-"""``openagentd`` (default) — launch the server in the background.
-
-Single detached uvicorn process serving the bundled web UI from
-``app/_web_dist/``; stdout/stderr redirected to the server log so the user
-gets their shell back.
-"""
+"""``openagentd`` (default) — launch the API server in the background."""
 
 from __future__ import annotations
 
@@ -14,7 +9,7 @@ import subprocess
 from app.cli.firstrun import ensure_initialised
 from app.cli.paths import _ROOT, _server_log
 from app.cli.pids import _find_pids, _write_pids
-from app.cli.server import _has_bundled_web, _server_cmd
+from app.cli.server import _server_cmd
 from app.cli.ui import _bold, _dim, _print_banner, _yellow
 
 
@@ -41,16 +36,6 @@ def cmd_start(args: argparse.Namespace) -> None:
     ensure_initialised()
 
     srv_log = _server_log()
-
-    # Single uvicorn process (web UI bundled). FastAPI serves the pre-built
-    # web/dist/ assets directly. No bun, no Vite, no separate web process.
-    if not _has_bundled_web():
-        print(
-            f"  {_yellow('warning:')} No bundled web UI found. "
-            f"API will work but no web UI will be served."
-        )
-        print(f"  {_dim('Build it:')}  make build-web")
-        print()
 
     _print_banner(host=args.host, port=args.port)
 

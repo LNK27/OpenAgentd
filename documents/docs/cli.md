@@ -110,7 +110,6 @@ Runs a series of health checks and exits with code 1 if any fail:
 | Database | `openagentd.db` exists | Not found (warning only — created on first run) |
 | Alembic config | `alembic.ini` next to `app/core/db.py` | Missing (reinstall) |
 | Port 4082 | Available | In use |
-| Web UI | Bundled `_web_dist/` present | Missing (warning only) |
 | Agents directory | At least one `.md` in `{OPENAGENTD_CONFIG_DIR}/agents/` | Missing (run `openagentd init`) |
 
 Warnings (degraded but bootable) don't affect the exit code. Run this first when something looks wrong.

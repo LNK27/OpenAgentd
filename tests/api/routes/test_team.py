@@ -443,10 +443,9 @@ class TestTeamHistoryRoute:
 
     def test_team_history_requires_session_id(self, app_with_team):
         client = TestClient(app_with_team)
-        # Without session_id path param the route doesn't match → SPA catch-all
-        # may return 200 (index.html) or 404 depending on whether web UI is built
+        # Without session_id path param the route doesn't match.
         response = client.get("/api/team/history")
-        assert response.status_code in (200, 404)
+        assert response.status_code == 404
 
     def test_team_history_session_not_found_returns_404(self, app_with_team):
         client = TestClient(app_with_team)

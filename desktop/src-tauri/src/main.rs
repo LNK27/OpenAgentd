@@ -24,6 +24,7 @@ use crate::sidecar::{Handshake, Sidecar};
 struct AppState {
     sidecar: Arc<Mutex<Option<Sidecar>>>,
     desktop_token: Arc<Mutex<Option<String>>>,
+    backend_base_url: Arc<Mutex<Option<String>>>,
     force_reloading: Arc<AtomicBool>,
     quitting: Arc<AtomicBool>,
     tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
@@ -32,6 +33,29 @@ struct AppState {
     /// Current webview zoom factor, mutated by the View > Zoom menu
     /// items. Session-only — not persisted across restarts.
     zoom: Arc<Mutex<f64>>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct DesktopBackendConfig {
+    active_base_url: Option<String>,
+    servers: Vec<String>,
+}
+
+#[derive(Clone, Serialize)]
+struct DesktopBackendStatus {
+    base_url: String,
+    sidecar_running: bool,
+    external: bool,
+    servers: Vec<String>,
+}
+
+impl Default for DesktopBackendConfig {
+    fn default() -> Self {
+        Self {
+            active_base_url: None,
+            servers: vec!["http://127.0.0.1:4082".to_string()],
+        }
+    }
 }
 
 const MAIN_WINDOW: &str = "main";
@@ -92,6 +116,8 @@ fn configure_window_chrome(builder: WebviewWindowBuilder<'_, tauri::Wry, AppHand
 struct BackendReady {
     port: u16,
     version: String,
+    base_url: String,
+    sidecar_running: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -139,7 +165,8 @@ async fn backend_health(state: tauri::State<'_, AppState>) -> Result<bool, Strin
     let mut guard = state.sidecar.lock().await;
     match guard.as_mut() {
         Some(s) => Ok(s.is_alive()),
-        None => Ok(false),
+        None => Ok(std::env::var("OPENAGENTD_DESKTOP_BASE_URL").is_ok()
+            || std::env::var("OPENAGENTD_DEV_BACKEND_URL").is_ok()),
     }
 }
 
@@ -150,6 +177,51 @@ async fn backend_logs_path(state: tauri::State<'_, AppState>) -> Result<String, 
         Some(s) => Ok(s.log_path().to_string_lossy().into_owned()),
         None => Err("backend not started".into()),
     }
+}
+
+#[tauri::command]
+async fn desktop_backend_status(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<DesktopBackendStatus, String> {
+    let base_url = state
+        .backend_base_url
+        .lock()
+        .await
+        .clone()
+        .unwrap_or_else(|| "".to_string());
+    let sidecar_running = state
+        .sidecar
+        .lock()
+        .await
+        .as_mut()
+        .is_some_and(|s| s.is_alive());
+    let servers = load_desktop_backend_config(&app)
+        .unwrap_or_else(|_| DesktopBackendConfig::default())
+        .servers;
+    Ok(DesktopBackendStatus {
+        base_url,
+        sidecar_running,
+        external: !sidecar_running,
+        servers,
+    })
+}
+
+#[tauri::command]
+async fn desktop_set_backend_base_url(app: AppHandle, base_url: String) -> Result<(), String> {
+    let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
+    wait_for_health(&normalized, 20, Duration::from_millis(250))
+        .await
+        .map_err(|e| format!("{e:#}"))?;
+    save_desktop_backend_config(&app, Some(&normalized)).map_err(|e| format!("{e:#}"))?;
+    switch_to_external_backend(&app, normalized)
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+async fn desktop_use_bundled_backend(app: AppHandle) -> Result<(), String> {
+    save_desktop_backend_config(&app, None).map_err(|e| format!("{e:#}"))?;
+    restart_sidecar_and_reload_window(&app)
+        .await
+        .map_err(|e| format!("{e:#}"))
 }
 
 #[tauri::command]
@@ -261,32 +333,30 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         .context("wait_for_health")?;
 
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-        let mut target = base;
-        if let Ok(current_url) = window.url() {
-            target.push_str(current_url.path());
-            if let Some(query) = current_url.query() {
-                target.push('?');
-                target.push_str(query);
-            }
-            if let Some(fragment) = current_url.fragment() {
-                target.push('#');
-                target.push_str(fragment);
-            }
+        let init_script = frontend_init_script(Some(&token), &base);
+        window.eval(&init_script).context("inject bundled backend config")?;
+        if cfg!(debug_assertions) {
+            window
+                .navigate("http://localhost:5173".parse().context("parse dev frontend url")?)
+                .context("navigate main window")?;
+        } else {
+            window.eval("window.location.assign('/');").ok();
         }
-        let url = target.parse().context("parse backend url")?;
-        window.navigate(url).context("navigate main window")?;
         show_main_window(app);
     } else {
         return Err(anyhow!("main window missing"));
     }
 
     let _ = state.desktop_token.lock().await.replace(token);
+    let _ = state.backend_base_url.lock().await.replace(format!("http://127.0.0.1:{}", handshake.port));
     let _ = state.sidecar.lock().await.replace(sidecar);
     app.emit(
         "backend-ready",
         BackendReady {
             port: handshake.port,
             version: handshake.version,
+            base_url: format!("http://127.0.0.1:{}", handshake.port),
+            sidecar_running: true,
         },
     )
     .ok();
@@ -861,32 +931,138 @@ async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Result<(
     Err(anyhow!("backend did not become healthy after {attempts} attempts"))
 }
 
+fn normalize_external_base_url(base_url: &str) -> Result<String> {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err(anyhow!("base URL is required"));
+    }
+    let parsed = reqwest::Url::parse(trimmed).context("parse base URL")?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(trimmed.to_string()),
+        scheme => Err(anyhow!("unsupported URL scheme: {scheme}")),
+    }
+}
+
+fn desktop_backend_config_path(app: &AppHandle) -> Result<PathBuf> {
+    let dir = app.path().app_config_dir().context("resolve app config dir")?;
+    std::fs::create_dir_all(&dir).context("create app config dir")?;
+    Ok(dir.join("desktop-backend.json"))
+}
+
+fn load_desktop_backend_config(app: &AppHandle) -> Result<DesktopBackendConfig> {
+    let path = desktop_backend_config_path(app)?;
+    if !path.exists() {
+        return Ok(DesktopBackendConfig::default());
+    }
+    let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+    let mut config: DesktopBackendConfig = serde_json::from_slice(&bytes)
+        .with_context(|| format!("parse {}", path.display()))?;
+    if config.servers.is_empty() {
+        config.servers = DesktopBackendConfig::default().servers;
+    }
+    Ok(config)
+}
+
+fn save_desktop_backend_config(app: &AppHandle, base_url: Option<&str>) -> Result<()> {
+    let path = desktop_backend_config_path(app)?;
+    let mut config = load_desktop_backend_config(app).unwrap_or_default();
+    config.active_base_url = base_url.map(str::to_string);
+    if let Some(url) = base_url {
+        if !config.servers.iter().any(|saved| saved == url) {
+            config.servers.push(url.to_string());
+        }
+    }
+    let bytes = serde_json::to_vec_pretty(&config).context("serialize desktop backend config")?;
+    std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
+}
+
+async fn switch_to_external_backend(app: &AppHandle, base: String) -> Result<()> {
+    shutdown_sidecar_now(app).await;
+    let init_script = frontend_init_script(None, &base);
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        window.eval(&init_script).context("inject external backend config")?;
+        if cfg!(debug_assertions) {
+            window
+                .navigate("http://localhost:5173".parse().context("parse dev frontend url")?)
+                .context("navigate main window")?;
+        } else {
+            window.eval("window.location.assign('/');").ok();
+        }
+        show_main_window(app);
+    }
+    let state: tauri::State<'_, AppState> = app.state();
+    let _ = state.backend_base_url.lock().await.replace(base.clone());
+    state.desktop_token.lock().await.take();
+    app.emit(
+        "backend-ready",
+        BackendReady {
+            port: 0,
+            version: "external".to_string(),
+            base_url: base,
+            sidecar_running: false,
+        },
+    )
+    .ok();
+    update_tray_status(app, "Status: Running (external)");
+    Ok(())
+}
+
+fn frontend_webview_url() -> Result<WebviewUrl> {
+    if cfg!(debug_assertions) {
+        Ok(WebviewUrl::External("http://localhost:5173".parse().context("parse dev frontend url")?))
+    } else {
+        Ok(WebviewUrl::App("index.html".into()))
+    }
+}
+
+fn frontend_init_script(token: Option<&str>, base_url: &str) -> String {
+    let token_define = token.map(|t| {
+        format!(
+            "Object.defineProperty(window, '__OAD_TOKEN__', {{ value: {token_json}, writable: false, configurable: false }});",
+            token_json = serde_json::to_string(t).unwrap_or_else(|_| "\"\"".into())
+        )
+    }).unwrap_or_default();
+    format!(
+        "Object.defineProperty(window, '__OAD_API_BASE_URL__', {{ value: {base_json}, writable: false, configurable: false }});{token_define}",
+        base_json = serde_json::to_string(base_url).unwrap_or_else(|_| "\"\"".into())
+    )
+}
+
 async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
 
-    // Dev-mode escape hatch: when ``OPENAGENTD_DEV_BACKEND_URL`` is set,
-    // skip the bundled sidecar and point the WebView at an externally
-    // managed backend. ``__OAD_TOKEN__`` is left undefined; the frontend
-    // falls back to the legacy no-token path (matched by an unset
-    // ``OPENAGENTD_DESKTOP_TOKEN`` on the dev backend).
-    if let Ok(dev_url) = std::env::var("OPENAGENTD_DEV_BACKEND_URL") {
-        log::info!("dev-mode: using external backend at {dev_url}");
-        let url = WebviewUrl::External(dev_url.parse().context("parse dev backend url")?);
+    let configured_url = load_desktop_backend_config(&app)
+        .ok()
+        .and_then(|cfg| cfg.active_base_url)
+        .or_else(|| std::env::var("OPENAGENTD_DESKTOP_BASE_URL").ok())
+        .or_else(|| std::env::var("OPENAGENTD_DEV_BACKEND_URL").ok());
+
+    if let Some(external_url) = configured_url {
+        let base = normalize_external_base_url(&external_url)?;
+        log::info!("desktop: using external backend at {base}");
+        if let Err(e) = wait_for_health(&base, 20, Duration::from_millis(250)).await {
+            log::warn!("external backend health check failed at startup: {e:#}");
+        }
+        let init_script = frontend_init_script(None, &base);
+        let url = frontend_webview_url()?;
         let builder = WebviewWindowBuilder::new(&app, "main", url)
-            .title("OpenAgentd (dev)")
+            .title("OpenAgentd")
             .inner_size(1280.0, 820.0)
             .min_inner_size(760.0, 560.0)
+            .initialization_script(&init_script)
             .visible(false);
         let builder = configure_window_chrome(builder);
         let win = builder.build().context("build webview window")?;
         win.show().context("show window")?;
         win.set_focus().ok();
-        update_tray_status(&app, "Status: Running (dev)");
+        update_tray_status(&app, "Status: Running (external)");
         app.emit(
             "backend-ready",
             BackendReady {
                 port: 0,
-                version: "dev".to_string(),
+                version: "external".to_string(),
+                base_url: base,
+                sidecar_running: false,
             },
         )
         .ok();
@@ -914,12 +1090,9 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     // Build the window only once we have the backend URL + token so the
     // token is injected before any page JS runs.
     let token = handshake.token.clone();
-    let init_script = format!(
-        "Object.defineProperty(window, '__OAD_TOKEN__', {{ value: {token_json}, writable: false, configurable: false }});",
-        token_json = serde_json::to_string(&token).unwrap_or_else(|_| "\"\"".into())
-    );
+    let init_script = frontend_init_script(Some(&token), &base);
 
-    let url = WebviewUrl::External(base.parse().context("parse backend url")?);
+    let url = frontend_webview_url()?;
 
     let builder = WebviewWindowBuilder::new(&app, "main", url)
         .title("OpenAgentd")
@@ -936,12 +1109,15 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
 
     let _ = state.sidecar.lock().await.replace(sidecar);
     let _ = state.desktop_token.lock().await.replace(handshake.token);
+    let _ = state.backend_base_url.lock().await.replace(base.clone());
 
     app.emit(
         "backend-ready",
         BackendReady {
             port: handshake.port,
             version: handshake.version,
+            base_url: base,
+            sidecar_running: true,
         },
     )
     .ok();
@@ -953,6 +1129,7 @@ fn main() {
     let state = AppState {
         sidecar: Arc::new(Mutex::new(None)),
         desktop_token: Arc::new(Mutex::new(None)),
+        backend_base_url: Arc::new(Mutex::new(None)),
         force_reloading: Arc::new(AtomicBool::new(false)),
         quitting: Arc::new(AtomicBool::new(false)),
         tray_status: Arc::new(Mutex::new(None)),
@@ -984,6 +1161,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             backend_health,
             backend_logs_path,
+            desktop_backend_status,
+            desktop_set_backend_base_url,
+            desktop_use_bundled_backend,
             open_macos_microphone_settings,
             set_tray_session,
             updater_check,

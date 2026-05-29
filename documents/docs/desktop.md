@@ -2,7 +2,7 @@
 title: Desktop distribution
 description: How OpenAgentd packages, ships, signs, and updates the native desktop app.
 status: stable
-updated: 2026-05-16
+updated: 2026-05-28
 ---
 
 # Desktop distribution
@@ -27,18 +27,20 @@ no Python install, no `uv tool install`, no terminal.
 │  │  • Process supervisor                                      │   │
 │  │  • Auto-updater                                            │   │
 │  └─────────────────────────────────────────────────────────────┘   │
-│         │ spawns                              │ navigates           │
-│         ▼                                     ▼                     │
-│  ┌─ Python sidecar ──────────────┐  ┌─ WebView (system) ─────┐    │
-│  │  python-build-standalone 3.14 │  │  http://127.0.0.1:<p>  │    │
-│  │  + site-packages/             │  │  injects               │    │
-│  │  + app/ (FastAPI)             │  │    __OAD_TOKEN__       │    │
-│  │  bound to 127.0.0.1:<port>    │  │    (per-launch random) │    │
-│  │  serves /api/* and SPA shell  │  └────────────────────────┘    │
-│  └───────────────────────────────┘                                  │
+│         │ spawns                              │ loads              │
+│         ▼                                     ▼                    │
+│  ┌─ Python sidecar ──────────────┐  ┌─ WebView (system) ─────┐   │
+│  │  python-build-standalone 3.14 │  │  bundled web/dist      │   │
+│  │  + site-packages/             │  │  injects               │   │
+│  │  + app/ (FastAPI API only)    │  │    __OAD_API_BASE_URL__│   │
+│  │  bound to 127.0.0.1:<port>    │  │    __OAD_TOKEN__       │   │
+│  │  serves /api/* + /metrics     │  └────────────────────────┘   │
+│  └───────────────────────────────┘                                 │
 │                                                                    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+The Tauri shell normally runs the bundled sidecar, but can be pointed at an externally managed OpenAgentd server from the desktop UI itself: open **Settings → Backend connection** or click the sidebar health dot, enter a base URL such as `http://127.0.0.1:4082`, and choose **Connect**. The shell validates `/api/health/live`, persists the selection, stops the sidecar if it was running, and reloads the WebView against the external server. **Use bundled sidecar** switches back to the built-in backend. `OPENAGENTD_DESKTOP_BASE_URL` and the legacy `OPENAGENTD_DEV_BACKEND_URL` are still accepted as startup defaults for development/automation.
 
 The Tauri shell:
 
@@ -46,8 +48,7 @@ The Tauri shell:
 2. Spawns `python -m app.cli serve --handshake --generate-token --parent-pid <us>`.
 3. Reads the JSON handshake line from stdout: `{"port":..., "token":..., "pid":..., "version":...}`.
 4. Polls `http://127.0.0.1:<port>/api/health/live` for readiness.
-5. Builds a WebView pointed at the backend, injecting the token as
-   `window.__OAD_TOKEN__` via `initialization_script` *before* any page JS runs.
+5. Builds a WebView from Tauri's packaged `web/dist`, injecting `window.__OAD_API_BASE_URL__` and the token as `window.__OAD_TOKEN__` via `initialization_script` *before* any page JS runs.
 6. The bundled React UI's `installDesktopAuth()` patches `window.fetch`
    to attach `Authorization: Bearer <token>` to every same-origin
    `/api/*` request.
@@ -107,7 +108,7 @@ When the application is already running in the background, clicking the Dock ico
 
 Closing the main window hides it to the tray instead of stopping the backend. Selecting **Quit OpenAgentd** from the app menu or tray marks the app as quitting, exits Tauri, and lets the existing shutdown path terminate the Python sidecar cleanly.
 
-The tray status starts at `Status: Starting`, changes to `Status: Running` once the backend is healthy, and changes to `Status: Error` if sidecar startup fails. In dev mode it reports `Status: Running (dev)`.
+The tray status starts at `Status: Starting`, changes to `Status: Running` once the bundled sidecar is healthy, and changes to `Status: Error` if startup fails. With `OPENAGENTD_DESKTOP_BASE_URL` it reports `Status: Running (external)` after the configured server passes `/api/health/live`.
 
 The tray **Session** line below status mirrors the user's active context with liveness taking priority over identity:
 
@@ -162,7 +163,7 @@ OpenAgentd.app/
           bin/python3
           lib/python3.14/
         site-packages/
-          app/                            ← incl. _web_dist/
+          app/                            ← FastAPI API server only
           fastapi/  pydantic/  …
       _up/                                ← Tauri updater artefacts
     Info.plist
@@ -207,9 +208,8 @@ the package manifest).
 ## Build pipeline
 
 ```bash
-# Phase 1: web build + sidecar bundle
+# Phase 1: web build + API-only sidecar bundle
 cd web && bun install --frozen-lockfile && bun run build && cd ..
-cp -r web/dist/. app/_web_dist/
 
 python3 scripts/build_sidecar.py \
   --root . \
@@ -360,5 +360,4 @@ bundled inside every artefact via `tauri.conf.json` →
 | macOS Gatekeeper / Windows SmartScreen rejection of unsigned builds        | Signing wired into CI; pre-release builds clearly marked "unsigned" in the GitHub release notes. |
 | Tauri auto-update private key compromise                                   | Re-key script (`scripts/generate_updater_keys.sh`) regenerates pair; old installs require manual re-download. |
 | Concurrent Tauri+CLI desktop runs on the same machine                      | Dynamic ephemeral ports; XDG state dirs are user-global so DB writes are serialised by SQLite WAL. |
-| Frontend assets duplicated in the wheel and re-bundled into the sidecar    | `make build-web` (or `cargo tauri build`'s `beforeBuildCommand`) syncs `web/dist → app/_web_dist`. `scripts/build_sidecar.py` fails fast if they drift. Ideally the sidecar would stop serving static assets entirely and let Tauri's webview load them from `frontendDist` — see future-work below. |
-| Sidecar serves the web UI in parallel with Tauri's `frontendDist`          | Both paths point at functionally-identical assets, but only the sidecar's copy is what users actually see (the React app talks to `http://127.0.0.1:<port>/*` for everything, including HTML). Removing the duplication is a frontend refactor: make API calls relative to a configurable base URL, then drop `_web_dist` from the wheel for the desktop build. Saves ~50 MB. Tracked as future work. |
+| Frontend/backend drift between desktop and server                          | FastAPI is API-only; Tauri packages `web/dist` via `frontendDist` and injects the active API base URL before React boots. |

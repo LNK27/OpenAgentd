@@ -10,6 +10,7 @@ import { Link } from '@tanstack/react-router'
 import {
   Bell,
   ChevronRight,
+  Server,
   Download,
   Info,
   Image,
@@ -24,6 +25,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+import { DesktopBackendDialog } from '@/components/DesktopBackendDialog'
 import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
@@ -243,6 +245,7 @@ export function SettingsHubPage() {
   const sandboxQ = useSandboxSettingsQuery()
   const speechQ = useSpeechConfigQuery()
   const healthQ = useHealthQuery()
+  const [backendDialogOpen, setBackendDialogOpen] = useState(false)
 
   const agentsCount = agentsQ.data?.agents.length ?? null
   const skillsCount = skillsQ.data?.skills.length ?? null
@@ -274,7 +277,30 @@ export function SettingsHubPage() {
           </div>
         </header>
 
+        <section className="rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)" aria-hidden="true">
+              <Server size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-(--color-text)">Backend connection</h2>
+              <p className="mt-1 text-xs leading-5 text-(--color-text-muted)">
+                Connect the desktop shell to an existing CLI server, or switch back to the bundled local sidecar.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBackendDialogOpen(true)}
+              className="rounded-md border border-(--color-border) px-3 py-1.5 text-xs font-medium text-(--color-text) hover:bg-(--bg-page)"
+            >
+              Configure
+            </button>
+          </div>
+        </section>
+
         <UpdateSettingsCard />
+
+        <DesktopBackendDialog open={backendDialogOpen} onOpenChange={setBackendDialogOpen} />
 
         {/* Mobile picks up navigation from this list because the sidebar is
             hidden on small screens. */}

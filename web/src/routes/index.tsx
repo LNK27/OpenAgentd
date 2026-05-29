@@ -1,7 +1,9 @@
 import { motion } from 'framer-motion'
+import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 
+import { DesktopBackendDialog } from '@/components/DesktopBackendDialog'
 import { Activity, AlertCircle, Code2, Gauge, Settings, Wifi } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
@@ -23,6 +25,7 @@ export function HomePage() {
   const { isMacOverlay } = usePlatform()
   const dragHandlers = useTauriDrag()
   const prefersReducedMotion = useReducedMotion()
+  const [backendDialogOpen, setBackendDialogOpen] = useState(false)
 
   const backendOk = health.isSuccess
   const hasTeam = team.isSuccess && team.data !== null
@@ -113,10 +116,15 @@ export function HomePage() {
           {loading && !error ? (
             <span className="animate-pulse text-(--color-text-muted)">Connecting…</span>
           ) : error ? (
-            <>
-              <AlertCircle size={12} className="text-(--color-error)" />
-              <span className="text-(--color-error)">Backend unreachable</span>
-            </>
+            <button
+              type="button"
+              onClick={() => setBackendDialogOpen(true)}
+              className="flex items-center gap-2 rounded-md px-2 py-1 text-(--color-error) transition-colors hover:bg-(--color-error)/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+            >
+              <AlertCircle size={12} />
+              <span>Backend unreachable</span>
+              <span className="text-(--color-text-muted)">Choose server</span>
+            </button>
           ) : (
             <>
               <Wifi size={12} className="text-(--color-success)" />
@@ -125,6 +133,7 @@ export function HomePage() {
           )}
         </div>
       </motion.div>
+      <DesktopBackendDialog open={backendDialogOpen} onOpenChange={setBackendDialogOpen} />
     </main>
   )
 }

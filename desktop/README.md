@@ -1,8 +1,6 @@
 # OpenAgentd Desktop (Tauri v2)
 
-Native desktop shell for OpenAgentd. Spawns the Python backend as a
-sidecar, points an embedded webview at it, and ships an auto-update +
-signing pipeline.
+Native desktop shell for OpenAgentd. Embeds the React Web UI, can spawn the Python backend as a sidecar or connect to an external server, and ships an auto-update + signing pipeline.
 
 ## Architecture
 
@@ -11,8 +9,8 @@ signing pipeline.
 │  OpenAgentd.app  (Tauri Rust)                           │
 │  ┌────────────────────────┐  ┌──────────────────────┐   │
 │  │  WebView (system)      │  │  Sidecar supervisor  │   │
-│  │  http://127.0.0.1:<p>  │  │  python ... serve    │   │
-│  │  injects __OAD_TOKEN__ │──┤  --handshake         │   │
+│  │  bundled web/dist      │  │  python ... serve    │   │
+│  │  injects API base URL  │──┤  --handshake         │   │
 │  └────────────────────────┘  │  --generate-token    │   │
 │                              │  --parent-pid <pid>  │   │
 │                              └──────────┬───────────┘   │
@@ -22,7 +20,7 @@ signing pipeline.
                               │  python-build-standalone │
                               │  + site-packages         │
                               │  + app/ (FastAPI)        │
-                              │  + app/_web_dist/        │
+                              │  API server only          │
                               └──────────────────────────┘
 ```
 

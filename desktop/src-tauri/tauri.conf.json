@@ -8,7 +8,7 @@
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": {
       "cwd": "../..",
-      "script": "cd web && bun install --frozen-lockfile && bun run build && cd .. && rm -rf app/_web_dist && cp -r web/dist app/_web_dist"
+      "script": "cd web && bun install --frozen-lockfile && bun run build"
     },
     "frontendDist": "../../web/dist"
   },
