@@ -107,6 +107,41 @@ describe('VoiceSettingsPage', () => {
     expect(screen.getByRole('button', { name: /^save$/i }).hasAttribute('disabled')).toBe(true)
   })
 
+  it('keeps voice form controls touch-sized before desktop compact sizing', async () => {
+    server.use(
+      http.get('http://localhost/api/speech/config', () =>
+        HttpResponse.json({
+          enabled: false,
+          model: 'local:base',
+          language: 'auto',
+          max_file_mb: 25,
+        }),
+      ),
+    )
+
+    renderPage()
+
+    const save = screen.getByRole('button', { name: /^save$/i })
+    expect(save.className).toContain('min-h-11')
+    expect(save.className).toContain('md:min-h-0')
+
+    const enabled = await screen.findByRole('switch', { name: /enabled/i })
+    expect(enabled.parentElement?.className).toContain('min-h-11')
+    expect(enabled.parentElement?.className).toContain('md:min-h-0')
+
+    const model = screen.getByLabelText('Model ID')
+    expect(model.className).toContain('min-h-11')
+    expect(model.className).toContain('md:min-h-9')
+
+    const language = screen.getByLabelText('Language')
+    expect(language.className).toContain('min-h-11')
+    expect(language.className).toContain('md:min-h-9')
+
+    const maxUpload = screen.getByLabelText('Max upload (MB)')
+    expect(maxUpload.className).toContain('min-h-11')
+    expect(maxUpload.className).toContain('md:min-h-9')
+  })
+
   it('shows Unsaved label and enables Save when form is dirty', async () => {
     server.use(
       http.get('http://localhost/api/speech/config', () =>

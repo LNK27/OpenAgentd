@@ -125,6 +125,7 @@ export function VoiceSettingsPage() {
         )}
         <Button
           size="sm"
+          className="min-h-11 md:min-h-0"
           onClick={handleSave}
           disabled={!dirty || updateMut.isPending}
         >
@@ -181,7 +182,7 @@ export function VoiceSettingsPage() {
                   Status
                 </h2>
 
-                <label className="flex cursor-pointer items-center gap-3 text-sm">
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm md:min-h-0">
                   <Switch
                     checked={form.enabled}
                     onCheckedChange={(checked) => setField('enabled', checked)}
@@ -211,7 +212,7 @@ export function VoiceSettingsPage() {
                     value={form.model}
                     onChange={(e) => setField('model', e.target.value)}
                     placeholder="local:base"
-                    className="h-9 font-mono text-sm"
+                    className="min-h-11 font-mono text-sm md:min-h-9"
                   />
                   <p className="text-[11px] text-(--color-text-muted)">
                     Format: <code className="font-mono">provider:name</code>.
@@ -237,7 +238,7 @@ export function VoiceSettingsPage() {
                     value={form.language}
                     onChange={(e) => setField('language', e.target.value)}
                     placeholder="auto"
-                    className="h-9 font-mono text-sm"
+                    className="min-h-11 font-mono text-sm md:min-h-9"
                   />
                   <p className="text-[11px] text-(--color-text-muted)">
                     <code className="font-mono">auto</code> lets Whisper detect the language.
@@ -261,7 +262,7 @@ export function VoiceSettingsPage() {
                       const n = parseInt(e.target.value, 10)
                       if (!isNaN(n) && n > 0) setField('max_file_mb', n)
                     }}
-                    className="h-9 w-28 font-mono text-sm"
+                    className="min-h-11 w-28 font-mono text-sm md:min-h-9"
                   />
                   <p className="text-[11px] text-(--color-text-muted)">
                     Recordings larger than this are rejected before transcription.
