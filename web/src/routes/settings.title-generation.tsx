@@ -95,7 +95,7 @@ export function TitleGenerationSettingsPage() {
         <Type size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
         <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Title generation</h1>
         {dirty && <span className="text-xs text-(--color-text-muted)">Unsaved</span>}
-        <Button size="sm" onClick={handleSave} disabled={!dirty || !!modelError || updateMut.isPending}>
+        <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleSave} disabled={!dirty || !!modelError || updateMut.isPending}>
           <Save size={12} aria-hidden="true" />
           <span className="hidden sm:inline">{updateMut.isPending ? 'Saving...' : 'Save'}</span>
         </Button>
@@ -121,7 +121,7 @@ export function TitleGenerationSettingsPage() {
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                   Status
                 </h2>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-(--color-text)">
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-(--color-text) md:min-h-0">
                   <Switch
                     checked={form.enabled}
                     onCheckedChange={(checked) => setField('enabled', checked)}
@@ -170,7 +170,7 @@ export function TitleGenerationSettingsPage() {
                     step={0.5}
                     value={String(form.wait_timeout_seconds)}
                     onChange={(e) => setField('wait_timeout_seconds', Number(e.target.value))}
-                    className="h-9 font-mono text-sm"
+                    className="min-h-11 font-mono text-sm md:min-h-9"
                   />
                   <p className="text-[11px] text-(--color-text-muted)">
                     Best-effort wait before the final done event. Set to 0 for fully background title updates.

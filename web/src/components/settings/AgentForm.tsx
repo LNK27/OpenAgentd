@@ -758,7 +758,7 @@ export function ModelCombobox({
           aria-invalid={invalid || undefined}
           autoComplete="off"
           spellCheck={false}
-          className="pr-8 font-mono"
+          className="min-h-11 pr-11 font-mono md:min-h-9 md:pr-8"
         />
         <button
           type="button"
@@ -771,7 +771,7 @@ export function ModelCombobox({
             inputRef.current?.focus()
           }}
           disabled={disabled}
-          className="absolute top-1/2 right-2 -translate-y-1/2 text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50"
+          className="absolute top-1/2 right-0 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50 md:right-1 md:h-8 md:w-8"
         >
           <ChevronDown size={14} aria-hidden="true" />
         </button>
@@ -812,7 +812,7 @@ export function ModelCombobox({
                       onClick={() => commit(o.id)}
                       onMouseEnter={() => setHighlight(i)}
                       className={cn(
-                        'flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left font-mono text-xs transition-colors',
+                        'flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left font-mono text-xs transition-colors md:min-h-0',
                         isHi && 'bg-(--bg-key)',
                         isSel && 'text-(--color-accent)',
                       )}
