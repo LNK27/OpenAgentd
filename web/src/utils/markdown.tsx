@@ -152,7 +152,7 @@ export function CodeBlock({
   const copyButton = (
     <button
       onClick={handleCopy}
-      className="rounded-md p-1.5 text-(--color-text-muted) transition-all opacity-100 hover:bg-(--bg-key) hover:text-(--color-text-2) md:opacity-0 md:group-hover:opacity-100"
+      className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
       aria-label="Copy code"
       title="Copy"
     >
