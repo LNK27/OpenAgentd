@@ -119,11 +119,11 @@ export function DreamSettingsPage() {
         <Moon size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
         <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Dream</h1>
         {dirty && <span className="text-xs text-(--color-text-muted)">Unsaved</span>}
-        <Button size="sm" variant="outline" onClick={handleRunNow} disabled={dreamMut.isPending}>
+        <Button size="sm" variant="outline" className="min-h-11 md:min-h-0" onClick={handleRunNow} disabled={dreamMut.isPending}>
           <Play size={12} aria-hidden="true" />
           <span className="hidden sm:inline">{dreamMut.isPending ? 'Running...' : 'Run now'}</span>
         </Button>
-        <Button size="sm" onClick={handleSave} disabled={!dirty || !!modelError || updateMut.isPending}>
+        <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleSave} disabled={!dirty || !!modelError || updateMut.isPending}>
           <Save size={12} aria-hidden="true" />
           <span className="hidden sm:inline">{updateMut.isPending ? 'Saving...' : 'Save'}</span>
         </Button>
@@ -149,7 +149,7 @@ export function DreamSettingsPage() {
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                   Schedule
                 </h2>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-(--color-text)">
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-(--color-text) md:min-h-0">
                   <Switch
                     checked={form.enabled}
                     onCheckedChange={(checked) => setField('enabled', checked)}
@@ -165,7 +165,7 @@ export function DreamSettingsPage() {
                     value={form.schedule}
                     onChange={(e) => setField('schedule', e.target.value)}
                     placeholder="0 2 * * *"
-                    className="h-9 font-mono text-sm"
+                    className="min-h-11 font-mono text-sm md:min-h-9"
                   />
                   <p className="text-[11px] text-(--color-text-muted)">
                     Standard 5-field cron in UTC. Disabled Dream can still be triggered with Run now.
