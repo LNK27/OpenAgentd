@@ -144,6 +144,7 @@ class AgentState:
     context: AgentContext | None = None
     capabilities: ModelCapabilities = field(default_factory=ModelCapabilities)
     tool_names: list[str] = field(default_factory=list)
+    tool_defs: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def messages_for_llm(self) -> list[ChatMessage]:

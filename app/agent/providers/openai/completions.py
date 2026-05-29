@@ -219,6 +219,8 @@ class CompletionsHandler:
             stream_options=OpenAIStreamOptions(include_usage=True) if stream else None,
         )
         body = req.model_dump(exclude_none=True)
+        if merged.get("prompt_cache_key") is not None:
+            body["prompt_cache_key"] = merged["prompt_cache_key"]
         self.customize_thinking(merged, body)
         return body
 

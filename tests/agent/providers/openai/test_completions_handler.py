@@ -327,6 +327,16 @@ class TestCompletionsHandler:
         assert "tools" not in body  # exclude_none=True removes None values
         assert "stream_options" not in body
 
+    def test_build_request_forwards_prompt_cache_key(self, handler):
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(
+            messages,
+            tools=None,
+            stream=False,
+            merged={"prompt_cache_key": "session-123"},
+        )
+        assert body["prompt_cache_key"] == "session-123"
+
     def test_build_request_with_temperature(self, handler):
         """Include temperature in request."""
         messages = [HumanMessage(content="Hello")]

@@ -168,6 +168,9 @@ class ResponsesHandler:
         if resp_tools:
             body["tools"] = resp_tools
 
+        if merged.get("prompt_cache_key") is not None:
+            body["prompt_cache_key"] = merged["prompt_cache_key"]
+
         # Responses API does not support temperature / top_p
         if merged.get("max_tokens") is not None:
             body["max_output_tokens"] = merged["max_tokens"]

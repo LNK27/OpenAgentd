@@ -229,6 +229,8 @@ class Agent(Generic[TContext]):
             session_created_at=config.session_created_at if config else None,
         )
 
+        tool_defs = [t.definition for t in run_tools.values()]
+
         # Build per-run AgentState — passed to all hooks throughout the loop
         state = AgentState(
             messages=messages,
@@ -236,6 +238,7 @@ class Agent(Generic[TContext]):
             context=self.context,
             capabilities=self.capabilities,
             tool_names=sorted(run_tools.keys()),
+            tool_defs=tool_defs,
         )
 
         # Expose session_id in state.metadata so tools (e.g. note) can read it
@@ -270,7 +273,6 @@ class Agent(Generic[TContext]):
             await hook.before_agent(ctx, state)
 
         last_assistant_msg: AssistantMessage | None = None
-        tool_defs = [t.definition for t in run_tools.values()]
 
         # Build tool execution chain — all hooks participate via wrap_tool_call
         tool_chain: ToolCallHandler = build_tool_chain(

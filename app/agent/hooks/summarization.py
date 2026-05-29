@@ -97,8 +97,10 @@ CHAT_SUMMARY_PROMPT = (
     "the immediate next step so the assistant can continue without another user "
     "prompt. Preserve exact names, identifiers, commands, file paths, error "
     "strings, and other details needed for continuity. Write in third-person "
-    "narrative form. Do not include pleasantries or meta-commentary."
+    "narrative form. Do not call tools or request tool execution. Return only "
+    "the summary text. Do not include pleasantries or meta-commentary."
 )
+
 
 # CODING mode: structured Markdown template the model fills in.  Empirically
 # preserves much more actionable state for follow-up turns than free-form
@@ -143,6 +145,8 @@ Rules:
 - Do not output raw role/tool prefixes such as `[user]:`, `[assistant]:`, `[tool/shell]:`, or `[main ...]`.
 - Use terse bullets, not prose paragraphs.
 - Preserve exact file paths, commands, error strings, and identifiers when known.
+- Do not call tools or request tool execution.
+- Return only the summary text.
 - Do not mention the summary process or that context was compacted."""
 
 
@@ -169,7 +173,7 @@ def keep_last_for_mode(mode: str | None) -> int:
 
 
 _SUMMARISE_REQUEST = (
-    "Please summarise the conversation below according to your instructions. "
+    "Please summarise the conversation above according to your instructions. "
     "Return only the requested summary, not the raw transcript."
 )
 
@@ -177,8 +181,9 @@ _SUMMARISE_REQUEST = (
 # the model what to do with the prior summary rather than leaving it to
 # interpret "merge".
 _MERGE_REQUEST = (
-    "Update the anchored summary below using the conversation history above. "
-    "Preserve still-true details, remove stale details, and merge in the new facts."
+    "Update the anchored summary in the conversation above using the newer "
+    "conversation history above. Preserve still-true details, remove stale "
+    "details, and merge in the new facts."
 )
 
 
@@ -515,24 +520,22 @@ class SummarizationHook(BaseAgentHook):
             span.set_status(StatusCode.OK)
             return
 
-        # Embed to_summarise as text inside a single HumanMessage to avoid
-        # role-alternation violations (ZAI/OpenAI reject system → assistant
-        # at position 0). ToolMessage content has already been made
-        # context-safe by tool-specific truncation and ToolResultOffloadHook;
-        # keep it so the summary can preserve important command/read results.
+        # Keep the original messages as the provider-visible prefix and append
+        # compaction instructions as the final user message. This preserves
+        # prompt-cache reuse from the normal chat/coding request that just
+        # overflowed; replacing the system prompt or flattening the transcript
+        # into one user blob makes the compaction call diverge at token 1 and
+        # yields near-zero cache hits.
         has_prior_summary = any(m.is_summary for m in to_summarise)
-
-        def _render(m) -> str:
-            if isinstance(m, ToolMessage):
-                name = f"/{m.name}" if m.name else ""
-                return f"[tool{name}]: {m.content or 'No result'}"
-            return f"[{m.role}]: {m.content or ''}"
-
-        convo_text = "\n\n".join(_render(m) for m in to_summarise)
         request_line = _MERGE_REQUEST if has_prior_summary else _SUMMARISE_REQUEST
         summariser_messages = [
-            SystemMessage(content=self._summary_prompt),
-            HumanMessage(content=f"{request_line}\n\n{convo_text}"),
+            *(
+                [SystemMessage(content=state.system_prompt)]
+                if state.system_prompt
+                else []
+            ),
+            *to_summarise,
+            HumanMessage(content=f"{request_line}\n\n{self._summary_prompt}"),
         ]
 
         span.set_attribute("summarization.messages_to_summarise", len(to_summarise))
@@ -553,7 +556,12 @@ class SummarizationHook(BaseAgentHook):
             on_delta = self._make_delta_emitter(emit_session_id, agent_name)
 
         try:
-            summary_text = await self._call_llm(summariser_messages, on_delta=on_delta)
+            summary_text = await self._call_llm(
+                ctx,
+                summariser_messages,
+                tools=state.tool_defs or None,
+                on_delta=on_delta,
+            )
         except Exception as exc:
             logger.error(
                 "summarization_llm_failed session_id={} error={}",
@@ -689,8 +697,10 @@ class SummarizationHook(BaseAgentHook):
 
     async def _call_llm(
         self,
+        ctx: "RunContext",
         messages,
         *,
+        tools: list[dict] | None = None,
         on_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> str:
         """Stream the summariser LLM and return the full text response.
@@ -724,7 +734,13 @@ class SummarizationHook(BaseAgentHook):
                     provider_name, _, _ = model_id.partition(":")
                     span.set_attribute("gen_ai.provider.name", provider_name)
             try:
-                stream = self._llm_provider.stream(messages=messages, **kwargs)
+                if ctx.session_id:
+                    kwargs["prompt_cache_key"] = ctx.session_id
+                stream = self._llm_provider.stream(
+                    messages=messages,
+                    tools=tools,
+                    **kwargs,
+                )
                 full_text = ""
                 async for chunk in stream:
                     if chunk.usage is not None:
@@ -744,6 +760,14 @@ class SummarizationHook(BaseAgentHook):
             span.set_attribute("summarization.llm_duration_s", round(elapsed, 3))
             span.set_attribute("summarization.response_length", len(full_text))
             if last_usage is not None:
-                set_usage_span_attributes(span, usage_to_dict(last_usage, model_id))
+                usage_dict = usage_to_dict(last_usage, model_id)
+                logger.info(
+                    "summarization_usage model={} input={} output={} cache={}",
+                    model_id,
+                    usage_dict.get("input"),
+                    usage_dict.get("output"),
+                    usage_dict.get("cache", 0),
+                )
+                set_usage_span_attributes(span, usage_dict)
             span.set_status(StatusCode.OK)
             return full_text.strip()

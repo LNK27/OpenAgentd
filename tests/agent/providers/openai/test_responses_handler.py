@@ -331,6 +331,16 @@ class TestResponsesHandler:
         assert len(body["input"]) == 1
         assert "tools" not in body
 
+    def test_build_request_forwards_prompt_cache_key(self, handler):
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(
+            messages,
+            tools=None,
+            stream=False,
+            merged={"prompt_cache_key": "session-123"},
+        )
+        assert body["prompt_cache_key"] == "session-123"
+
     def test_build_request_omits_temperature(self, handler):
         """Responses API does not support temperature."""
         messages = [HumanMessage(content="Hello")]

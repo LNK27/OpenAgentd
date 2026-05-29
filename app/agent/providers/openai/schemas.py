@@ -78,6 +78,7 @@ class OpenAIChatRequest(BaseModel):
     # endpoints (xAI Grok, Deepseek) only accept the legacy name.
     max_tokens: int | None = None
     max_completion_tokens: int | None = None
+    prompt_cache_key: str | None = None
     stream: bool = False
     stream_options: OpenAIStreamOptions | None = None
 

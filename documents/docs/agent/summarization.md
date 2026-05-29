@@ -2,7 +2,7 @@
 title: Rolling-Window Context Summarization
 description: Automatic conversation compression when context window approaches token threshold.
 status: stable
-updated: 2026-05-19
+updated: 2026-05-29
 ---
 
 # Summarization
@@ -23,9 +23,10 @@ updated: 2026-05-19
 | **UI transparent** | Summary rows (`is_summary=True`) are never returned to the UI. Users see the full unabridged conversation. |
 | **Minimum-delta guard** | `_messages_at_last_summary` tracks the message count at the last summarisation. If fewer than `min_messages_since_last_summary` new messages have arrived, the hook skips — prevents thrashing when the kept window sits close to the threshold. |
 | **Tool result stubbing** | `ToolMessage` content is replaced with `[tool/name]: [tool result omitted]` in the summariser input. Raw shell output, file contents, and JSON blobs are noise for summarisation; the tool name is sufficient. |
+| **Cache-first LLM call** | The summariser keeps the normal request prefix, including tool definitions, and uses the session id as the prompt-cache key so large compactions can reuse provider prompt cache. The prompt explicitly asks for summary text only and not tool use. |
 | **Merge vs. fresh summary** | When the window being summarised contains a prior summary (`is_summary=True`), the hook sends a merge instruction (`_MERGE_REQUEST`) instead of the default request. The summariser is told explicitly to fold old and new content together. |
 | **LLM exception** | Calls an LLM to generate the summary text — the only I/O this hook performs. |
-| **Inherits ``thinking_level``** | The hook does NOT override ``thinking_level`` on the summariser call — the agent's primary level flows through unchanged. Forcing ``"none"`` here was the original design (reasoning adds latency and cost without improving compression quality), but it broke the Codex provider: ``chatgpt.com/backend-api/codex`` rejects requests with no ``reasoning`` field, which ``ResponsesHandler.customize_thinking`` omits whenever the level is ``"none"``/``"off"``. Compaction now respects whatever the agent is configured with — seed agents already pin a low effort (``thinking_level: low``) which is the right floor. |
+| **Inherits ``thinking_level``** | The hook does NOT override ``thinking_level`` on the summariser call — the agent's primary level flows through unchanged. Compaction respects the agent configuration; seed agents already pin a low effort (`thinking_level: low`) which is the right floor. |
 
 ---
 
@@ -38,7 +39,7 @@ Summarization has **no operator-facing configuration surface**. All tuning lives
 | Constant | Used when | Shape |
 |----------|-----------|-------|
 | `CHAT_SUMMARY_PROMPT` | session mode is `normal` (or omitted) | Prose: "produce a concise summary in third-person narrative form…" |
-| `CODING_SUMMARY_PROMPT` | session mode is `coding` | Structured Markdown template (Goal / Constraints / Progress / Decisions / Next Steps / Critical Context / Relevant Files) — much higher signal density for follow-up turns. Borrowed from the opencode project's compaction module. |
+| `CODING_SUMMARY_PROMPT` | session mode is `coding` | Structured Markdown template (Goal / Constraints / Progress / Decisions / Next Steps / Critical Context / Relevant Files) — much higher signal density for follow-up turns. |
 
 `build_summarization_hook` selects the prompt via `prompt_for_mode(mode)`. The team member call site (`app/agent/mode/team/member.py`) passes `mode=self._team.mode`.
 
@@ -152,9 +153,8 @@ before_model(ctx, state)
      │    to_keep      = messages[cutoff:]      (last N assistant turns + context)
      │    if fewer than N assistant turns exist → to_summarise = all messages
      │
-     ├─ Build summariser prompt:
-     │    [SystemMessage(summary_prompt)]
-     │    + [HumanMessage("Please summarise...\n\n[role]: content\n...")]
+     ├─ Build summariser request from the normal cacheable prefix, selected messages,
+     │  normal tool definitions, and a trailing summary-only instruction
      │
      ├─ _call_llm(summariser_messages) → summary_text
      │

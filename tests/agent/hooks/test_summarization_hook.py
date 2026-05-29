@@ -16,6 +16,7 @@ from app.agent.schemas.chat import (
     AssistantMessage,
     FunctionCall,
     HumanMessage,
+    SystemMessage,
     ToolCall,
     ToolMessage,
 )
@@ -687,6 +688,50 @@ async def test_summariser_call_does_not_override_thinking_level():
     assert "thinking_level" not in call_kwargs
 
 
+@pytest.mark.asyncio
+async def test_summariser_passes_tool_defs_and_session_prompt_cache_key():
+    provider = MagicMock()
+
+    async def _stream(*_, **__):
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Summary."
+        chunk.usage = None
+        yield chunk
+
+    provider.stream.return_value = _stream()
+
+    hook = SummarizationHook(
+        llm_provider=provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1000,
+        keep_last_assistants=0,
+    )
+    tool_defs = [
+        {
+            "type": "function",
+            "function": {
+                "name": "shell",
+                "description": "Run shell commands.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    state = AgentState(
+        messages=[HumanMessage(content="msg1")],
+        usage=UsageInfo(last_prompt_tokens=1000),
+        tool_defs=tool_defs,
+    )
+
+    await hook.before_model(_make_ctx(session_id="session-123"), state)
+
+    provider.stream.assert_called_once()
+    call_kwargs = provider.stream.call_args[1]
+    assert call_kwargs["tools"] == tool_defs
+    assert call_kwargs["prompt_cache_key"] == "session-123"
+    assert "tool_choice" not in call_kwargs
+
+
 # ---------------------------------------------------------------------------
 # is BaseAgentHook subclass
 # ---------------------------------------------------------------------------
@@ -744,16 +789,13 @@ async def test_tool_message_content_kept_for_compaction(mock_provider):
 
     await hook.before_model(ctx, state)
 
-    # The HumanMessage sent to the LLM contains the serialised conversation.
-    human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
-    assert human_msgs, "Expected at least one HumanMessage in summariser input"
-    convo_blob = " ".join(m.content or "" for m in human_msgs)
-
-    # Tool name and output context must appear.
-    assert "[tool/shell]" in convo_blob
-    assert "lots of output" in convo_blob
-    assert '{"exit_code"' in convo_blob
-    assert "[tool result omitted]" not in convo_blob
+    # The original tool output stays in the provider-visible prefix instead of
+    # being flattened into the final instruction message.
+    tool_msgs = [m for m in captured if isinstance(m, ToolMessage)]
+    assert tool_msgs
+    assert tool_msgs[0].name == "shell"
+    assert "lots of output" in (tool_msgs[0].content or "")
+    assert '{"exit_code"' in (tool_msgs[0].content or "")
 
 
 @pytest.mark.asyncio
@@ -787,16 +829,15 @@ async def test_tool_message_without_name_uses_generic_stub(mock_provider):
 
     await hook.before_model(ctx, state)
 
-    human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
-    convo_blob = " ".join(m.content or "" for m in human_msgs)
-
-    assert "[tool]: raw output" in convo_blob
-    assert "[tool result omitted]" not in convo_blob
+    tool_msgs = [m for m in captured if isinstance(m, ToolMessage)]
+    assert tool_msgs
+    assert tool_msgs[0].name is None
+    assert tool_msgs[0].content == "raw output"
 
 
 @pytest.mark.asyncio
-async def test_non_tool_messages_not_stubbed(mock_provider):
-    """HumanMessage and AssistantMessage content is passed through unchanged."""
+async def test_summariser_input_preserves_normal_call_prefix(mock_provider):
+    """Summarisation sends system + original messages before the instruction."""
     hook = SummarizationHook(
         llm_provider=mock_provider,
         summary_prompt="test summary prompt",
@@ -810,6 +851,7 @@ async def test_non_tool_messages_not_stubbed(mock_provider):
             AssistantMessage(content="Paris."),
         ],
         usage=UsageInfo(last_prompt_tokens=9999),
+        system_prompt="stable agent prompt",
     )
 
     captured: list = []
@@ -826,11 +868,15 @@ async def test_non_tool_messages_not_stubbed(mock_provider):
 
     await hook.before_model(ctx, state)
 
-    human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
-    convo_blob = " ".join(m.content or "" for m in human_msgs)
-
-    assert "what is the capital of France?" in convo_blob
-    assert "Paris." in convo_blob
+    assert [type(m) for m in captured] == [
+        SystemMessage,
+        HumanMessage,
+        AssistantMessage,
+        HumanMessage,
+    ]
+    assert captured[0].content == "stable agent prompt"
+    assert captured[1].content == "what is the capital of France?"
+    assert captured[2].content == "Paris."
 
 
 # ---------------------------------------------------------------------------
@@ -1233,10 +1279,9 @@ async def test_before_model_returns_none_when_no_summarisation(mock_provider):
 
 def test_coding_prompt_rejects_raw_transcript_output():
     assert "Start your response with exactly `## Goal`" in CODING_SUMMARY_PROMPT
-    assert (
-        "do not copy, replay, or lightly reformat the transcript"
-        in CODING_SUMMARY_PROMPT
-    )
+    assert "Do not call tools" in CODING_SUMMARY_PROMPT
+    assert "Do not output raw role/tool prefixes" in CODING_SUMMARY_PROMPT
+
     assert "[assistant]:" in CODING_SUMMARY_PROMPT
 
 
@@ -1278,11 +1323,9 @@ async def test_assistant_with_none_content_renders_as_empty_string(mock_provider
 
     await hook.before_model(ctx, state)
 
-    human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
-    convo_blob = " ".join(m.content or "" for m in human_msgs)
-
-    assert "None" not in convo_blob, "'None' must not appear in summariser input"
-    assert "[assistant]:" in convo_blob
+    assistant_msgs = [m for m in captured if isinstance(m, AssistantMessage)]
+    assert assistant_msgs
+    assert assistant_msgs[0].content is None
 
 
 # ---------------------------------------------------------------------------
@@ -1369,7 +1412,7 @@ async def test_skill_tool_messages_preserved_through_summarisation(mock_provider
     assert "Long skill instructions body" not in convo_blob
     assert "skill" not in convo_blob.lower() or "[tool/skill]" not in convo_blob
     # Non-skill tool call should still be summarised (its assistant turn appears).
-    assert "[assistant]:" in convo_blob
+    assert other_asst in captured
 
     # 2) Skill messages stay visible in state — not excluded.
     assert skill_asst.exclude_from_context is False
