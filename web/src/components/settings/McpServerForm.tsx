@@ -63,7 +63,7 @@ export function McpServerForm({
               disabled={disabled || !isNew}
               placeholder="filesystem"
               aria-invalid={!!errors?.name || undefined}
-              className="font-mono"
+              className="min-h-11 font-mono md:min-h-9"
             />
           </Field>
 
@@ -117,7 +117,7 @@ export function McpServerForm({
                 disabled={disabled}
                 placeholder="npx"
                 aria-invalid={!!errors?.command || undefined}
-                className="font-mono"
+                className="min-h-11 font-mono md:min-h-9"
               />
             </Field>
 
@@ -129,7 +129,7 @@ export function McpServerForm({
                 rows={4}
                 spellCheck={false}
                 placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"
-                className="font-mono text-[13px] leading-relaxed"
+                className="min-h-32 font-mono text-[13px] leading-relaxed"
               />
             </Field>
 
@@ -168,7 +168,7 @@ export function McpServerForm({
                 disabled={disabled}
                 placeholder="https://mcp.example.com/v1"
                 aria-invalid={!!errors?.url || undefined}
-                className="font-mono"
+                className="min-h-11 font-mono md:min-h-9"
               />
             </Field>
 
@@ -217,7 +217,7 @@ export function McpServerForm({
                     onChange={(e) => set({ oauthClientIdEnv: e.target.value })}
                     disabled={disabled}
                     placeholder="client id"
-                    className="font-mono"
+                    className="min-h-11 font-mono md:min-h-9"
                   />
                 </Field>
                 <Field label="Client secret" hint="Paste the OAuth app client secret.">
@@ -226,7 +226,7 @@ export function McpServerForm({
                     onChange={(e) => set({ oauthClientSecretEnv: e.target.value })}
                     disabled={disabled}
                     placeholder="client secret"
-                    className="font-mono"
+                    className="min-h-11 font-mono md:min-h-9"
                   />
                 </Field>
               </div>
@@ -295,7 +295,7 @@ function EnabledToggle({
     <div
       role="radiogroup"
       aria-label="Server enabled state"
-      className="inline-flex h-9 rounded-md bg-(--bg-key) p-0.5 ring-1 ring-(--color-border)"
+      className="inline-flex min-h-11 rounded-md bg-(--bg-key) p-0.5 ring-1 ring-(--color-border) md:min-h-9"
     >
       <ToggleOption
         active={value}
@@ -326,7 +326,7 @@ function TransportToggle({
     <div
       role="radiogroup"
       aria-label="MCP transport"
-      className="grid h-10 w-full grid-cols-2 rounded-lg bg-(--bg-key) p-1 ring-1 ring-(--color-border)"
+      className="grid min-h-11 w-full grid-cols-2 rounded-lg bg-(--bg-key) p-1 ring-1 ring-(--color-border) md:min-h-10"
     >
       <ToggleOption
         active={value === 'stdio'}
@@ -406,6 +406,7 @@ function PairListField({
         <Button
           size="xs"
           variant="ghost"
+          className="min-h-11 md:min-h-0"
           onClick={append}
           disabled={disabled}
           aria-label={`Add ${label.toLowerCase()}`}
@@ -420,24 +421,25 @@ function PairListField({
       ) : (
         <div className="flex flex-col gap-1.5">
           {pairs.map((pair, idx) => (
-            <div key={idx} className="flex items-center gap-1.5">
+            <div key={idx} className="grid gap-1.5 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
               <Input
                 value={pair.key}
                 onChange={(e) => setAt(idx, { key: e.target.value })}
                 disabled={disabled}
                 placeholder={keyPlaceholder}
-                className="flex-1 font-mono text-xs"
+                className="min-h-11 font-mono text-xs md:min-h-9"
               />
               <Input
                 value={pair.value}
                 onChange={(e) => setAt(idx, { value: e.target.value })}
                 disabled={disabled}
                 placeholder={valuePlaceholder}
-                className="flex-1 font-mono text-xs"
+                className="min-h-11 font-mono text-xs md:min-h-9"
               />
               <Button
                 size="icon-xs"
                 variant="ghost"
+                className="h-11 w-11 sm:justify-self-end md:h-6 md:w-6"
                 onClick={() => removeAt(idx)}
                 disabled={disabled}
                 aria-label={`Remove ${pair.key || 'entry'}`}

@@ -197,6 +197,7 @@ export function McpServerDetailPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="min-h-11 md:min-h-0"
                       onClick={handleConnectOAuth}
                       disabled={connectOAuthMut.isPending || !server.enabled}
                     >
@@ -232,6 +233,7 @@ export function McpServerDetailPage() {
                       <Button
                         variant="ghost"
                         size="xs"
+                        className="min-h-11 md:min-h-0"
                         onClick={() => seedDraft && setDraft(seedDraft)}
                       >
                         Discard changes
@@ -239,6 +241,7 @@ export function McpServerDetailPage() {
                       <Button
                         variant="ghost"
                         size="xs"
+                        className="min-h-11 md:min-h-0"
                         onClick={() => navigate({ to: '/settings/mcp' })}
                       >
                         Leave without saving
@@ -249,6 +252,7 @@ export function McpServerDetailPage() {
                 <Button
                   variant="destructive"
                   size="xs"
+                  className="min-h-11 md:min-h-0"
                   onClick={() => setDeleteOpen(true)}
                   disabled={deleteMut.isPending}
                 >
@@ -388,6 +392,7 @@ function RestartCard({
           <Button
             variant="outline"
             size="sm"
+            className="min-h-11 md:min-h-0"
             onClick={onRestart}
             disabled={pending || !enabled}
             aria-label={pending ? 'Restarting' : 'Restart server'}
