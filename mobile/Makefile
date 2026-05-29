@@ -11,7 +11,7 @@ ios-init: ## Initialize Tauri iOS project files
 ios-dev: ## Run on an iOS simulator/device
 	cd src-tauri && cargo tauri ios dev --host
 
-ios-dev-device: ## Run on a named physical iPhone, e.g. `make ios-dev-device MyPhone`
+ios-dev-device: ## Run on a named physical iOS device, e.g. `make ios-dev-device DeviceName`
 	@if [ -z "$(IOS_DEVICE)" ]; then \
 		echo "Usage: make ios-dev-device <device-name>"; \
 		exit 2; \

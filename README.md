@@ -27,9 +27,9 @@
 |---|---|
 | ![Settings page for configuring lead and member agents](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/settings-agents.png) | ![Settings page for filesystem sandbox and permission controls](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/settings-sandbox.png) |
 
-| Voice settings | Telemetry dashboard |
+| Voice input | Telemetry dashboard |
 |---|---|
-| ![Settings page for local voice transcription](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/settings-voice.png) | ![Telemetry dashboard with traces, tokens, and latency](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/telemetry.png) |
+| ![Chat input with client-side voice transcription](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/homepage.png) | ![Telemetry dashboard with traces, tokens, and latency](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/telemetry.png) |
 
 ---
 

@@ -48,10 +48,10 @@ Then run the iOS app:
 make ios-dev-device <device-name>
 ```
 
-For example, if `cargo tauri ios dev` detects `My iPhone`, run:
+For example, if `cargo tauri ios dev` detects a device named `OfficePhone`, run:
 
 ```bash
-make ios-dev-device "My iPhone"
+make ios-dev-device "OfficePhone"
 ```
 
 If the generated Xcode project gets stale after changing signing or identifiers, clean and regenerate it:

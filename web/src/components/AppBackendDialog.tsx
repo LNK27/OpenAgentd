@@ -237,7 +237,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               id="app-backend-url"
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="http://192.168.1.62:8000"
+              placeholder="http://<backend-host>:8000"
               className="min-w-0 flex-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:border-(--focus-ring) focus:ring-3 focus:ring-(--focus-ring)/30"
             />
             <button

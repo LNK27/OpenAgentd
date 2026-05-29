@@ -27,7 +27,7 @@ cd mobile
 make dev                    # Tauri shell against Vite :5173
 make ios-init               # generate iOS project files
 make ios-dev                # run on simulator/device with --host
-make ios-dev-device         # run on a known physical iPhone
+make ios-dev-device <device-name> # run on a named physical iOS device
 make ios-clean              # remove generated iOS/Xcode state
 make ios-build              # build iOS app
 ```
