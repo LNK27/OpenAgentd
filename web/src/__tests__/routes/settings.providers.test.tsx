@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
@@ -10,9 +10,21 @@ import { useToastStore } from '@/stores/useToastStore'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
+const originalOpen = window.open
+const openMock = mock(() => null)
+
+Object.defineProperty(navigator, 'clipboard', {
+  value: {
+    writeText: mock(async () => undefined),
+  },
+  configurable: true,
+})
 
 beforeEach(() => {
   useToastStore.setState({ toasts: [] })
+  ;(navigator.clipboard.writeText as ReturnType<typeof mock>).mockClear()
+  openMock.mockClear()
+  window.open = openMock
   server.listen()
   originalFetch = globalThis.fetch
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -28,6 +40,7 @@ afterEach(() => {
   useToastStore.setState({ toasts: [] })
   if (originalFetch) globalThis.fetch = originalFetch
   originalFetch = undefined
+  window.open = originalOpen
   server.close()
 })
 
@@ -110,7 +123,7 @@ describe('ProvidersSettingsPage', () => {
         ],
       })),
       http.get('http://localhost/api/auth/copilot/login', () => new HttpResponse(
-        'event: device_code\ndata: {"user_code":"ABCD-1234"}\n\n',
+        'event: device_code\ndata: {"user_code":"ABCD-1234","verification_uri":"https://github.com/login/device"}\n\n',
         { headers: { 'Content-Type': 'text/event-stream' } },
       )),
     )
@@ -122,6 +135,12 @@ describe('ProvidersSettingsPage', () => {
 
     expect(await screen.findByText('ABCD-1234')).toBeTruthy()
     expect(screen.getByText('Use this code on GitHub to authorize Copilot. Keep this dialog open while GitHub approves access.')).toBeTruthy()
+    const copyCode = screen.getByLabelText('Copy device code')
+    expect(copyCode.className).toContain('h-9')
+    expect(copyCode.className).toContain('w-9')
+    fireEvent.click(copyCode)
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('ABCD-1234'))
+    expect(screen.getByRole('button', { name: /Open authorization page/i }).className).toContain('min-h-11')
     expect(screen.queryByText(/personal ChatGPT accounts/)).toBeNull()
   })
 

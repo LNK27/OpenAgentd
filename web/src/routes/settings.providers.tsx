@@ -3,6 +3,7 @@ import fuzzysort from 'fuzzysort'
 import {
   AlertCircle,
   ArrowLeft,
+  Check,
   CheckCircle2,
   Copy,
   ExternalLink,
@@ -617,6 +618,7 @@ function OAuthLoginDialog({
   const [events, setEvents] = useState<OAuthLoginEvent[]>([])
   const [error, setError] = useState<string | null>(null)
   const [code, setCode] = useState('')
+  const [codeCopied, setCodeCopied] = useState(false)
   const [authMode, setAuthMode] = useState<'device' | 'browser'>('device')
   const [submittingCode, setSubmittingCode] = useState(false)
   const openedUrlRef = useRef<string | null>(null)
@@ -626,6 +628,17 @@ function OAuthLoginDialog({
   const deviceEvent = events.find((event) => event.event === 'device_code')
   const isSuccess = latest?.event === 'success'
   const isWorking = open && !isSuccess && !error
+
+  const copyDeviceCode = async () => {
+    if (!deviceEvent?.user_code) return
+    try {
+      await navigator.clipboard.writeText(deviceEvent.user_code)
+      setCodeCopied(true)
+      window.setTimeout(() => setCodeCopied(false), 1500)
+    } catch {
+      // Copy is best-effort; the code remains visible for manual entry.
+    }
+  }
 
   useEffect(() => {
     if (!open) return undefined
@@ -705,12 +718,23 @@ function OAuthLoginDialog({
             <div className="overflow-hidden rounded-xl border border-(--accent-blue)/25 bg-(--accent-blue-soft)">
               <div className="p-5 text-center">
                 <p className="text-xs font-medium tracking-[0.18em] text-(--color-text-muted) uppercase">Device code</p>
-                <p className="mt-2 font-mono text-3xl font-semibold tracking-[0.18em] text-(--color-text)">{deviceEvent.user_code}</p>
+                <div className="mt-2 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                  <p className="font-mono text-3xl font-semibold tracking-[0.18em] text-(--color-text)">{deviceEvent.user_code}</p>
+                  <button
+                    type="button"
+                    onClick={() => { void copyDeviceCode() }}
+                    className="flex h-9 w-9 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                    aria-label="Copy device code"
+                    title="Copy device code"
+                  >
+                    {codeCopied ? <Check size={15} className="text-(--color-success)" /> : <Copy size={15} />}
+                  </button>
+                </div>
                 <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-(--color-text-muted)">
                   {deviceCodeHelp(provider.id)}
                 </p>
                 {deviceEvent.verification_uri && (
-                  <Button className="mt-4" size="sm" onClick={() => void openExternalUrl(deviceEvent.verification_uri!)}>
+                  <Button className="mt-4 min-h-11 sm:min-h-0" size="sm" onClick={() => void openExternalUrl(deviceEvent.verification_uri!)}>
                     Open authorization page
                   </Button>
                 )}
@@ -722,7 +746,7 @@ function OAuthLoginDialog({
                     If the Codex page says your admin must enable device-code authentication, switch to browser sign-in.
                   </p>
                   <Button
-                    className="mt-3 w-full"
+                    className="mt-3 min-h-11 w-full sm:min-h-0"
                     size="sm"
                     variant="secondary"
                     onClick={() => {
