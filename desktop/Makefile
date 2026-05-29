@@ -5,8 +5,8 @@
 #   make sidecar-full   Same, but with [audio,azure-doc-intel] extras.
 #   make icons          Regenerate .icns / .ico from icons/icon.png.
 #   make dev            Tauri shell + Vite dev server, points at an external
-#                       backend. You must run the backend in another terminal
-#                       (``cd .. && make dev`` from the repo root).
+#                       backend API. You must run the backend + Vite in another
+#                       terminal (``cd .. && make dev`` from the repo root).
 #   make dev-bundled    Tauri shell with the *bundled* sidecar (requires
 #                       ``make sidecar`` first). Use this to test the
 #                       sidecar handshake / auth wiring end-to-end.
@@ -21,18 +21,18 @@
 #     terminal 2:   cd desktop && make dev    # Tauri shell → loads :5173
 #
 # The Tauri shell skips its bundled-Python supervisor when
-# ``OPENAGENTD_DEV_BACKEND_URL`` is set, so you get HMR on the frontend
-# (via Vite), uvicorn reload on the backend, and quick Rust recompiles
-# on the shell. Vite's HTTP proxy forwards ``/api/**`` and SSE streams
-# to :8000 transparently.
+# ``OPENAGENTD_DEV_BACKEND_URL`` is set. The WebView still loads Vite on
+# :5173 for HMR, while API requests use the configured backend base URL.
+# Use :8000 when the repo-root ``make dev`` backend is running; use :4082
+# when testing against a standalone ``openagentd`` CLI server.
 
-.PHONY: sidecar sidecar-full icons dev dev-bundled build-dev-app build clean
+.PHONY: sidecar sidecar-full icons dev dev-bundled build-dev-app build clean open
 
 ROOT       := $(abspath ..)
 BUNDLE     := sidecar-bundle
 PYVER      := 3.14
 EXTRAS     ?=                       # set to e.g. "audio,azure-doc-intel,full"
-DEV_URL    ?= http://localhost:5173
+DEV_BACKEND_URL ?= http://localhost:8000
 
 sidecar:
 	@python3 ../scripts/build_sidecar.py \
@@ -42,7 +42,11 @@ sidecar:
 		$(if $(EXTRAS),--extras "$(EXTRAS)",)
 
 open:
-	@open "src-tauri/target/release/bundle/macos/OpenAgentd (dev).app"
+	@if [ -d "src-tauri/target/release/bundle/macos/OpenAgentd (dev).app" ]; then \
+		open "src-tauri/target/release/bundle/macos/OpenAgentd (dev).app"; \
+	else \
+		open "src-tauri/target/release/bundle/macos/OpenAgentd.app"; \
+	fi
 
 sidecar-full:
 	@$(MAKE) sidecar EXTRAS="audio,azure-doc-intel"
@@ -50,8 +54,8 @@ sidecar-full:
 icons:
 	cd src-tauri && cargo tauri icon icons/icon.png
 
-# Dev: point the shell at an externally-managed backend (Vite dev server,
-# which proxies /api to FastAPI on :8000). The shell skips sidecar spawn.
+# Dev: point the shell at an externally-managed backend API. The shell skips
+# sidecar spawn; the debug WebView still loads Vite from :5173.
 # ``beforeDevCommand`` is intentionally absent from tauri.conf.json so
 # ``cargo tauri dev`` does NOT try to start its own Vite — we rely on the
 # repo-root ``make dev`` to manage Vite + FastAPI together.
@@ -62,8 +66,8 @@ icons:
 # Without this, macOS routes ``open -a OpenAgentd`` to whichever
 # instance is already running, masking which app you're testing.
 dev:
-	@echo "→ Tauri dev shell. Make sure backend (port 8000) + Vite ($(DEV_URL)) are running."
-	cd src-tauri && OPENAGENTD_DEV_BACKEND_URL="$(DEV_URL)" cargo tauri dev -c tauri.dev.conf.json
+	@echo "→ Tauri dev shell. Make sure backend ($(DEV_BACKEND_URL)) + Vite (:5173) are running."
+	cd src-tauri && OPENAGENTD_DEV_BACKEND_URL="$(DEV_BACKEND_URL)" cargo tauri dev -c tauri.dev.conf.json
 
 # Dev with the bundled CPython sidecar — the closest thing to ``make build``
 # without producing a .dmg. Useful for testing handshake, token injection,
@@ -74,7 +78,6 @@ dev:
 # the repo root. Without these overrides ``APP_ENV=development`` would
 # resolve them relative to the sidecar's cwd (``desktop/src-tauri/``).
 dev-bundled:
-	@$(MAKE) -C "$(ROOT)" build-web
 	@$(MAKE) sidecar
 	cd src-tauri && \
 		OPENAGENTD_APP_ENV=development \
@@ -87,7 +90,6 @@ dev-bundled:
 		cargo tauri dev -c tauri.dev-bundled.conf.json
 
 build-dev-app:
-	@$(MAKE) -C "$(ROOT)" build-web
 	@$(MAKE) sidecar
 	cd src-tauri && cargo tauri build -c tauri.dev-bundled.conf.json --bundles app
 

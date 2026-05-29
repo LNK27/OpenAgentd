@@ -50,8 +50,8 @@ The Tauri shell:
 4. Polls `http://127.0.0.1:<port>/api/health/live` for readiness.
 5. Builds a WebView from Tauri's packaged `web/dist`, injecting `window.__OAD_API_BASE_URL__` and the token as `window.__OAD_TOKEN__` via `initialization_script` *before* any page JS runs.
 6. The bundled React UI's `installDesktopAuth()` patches `window.fetch`
-   to attach `Authorization: Bearer <token>` to every same-origin
-   `/api/*` request.
+   to attach `Authorization: Bearer <token>` to requests targeting the
+   injected API base URL.
 7. Installs native app-menu and tray-menu actions for opening the window,
    navigating to common routes, hiding to tray, and quitting cleanly.
 
@@ -79,7 +79,7 @@ agent tools). The token mitigates that.
 | Token lifetime                               | One launch only. Regenerated next start. Never persisted.                                                  |
 | Token transport                              | `Authorization: Bearer …` for `fetch`/SSE; `?_token=…` for download links the browser can't header-stamp.  |
 | Comparison                                   | `hmac.compare_digest` (constant-time).                                                                     |
-| Bypassable routes                            | `/api/health/live`, `/api/health/ready`, `/metrics`, SPA shell (`/`, `/index.html`, `/assets/*`).          |
+| Bypassable routes                            | `/api/health/live`, `/api/health/ready`, `/metrics`.                                                       |
 | Off-switch                                   | Unset `OPENAGENTD_DESKTOP_TOKEN` — the middleware becomes a no-op. CLI / Docker users keep open behaviour. |
 
 See `app/core/desktop_auth.py` for the implementation and
@@ -108,7 +108,7 @@ When the application is already running in the background, clicking the Dock ico
 
 Closing the main window hides it to the tray instead of stopping the backend. Selecting **Quit OpenAgentd** from the app menu or tray marks the app as quitting, exits Tauri, and lets the existing shutdown path terminate the Python sidecar cleanly.
 
-The tray status starts at `Status: Starting`, changes to `Status: Running` once the bundled sidecar is healthy, and changes to `Status: Error` if startup fails. With `OPENAGENTD_DESKTOP_BASE_URL` it reports `Status: Running (external)` after the configured server passes `/api/health/live`.
+The tray status starts at `Status: Starting`, changes to `Status: Running` once the bundled sidecar is healthy, and changes to `Status: Error` if startup fails. With `OPENAGENTD_DESKTOP_BASE_URL` or `OPENAGENTD_DEV_BACKEND_URL` it reports `Status: Running (external)` after the configured server is selected; startup health failures are logged but do not block the desktop window.
 
 The tray **Session** line below status mirrors the user's active context with liveness taking priority over identity:
 
