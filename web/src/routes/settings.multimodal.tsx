@@ -160,7 +160,7 @@ export function MultimodalSettingsPage() {
         <Image size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
         <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Multimodal</h1>
         {dirty && <span className="text-xs text-(--color-text-muted)">Unsaved</span>}
-        <Button size="sm" onClick={handleSave} disabled={!dirty || hasError || updateMut.isPending}>
+        <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleSave} disabled={!dirty || hasError || updateMut.isPending}>
           <Save size={12} aria-hidden="true" />
           <span className="hidden sm:inline">{updateMut.isPending ? 'Saving...' : 'Save'}</span>
         </Button>
@@ -212,12 +212,12 @@ function ModelField({ value, onChange, options, error }: {
     <div className="grid gap-1.5">
       <label className="text-xs font-medium text-(--color-text-muted)">Model ID</label>
       <Select value={value} onValueChange={(next) => next && onChange(next)}>
-        <SelectTrigger className="w-full font-mono" aria-invalid={!!error || undefined}>
+        <SelectTrigger className="min-h-11 w-full font-mono md:min-h-9" aria-invalid={!!error || undefined}>
           <SelectValue placeholder="Choose a model" />
         </SelectTrigger>
         <SelectContent>
           {options.map((option) => (
-            <SelectItem key={option.id} value={option.id} className="font-mono">
+            <SelectItem key={option.id} value={option.id} className="min-h-11 font-mono md:min-h-8">
               {option.id}
             </SelectItem>
           ))}
@@ -240,15 +240,15 @@ function ListField({ label, value, onChange, options, error, optional }: {
     <div className="grid gap-1.5">
       <label className="text-xs font-medium text-(--color-text-muted)">{label}</label>
       <Select value={value} onValueChange={(next) => next && onChange(next)}>
-        <SelectTrigger className="w-full font-mono" aria-invalid={!!error || undefined}>
+        <SelectTrigger className="min-h-11 w-full font-mono md:min-h-9" aria-invalid={!!error || undefined}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {optional ? (
-            <SelectItem value={PROVIDER_DEFAULT}>Provider default</SelectItem>
+            <SelectItem value={PROVIDER_DEFAULT} className="min-h-11 md:min-h-8">Provider default</SelectItem>
           ) : null}
           {options.map((option) => (
-            <SelectItem key={option} value={option} className="font-mono">
+            <SelectItem key={option} value={option} className="min-h-11 font-mono md:min-h-8">
               {option}
             </SelectItem>
           ))}
