@@ -172,15 +172,6 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             </span>
           </div>
 
-          <div className="rounded-lg border border-(--accent-blue)/35 bg-(--accent-blue-soft) px-3 py-2 text-xs leading-5 text-(--color-text-muted)">
-            <p className="font-medium text-(--color-text)">Connecting from iPhone or another device?</p>
-            <ol className="mt-1 list-decimal space-y-1 pl-4">
-              <li>Run the backend with <code className="rounded bg-(--bg-card) px-1 py-0.5 font-mono text-[10px]">--host 0.0.0.0 --port 8000</code>.</li>
-              <li>Keep this device on the same Wi‑Fi/LAN as the backend machine.</li>
-              <li>Enter that machine's LAN URL, for example <code className="rounded bg-(--bg-card) px-1 py-0.5 font-mono text-[10px]">http://192.168.1.62:8000</code>.</li>
-            </ol>
-          </div>
-
           <div>
             <div className="mb-2 text-xs font-medium text-(--color-text)">Saved servers</div>
             <div className="space-y-1">

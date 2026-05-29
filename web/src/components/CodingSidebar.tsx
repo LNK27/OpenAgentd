@@ -186,7 +186,8 @@ export function CodingSidebar({
   onMobileClose,
 }: CodingSidebarProps) {
   const isMobile = useIsMobile()
-  const { isTauri } = usePlatform()
+  const { isTauri, os } = usePlatform()
+  const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const prefersReducedMotion = useReducedMotion()
   // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
   // We don't render an inline collapse toggle anymore — the topbar
@@ -299,7 +300,7 @@ export function CodingSidebar({
     setSelectedWorkspace(null)
     setTrustWorkspace(null)
 
-    if (!isTauri) {
+    if (!isTauri || isTauriMobile) {
       openWebWorkspaceDialog()
       return
     }
@@ -323,7 +324,7 @@ export function CodingSidebar({
     } finally {
       setLoading(false)
     }
-  }, [isTauri, openWebWorkspaceDialog])
+  }, [isTauri, isTauriMobile, openWebWorkspaceDialog])
 
   useEffect(() => {
     const handler = () => setWorkspaces(loadCodingWorkspaces())
@@ -677,7 +678,7 @@ export function CodingSidebar({
                 <Button type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
               </DialogFooter>
             </>
-          ) : isTauri ? (
+          ) : isTauri && !isTauriMobile ? (
             <>
               <DialogHeader>
                 <DialogTitle>Open workspace</DialogTitle>
