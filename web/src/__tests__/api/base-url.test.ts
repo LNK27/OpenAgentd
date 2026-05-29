@@ -37,4 +37,18 @@ describe('apiBaseUrl', () => {
     expect(apiBaseUrl()).toBe('http://localhost:4082/api')
     expect(apiUrl('/settings/sandbox')).toBe('http://localhost:4082/api/settings/sandbox')
   })
+
+  it('updates the desktop API base URL at runtime and notifies listeners', async () => {
+    const calls: string[] = []
+    const { apiBaseUrl, onApiBaseUrlChange, setApiBaseUrl } = await import('@/api/base-url')
+    const unsubscribe = onApiBaseUrlChange(() => calls.push(apiBaseUrl()))
+
+    setApiBaseUrl('http://127.0.0.1:5000')
+    setApiBaseUrl('http://127.0.0.1:5001/api')
+    unsubscribe()
+    setApiBaseUrl('http://127.0.0.1:5002')
+
+    expect(calls).toEqual(['http://127.0.0.1:5000/api', 'http://127.0.0.1:5001/api'])
+    expect(apiBaseUrl()).toBe('http://127.0.0.1:5002/api')
+  })
 })

@@ -42,7 +42,6 @@ import type {
   TodosResponse,
 } from './types'
 
-const API = apiBaseUrl()
 
 // ── /team ─────────────────────────────────────────────────────────────────────
 
@@ -84,7 +83,7 @@ export async function postTeamChat(
     }
   }
 
-  const res = await fetch(`${API}/team/chat`, {
+  const res = await fetch(`${apiBaseUrl()}/team/chat`, {
     method: 'POST',
     body: formData,
   })
@@ -99,7 +98,7 @@ export async function postTeamCommand(
   command: 'continue' | 'compact' | 'undo' | 'redo',
   sessionId: string,
 ): Promise<TeamCommandResponse> {
-  const res = await fetch(`${API}/team/commands`, {
+  const res = await fetch(`${apiBaseUrl()}/team/commands`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command, session_id: sessionId }),
@@ -113,7 +112,7 @@ export async function postTeamCommand(
 
 export async function cancelQueuedTeamMessage(sessionId: string, messageId: string): Promise<void> {
   const res = await fetch(
-    `${API}/team/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`,
+    `${apiBaseUrl()}/team/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`,
     { method: 'DELETE' },
   )
   if (res.status === 404) return
@@ -124,7 +123,7 @@ export async function cancelQueuedTeamMessage(sessionId: string, messageId: stri
 }
 
 export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: AbortSignal): void {
-  fetch(`${API}/team/${encodeURIComponent(sessionId)}/stream`, { signal })
+  fetch(`${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/stream`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error(`GET /team/${sessionId}/stream failed: ${res.status}`)
       readSSE(res, callbacks)
@@ -136,14 +135,14 @@ export async function listTeamAgents(workspace?: string | null): Promise<TeamAge
   const params = new URLSearchParams()
   if (workspace) params.set('workspace', workspace)
   const query = params.toString()
-  const res = await fetch(`${API}/team/agents${query ? `?${query}` : ''}`)
+  const res = await fetch(`${apiBaseUrl()}/team/agents${query ? `?${query}` : ''}`)
   if (!res.ok) throw new Error(`listTeamAgents failed: ${res.status}`)
   return res.json()
 }
 
 export async function validateWorkspace(workspace: string): Promise<WorkspaceValidationResponse> {
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${API}/team/workspace/validate?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/validate?${params}`)
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     throw new Error(body?.detail || `validateWorkspace failed: ${res.status}`)
@@ -155,7 +154,7 @@ export async function browseWorkspaces(path?: string | null): Promise<WorkspaceB
   const params = new URLSearchParams()
   if (path) params.set('path', path)
   const query = params.toString()
-  const res = await fetch(`${API}/team/workspace/browse${query ? `?${query}` : ''}`)
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/browse${query ? `?${query}` : ''}`)
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     throw new Error(body?.detail || `browseWorkspaces failed: ${res.status}`)
@@ -165,7 +164,7 @@ export async function browseWorkspaces(path?: string | null): Promise<WorkspaceB
 
 export async function listCodingWorkspaceFiles(workspace: string): Promise<CodingWorkspaceFilesResponse> {
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${API}/team/workspace/files/list?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/files/list?${params}`)
   if (!res.ok) throw new Error(`listCodingWorkspaceFiles failed: ${res.status}`)
   return res.json()
 }
@@ -182,14 +181,14 @@ export async function getCodingWorkspaceGitDiff(
   if (paths && paths.length > 0) {
     for (const p of paths) params.append('paths', p)
   }
-  const res = await fetch(`${API}/team/workspace/git-diff/view?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/git-diff/view?${params}`)
   if (!res.ok) throw new Error(`getCodingWorkspaceGitDiff failed: ${res.status}`)
   return res.json()
 }
 
 export async function getCodingWorkspaceStatus(workspace: string): Promise<WorkspaceStatusResponse> {
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${API}/team/workspace/status?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/status?${params}`)
   if (!res.ok) throw new Error(`getCodingWorkspaceStatus failed: ${res.status}`)
   return res.json()
 }
@@ -204,13 +203,13 @@ export async function listTeamSessions(
   params.set('limit', String(limit))
   if (filters?.mode) params.set('mode', filters.mode)
   if (filters?.workspace) params.set('workspace', filters.workspace)
-  const res = await fetch(`${API}/team/sessions?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/team/sessions?${params}`)
   if (!res.ok) throw new Error(`listTeamSessions failed: ${res.status}`)
   return res.json()
 }
 
 export async function getTeamSession(id: string): Promise<SessionDetailResponse> {
-  const res = await fetch(`${API}/team/sessions/${id}`)
+  const res = await fetch(`${apiBaseUrl()}/team/sessions/${id}`)
   if (!res.ok) throw new Error(`getTeamSession failed: ${res.status}`)
   return res.json()
 }
@@ -229,7 +228,7 @@ export async function resolveTeamSession(options: {
   if (options.model !== undefined) body.model = options.model
   if (options.thinkingLevel !== undefined) body.thinking_level = options.thinkingLevel
   if (options.create !== undefined) body.create = options.create
-  const res = await fetch(`${API}/team/sessions/resolve`, {
+  const res = await fetch(`${apiBaseUrl()}/team/sessions/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -239,7 +238,7 @@ export async function resolveTeamSession(options: {
 }
 
 export async function updateTeamSessionTitle(id: string, title: string): Promise<SessionResponse> {
-  const res = await fetch(`${API}/team/sessions/${id}`, {
+  const res = await fetch(`${apiBaseUrl()}/team/sessions/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -249,14 +248,14 @@ export async function updateTeamSessionTitle(id: string, title: string): Promise
 }
 
 export async function deleteTeamSession(id: string): Promise<void> {
-  const res = await fetch(`${API}/team/sessions/${id}`, { method: 'DELETE' })
+  const res = await fetch(`${apiBaseUrl()}/team/sessions/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`deleteTeamSession failed: ${res.status}`)
 }
 
 export async function teamHistory(sessionId: string, before?: string): Promise<TeamHistoryResponse> {
   const url = before
-    ? `${API}/team/${encodeURIComponent(sessionId)}/history?before=${encodeURIComponent(before)}`
-    : `${API}/team/${encodeURIComponent(sessionId)}/history`
+    ? `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/history?before=${encodeURIComponent(before)}`
+    : `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/history`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`teamHistory failed: ${res.status}`)
   return res.json()
@@ -270,7 +269,7 @@ export async function teamHistory(sessionId: string, before?: string): Promise<T
  * via the ``/media/{path}`` proxy, not this endpoint — keep payloads small.
  */
 export async function listWorkspaceFiles(sessionId: string): Promise<WorkspaceFilesResponse> {
-  const res = await fetch(`${API}/team/${encodeURIComponent(sessionId)}/files`)
+  const res = await fetch(`${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/files`)
   if (!res.ok) throw new Error(`listWorkspaceFiles failed: ${res.status}`)
   return res.json()
 }
@@ -298,7 +297,7 @@ export function codingWorkspaceFileUrl(workspace: string, path: string): string 
 }
 
 export async function getTodos(sessionId: string): Promise<TodosResponse> {
-  const res = await fetch(`${API}/team/sessions/${encodeURIComponent(sessionId)}/todos`)
+  const res = await fetch(`${apiBaseUrl()}/team/sessions/${encodeURIComponent(sessionId)}/todos`)
   if (!res.ok) throw new Error(`getTodos failed: ${res.status}`)
   return res.json()
 }
@@ -306,7 +305,7 @@ export async function getTodos(sessionId: string): Promise<TodosResponse> {
 // ── /health ───────────────────────────────────────────────────────────────────
 
 export async function health(): Promise<{ status: string; version: string }> {
-  const res = await fetch(`${API}/health/ready`)
+  const res = await fetch(`${apiBaseUrl()}/health/ready`)
   if (!res.ok) throw new Error(`health failed: ${res.status}`)
   return res.json()
 }
@@ -363,7 +362,7 @@ export interface ObservabilitySummary {
 }
 
 export async function getObservabilitySummary(days: number): Promise<ObservabilitySummary> {
-  const res = await fetch(`${API}/observability/summary?days=${days}`)
+  const res = await fetch(`${apiBaseUrl()}/observability/summary?days=${days}`)
   if (!res.ok) throw new Error(`GET /observability/summary failed: ${res.status}`)
   return res.json()
 }
@@ -425,7 +424,7 @@ export async function listTraces(
   offset = 0,
 ): Promise<TracesListResponse> {
   const res = await fetch(
-    `${API}/observability/traces?days=${days}&limit=${limit}&offset=${offset}`,
+    `${apiBaseUrl()}/observability/traces?days=${days}&limit=${limit}&offset=${offset}`,
   )
   if (!res.ok) throw new Error(`GET /observability/traces failed: ${res.status}`)
   return res.json()
@@ -440,7 +439,7 @@ export async function getTraceDetail(
   days = 30,
 ): Promise<TraceDetailResponse | null> {
   const res = await fetch(
-    `${API}/observability/traces/${encodeURIComponent(traceId)}?days=${days}`,
+    `${apiBaseUrl()}/observability/traces/${encodeURIComponent(traceId)}?days=${days}`,
   )
   if (res.status === 404) return null
   if (!res.ok) throw new Error(`GET /observability/traces/:id failed: ${res.status}`)
@@ -454,7 +453,7 @@ export async function teamStatus(workspace?: string | null): Promise<TeamStatusR
   const params = new URLSearchParams()
   if (workspace) params.set('workspace', workspace)
   const query = params.toString()
-  const res = await fetch(`${API}/team/agents${query ? `?${query}` : ''}`)
+  const res = await fetch(`${apiBaseUrl()}/team/agents${query ? `?${query}` : ''}`)
   if (res.status === 404) return null
   if (!res.ok) return null
   const data = await res.json()
@@ -474,7 +473,7 @@ export async function teamStatus(workspace?: string | null): Promise<TeamStatusR
 // ── /quote ───────────────────────────────────────────────────────────────────
 
 export async function getQuoteOfTheDay(): Promise<{ quote: string; author: string }> {
-  const res = await fetch(`${API}/quote`)
+  const res = await fetch(`${apiBaseUrl()}/quote`)
   if (!res.ok) throw new Error(`getQuoteOfTheDay failed: ${res.status}`)
   return res.json()
 }
@@ -482,20 +481,20 @@ export async function getQuoteOfTheDay(): Promise<{ quote: string; author: strin
 // ── /wiki ─────────────────────────────────────────────────────────────────────
 
 export async function getWikiTree(unprocessedOnly = false): Promise<WikiTree> {
-  const url = unprocessedOnly ? `${API}/wiki/tree?unprocessed_only=true` : `${API}/wiki/tree`
+  const url = unprocessedOnly ? `${apiBaseUrl()}/wiki/tree?unprocessed_only=true` : `${apiBaseUrl()}/wiki/tree`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`GET /wiki/tree failed: ${res.status}`)
   return res.json()
 }
 
 export async function getWikiFile(path: string): Promise<WikiFile> {
-  const res = await fetch(`${API}/wiki/file?path=${encodeURIComponent(path)}`)
+  const res = await fetch(`${apiBaseUrl()}/wiki/file?path=${encodeURIComponent(path)}`)
   if (!res.ok) throw new Error(`GET /wiki/file failed: ${res.status}`)
   return res.json()
 }
 
 export async function putWikiFile(path: string, content: string): Promise<WikiFile> {
-  const res = await fetch(`${API}/wiki/file`, {
+  const res = await fetch(`${apiBaseUrl()}/wiki/file`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, content }),
@@ -508,7 +507,7 @@ export async function putWikiFile(path: string, content: string): Promise<WikiFi
 }
 
 export async function deleteWikiFile(path: string): Promise<void> {
-  const res = await fetch(`${API}/wiki/file?path=${encodeURIComponent(path)}`, {
+  const res = await fetch(`${apiBaseUrl()}/wiki/file?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
   })
   if (!res.ok) throw new Error(`DELETE /wiki/file failed: ${res.status}`)
@@ -523,13 +522,13 @@ export interface DreamConfig {
 }
 
 export async function getDreamConfig(): Promise<DreamConfig> {
-  const res = await fetch(`${API}/dream/config`)
+  const res = await fetch(`${apiBaseUrl()}/dream/config`)
   if (!res.ok) throw new Error(`GET /dream/config failed: ${res.status}`)
   return res.json()
 }
 
 export async function putDreamConfig(config: DreamConfig): Promise<DreamConfig> {
-  const res = await fetch(`${API}/dream/config`, {
+  const res = await fetch(`${apiBaseUrl()}/dream/config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
@@ -548,7 +547,7 @@ export async function triggerDreamRun(): Promise<{
   failed: number
   skipped?: string
 }> {
-  const res = await fetch(`${API}/dream/run`, { method: 'POST' })
+  const res = await fetch(`${apiBaseUrl()}/dream/run`, { method: 'POST' })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
     throw new Error(`POST /dream/run failed: ${res.status} ${detail}`)
@@ -587,19 +586,19 @@ async function parseDetailOrThrow(res: Response, label: string): Promise<never> 
 // ── /agents ──────────────────────────────────────────────────────────────────
 
 export async function listAgents(): Promise<AgentListResponse> {
-  const res = await fetch(`${API}/agents`)
+  const res = await fetch(`${apiBaseUrl()}/agents`)
   if (!res.ok) throw new Error(`listAgents failed: ${res.status}`)
   return res.json()
 }
 
 export async function getAgent(name: string): Promise<AgentDetail> {
-  const res = await fetch(`${API}/agents/${encodeURIComponent(name)}`)
+  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /agents/${name}`)
   return res.json()
 }
 
 export async function createAgent(name: string, content: string): Promise<AgentDetail> {
-  const res = await fetch(`${API}/agents`, {
+  const res = await fetch(`${apiBaseUrl()}/agents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, content }),
@@ -609,7 +608,7 @@ export async function createAgent(name: string, content: string): Promise<AgentD
 }
 
 export async function updateAgent(name: string, content: string): Promise<AgentDetail> {
-  const res = await fetch(`${API}/agents/${encodeURIComponent(name)}`, {
+  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, content }),
@@ -619,13 +618,13 @@ export async function updateAgent(name: string, content: string): Promise<AgentD
 }
 
 export async function deleteAgent(name: string): Promise<AgentDeleteResponse> {
-  const res = await fetch(`${API}/agents/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, `DELETE /agents/${name}`)
   return res.json()
 }
 
 export async function getRegistry(): Promise<RegistryResponse> {
-  const res = await fetch(`${API}/agents/registry`)
+  const res = await fetch(`${apiBaseUrl()}/agents/registry`)
   if (!res.ok) throw new Error(`getRegistry failed: ${res.status}`)
   return res.json()
 }
@@ -633,19 +632,19 @@ export async function getRegistry(): Promise<RegistryResponse> {
 // ── /skills ──────────────────────────────────────────────────────────────────
 
 export async function listSkillFiles(): Promise<SkillListResponse> {
-  const res = await fetch(`${API}/skills`)
+  const res = await fetch(`${apiBaseUrl()}/skills`)
   if (!res.ok) throw new Error(`listSkills failed: ${res.status}`)
   return res.json()
 }
 
 export async function getSkill(name: string): Promise<SkillDetail> {
-  const res = await fetch(`${API}/skills/${encodeURIComponent(name)}`)
+  const res = await fetch(`${apiBaseUrl()}/skills/${encodeURIComponent(name)}`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /skills/${name}`)
   return res.json()
 }
 
 export async function createSkill(name: string, content: string): Promise<SkillDetail> {
-  const res = await fetch(`${API}/skills`, {
+  const res = await fetch(`${apiBaseUrl()}/skills`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, content }),
@@ -655,7 +654,7 @@ export async function createSkill(name: string, content: string): Promise<SkillD
 }
 
 export async function updateSkill(name: string, content: string): Promise<SkillDetail> {
-  const res = await fetch(`${API}/skills/${encodeURIComponent(name)}`, {
+  const res = await fetch(`${apiBaseUrl()}/skills/${encodeURIComponent(name)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, content }),
@@ -665,7 +664,7 @@ export async function updateSkill(name: string, content: string): Promise<SkillD
 }
 
 export async function deleteSkill(name: string): Promise<SkillDeleteResponse> {
-  const res = await fetch(`${API}/skills/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  const res = await fetch(`${apiBaseUrl()}/skills/${encodeURIComponent(name)}`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, `DELETE /skills/${name}`)
   return res.json()
 }
@@ -676,7 +675,7 @@ export async function listCommands(workspace?: string | null): Promise<CommandLi
   const params = new URLSearchParams()
   if (workspace) params.set('workspace', workspace)
   const query = params.toString()
-  const res = await fetch(`${API}/commands${query ? `?${query}` : ''}`)
+  const res = await fetch(`${apiBaseUrl()}/commands${query ? `?${query}` : ''}`)
   if (!res.ok) throw new Error(`listCommands failed: ${res.status}`)
   return res.json()
 }
@@ -693,7 +692,7 @@ export async function renderCommand(
   const params = new URLSearchParams()
   if (workspace) params.set('workspace', workspace)
   const query = params.toString()
-  const res = await fetch(`${API}/commands/${encoded}/render${query ? `?${query}` : ''}`, {
+  const res = await fetch(`${apiBaseUrl()}/commands/${encoded}/render${query ? `?${query}` : ''}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ arguments: arguments_ }),
@@ -706,7 +705,7 @@ export async function renderCommand(
 
 export async function listSnippets(workspace: string): Promise<SnippetListResponse> {
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${API}/snippets?${params.toString()}`)
+  const res = await fetch(`${apiBaseUrl()}/snippets?${params.toString()}`)
   if (!res.ok) throw new Error(`listSnippets failed: ${res.status}`)
   return res.json()
 }
@@ -714,7 +713,7 @@ export async function listSnippets(workspace: string): Promise<SnippetListRespon
 export async function renderSnippet(name: string, workspace: string): Promise<SnippetRenderResponse> {
   const encoded = name.split('/').map(encodeURIComponent).join('/')
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${API}/snippets/${encoded}/render?${params.toString()}`, {
+  const res = await fetch(`${apiBaseUrl()}/snippets/${encoded}/render?${params.toString()}`, {
     method: 'POST',
   })
   if (!res.ok) await parseDetailOrThrow(res, `POST /snippets/${name}/render`)
@@ -724,13 +723,13 @@ export async function renderSnippet(name: string, workspace: string): Promise<Sn
 // ── /scheduler/tasks ─────────────────────────────────────────────────────────
 
 export async function listScheduledTasks(): Promise<ScheduledTaskListResponse> {
-  const res = await fetch(`${API}/scheduler/tasks`)
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks`)
   if (!res.ok) throw new Error(`listScheduledTasks failed: ${res.status}`)
   return res.json()
 }
 
 export async function createScheduledTask(body: ScheduledTaskCreate): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${API}/scheduler/tasks`, {
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -740,13 +739,13 @@ export async function createScheduledTask(body: ScheduledTaskCreate): Promise<Sc
 }
 
 export async function getScheduledTask(id: string): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${API}/scheduler/tasks/${encodeURIComponent(id)}`)
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /scheduler/tasks/${id}`)
   return res.json()
 }
 
 export async function updateScheduledTask(id: string, body: Partial<ScheduledTaskCreate>): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${API}/scheduler/tasks/${encodeURIComponent(id)}`, {
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -756,24 +755,24 @@ export async function updateScheduledTask(id: string, body: Partial<ScheduledTas
 }
 
 export async function deleteScheduledTask(id: string): Promise<void> {
-  const res = await fetch(`${API}/scheduler/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, `DELETE /scheduler/tasks/${id}`)
 }
 
 export async function pauseScheduledTask(id: string): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${API}/scheduler/tasks/${encodeURIComponent(id)}/pause`, { method: 'POST' })
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}/pause`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${id}/pause`)
   return res.json()
 }
 
 export async function resumeScheduledTask(id: string): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${API}/scheduler/tasks/${encodeURIComponent(id)}/resume`, { method: 'POST' })
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}/resume`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${id}/resume`)
   return res.json()
 }
 
 export async function triggerScheduledTask(id: string): Promise<{ status: string }> {
-  const res = await fetch(`${API}/scheduler/tasks/${encodeURIComponent(id)}/trigger`, { method: 'POST' })
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}/trigger`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${id}/trigger`)
   return res.json()
 }
@@ -818,19 +817,19 @@ export type UpdateServerRequest = { server: ServerBody }
 export type ServerDeleteResponse = { name: string }
 
 export async function listMcpServers(): Promise<{ servers: ServerStatus[] }> {
-  const res = await fetch(`${API}/mcp/servers`)
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers`)
   if (!res.ok) throw new Error(`listMcpServers failed: ${res.status}`)
   return res.json()
 }
 
 export async function getMcpServer(name: string): Promise<ServerStatus> {
-  const res = await fetch(`${API}/mcp/servers/${encodeURIComponent(name)}`)
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /mcp/servers/${name}`)
   return res.json()
 }
 
 export async function createMcpServer(name: string, server: ServerBody): Promise<ServerStatus> {
-  const res = await fetch(`${API}/mcp/servers`, {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, server }),
@@ -840,7 +839,7 @@ export async function createMcpServer(name: string, server: ServerBody): Promise
 }
 
 export async function updateMcpServer(name: string, server: ServerBody): Promise<ServerStatus> {
-  const res = await fetch(`${API}/mcp/servers/${encodeURIComponent(name)}`, {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ server }),
@@ -850,19 +849,19 @@ export async function updateMcpServer(name: string, server: ServerBody): Promise
 }
 
 export async function deleteMcpServer(name: string): Promise<ServerDeleteResponse> {
-  const res = await fetch(`${API}/mcp/servers/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, `DELETE /mcp/servers/${name}`)
   return res.json()
 }
 
 export async function restartMcpServer(name: string): Promise<ServerStatus> {
-  const res = await fetch(`${API}/mcp/servers/${encodeURIComponent(name)}/restart`, { method: 'POST' })
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/restart`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/restart`)
   return res.json()
 }
 
 export async function connectMcpOAuth(name: string): Promise<ServerStatus> {
-  const res = await fetch(`${API}/mcp/servers/${encodeURIComponent(name)}/oauth/connect`, { method: 'POST' })
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/oauth/connect`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/oauth/connect`)
   return res.json()
 }
@@ -872,7 +871,7 @@ export async function connectMcpOAuth(name: string): Promise<ServerStatus> {
 export type SandboxSettings = { denied_patterns: string[] }
 
 export async function getSandboxSettings(): Promise<SandboxSettings> {
-  const res = await fetch(`${API}/settings/sandbox`)
+  const res = await fetch(`${apiBaseUrl()}/settings/sandbox`)
   if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/sandbox')
   return res.json()
 }
@@ -880,7 +879,7 @@ export async function getSandboxSettings(): Promise<SandboxSettings> {
 export async function updateSandboxSettings(
   body: SandboxSettings,
 ): Promise<SandboxSettings> {
-  const res = await fetch(`${API}/settings/sandbox`, {
+  const res = await fetch(`${apiBaseUrl()}/settings/sandbox`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -896,7 +895,7 @@ export type TitleGenerationSettings = {
 }
 
 export async function getTitleGenerationSettings(): Promise<TitleGenerationSettings> {
-  const res = await fetch(`${API}/settings/title-generation`)
+  const res = await fetch(`${apiBaseUrl()}/settings/title-generation`)
   if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/title-generation')
   return res.json()
 }
@@ -904,7 +903,7 @@ export async function getTitleGenerationSettings(): Promise<TitleGenerationSetti
 export async function updateTitleGenerationSettings(
   body: TitleGenerationSettings,
 ): Promise<TitleGenerationSettings> {
-  const res = await fetch(`${API}/settings/title-generation`, {
+  const res = await fetch(`${apiBaseUrl()}/settings/title-generation`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -924,7 +923,7 @@ export type MultimodalSettings = {
 }
 
 export async function getMultimodalSettings(): Promise<MultimodalSettings> {
-  const res = await fetch(`${API}/settings/multimodal`)
+  const res = await fetch(`${apiBaseUrl()}/settings/multimodal`)
   if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/multimodal')
   return res.json()
 }
@@ -932,7 +931,7 @@ export async function getMultimodalSettings(): Promise<MultimodalSettings> {
 export async function updateMultimodalSettings(
   body: MultimodalSettings,
 ): Promise<MultimodalSettings> {
-  const res = await fetch(`${API}/settings/multimodal`, {
+  const res = await fetch(`${apiBaseUrl()}/settings/multimodal`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1036,7 +1035,7 @@ export type OAuthLoginEvent = {
 }
 
 export async function listProviders(): Promise<ProvidersListBody> {
-  const res = await fetch(`${API}/settings/providers`)
+  const res = await fetch(`${apiBaseUrl()}/settings/providers`)
   if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/providers')
   return res.json()
 }
@@ -1045,7 +1044,7 @@ export async function saveProvider(
   providerId: string,
   body: ProviderSaveRequest,
 ): Promise<ProviderSaveResponse> {
-  const res = await fetch(`${API}/settings/providers/${encodeURIComponent(providerId)}`, {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1058,7 +1057,7 @@ export async function testProvider(
   providerId: string,
   body: { api_key?: string; model: string; extra?: Record<string, string> },
 ): Promise<ProviderTestResponse> {
-  const res = await fetch(`${API}/settings/providers/${encodeURIComponent(providerId)}/test`, {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1071,7 +1070,7 @@ export async function listProviderModels(
   providerId: string,
   body: { api_key?: string; extra?: Record<string, string> },
 ): Promise<ProviderModelsResponse> {
-  const res = await fetch(`${API}/settings/providers/${encodeURIComponent(providerId)}/models`, {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/models`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1081,13 +1080,13 @@ export async function listProviderModels(
 }
 
 export async function getProviderUsage(providerId: string): Promise<ProviderUsageResponse> {
-  const res = await fetch(`${API}/settings/providers/${encodeURIComponent(providerId)}/usage`)
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/usage`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /settings/providers/${providerId}/usage`)
   return res.json()
 }
 
 export async function installSeed(providerModel: string): Promise<SeedInstallResponse> {
-  const res = await fetch(`${API}/settings/seed`, {
+  const res = await fetch(`${apiBaseUrl()}/settings/seed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider_model: providerModel }),
@@ -1103,7 +1102,7 @@ export function oauthLoginStream(
   mode?: 'browser',
 ): void {
   const query = mode ? `?mode=${encodeURIComponent(mode)}` : ''
-  fetch(`${API}/auth/${encodeURIComponent(providerId)}/login${query}`, { signal })
+  fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/login${query}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error(`GET /auth/${providerId}/login failed: ${res.status}`)
       readSSE(res, {
@@ -1119,7 +1118,7 @@ export function oauthLoginStream(
 }
 
 export async function submitOAuthCallback(providerId: string, code: string): Promise<{ ok: boolean; suggested_model?: string }> {
-  const res = await fetch(`${API}/auth/${encodeURIComponent(providerId)}/callback`, {
+  const res = await fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/callback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
@@ -1155,13 +1154,13 @@ export type SpeechConfig = {
 }
 
 export async function getSpeechConfig(): Promise<SpeechConfig> {
-  const res = await fetch(`${API}/speech/config`)
+  const res = await fetch(`${apiBaseUrl()}/speech/config`)
   if (!res.ok) await parseDetailOrThrow(res, 'GET /speech/config')
   return res.json()
 }
 
 export async function putSpeechConfig(body: SpeechConfig): Promise<SpeechConfig> {
-  const res = await fetch(`${API}/speech/config`, {
+  const res = await fetch(`${apiBaseUrl()}/speech/config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1173,7 +1172,7 @@ export async function putSpeechConfig(body: SpeechConfig): Promise<SpeechConfig>
 export async function postTranscribe(audioBlob: Blob): Promise<{ text: string }> {
   const formData = new FormData()
   formData.append('file', audioBlob, 'recording.webm')
-  const res = await fetch(`${API}/speech/transcribe`, {
+  const res = await fetch(`${apiBaseUrl()}/speech/transcribe`, {
     method: 'POST',
     body: formData,
   })

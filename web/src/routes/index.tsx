@@ -126,10 +126,15 @@ export function HomePage() {
               <span className="text-(--color-text-muted)">Choose server</span>
             </button>
           ) : (
-            <>
+            <button
+              type="button"
+              onClick={() => setBackendDialogOpen(true)}
+              className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+            >
               <Wifi size={12} className="text-(--color-success)" />
               <span className="text-(--color-text-muted)">Connected</span>
-            </>
+              <span className="text-(--color-text-muted)">Change server</span>
+            </button>
           )}
         </div>
       </motion.div>

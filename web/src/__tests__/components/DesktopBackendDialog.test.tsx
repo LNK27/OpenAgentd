@@ -75,7 +75,7 @@ describe('DesktopBackendDialog', () => {
     render(<DesktopBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/add or connect server url/i), 'localhost')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Check' }))
 
     expect(await screen.findByText('Enter a full server URL, including http:// or https://.')).toBeTruthy()
     expect(invokeCalls.some((call) => call.command === 'desktop_set_backend_base_url')).toBe(false)
@@ -94,7 +94,7 @@ describe('DesktopBackendDialog', () => {
         args: undefined,
       })
     })
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 
   it('saves a server name without switching connections', async () => {
@@ -129,35 +129,39 @@ describe('DesktopBackendDialog', () => {
     })
   })
 
-  it('connects a valid typed URL through the desktop command', async () => {
+  it('shows an error and does not switch when Check health probe fails', async () => {
+    const user = userEvent.setup()
+    render(<DesktopBackendDialog open onOpenChange={() => {}} />)
+
+    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4999')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+
+    expect(await screen.findByText('Server did not respond to /api/health/live.')).toBeTruthy()
+    expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:5999')
+    expect(invokeCalls.some((call) => call.command === 'desktop_set_backend_base_url')).toBe(false)
+  })
+
+  it('checks and uses a valid typed URL without saving or closing', async () => {
     const user = userEvent.setup()
     const onOpenChange = mock(() => {})
     render(<DesktopBackendDialog open onOpenChange={onOpenChange} />)
 
     await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4082')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Check' }))
 
-    await waitFor(() => {
-      expect(invokeCalls).toContainEqual({
-        command: 'desktop_set_backend_base_url',
-        args: { baseUrl: 'http://127.0.0.1:4082' },
-      })
-    })
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
+    expect(invokeCalls.some((call) => call.command === 'desktop_set_backend_base_url')).toBe(false)
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 
-  it('connects a saved server directly without copying stale input', async () => {
+  it('checks and uses a saved server directly without copying stale input', async () => {
     const user = userEvent.setup()
     render(<DesktopBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/add or connect server url/i), 'http://wrong.example')
     await user.click(await screen.findByText('Local CLI'))
 
-    await waitFor(() => {
-      expect(invokeCalls).toContainEqual({
-        command: 'desktop_set_backend_base_url',
-        args: { baseUrl: 'http://127.0.0.1:4082' },
-      })
-    })
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
+    expect(invokeCalls.some((call) => call.command === 'desktop_set_backend_base_url')).toBe(false)
   })
 })

@@ -4,6 +4,8 @@ declare global {
   }
 }
 
+const listeners = new Set<() => void>()
+
 function normalizeBaseUrl(value: string | undefined): string {
   const trimmed = value?.trim()
   if (!trimmed) return '/api'
@@ -18,6 +20,21 @@ export function apiBaseUrl(): string {
     return normalizeBaseUrl(window.__OAD_API_BASE_URL__)
   }
   return normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL)
+}
+
+export function setApiBaseUrl(baseUrl: string): void {
+  if (typeof window === 'undefined') return
+  Object.defineProperty(window, '__OAD_API_BASE_URL__', {
+    value: baseUrl,
+    writable: true,
+    configurable: true,
+  })
+  for (const listener of listeners) listener()
+}
+
+export function onApiBaseUrlChange(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
 }
 
 export function apiUrl(path: string): string {

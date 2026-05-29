@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
 
-import { apiBaseUrl } from '@/api/base-url'
+import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import {
   getDesktopBackendStatus,
   removeDesktopBackendServer,
   saveDesktopBackendServer,
-  setDesktopBackendBaseUrl,
   useBundledDesktopBackend,
   type SavedDesktopServer,
   type DesktopBackendStatus,
@@ -51,14 +50,33 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
 
   if (!open) return null
 
-  async function connectExternal(nextBaseUrl = baseUrl) {
+  async function checkExternal(nextBaseUrl = baseUrl) {
     const target = nextBaseUrl.trim()
     const validationError = validateServerUrl(target)
     if (validationError) {
       setError(validationError)
       return
     }
-    await runConnectionSwitch(() => setDesktopBackendBaseUrl(target))
+    setPending(true)
+    setError(null)
+    try {
+      const normalized = target.replace(/\/+$/, '')
+      const online = await pingServer(normalized)
+      setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
+      if (!online) {
+        setError('Server did not respond to /api/health/live.')
+        return
+      }
+      setApiBaseUrl(normalized)
+      setStatus((prev) => ({
+        base_url: normalized,
+        sidecar_running: false,
+        external: true,
+        servers: prev?.servers ?? DEFAULT_SERVERS,
+      }))
+    } finally {
+      setPending(false)
+    }
   }
 
   async function connectBundled() {
@@ -112,7 +130,8 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
     setError(null)
     try {
       await action()
-      onOpenChange(false)
+      const next = await getDesktopBackendStatus()
+      setStatus(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -176,7 +195,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
                 >
                   <button
                     type="button"
-                    onClick={() => { setBaseUrl(server.base_url); void connectExternal(server.base_url) }}
+                    onClick={() => { setBaseUrl(server.base_url); void checkExternal(server.base_url) }}
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     disabled={pending}
                   >
@@ -220,11 +239,11 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
             />
             <button
               type="button"
-              onClick={() => void connectExternal()}
+              onClick={() => void checkExternal()}
               className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-2 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60"
               disabled={pending}
             >
-              {pending ? 'Connecting…' : 'Connect'}
+              {pending ? 'Checking…' : 'Check'}
             </button>
           </div>
           <label className="block text-xs font-medium text-(--color-text)" htmlFor="desktop-backend-name">
@@ -248,7 +267,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
             </button>
           </div>
           <p className="text-xs leading-5 text-(--color-text-muted)">
-            Connect checks if the server is running before switching. Save stores or renames it without switching.
+            Check verifies the server and uses it for this desktop session. Save persists or renames it for future use.
           </p>
 
           {error ? (

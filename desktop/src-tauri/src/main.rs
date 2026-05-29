@@ -219,7 +219,7 @@ async fn desktop_set_backend_base_url(app: AppHandle, base_url: String) -> Resul
     wait_for_health(&normalized, 20, Duration::from_millis(250))
         .await
         .map_err(|e| format!("{e:#}"))?;
-    save_desktop_backend_config(&app, Some(&normalized), None).map_err(|e| format!("{e:#}"))?;
+    save_desktop_backend_config(&app, Some(&normalized), None, false).map_err(|e| format!("{e:#}"))?;
     switch_to_external_backend(&app, normalized)
         .await
         .map_err(|e| format!("{e:#}"))
@@ -228,7 +228,7 @@ async fn desktop_set_backend_base_url(app: AppHandle, base_url: String) -> Resul
 #[tauri::command]
 async fn desktop_save_backend_server(app: AppHandle, base_url: String, name: Option<String>) -> Result<DesktopBackendStatus, String> {
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
-    save_desktop_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref())
+    save_desktop_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref(), true)
         .map_err(|e| format!("{e:#}"))?;
     desktop_backend_status(app.clone(), app.state())
         .await
@@ -246,7 +246,7 @@ async fn desktop_remove_backend_server(app: AppHandle, base_url: String) -> Resu
 
 #[tauri::command]
 async fn desktop_use_bundled_backend(app: AppHandle) -> Result<(), String> {
-    save_desktop_backend_config(&app, None, None).map_err(|e| format!("{e:#}"))?;
+    save_desktop_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
     restart_sidecar_and_reload_window(&app)
         .await
         .map_err(|e| format!("{e:#}"))
@@ -1021,10 +1021,12 @@ fn load_desktop_backend_config(app: &AppHandle) -> Result<DesktopBackendConfig> 
     Ok(config)
 }
 
-fn save_desktop_backend_config(app: &AppHandle, base_url: Option<&str>, name: Option<&str>) -> Result<()> {
+fn save_desktop_backend_config(app: &AppHandle, base_url: Option<&str>, name: Option<&str>, activate: bool) -> Result<()> {
     let path = desktop_backend_config_path(app)?;
     let mut config = load_desktop_backend_config(app).unwrap_or_default();
-    config.active_base_url = base_url.map(str::to_string);
+    if activate {
+        config.active_base_url = base_url.map(str::to_string);
+    }
     if let Some(url) = base_url {
         if let Some(saved) = config.servers.iter_mut().find(|saved| saved.base_url == url) {
             if let Some(name) = name {
