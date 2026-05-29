@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 
@@ -139,6 +139,56 @@ describe('ProvidersSettingsPage', () => {
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('ABCD-1234'))
     expect(screen.getByRole('button', { name: /Open authorization page/i }).className).toContain('min-h-11')
     expect(screen.queryByText(/personal ChatGPT accounts/)).toBeNull()
+  })
+
+  it('keeps OAuth dialog connected when mobile reports load failed after success', async () => {
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: true,
+        providers: [
+          {
+            id: 'codex',
+            label: 'Codex',
+            description: 'Codex OAuth provider',
+            kind: 'oauth',
+            credentials: [],
+            env_var: '',
+            env_vars: [],
+            fallback_models: [],
+            oauth_command: '',
+            docs_url: '',
+            is_configured: false,
+            is_saved: false,
+            is_reachable: null,
+          },
+        ],
+      })),
+      http.get('http://localhost/api/auth/codex/login', () => new Response(
+        new ReadableStream({
+          start(controller) {
+            const encoder = new TextEncoder()
+            controller.enqueue(encoder.encode('event: success\ndata: {"suggested_model":"codex:gpt-5.4"}\n\n'))
+            window.setTimeout(() => controller.error(new TypeError('Load failed')), 0)
+          },
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      )),
+      http.post('http://localhost/api/settings/seed', () => HttpResponse.json({
+        agents_written: [],
+        skills_written: [],
+        configs_written: [],
+        source: 'test',
+      })),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('Codex')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Connect/i }))
+
+    expect(await screen.findByText('Connected successfully.')).toBeTruthy()
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByText('Load failed')).toBeNull()
   })
 
   it('keeps provider model rows and copy actions touch-sized before desktop compact sizing', async () => {

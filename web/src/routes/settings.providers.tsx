@@ -68,6 +68,10 @@ function eventLabel(event: OAuthLoginEvent): string {
   return event.message || event.event.replaceAll('_', ' ')
 }
 
+function isBenignOAuthStreamClose(message: string): boolean {
+  return /load failed|networkerror|failed to fetch/i.test(message)
+}
+
 function formatResetTime(timestamp?: number | null): string | null {
   if (typeof timestamp !== 'number') return null
   return new Date(timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -684,7 +688,10 @@ function OAuthLoginDialog({
             setError(event.message ?? 'OAuth login failed')
           }
         },
-        onError: (err) => setError(err.message),
+        onError: (err) => {
+          if (successHandledRef.current && isBenignOAuthStreamClose(err.message)) return
+          setError(err.message)
+        },
       },
       abort.signal,
       authMode === 'browser' ? 'browser' : undefined,
