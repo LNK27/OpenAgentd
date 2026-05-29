@@ -8,6 +8,7 @@ import { Activity, AlertCircle, Code2, Gauge, Settings, Wifi } from 'lucide-reac
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
 import { usePlatform } from '@/hooks/use-platform'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
@@ -22,7 +23,9 @@ export function HomePage() {
   // inset; this strip extends the drag area across the rest of the top
   // edge. Other platforms have a native OS title bar so the strip is
   // gated to ``isMacOverlay``.
-  const { isMacOverlay } = usePlatform()
+  const isMobile = useIsMobile()
+  const { isMacOverlay, isTauri, os } = usePlatform()
+  const isTauriMobile = isMobile && isTauri && (os === 'ios' || os === 'android')
   const dragHandlers = useTauriDrag()
   const prefersReducedMotion = useReducedMotion()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
@@ -37,7 +40,7 @@ export function HomePage() {
   }
 
   return (
-    <main id="main" className="mobile-safe-shell mobile-viewport flex h-dvh flex-col items-center justify-center bg-(--bg-page) px-4">
+    <main id="main" className="mobile-safe-shell mobile-viewport flex h-dvh flex-col overflow-y-auto bg-(--bg-page) px-4">
       {isMacOverlay && (
         <div
           {...dragHandlers}
@@ -49,18 +52,18 @@ export function HomePage() {
         initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
         animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         transition={{ duration: prefersReducedMotion ? 0.01 : 0.45, ease: 'easeOut' }}
-        className="flex w-full max-w-sm flex-col items-center gap-8"
+        className={`mx-auto flex w-full max-w-sm flex-1 flex-col items-center ${isTauriMobile ? 'justify-start gap-5 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))]' : 'justify-center gap-8 py-6'}`}
       >
         {/* Logo */}
-        <div className="flex select-none flex-col items-center gap-4">
+        <div className={`flex select-none flex-col items-center ${isTauriMobile ? 'gap-3' : 'gap-4'}`}>
           <div className="relative">
             <div className="absolute inset-0 rounded-3xl bg-(--bg-key) blur-2xl" />
-            <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-(--bg-key) ring-1 ring-(--bg-key)">
-              <img src={OpenAgentdAppIcon} width={72} height={72} alt="OpenAgentd logo" className="rounded-2xl" />
+            <div className={`relative flex items-center justify-center rounded-3xl bg-(--bg-key) ring-1 ring-(--bg-key) ${isTauriMobile ? 'h-16 w-16' : 'h-20 w-20'}`}>
+              <img src={OpenAgentdAppIcon} width={isTauriMobile ? 58 : 72} height={isTauriMobile ? 58 : 72} alt="OpenAgentd logo" className="rounded-2xl" />
             </div>
           </div>
           <div className="text-center">
-            <h1 className="font-hand text-5xl leading-none text-(--color-text)">
+            <h1 className={`font-hand leading-none text-(--color-text) ${isTauriMobile ? 'text-4xl' : 'text-5xl'}`}>
               OpenAgentd
             </h1>
             <p className="mt-1 text-sm text-(--color-text-muted)">
@@ -70,7 +73,7 @@ export function HomePage() {
         </div>
 
         {/* Mode picker */}
-        <div className="flex w-full flex-col gap-3">
+        <div className={`flex flex-col ${isTauriMobile ? 'w-[min(100%,21rem)] gap-2.5' : 'w-full gap-3'}`}>
           <ModeCard
             icon={Gauge}
             title="Cockpit"
@@ -83,6 +86,7 @@ export function HomePage() {
             }
             disabled={!backendOk || !hasTeam}
             loading={loading && !error}
+            compact={isTauriMobile}
             onClick={() => navigate({ to: '/cockpit' })}
           />
           <ModeCard
@@ -91,6 +95,7 @@ export function HomePage() {
             description="Use a project workspace"
             disabled={!backendOk}
             loading={loading && !error}
+            compact={isTauriMobile}
             onClick={openCodingMode}
           />
            <ModeCard
@@ -99,6 +104,7 @@ export function HomePage() {
              description="Span aggregates & latency"
              disabled={!backendOk}
              loading={loading && !error}
+             compact={isTauriMobile}
              onClick={() => navigate({ to: '/telemetry' })}
            />
            <ModeCard
@@ -107,6 +113,7 @@ export function HomePage() {
              description="Agents, skills, MCP servers, sandbox"
              disabled={!backendOk}
              loading={loading && !error}
+             compact={isTauriMobile}
              onClick={() => navigate({ to: '/settings' })}
            />
         </div>
@@ -149,6 +156,7 @@ function ModeCard({
   description,
   disabled,
   loading,
+  compact = false,
   onClick,
 }: {
   icon: React.ComponentType<{ size?: number; className?: string }>
@@ -156,6 +164,7 @@ function ModeCard({
   description: string
   disabled: boolean
   loading: boolean
+  compact?: boolean
   onClick: () => void
 }) {
   return (
@@ -164,21 +173,21 @@ function ModeCard({
       whileTap={disabled ? {} : { scale: 0.985 }}
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      className={`flex w-full items-center gap-4 rounded-2xl border px-5 py-4 text-left transition-all ${
+      className={`flex w-full items-center rounded-2xl border text-left transition-all ${compact ? 'gap-3 px-4 py-3' : 'gap-4 px-5 py-4'} ${
         disabled
           ? 'cursor-not-allowed border-(--bg-key) bg-(--bg-key) opacity-40'
           : 'border-(--bg-key) bg-(--bg-key) hover:border-(--color-border-strong) hover:bg-(--bg-key)'
       }`}
     >
       <div
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+        className={`flex shrink-0 items-center justify-center rounded-xl ${compact ? 'h-9 w-9' : 'h-10 w-10'} ${
           disabled
             ? 'bg-(--bg-key)'
             : 'bg-(--bg-key) ring-1 ring-(--color-border-strong)'
         }`}
       >
         <Icon
-          size={18}
+          size={compact ? 16 : 18}
           className={
             disabled
               ? 'text-(--color-text-muted)'
@@ -190,7 +199,7 @@ function ModeCard({
       </div>
       <div className="min-w-0">
         <p className="text-sm font-semibold text-(--color-text)">{title}</p>
-        <p className="mt-0.5 text-xs text-(--color-text-muted)">{description}</p>
+        <p className={`text-xs text-(--color-text-muted) ${compact ? 'mt-0 truncate' : 'mt-0.5'}`}>{description}</p>
       </div>
     </motion.button>
   )

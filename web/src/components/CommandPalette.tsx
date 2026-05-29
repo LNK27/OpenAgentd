@@ -12,6 +12,8 @@ import { Search, CornerDownLeft } from 'lucide-react'
 import { useProximityTracker, useProximityIntensity } from '@/hooks/useProximity'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { usePlatform } from '@/hooks/use-platform'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 export interface Command {
   id: string
@@ -35,6 +37,9 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const mouseY = useProximityTracker(listRef)
   const prefersReducedMotion = useReducedMotion()
+  const isMobile = useIsMobile()
+  const { isTauri, os } = usePlatform()
+  const isTauriMobile = isMobile && isTauri && (os === 'ios' || os === 'android')
   useModalFocus(true, onClose)
 
   // Focus input on open
@@ -128,7 +133,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
-        className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-3 pt-4 backdrop-blur-sm sm:px-0 sm:pt-[15vh]"
+        className={`fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-3 backdrop-blur-sm sm:px-0 sm:pt-[15vh] ${isTauriMobile ? 'pt-[max(5rem,calc(env(safe-area-inset-top)+3.5rem))]' : 'pt-4'}`}
         onClick={onClose}
       >
         <motion.div

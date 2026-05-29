@@ -1014,11 +1014,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             boundsRef={mainColumnRef}
             onSubmit={async (content, files) => {
               const expanded = await expandUserCommand(content)
+              const current = useTeamStore.getState()
               sendMessage(expanded, files, {
                 mode,
                 workspace,
-                model: selectedModel || null,
-                thinkingLevel: selectedThinkingLevel || null,
+                model: current.sessionId ? selectedModel || null : null,
+                thinkingLevel: current.sessionId ? selectedThinkingLevel || null : null,
               })
             }}
             onStop={() => useTeamStore.getState().stopTeam()}
