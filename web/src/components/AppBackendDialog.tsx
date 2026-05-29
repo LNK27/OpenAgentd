@@ -142,14 +142,14 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="app-backend-title"
       onClick={() => onOpenChange(false)}
     >
       <div
-        className="w-full max-w-md rounded-xl border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-2xl"
+        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-xl border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start gap-3 border-b border-(--color-border) px-4 py-4">
@@ -164,7 +164,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           </div>
         </div>
 
-        <div className="space-y-4 px-4 py-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
           <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-xs text-(--color-text-muted)">
             Current: <span className="font-mono text-(--color-text)">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
             <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px]">

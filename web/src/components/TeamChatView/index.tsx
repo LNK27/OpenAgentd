@@ -648,13 +648,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   return (
     // h-dvh handles iOS Safari's dynamic toolbar.
-    <div className="flex h-dvh flex-col bg-(--bg-page)">
+    <div className="mobile-safe-shell mobile-viewport flex h-dvh flex-col bg-(--bg-page)">
       {/* 40 px header above the sidebar/content row. On macOS Tauri it
           doubles as the window drag region via useTauriDrag, with a
           70 px left inset reserved for the OS traffic-lights. */}
       <header
         {...dragHandlers}
-        className={`flex h-10 items-center border-b border-(--color-border) bg-(--bg-page) ${
+        className={`mobile-safe-header flex h-10 items-center border-b border-(--color-border) bg-(--bg-page) ${
           isMacOverlay ? 'select-none pl-[70px]' : ''
         }`}
       >
@@ -723,7 +723,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           {/* Active-agent chip → dropdown of all members. Split view
               collapses to a count pill — each pane already shows its
               own agent. */}
-          <div className="flex min-w-0 flex-1 justify-start">
+          <div className="flex min-w-0 flex-1 justify-start overflow-hidden">
             {effectiveViewMode === 'agent' && activeAgent && (
               <ActiveAgentSwitcher
                 activeAgent={activeAgent}
@@ -794,7 +794,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       {/* Body row — sidebar (or coding rail) + main content column. On
           mobile the Sidebar is position:fixed (overlay drawer), so it
           takes no space here and the main column is always full-width. */}
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {mode === 'coding' ? (
           <CodingSidebar
             currentSessionId={sessionIdState || undefined}
@@ -816,7 +816,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           />
         )}
 
-        <main id="main" ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col">
+        <main id="main" ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {setupRequired && (
           <div className="mx-3 mt-3 flex flex-col gap-3 rounded-xl border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 gap-3">
@@ -1058,7 +1058,7 @@ function ActiveAgentSwitcher({
     <DropdownMenu>
       <DropdownMenuTrigger
         data-no-drag
-        className="inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs leading-none font-semibold text-(--color-text) outline-none transition-all hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-accent)/40"
+        className="inline-flex min-w-0 shrink items-center gap-2 rounded-md px-2 py-1.5 font-mono text-xs leading-none font-semibold text-(--color-text) outline-none transition-all hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-accent)/40 sm:px-3"
         aria-label={`Switch active agent (current: ${activeAgent})`}
       >
         <span

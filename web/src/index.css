@@ -394,6 +394,62 @@
 .pl-safe { padding-left:   env(safe-area-inset-left,   0px); }
 .pr-safe { padding-right:  env(safe-area-inset-right,  0px); }
 
+html[data-mobile-shell] {
+  -webkit-text-size-adjust: 100%;
+  touch-action: pan-x pan-y;
+}
+
+html[data-mobile-shell] body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html[data-mobile-shell] input,
+html[data-mobile-shell] textarea,
+html[data-mobile-shell] [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.mobile-safe-shell {
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.mobile-safe-header {
+  min-height: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.mobile-safe-top {
+  top: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
+}
+
+.mobile-safe-overlay {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.mobile-safe-floating {
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  left: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+.mobile-safe-toast {
+  top: max(1rem, env(safe-area-inset-top, 0px));
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  left: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+@supports (height: 100svh) {
+  .mobile-viewport {
+    height: 100svh;
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Scrollbar — minimal, theme-aware
  * ───────────────────────────────────────────────────────────── */

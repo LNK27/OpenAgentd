@@ -51,7 +51,7 @@ export function Welcome({ onReady }: WelcomeProps) {
         : 'ready'
 
   return (
-    <main id="main" className="flex h-dvh flex-col items-center justify-center bg-(--bg-page) px-4">
+    <main id="main" className="mobile-safe-shell mobile-viewport flex h-dvh flex-col items-center justify-center bg-(--bg-page) px-4">
       <motion.div
         initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 20 }}
         animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}

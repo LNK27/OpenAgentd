@@ -8,8 +8,10 @@ import { Home } from 'lucide-react'
 import { ToastStack } from '@/components/ToastStack'
 import { SkipLink } from '@/components/motion'
 import { MacTitleBar } from '@/components/MacTitleBar'
+import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 
 export function Root() {
+  useMobileViewportGuards()
   // Theme application is handled by `initTheme()` in main.tsx and the
   // inline pre-paint script in index.html. Do not force `.dark` here —
   // it would override the user's preference.
@@ -47,7 +49,7 @@ export function Root() {
 
 function RouteLoadingFallback() {
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-(--bg-page) text-(--color-text-muted)" role="status" aria-live="polite">
+    <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page) text-(--color-text-muted)" role="status" aria-live="polite">
       <div className="flex items-center gap-3 rounded-full border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm shadow-sm">
         <span className="h-2 w-2 animate-pulse rounded-full bg-(--color-accent) motion-reduce:animate-none" />
         Loading OpenAgentd...
@@ -58,7 +60,7 @@ function RouteLoadingFallback() {
 
 export function NotFound() {
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-(--bg-page)">
+    <div className="mobile-safe-shell mobile-viewport flex h-dvh flex-col items-center justify-center gap-6 bg-(--bg-page)">
       <div className="text-center">
         <p className="font-mono text-6xl font-bold text-(--color-text-muted)">404</p>
         <p className="mt-3 text-sm text-(--color-text-muted)">Page not found</p>

@@ -325,7 +325,7 @@ describe('CodingSidebar workspace trust flow', () => {
     const drawer = view.container.querySelector('aside')
 
     expect(drawer).toBeTruthy()
-    expect(drawer?.className).toContain('top-10')
+    expect(drawer?.className).toContain('mobile-safe-top')
     expect(drawer?.className).toContain('w-[min(272px,calc(100vw-2rem))]')
     expect(JSON.parse(drawer?.getAttribute('data-animate') ?? '{}')).toEqual({
       x: 0,
@@ -340,7 +340,7 @@ describe('CodingSidebar workspace trust flow', () => {
     const backdrop = view.container.querySelector('[aria-hidden="true"]')
 
     expect(backdrop).toBeTruthy()
-    expect(backdrop?.className).toContain('top-10')
+    expect(backdrop?.className).toContain('mobile-safe-top')
     expect(backdrop?.className).toContain('bottom-0')
   })
 

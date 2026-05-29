@@ -316,7 +316,7 @@ export function CodingWorkspacePanel({
       animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: 440 }}
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
       transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
-      className={cn('fixed bottom-0 right-0 top-10 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none', mobile ? 'max-w-none' : 'max-w-[440px]')}
+      className={cn('mobile-safe-top fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none', mobile ? 'max-w-none' : 'max-w-[440px]')}
     >
       <div className={cn('flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'max-w-[440px] md:w-[440px]')}>
         <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-3">

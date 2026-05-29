@@ -89,7 +89,7 @@ export function UpdateCard() {
   if (status.status === 'up_to_date' && !status.message) return null
 
   return (
-    <aside className="fixed right-4 bottom-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-md border border-(--color-border) bg-(--bg-card) p-4 text-sm text-(--color-text) shadow-xl" aria-live="polite">
+    <aside className="mobile-safe-floating fixed z-50 w-auto max-w-sm rounded-md border border-(--color-border) bg-(--bg-card) p-4 text-sm text-(--color-text) shadow-xl sm:left-auto sm:w-full" aria-live="polite">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="font-medium">{titleForStatus(status)}</div>
@@ -146,7 +146,7 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
         See release notes
       </button>
       {open ? (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Release notes" onClick={() => setOpen(false)}>
+        <div className="mobile-safe-overlay fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Release notes" onClick={() => setOpen(false)}>
           <div className="max-h-[min(32rem,80vh)] w-full max-w-lg overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
               <h2 className="text-sm font-semibold">Release notes</h2>

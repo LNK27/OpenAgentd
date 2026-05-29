@@ -1,6 +1,6 @@
 .PHONY: dev ios-init ios-dev ios-dev-device ios-build ios-clean build clean
 
-IOS_DEVICE ?= 00008110-001455560199801E
+IOS_DEVICE ?= $(word 2,$(MAKECMDGOALS))
 
 dev: ## Run the mobile shell against the web Vite dev server
 	cd src-tauri && cargo tauri dev
@@ -11,8 +11,15 @@ ios-init: ## Initialize Tauri iOS project files
 ios-dev: ## Run on an iOS simulator/device
 	cd src-tauri && cargo tauri ios dev --host
 
-ios-dev-device: ## Run on the known physical iPhone
-	cd src-tauri && cargo tauri ios dev --host --device $(IOS_DEVICE)
+ios-dev-device: ## Run on a named physical iPhone, e.g. `make ios-dev-device MyPhone`
+	@if [ -z "$(IOS_DEVICE)" ]; then \
+		echo "Usage: make ios-dev-device <device-name>"; \
+		exit 2; \
+	fi
+	cd src-tauri && cargo tauri ios dev "$(IOS_DEVICE)" --host
+
+%:
+	@:
 
 ios-build: ## Build the iOS app
 	cd src-tauri && cargo tauri ios build

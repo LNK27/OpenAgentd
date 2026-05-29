@@ -41,7 +41,7 @@ export function TelemetryPage() {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
 
   return (
-    <main id="main" className="flex h-dvh flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
+    <main id="main" className="mobile-safe-shell mobile-viewport flex h-dvh flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
       {selectedTraceId ? (
         <TraceDetailRoute
           traceId={selectedTraceId}

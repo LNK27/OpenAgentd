@@ -37,7 +37,7 @@ export function HomePage() {
   }
 
   return (
-    <main id="main" className="flex h-screen flex-col items-center justify-center bg-(--bg-page) px-4">
+    <main id="main" className="mobile-safe-shell mobile-viewport flex h-dvh flex-col items-center justify-center bg-(--bg-page) px-4">
       {isMacOverlay && (
         <div
           {...dragHandlers}

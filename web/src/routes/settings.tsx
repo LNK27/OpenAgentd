@@ -59,7 +59,7 @@ export function SettingsLayout() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
+    <div className="mobile-safe-shell mobile-viewport flex h-dvh flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
       <AppHeader
         title={pageTitleFor(pathname)}
         onToggleSidebar={handleToggleSidebar}
@@ -74,17 +74,17 @@ export function SettingsLayout() {
         {isMobile && mobileSidebarOpen && (
           <>
             <div
-              className="fixed inset-0 z-30 bg-black/40"
+              className="mobile-safe-overlay fixed inset-0 z-30 bg-black/40"
               onClick={() => setMobileSidebarOpen(false)}
               aria-hidden="true"
             />
-            <div className="fixed inset-y-0 left-0 z-40 flex">
+            <div className="mobile-safe-header fixed inset-y-0 left-0 z-40 flex">
               <SettingsSidebar />
             </div>
           </>
         )}
 
-        <main id="main" className="flex min-w-0 flex-1 flex-col">
+        <main id="main" className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Outlet />
         </main>
       </div>

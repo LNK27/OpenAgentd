@@ -484,7 +484,7 @@ export function CodingSidebar({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: prefersReducedMotion ? 0.01 : 0.2 }}
-            className="fixed inset-x-0 bottom-0 top-10 z-30 bg-black/60 md:hidden"
+            className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-black/60 md:hidden"
             aria-hidden="true"
             onClick={onMobileClose}
           />
@@ -501,7 +501,7 @@ export function CodingSidebar({
       transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={
         isMobile
-          ? 'fixed bottom-0 left-0 top-10 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
+          ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
           : 'flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)'
       }
     >

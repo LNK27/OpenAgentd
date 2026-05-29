@@ -45,7 +45,13 @@ cd .. && uv run uvicorn app.server:app --host 0.0.0.0 --port 8000
 Then run the iOS app:
 
 ```bash
-make ios-dev-device IOS_DEVICE=00008110-001455560199801E
+make ios-dev-device <device-name>
+```
+
+For example, if `cargo tauri ios dev` detects `My iPhone`, run:
+
+```bash
+make ios-dev-device "My iPhone"
 ```
 
 If the generated Xcode project gets stale after changing signing or identifiers, clean and regenerate it:

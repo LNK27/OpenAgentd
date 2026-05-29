@@ -155,7 +155,7 @@ describe('Coding workspace two-layer file preview', () => {
     await renderWorkspacePanel(mock(() => {}), null, true)
 
     const panel = screen.getByRole('complementary')
-    expect(panel.className).toContain('top-10')
+    expect(panel.className).toContain('mobile-safe-top')
     expect(panel.className).toContain('fixed')
     expect(panel.className).toContain('md:relative')
   })
@@ -164,7 +164,7 @@ describe('Coding workspace two-layer file preview', () => {
     await renderViewer(readme, mock(() => {}), true)
 
     const viewer = screen.getByLabelText('File viewer')
-    expect(viewer.className).toContain('top-10')
+    expect(viewer.className).toContain('mobile-safe-top')
     expect(viewer.className).toContain('w-full')
     expect(viewer.className).toContain('md:relative')
   })
