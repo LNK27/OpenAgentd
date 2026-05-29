@@ -85,7 +85,7 @@ export function SandboxSettingsPage() {
         {isMobile && (
           <Link
             to="/settings"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
             aria-label="Back to settings"
           >
             <ArrowLeft size={14} />
@@ -99,6 +99,7 @@ export function SandboxSettingsPage() {
         )}
         <Button
           size="sm"
+          className="min-h-11 md:min-h-0"
           onClick={handleSave}
           disabled={!dirty || updateMut.isPending}
         >
@@ -144,7 +145,7 @@ export function SandboxSettingsPage() {
                     block files like <code className="font-mono">.env</code> or
                     folders like <code className="font-mono">secrets/</code>.
                   </p>
-                  <Button size="sm" onClick={addRow}>
+                  <Button size="sm" className="min-h-11 md:min-h-0" onClick={addRow}>
                     <Plus size={12} aria-hidden="true" />
                     Add pattern
                   </Button>
@@ -167,6 +168,7 @@ export function SandboxSettingsPage() {
                               <Button
                                 size="icon-sm"
                                 variant="ghost"
+                                className="h-11 w-11 md:h-7 md:w-7"
                                 onClick={() => removeAt(idx)}
                                 aria-label={`Remove pattern ${idx + 1}`}
                               >
@@ -180,7 +182,7 @@ export function SandboxSettingsPage() {
                     ))}
                   </ul>
 
-                  <Button size="sm" variant="outline" onClick={addRow}>
+                  <Button size="sm" variant="outline" className="min-h-11 md:min-h-0" onClick={addRow}>
                     <Plus size={12} aria-hidden="true" />
                     Add pattern
                   </Button>
@@ -223,7 +225,7 @@ function SandboxHelpPopover() {
         render={
           <button
             type="button"
-            className="inline-flex items-center gap-0.5 rounded text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40"
+            className="inline-flex min-h-11 items-center gap-0.5 rounded text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40 md:min-h-0"
           >
             See examples
             <ChevronDown
