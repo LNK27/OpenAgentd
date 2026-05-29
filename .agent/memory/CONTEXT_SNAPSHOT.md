@@ -1,6 +1,6 @@
 # OpenAgentd Second Brain Context Snapshot
 
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ## Purpose
 
@@ -190,7 +190,7 @@ Known local state before this snapshot:
   - Targeted `uv run ty check app/services/markdown_text.py app/services/vault_search.py app/services/vault_ingest.py app/agent/tools/builtin/vault_search.py app/agent/tools/builtin/vault_read.py app/agent/hooks/wiki_injection.py app/agent/loader.py` passed cleanly, while the full app type-check still has pre-existing Windows/POSIX portability tech debt.
 - Hermes connector sidecar adapter v1 is now implemented as a proposal-only boundary:
   - `app/services/hermes.py` defines a swappable `HermesClient` protocol, `HttpHermesClient`, request/proposal dataclasses, error taxonomy (`HermesUnavailableError`, `HermesConnectionError`, `HermesTimeoutError`, `HermesSchemaError`), loopback-only HTTP transport validation, optional `X-Hermes-Token`, health check, context/max-intent clamping, response normalization, body truncation, forbidden-field rejection, `status="draft"` override, path validation, and existing-note conflict detection.
-  - `app/agent/tools/builtin/hermes_propose.py` exposes a lead-only proposal tool that returns structured JSON-ish output with `valid_intents`, `conflicts`, `invalid_intents`, warnings, and `vault_write_params`; it never calls `vault_write` or writes to the vault.
+  - `app/agent/tools/builtin/hermes_propose.py` exposes a lead-only proposal tool that returns structured JSON-ish output with `valid_intents`, `conflicts`, `invalid_intents`, warnings, and pending approval ids; it never calls `vault_write` or writes to the vault.
   - `app/core/config.py` now includes Hermes config knobs: `OPENAGENTD_HERMES_ENABLED`, `OPENAGENTD_HERMES_BASE_URL`, `OPENAGENTD_HERMES_TOKEN`, `OPENAGENTD_HERMES_TIMEOUT_SECONDS`, `OPENAGENTD_HERMES_MAX_CONTEXT_CHARS`, and `OPENAGENTD_HERMES_MAX_BODY_CHARS_PER_INTENT`.
   - `hermes_propose` is registered in the builtin registry and auto-injected for lead agents only; member agents do not receive it automatically.
   - V1 intentionally supports new-note proposals only. Existing target paths are reported as `exists_conflict`; update workflows (`vault_update`, overwrite, batch write) remain out of scope.
@@ -210,6 +210,22 @@ Known local state before this snapshot:
 - Hermes connector v1 is now accepted and closed after independent review:
   - Claude Opus 4.6 post-P1-fix verdict: `Ship`; no remaining P0/P1 blockers. P2 items (`shared httpx.AsyncClient`, mixed valid+forbidden test) are tracked as non-blocking tech debt.
   - Gemini 3.5 Flash regression/checklist verdict: `Accepted & Closed`; Hermes tests, Vault/Second Brain regression, ruff/format, targeted type check, lead-only injection, UX output, and no-write boundary all passed.
+- Hermes approval/review queue v1 is now implemented and verified:
+  - `app/services/hermes_approval.py` provides a per-process in-memory queue scoped by `session_id`, with opaque `pending_id` values, terminal statuses (`approved`, `rejected`, `failed`), and an `asyncio.Lock` around enqueue/list/approve/reject operations to prevent double approve/reject races.
+  - `hermes_propose` now has a deliberate side effect: it enqueues normalized valid Hermes intents and returns pending ids plus previews, conflicts, invalid intents, warnings, and `evicted_count`. It no longer returns `vault_write_params` directly.
+  - Queue limit is `50` pending entries per session. When enqueue exceeds the limit, the oldest pending entries in that session are marked `rejected` with reason `superseded_by_queue_limit`, and `hermes_propose` reports the eviction count.
+  - New lead-only tools are registered and auto-injected: `hermes_pending_list`, `hermes_pending_approve`, and `hermes_pending_reject`; member agents do not receive them.
+  - Approval revalidates the final vault path, fails clearly if the note already exists, never exposes overwrite/update, never calls Hermes, and writes through `get_vault_gatekeeper().write_note(...)` with writer `agent:<approver>` from `_state.metadata["agent_name"]` or `agent:unknown`.
+  - Rejection marks the entry `rejected` and stores the optional reason without writing to the vault. `failed` is terminal; retry requires calling `hermes_propose` again.
+  - Architectural boundary: approval queue is the Hermes review flow, not a vault-wide security gate. `vault_write` remains available to lead agents for non-Hermes notes and can still be called directly.
+- Verification for Hermes approval/review queue v1 passed:
+  - `uv run pytest tests/services/test_hermes.py tests/agent/tools/test_hermes_propose_tool.py --no-cov -q` (`16 passed`)
+  - `uv run pytest tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_pending_tools.py --no-cov -q` (`14 passed`)
+  - `uv run pytest tests/services/test_vault_gatekeeper.py tests/agent/tools/test_vault_write_tool.py tests/agent/test_loader.py --no-cov -q` (`101 passed`)
+  - `uv run pytest tests/services/test_hermes.py tests/agent/tools/test_hermes_propose_tool.py tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_pending_tools.py tests/services/test_vault_gatekeeper.py tests/agent/tools/test_vault_write_tool.py tests/agent/test_loader.py --no-cov -q` (`131 passed`)
+  - `uv run ruff check app/services/hermes_approval.py app/agent/tools/builtin tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_pending_tools.py tests/agent/tools/test_hermes_propose_tool.py tests/agent/test_loader.py`
+  - `uv run ruff format --check app/services/hermes_approval.py app/agent/tools/builtin tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_pending_tools.py tests/agent/tools/test_hermes_propose_tool.py tests/agent/test_loader.py`
+  - `uv run ty check app/services/hermes_approval.py app/agent/tools/builtin/hermes_propose.py app/agent/tools/builtin/hermes_pending.py app/agent/loader.py`
 - Git worktree already had unrelated added files: `run.ps1` and `web/package-lock.json`. Do not revert them without user approval.
 
 ## Next Implementation Steps
@@ -220,7 +236,8 @@ Known local state before this snapshot:
 4. ~~Implement Phase 2: Human Ingest/Reconcile service~~ â€” **DONE** (2026-05-24). Service + CLI normalize manual Obsidian notes and repair folder indexes without adding recall/search/read yet.
 5. ~~Implement Phase 2: Vault Recall service and controlled `vault_read` / `vault_search` tools~~ — **DONE** (2026-05-26). Lead agents can now search/list and deep-read Obsidian vault notes without exposing a raw filesystem surface.
 6. ~~Integrate Hermes connector as a sidecar API adapter producing write-intents only~~ — **DONE** (2026-05-29). Lead agents can request Hermes write-intent proposals through `hermes_propose`; Hermes cannot write directly to the vault.
-7. Decide the next Phase 2/3 step: likely Hermes approval/review queue first, then Hermes query/skill drafting, `vault_update`, or observability.
+7. ~~Implement Hermes approval/review queue v1~~ â€” **DONE** (2026-05-30). Lead agents can review, approve, or reject Hermes pending intents before queue-mediated vault writes; `vault_write` remains available for non-Hermes notes.
+8. Decide the next Phase 2/3 step: likely Hermes query/skill drafting, `vault_update`, or observability.
 
 ## Update Protocol
 

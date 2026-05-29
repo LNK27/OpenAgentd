@@ -11,6 +11,11 @@ from .filesystem import (
 )
 from .memory_search import memory_search
 from .hermes_propose import hermes_propose
+from .hermes_pending import (
+    hermes_pending_approve,
+    hermes_pending_list,
+    hermes_pending_reject,
+)
 from .note import note_tool
 from .schedule import schedule_task
 from .shell import background_process, shell_tool
@@ -30,6 +35,9 @@ __all__ = [
     "get_date",
     "glob_files",
     "grep_files",
+    "hermes_pending_approve",
+    "hermes_pending_list",
+    "hermes_pending_reject",
     "hermes_propose",
     "list_directory",
     "patch_file",

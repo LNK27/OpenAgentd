@@ -189,6 +189,9 @@ def test_default_tool_registry_keys():
         "todo_manage",
         "memory_search",
         "hermes_propose",
+        "hermes_pending_list",
+        "hermes_pending_approve",
+        "hermes_pending_reject",
         "vault_write",
         "vault_read",
         "vault_search",
@@ -1330,6 +1333,9 @@ def test_note_tool_auto_injected_into_lead():
     assert agent._tools["note"].name == "note"
     assert "hermes_propose" in agent._tools
     assert agent._tools["hermes_propose"].name == "hermes_propose"
+    assert "hermes_pending_list" in agent._tools
+    assert "hermes_pending_approve" in agent._tools
+    assert "hermes_pending_reject" in agent._tools
     assert "vault_write" in agent._tools
     assert agent._tools["vault_write"].name == "vault_write"
     assert "vault_read" in agent._tools
@@ -1345,6 +1351,9 @@ def test_note_tool_not_injected_into_member():
     agent = _build_agent(cfg, {}, factory)
     assert "note" not in agent._tools
     assert "hermes_propose" not in agent._tools
+    assert "hermes_pending_list" not in agent._tools
+    assert "hermes_pending_approve" not in agent._tools
+    assert "hermes_pending_reject" not in agent._tools
     assert "vault_write" not in agent._tools
     assert "vault_read" not in agent._tools
     assert "vault_search" not in agent._tools
@@ -1357,13 +1366,28 @@ def test_note_in_frontmatter_tools_silently_skipped_for_lead():
         name="lead",
         role="lead",
         system_prompt="Lead",
-        tools=["note", "hermes_propose", "vault_write", "vault_read", "vault_search"],
+        tools=[
+            "note",
+            "hermes_propose",
+            "hermes_pending_list",
+            "hermes_pending_approve",
+            "hermes_pending_reject",
+            "vault_write",
+            "vault_read",
+            "vault_search",
+        ],
     )
     agent = _build_agent(cfg, {}, factory)
     assert "note" in agent._tools
     assert list(agent._tools.keys()).count("note") == 1
     assert "hermes_propose" in agent._tools
     assert list(agent._tools.keys()).count("hermes_propose") == 1
+    assert "hermes_pending_list" in agent._tools
+    assert list(agent._tools.keys()).count("hermes_pending_list") == 1
+    assert "hermes_pending_approve" in agent._tools
+    assert list(agent._tools.keys()).count("hermes_pending_approve") == 1
+    assert "hermes_pending_reject" in agent._tools
+    assert list(agent._tools.keys()).count("hermes_pending_reject") == 1
     assert "vault_write" in agent._tools
     assert list(agent._tools.keys()).count("vault_write") == 1
     assert "vault_read" in agent._tools
@@ -1379,11 +1403,23 @@ def test_note_in_frontmatter_tools_silently_skipped_for_member():
         name="worker",
         role="member",
         system_prompt="Member",
-        tools=["note", "hermes_propose", "vault_write", "vault_read", "vault_search"],
+        tools=[
+            "note",
+            "hermes_propose",
+            "hermes_pending_list",
+            "hermes_pending_approve",
+            "hermes_pending_reject",
+            "vault_write",
+            "vault_read",
+            "vault_search",
+        ],
     )
     agent = _build_agent(cfg, {}, factory)
     assert "note" not in agent._tools
     assert "hermes_propose" not in agent._tools
+    assert "hermes_pending_list" not in agent._tools
+    assert "hermes_pending_approve" not in agent._tools
+    assert "hermes_pending_reject" not in agent._tools
     assert "vault_write" not in agent._tools
     assert "vault_read" not in agent._tools
     assert "vault_search" not in agent._tools
@@ -1430,6 +1466,12 @@ def test_note_tools_injected_into_lead_only_integration(tmp_path):
     assert "note" not in worker_tool_names
     assert "hermes_propose" in lead_tool_names
     assert "hermes_propose" not in worker_tool_names
+    assert "hermes_pending_list" in lead_tool_names
+    assert "hermes_pending_list" not in worker_tool_names
+    assert "hermes_pending_approve" in lead_tool_names
+    assert "hermes_pending_approve" not in worker_tool_names
+    assert "hermes_pending_reject" in lead_tool_names
+    assert "hermes_pending_reject" not in worker_tool_names
     assert "vault_write" in lead_tool_names
     assert "vault_write" not in worker_tool_names
     assert "vault_read" in lead_tool_names
@@ -1447,6 +1489,9 @@ def test_note_and_todo_both_injected_into_lead():
     assert "todo_manage" in agent._tools
     assert "schedule_task" in agent._tools
     assert "hermes_propose" in agent._tools
+    assert "hermes_pending_list" in agent._tools
+    assert "hermes_pending_approve" in agent._tools
+    assert "hermes_pending_reject" in agent._tools
     assert "vault_write" in agent._tools
     assert "vault_read" in agent._tools
     assert "vault_search" in agent._tools
@@ -1463,6 +1508,9 @@ def test_note_deduped_with_other_injected_tools():
             "note",
             "todo_manage",
             "hermes_propose",
+            "hermes_pending_list",
+            "hermes_pending_approve",
+            "hermes_pending_reject",
             "vault_write",
             "vault_read",
             "vault_search",
@@ -1472,6 +1520,9 @@ def test_note_deduped_with_other_injected_tools():
     assert list(agent._tools.keys()).count("note") == 1
     assert list(agent._tools.keys()).count("todo_manage") == 1
     assert list(agent._tools.keys()).count("hermes_propose") == 1
+    assert list(agent._tools.keys()).count("hermes_pending_list") == 1
+    assert list(agent._tools.keys()).count("hermes_pending_approve") == 1
+    assert list(agent._tools.keys()).count("hermes_pending_reject") == 1
     assert list(agent._tools.keys()).count("vault_write") == 1
     assert list(agent._tools.keys()).count("vault_read") == 1
     assert list(agent._tools.keys()).count("vault_search") == 1

@@ -269,6 +269,9 @@ def _default_tool_registry() -> dict[str, Tool]:
         get_date,
         glob_files,
         grep_files,
+        hermes_pending_approve,
+        hermes_pending_list,
+        hermes_pending_reject,
         hermes_propose,
         list_directory,
         load_skill,
@@ -308,6 +311,9 @@ def _default_tool_registry() -> dict[str, Tool]:
         "schedule_task": schedule_task,
         "todo_manage": todo_manage,
         "hermes_propose": hermes_propose,
+        "hermes_pending_list": hermes_pending_list,
+        "hermes_pending_approve": hermes_pending_approve,
+        "hermes_pending_reject": hermes_pending_reject,
         "vault_read": vault_read,
         "vault_search": vault_search,
         "vault_write": vault_write,
@@ -380,6 +386,11 @@ def _build_agent(
         from app.agent.tools.builtin.hermes_propose import (
             hermes_propose as _hermes_propose_tool,
         )
+        from app.agent.tools.builtin.hermes_pending import (
+            hermes_pending_approve as _hermes_pending_approve_tool,
+            hermes_pending_list as _hermes_pending_list_tool,
+            hermes_pending_reject as _hermes_pending_reject_tool,
+        )
         from app.agent.tools.builtin.note import note_tool as _note_tool
         from app.agent.tools.builtin.vault_read import vault_read as _vault_read_tool
         from app.agent.tools.builtin.vault_search import (
@@ -390,6 +401,15 @@ def _build_agent(
         _todo_manage = tool_registry.get("todo_manage", todo_manage)
         _schedule_task = tool_registry.get("schedule_task", _schedule_task_tool)
         _hermes_propose = tool_registry.get("hermes_propose", _hermes_propose_tool)
+        _hermes_pending_list = tool_registry.get(
+            "hermes_pending_list", _hermes_pending_list_tool
+        )
+        _hermes_pending_approve = tool_registry.get(
+            "hermes_pending_approve", _hermes_pending_approve_tool
+        )
+        _hermes_pending_reject = tool_registry.get(
+            "hermes_pending_reject", _hermes_pending_reject_tool
+        )
         _note = tool_registry.get("note", _note_tool)
         _vault_read = tool_registry.get("vault_read", _vault_read_tool)
         _vault_search = tool_registry.get("vault_search", _vault_search_tool)
@@ -398,6 +418,9 @@ def _build_agent(
             _todo_manage,
             _schedule_task,
             _hermes_propose,
+            _hermes_pending_list,
+            _hermes_pending_approve,
+            _hermes_pending_reject,
             _note,
             _vault_read,
             _vault_search,
@@ -413,6 +436,9 @@ def _build_agent(
             "todo_manage",
             "schedule_task",
             "hermes_propose",
+            "hermes_pending_list",
+            "hermes_pending_approve",
+            "hermes_pending_reject",
             "note",
             "vault_read",
             "vault_search",
