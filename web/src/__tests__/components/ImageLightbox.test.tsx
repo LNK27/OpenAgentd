@@ -582,4 +582,15 @@ describe("ImageLightbox", () => {
     expect(downloadBtn).toBeTruthy()
     expect(closeBtn).toBeTruthy()
   })
+
+  it("positions lightbox actions below the iOS safe-area notch", () => {
+    render(
+      <ImageLightbox src="https://example.com/image.jpg" alt="Test" isOpen={true} onClose={mock(() => {})} />
+    )
+
+    const downloadBtn = screen.getByLabelText("Download image")
+    const actionBar = downloadBtn.parentElement?.parentElement
+
+    expect(actionBar?.className).toContain("[[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]")
+  })
 })

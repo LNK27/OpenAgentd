@@ -138,7 +138,7 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
     >
       {/* Action buttons — stopPropagation so clicking them doesn't close the overlay. */}
       <div
-        className="absolute right-4 top-4 flex items-center gap-2"
+        className="absolute right-4 top-4 flex items-center gap-2 [[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
         onClick={(e) => e.stopPropagation()}
       >
         <LightboxIconButton
