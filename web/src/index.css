@@ -468,9 +468,11 @@ html[data-mobile-shell] [contenteditable="true"] {
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-muted);
   }
-  /* Contain scroll within each region — prevents page-level overscroll on iOS */
-  .overflow-y-auto, .overflow-y-scroll {
-    overscroll-behavior: contain;
+  /* Stop rubber-band chaining at every internal scroll edge. */
+  .overflow-auto,
+  .overflow-y-auto,
+  .overflow-y-scroll {
+    overscroll-behavior: none;
   }
 }
 

@@ -164,6 +164,16 @@ def _tool_tail_has_matching_assistant_call(messages: list) -> bool:
     return False
 
 
+def _is_hidden_continuation_directive(message: object) -> bool:
+    """Return true for the internal /continue directive row."""
+    return (
+        isinstance(message, HumanMessage)
+        and message.content == CONTINUATION_DIRECTIVE
+        and bool(message.extra and message.extra.get("command") == "continue")
+        and bool(message.extra and message.extra.get("hidden_from_user"))
+    )
+
+
 def _truncate_hint(text: str, *, limit: int = 80) -> str:
     """Collapse whitespace and clip *text* so a roster hint fits one prompt line."""
     cleaned = " ".join(text.split())
@@ -755,6 +765,9 @@ class AgentTeam:
                         await db.delete(row_to_delete)
                         await db.commit()
                 messages = messages[:-1]
+
+        while messages and _is_hidden_continuation_directive(messages[-1]):
+            messages.pop()
 
         if not messages:
             raise ContinuePreconditionError("Session has no messages to continue from.")

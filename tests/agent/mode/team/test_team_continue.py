@@ -172,6 +172,50 @@ class TestHandleContinuePreconditions:
         assert "not an assistant message" in exc_info.value.reason.lower()
 
     @pytest.mark.asyncio
+    async def test_allows_retry_after_previous_continue_directive(
+        self, lead_only_team, monkeypatch
+    ):
+        sid = uuid.uuid7()
+        await _seed_session(sid)
+        await _seed_message(sid, role="user", content="run shell")
+        await _seed_message(
+            sid,
+            role="assistant",
+            content=None,
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "shell", "arguments": "{}"},
+                }
+            ],
+        )
+        await _seed_message(
+            sid,
+            role="tool",
+            content="tool output",
+            tool_call_id="call_1",
+        )
+        await _seed_message(
+            sid,
+            role="user",
+            content=CONTINUATION_DIRECTIVE,
+            extra={
+                "command": "continue",
+                "hidden_from_user": True,
+                "hidden_from_summary": True,
+            },
+        )
+
+        monkeypatch.setattr(
+            lead_only_team.lead, "activate_for_continuation", lambda: None
+        )
+
+        returned = await lead_only_team.handle_continue(str(sid))
+
+        assert returned == str(sid)
+
+    @pytest.mark.asyncio
     async def test_heals_last_assistant_tool_calls_before_continue(
         self, lead_only_team, monkeypatch
     ):
@@ -330,6 +374,40 @@ class TestHandleContinuePreconditions:
         assert [row.role for row in rows] == ["user", "assistant", "tool", "user"]
         assert rows[-1].content == CONTINUATION_DIRECTIVE
         assert rows[-1].extra and rows[-1].extra.get("hidden_from_user") is True
+
+    @pytest.mark.asyncio
+    async def test_allows_tool_tail_after_healing_orphaned_assistant_call(
+        self, lead_only_team, monkeypatch
+    ):
+        sid = uuid.uuid7()
+        await _seed_session(sid)
+        await _seed_message(sid, role="user", content="run shell")
+        await _seed_message(
+            sid,
+            role="assistant",
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "shell", "arguments": "{}"},
+                }
+            ],
+        )
+        await _seed_message(
+            sid,
+            role="tool",
+            content="tool output",
+            tool_call_id="call_1",
+        )
+
+        monkeypatch.setattr(
+            lead_only_team.lead, "activate_for_continuation", lambda: None
+        )
+
+        returned = await lead_only_team.handle_continue(str(sid))
+
+        assert returned == str(sid)
 
     @pytest.mark.asyncio
     async def test_rejects_unmatched_tool_tail(self, lead_only_team):
