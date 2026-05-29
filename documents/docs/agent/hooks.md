@@ -161,7 +161,7 @@ hook = SummarizationHook(
 
 **File:** `tool_result_offload.py`
 
-Protects the context window from large tool outputs. Fires in `wrap_tool_call` — intercepts the result string immediately after tool execution. If the result exceeds `char_threshold` chars, the full content is saved to `{workspace}/{agent_name}/.tool_results/{tool_call_id}.txt` inside the sandbox, and the tool message content is replaced with a compact summary.
+Protects the context window from large tool outputs. Fires in `wrap_tool_call` — intercepts the result string immediately after tool execution. If the result exceeds `char_threshold` chars, the full content is saved to `{OPENAGENTD_DATA_DIR}/sessions/{session_id}/.tool_results/{agent_name}/{tool_call_id}.txt`, and the tool message content is replaced with a compact summary.
 
 The replacement message includes the file path so the agent can call `read` to retrieve the full output if needed. Metadata (`offloaded`, `path`, `lines`, `chars`) is stashed in `state.metadata["_offloaded_tool_results"][tool_call_id]`.
 
@@ -176,8 +176,8 @@ Defaults are module-level constants in `app/agent/hooks/tool_result_offload.py` 
 
 Replacement message format (head + tail preview):
 ```
-[Tool result offloaded — content saved to workspace]
-File: assistant/.tool_results/{tool_call_id}.txt
+[Tool result offloaded — content saved to session artifacts]
+File: {OPENAGENTD_DATA_DIR}/sessions/{session_id}/.tool_results/assistant/{tool_call_id}.txt
 Size: 1,234 lines · 56,789 chars
 
 Preview (first):

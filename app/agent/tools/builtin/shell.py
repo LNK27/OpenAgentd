@@ -27,7 +27,7 @@ Or when truncated::
 
     [Succeeded]
 
-    ...output truncated (full output saved to .openagentd/sessions/<sid>/.tool_results/shell/<id>.txt)
+    ...output truncated (full output saved to the XDG session artifact directory)
 
     <first N/2 lines>
     ...output truncated...
@@ -309,7 +309,7 @@ async def _shell(
     Uses the user's preferred POSIX shell (``$SHELL`` → zsh → bash → sh).
     Supports ``&&``, ``||``, pipes, ``$VAR``, subshells.
     Large output is streamed: the first and last output lines are returned inline;
-    the full output is saved to ``.openagentd/sessions/<sid>/.tool_results/shell/`` in the workspace.
+    the full output is saved to the XDG session artifact directory.
     Set ``background=true`` for long-running processes.
     """
     sandbox = get_sandbox()
@@ -495,7 +495,7 @@ async def _shell(
             call_id = str(uuid.uuid4())[:8]
             try:
                 spill_path = _spill_output(text, sandbox.workspace_root, call_id)
-                rel = sandbox.display_path(spill_path)
+                rel = str(spill_path)
                 header = (
                     f"{status}\n\n...output truncated — full output saved to {rel}\n\n"
                 )

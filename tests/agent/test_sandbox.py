@@ -83,7 +83,7 @@ def test_metadata_path_is_session_scoped_when_session_id_present(tmp_path):
     )
 
 
-def test_metadata_path_falls_back_to_workspace_metadata_without_session_id(tmp_path):
+def test_metadata_path_falls_back_to_data_sessions_without_session_id(tmp_path):
     sandbox = SandboxConfig(
         workspace=str(tmp_path / "ws"),
         denied_roots=[],
@@ -92,7 +92,9 @@ def test_metadata_path_falls_back_to_workspace_metadata_without_session_id(tmp_p
 
     result = sandbox.metadata_path(".tool_results")
 
-    assert result == tmp_path / "ws" / ".openagentd" / ".tool_results"
+    assert result.name == ".tool_results"
+    assert "sessions" in result.parts
+    assert str(tmp_path / "ws") not in str(result)
 
 
 def test_path_inside_denied_root_rejected(tmp_path):

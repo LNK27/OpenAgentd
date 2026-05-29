@@ -12,7 +12,7 @@ from uuid import UUID
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.agent.artifacts import SESSION_METADATA_DIR, SESSIONS_DIR
+from app.agent.artifacts import SESSIONS_DIR
 from app.core.config import settings
 from app.models.chat import ChatSession
 
@@ -91,19 +91,13 @@ async def cleanup_generated_artifacts(
     The pass targets:
     - normal session workspaces whose DB session no longer exists;
     - app-managed state logs/telemetry/OTEL directories older than the cutoff;
-    - coding-workspace ``.openagentd/sessions/{id}`` directories for sessions
-      known in the DB and older than the cutoff.
+    - app-managed session artifact directories whose DB session no longer exists.
 
     It intentionally does not delete config, wiki, cache credentials, or the DB.
     """
     cutoff = _older_than_cutoff(older_than_days)
     rows = (await db.exec(select(ChatSession))).all()
     live_ids = {str(row.id) for row in rows}
-    coding_roots = {
-        Path(row.workspace).resolve()
-        for row in rows
-        if row.workspace and Path(row.workspace).exists()
-    }
 
     candidates: list[CleanupCandidate] = []
 
@@ -131,19 +125,16 @@ async def cleanup_generated_artifacts(
             if _is_old_enough(child, cutoff):
                 candidates.append(CleanupCandidate(child, reason, _dir_size(child)))
 
-    for coding_root in coding_roots:
-        sessions_root = coding_root / SESSION_METADATA_DIR / SESSIONS_DIR
-        for child in _safe_child_dirs(sessions_root):
-            if (
-                child.name not in live_ids
-                and _is_uuid(child.name)
-                and _is_old_enough(child, cutoff)
-            ):
-                candidates.append(
-                    CleanupCandidate(
-                        child, "orphaned coding session metadata", _dir_size(child)
-                    )
-                )
+    sessions_root = Path(settings.OPENAGENTD_DATA_DIR) / SESSIONS_DIR
+    for child in _safe_child_dirs(sessions_root):
+        if (
+            child.name not in live_ids
+            and _is_uuid(child.name)
+            and _is_old_enough(child, cutoff)
+        ):
+            candidates.append(
+                CleanupCandidate(child, "orphaned session artifacts", _dir_size(child))
+            )
 
     deleted: list[Path] = []
     if not dry_run:

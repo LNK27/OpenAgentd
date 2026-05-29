@@ -38,11 +38,7 @@ from typing import Annotated, Any, Literal
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from app.agent.artifacts import (
-    TODOS_FILENAME,
-    todos_path,
-    workspace_session_artifact_dir,
-)
+from app.agent.artifacts import TODOS_FILENAME, todos_path
 from app.agent.tools.registry import InjectedArg, Tool
 
 # ---------------------------------------------------------------------------
@@ -175,7 +171,7 @@ def release_in_progress_for_actor(
 ) -> list[str]:
     """Release an actor's unfinished todos for reassignment."""
     path = (
-        workspace_session_artifact_dir(workspace_root, session_id) / TODOS_FILENAME
+        todos_path(session_id)
         if session_id
         else workspace_root / ".openagentd" / TODOS_FILENAME
     )

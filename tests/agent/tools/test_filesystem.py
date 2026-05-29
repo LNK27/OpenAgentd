@@ -8,8 +8,11 @@ from unittest.mock import patch
 
 import pytest
 
+from app.agent.artifacts import session_artifact_dir
 from app.agent.errors import ToolExecutionError
 from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.state import AgentState
+from app.core.config import settings
 from app.agent.tools.builtin.filesystem import (
     glob_files,
     grep_files,
@@ -207,6 +210,58 @@ async def test_glob_name_match_no_match(sandbox_workspace):
 
 
 @pytest.mark.asyncio
+async def test_read_allows_active_session_artifact_path_only(sandbox_workspace):
+    from app.agent.sandbox import _sandbox_ctx
+
+    session_id = "session-read-artifact"
+    token = set_sandbox(
+        SandboxConfig(workspace=str(sandbox_workspace), session_id=session_id)
+    )
+    try:
+        artifact = (
+            session_artifact_dir(session_id) / ".tool_results" / "lead" / "call.txt"
+        )
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text("artifact content", encoding="utf-8")
+        other = (
+            session_artifact_dir("other-session")
+            / ".tool_results"
+            / "lead"
+            / "call.txt"
+        )
+        other.parent.mkdir(parents=True, exist_ok=True)
+        other.write_text("other content", encoding="utf-8")
+
+        state = AgentState(messages=[], metadata={"session_id": session_id})
+
+        assert (
+            await read_file.arun(
+                path=str(artifact.resolve()), _injected={"_state": state}
+            )
+            == "artifact content"
+        )
+        with pytest.raises(ToolExecutionError):
+            await read_file.arun(path=str(other.resolve()), _injected={"_state": state})
+    finally:
+        _sandbox_ctx.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_read_allows_log_paths(sandbox_workspace):
+    from app.agent.sandbox import _sandbox_ctx
+
+    token = set_sandbox(SandboxConfig(workspace=str(sandbox_workspace), session_id="s"))
+    try:
+        log_path = Path(settings.OPENAGENTD_STATE_DIR) / "logs" / "app" / "app.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("log content", encoding="utf-8")
+
+        assert await read_file.arun(path=str(log_path.resolve())) == "log content"
+    finally:
+        _sandbox_ctx.reset(token)
+
+
+@pytest.mark.asyncio
 async def test_sandbox_validation(sandbox_workspace, tmp_path):
     """Denylist model: paths under denied roots are rejected.
 
@@ -216,8 +271,6 @@ async def test_sandbox_validation(sandbox_workspace, tmp_path):
     exercises the denied-root branch by pointing the sandbox at a temp
     directory and trying to write into it.
     """
-    from app.agent.sandbox import SandboxConfig, set_sandbox
-
     denied = tmp_path / "denied_root"
     denied.mkdir()
     set_sandbox(

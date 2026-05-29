@@ -127,11 +127,9 @@ class SandboxConfig:
 
     def metadata_path(self, name: str) -> Path:
         """Return a path under ``.openagentd`` for this sandbox context."""
-        from app.agent.artifacts import workspace_session_artifact_dir
+        from app.agent.artifacts import session_artifact_dir
 
-        return (
-            workspace_session_artifact_dir(self.workspace_root, self.session_id) / name
-        )
+        return session_artifact_dir(self.session_id) / name
 
     # ── Path validation ───────────────────────────────────────────────────
 

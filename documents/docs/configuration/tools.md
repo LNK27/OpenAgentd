@@ -15,7 +15,7 @@ Tools below ship with OpenAgentd. List only the ones an agent should use under `
 
 ### Filesystem
 
-All filesystem tools output paths **relative to the sandbox workspace root**. Absolute paths are never shown to the model. See [`sandbox.md`](./sandbox.md) for path-validation rules.
+Filesystem tools normally output workspace-relative paths. The `read` tool also accepts absolute paths for the active session's XDG artifact directory and `{OPENAGENTD_STATE_DIR}/logs/`, so agents can inspect offloaded tool results and logs. See [`sandbox.md`](./sandbox.md) for path-validation rules.
 
 | Tool | What it does |
 |------|--------------|

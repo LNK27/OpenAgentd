@@ -12,12 +12,15 @@ Supports multimodal file types:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Annotated
 
 from loguru import logger
 from pydantic import Field
 
+from app.agent.artifacts import session_artifact_dir
 from app.agent.sandbox import get_sandbox
+from app.core.config import settings
 from app.agent.schemas.chat import ToolResult
 from app.agent.state import AgentState
 from app.agent.tools.builtin.filesystem.handlers import (
@@ -35,6 +38,13 @@ def _has_vision(state: AgentState | None) -> bool:
     if state is None:
         return False
     return state.capabilities.input.vision
+
+
+def _is_allowed_artifact_read(path: Path, session_id: str | None) -> bool:
+    if session_id and path.is_relative_to(session_artifact_dir(session_id).resolve()):
+        return True
+    logs_root = Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"
+    return path.is_relative_to(logs_root)
 
 
 async def _read_file(
@@ -58,8 +68,21 @@ async def _read_file(
     For documents (PDF, DOCX, HTML), extracts text content.
     """
     sandbox = get_sandbox()
-    resolved = sandbox.validate_path(path)
-    rel = sandbox.display_path(resolved)
+    requested = Path(path)
+    session_id = (
+        str(_state.metadata.get("session_id"))
+        if isinstance(_state, AgentState) and _state.metadata.get("session_id")
+        else sandbox.session_id
+    )
+    requested_resolved = requested.resolve() if requested.is_absolute() else None
+    if requested_resolved is not None and _is_allowed_artifact_read(
+        requested_resolved, session_id
+    ):
+        resolved = requested_resolved
+        rel = str(resolved)
+    else:
+        resolved = sandbox.validate_path(path)
+        rel = sandbox.display_path(resolved)
     if not resolved.exists():
         raise FileNotFoundError(f"File not found: {rel}")
     if not resolved.is_file():

@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 
-from app.agent.artifacts import TOOL_RESULTS_DIR
+from app.agent.artifacts import TOOL_RESULTS_DIR, tool_results_dir
 from app.agent.hooks.tool_result_offload import ToolResultOffloadHook, _NEVER_OFFLOAD
 from app.agent.sandbox import SandboxConfig, set_sandbox
 from app.agent.schemas.chat import FunctionCall, ToolCall
@@ -17,8 +17,8 @@ from app.agent.state import AgentState, RunContext
 # ---------------------------------------------------------------------------
 
 
-def make_ctx(agent_name: str = "test-agent") -> RunContext:
-    return RunContext(session_id="s", run_id="r", agent_name=agent_name)
+def make_ctx(agent_name: str = "test-agent", session_id: str = "s") -> RunContext:
+    return RunContext(session_id=session_id, run_id="r", agent_name=agent_name)
 
 
 def make_state() -> AgentState:
@@ -57,15 +57,15 @@ class TestSmallResult:
         token = set_sandbox(sandbox)
         try:
             hook = ToolResultOffloadHook(char_threshold=100)
-            ctx = make_ctx()
+            ctx = make_ctx(session_id="s_no_file")
             state = make_state()
             tc = make_tool_call()
             handler = AsyncMock(return_value="x" * 50)
 
             await hook.wrap_tool_call(ctx, state, tc, handler)
 
-            offload_dir = tmp_path / ".openagentd" / "sessions" / "s" / TOOL_RESULTS_DIR
-            assert not offload_dir.exists()
+            offload_file = tool_results_dir("test-agent", "s_no_file") / "tc_1.txt"
+            assert not offload_file.exists()
         finally:
             from app.agent.sandbox import _sandbox_ctx
 
@@ -215,15 +215,7 @@ class TestLargeResult:
 
             await hook.wrap_tool_call(ctx, state, tc, handler)
 
-            dest = (
-                tmp_path
-                / ".openagentd"
-                / "sessions"
-                / "s"
-                / TOOL_RESULTS_DIR
-                / "agent1"
-                / "tc_file.txt"
-            )
+            dest = tool_results_dir("agent1", "s") / "tc_file.txt"
             assert dest.exists()
             assert dest.read_text() == full_content
         finally:
@@ -387,15 +379,14 @@ class TestWriteOffload:
 
             _sandbox_ctx.reset(token)
 
-    def test_path_inside_workspace(self, tmp_path):
+    def test_path_outside_workspace(self, tmp_path):
         sandbox = SandboxConfig(workspace=str(tmp_path))
         token = set_sandbox(sandbox)
         try:
             hook = ToolResultOffloadHook()
-            path = hook._write_offload("agent_x", "tc_abc", "content")
+            path = hook._write_offload("agent_x", "tc_abc", "content", "s")
 
-            # Me path must be inside workspace
-            assert str(path).startswith(str(tmp_path))
+            assert not str(path).startswith(str(tmp_path))
         finally:
             from app.agent.sandbox import _sandbox_ctx
 

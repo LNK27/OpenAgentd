@@ -304,7 +304,7 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 - **Cross-tool `tool_output_delta` streaming** `[since v1.0]` — long-running
   tools (shell, web search) stream output to the inspector as they run.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
-  reads, shell spills) move to disk under `.tool_results/` and the inspector
+  reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.
 - **`.gitignore`-aware file tools** `[v1.20.1]` — `glob`, `grep`, and workspace
   file browsing respect `.gitignore` and skip generated directories.

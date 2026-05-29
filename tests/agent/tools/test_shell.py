@@ -5,7 +5,7 @@ Covers the rewritten shell tool:
 - streaming foreground execution
 - workdir parameter
 - timeout handling
-- output spilling to .openagentd/sessions/<sid>/.tool_results/shell/
+- output spilling to the XDG session artifact directory
 - background process management
 """
 
@@ -329,25 +329,16 @@ async def test_shell_output_spill_file_readable(sandbox_workspace):
 
     import re
 
-    match = re.search(
-        r"\.openagentd/sessions/session-1/\.tool_results/shell/([a-f0-9]+\.txt)",
-        result,
-    )
+    match = re.search(r"([a-f0-9]+\.txt)", result)
     assert match is not None
-    spill_file = (
-        sandbox_workspace
-        / ".openagentd"
-        / "sessions"
-        / "session-1"
-        / ".tool_results"
-        / "shell"
-        / match.group(1)
-    )
+    from app.agent.artifacts import shell_output_dir
+
+    spill_file = shell_output_dir("session-1") / match.group(1)
     assert (
         spill_file.read_text(encoding="utf-8")
         == "some longer output that will be truncated\n"
     )
-    assert ".openagentd/.tool_results" not in result
+    assert str(sandbox_workspace / ".openagentd") not in result
 
 
 # ---------------------------------------------------------------------------

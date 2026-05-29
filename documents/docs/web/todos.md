@@ -83,7 +83,7 @@ Priority badges, task ids, and dependency lists from the underlying schema are i
 
 ## Backend
 
-`GET /api/team/sessions/{session_id}/todos` reads the session-scoped todo file under `.openagentd/sessions/{session_id}/` in the session's workspace. If a custom workspace directory is associated with the session, the path resolves dynamically against that workspace; otherwise, it falls back to the default workspace directory. Returns `{todos: []}` when the file does not exist.
+`GET /api/team/sessions/{session_id}/todos` reads `{OPENAGENTD_DATA_DIR}/sessions/{session_id}/.todos.json`. Coding sessions do not store todo state in the project repo. Returns `{todos: []}` when the file does not exist.
 
 See [API reference — todo list](../api/index.md#todo-list) for the full contract.
 

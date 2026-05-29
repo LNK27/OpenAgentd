@@ -1,18 +1,19 @@
-"""ToolResultOffloadHook — saves large tool results to workspace, replaces with a
-compact summary so the LLM context window stays lean.
+"""ToolResultOffloadHook — saves large tool results to session artifacts.
+
+Replaces oversized tool output with a compact summary so the LLM context window stays lean.
 
 How it works
 ------------
 ``wrap_tool_call`` fires after every tool execution. If the result exceeds
 ``char_threshold``, the full content is written to::
 
-    {workspace}/{agent_name}/.tool_results/{tool_call_id}.txt
+    {OPENAGENTD_DATA_DIR}/sessions/{session_id}/.tool_results/{agent_name}/{tool_call_id}.txt
 
 The content returned to the LLM (and stored in the ``ToolMessage``) is replaced
 with a compact, token-efficient summary::
 
     [Tool result offloaded — too large for context]
-    File: {agent_name}/.tool_results/{tool_call_id}.txt
+    File: {absolute_artifact_path}
     Size: {lines} lines · {chars} chars
     Preview (first):
     {first N chars}
@@ -29,7 +30,7 @@ verbose view without re-reading the file::
 
     {
         "offloaded": True,
-        "path": "{agent_name}/.tool_results/{tool_call_id}.txt",
+        "path": "{absolute_artifact_path}",
         "lines": N,
         "chars": N,
     }
@@ -56,7 +57,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from app.agent.artifacts import SESSION_METADATA_DIR, TOOL_RESULTS_DIR, tool_results_dir
+from app.agent.artifacts import tool_results_dir
 from app.agent.hooks.base import BaseAgentHook
 
 if TYPE_CHECKING:
@@ -72,8 +73,8 @@ DEFAULT_PREVIEW_CHARS = 1000
 # Never offload skill — skill content must reach the agent intact; truncating
 # it would silently deliver incomplete instructions.
 # shell is NOT excluded: it self-truncates large output (persists full content
-# to .openagentd/sessions/<sid>/.tool_results/shell/) so this hook normally
-# never sees oversized shell results.
+# to the XDG session artifact directory) so this hook normally never sees
+# oversized shell results.
 _NEVER_OFFLOAD = frozenset({"read", "skill"})
 
 
@@ -147,17 +148,13 @@ class ToolResultOffloadHook(BaseAgentHook):
             chars - self._preview_chars * 2 if tail else chars - self._preview_chars
         )
 
-        # Me path relative to workspace root — agent can pass to read_file directly
-        rel_path = (
-            f"{SESSION_METADATA_DIR}/sessions/{ctx.session_id}/{TOOL_RESULTS_DIR}/"
-            f"{ctx.agent_name}/{tool_call_id}.txt"
-            if ctx.session_id
-            else f"{SESSION_METADATA_DIR}/{TOOL_RESULTS_DIR}/{ctx.agent_name}/{tool_call_id}.txt"
-        )
+        # Absolute app-managed path — session artifacts live outside coding
+        # workspaces, so a workspace-relative path would point at the wrong repo.
+        artifact_path = str(path)
 
         compact = (
-            f"[Tool result offloaded — content saved to workspace]\n"
-            f"File: {rel_path}\n"
+            f"[Tool result offloaded — content saved to session artifacts]\n"
+            f"File: {artifact_path}\n"
             f"Size: {lines:,} lines · {chars:,} chars\n"
             f"\nPreview (first):\n{head}"
         )
@@ -193,7 +190,7 @@ class ToolResultOffloadHook(BaseAgentHook):
             state.metadata["_offloaded_tool_results"] = {}
         state.metadata["_offloaded_tool_results"][tool_call_id] = {
             "offloaded": True,
-            "path": rel_path,
+            "path": artifact_path,
             "lines": lines,
             "chars": chars,
         }
