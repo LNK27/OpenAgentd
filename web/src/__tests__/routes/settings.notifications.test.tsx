@@ -34,6 +34,22 @@ beforeEach(() => {
 })
 
 describe('NotificationSettingsPage', () => {
+  it('keeps notification controls touch-sized before desktop compact sizing', () => {
+    render(<NotificationSettingsPage />)
+
+    const enabledSwitch = screen.getByRole('switch', { name: /enabled/i })
+    expect(enabledSwitch.parentElement?.className).toContain('min-h-11')
+    expect(enabledSwitch.parentElement?.className).toContain('md:min-h-0')
+
+    const soundSwitch = screen.getByRole('switch', { name: /play sound/i })
+    expect(soundSwitch.parentElement?.className).toContain('min-h-11')
+    expect(soundSwitch.parentElement?.className).toContain('md:min-h-0')
+
+    const testButton = screen.getByRole('button', { name: /send test notification/i })
+    expect(testButton.className).toContain('min-h-11')
+    expect(testButton.className).toContain('md:min-h-0')
+  })
+
   it('toggles desktop notifications', async () => {
     render(<NotificationSettingsPage />)
 

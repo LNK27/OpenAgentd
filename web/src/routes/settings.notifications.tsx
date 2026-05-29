@@ -76,7 +76,7 @@ export function NotificationSettingsPage() {
               Status
             </h2>
 
-            <label className="flex cursor-pointer items-center gap-3 text-sm">
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm md:min-h-0">
               <Switch
                 checked={enabled}
                 onCheckedChange={handleEnabledChange}
@@ -89,7 +89,7 @@ export function NotificationSettingsPage() {
               are skipped while the app window is focused.
             </p>
 
-            <label className="flex cursor-pointer items-center gap-3 text-sm">
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm md:min-h-0">
               <Switch
                 checked={soundEnabled}
                 onCheckedChange={handleSoundEnabledChange}
@@ -110,7 +110,7 @@ export function NotificationSettingsPage() {
               Send one notification now to confirm OS permissions and desktop
               integration are working.
             </p>
-            <Button size="sm" onClick={handleTest} disabled={!enabled || testing}>
+            <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleTest} disabled={!enabled || testing}>
               <BellRing size={12} aria-hidden="true" />
               {testing ? 'Sending…' : 'Send test notification'}
             </Button>
