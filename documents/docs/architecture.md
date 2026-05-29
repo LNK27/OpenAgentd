@@ -17,7 +17,7 @@ C4Context
     title System Context Diagram for openagentd
 
     Person(user, "User", "Operator on the same machine. Drives the agent via desktop app or web UI.")
-    System(openagentd, "openagentd", "Local on-machine AI assistant. Desktop app (Tauri) + FastAPI sidecar. Multi-agent teams, persistent memory, web cockpit UI.")
+    System(openagentd, "openagentd", "Local on-machine AI assistant. Desktop app (Tauri) embedding the web UI + FastAPI API sidecar. Multi-agent teams, persistent memory, web cockpit UI.")
 
     System_Boundary(llm_providers, "LLM providers (15)") {
         System_Ext(anthropic, "Anthropic", "Claude models")
@@ -56,8 +56,8 @@ C4Container
     Person(user, "User", "Browser")
 
     System_Boundary(openagentd_boundary, "openagentd System") {
-        Container(desktop, "Desktop shell", "Tauri 2 / Rust", "macOS/Linux native shell. Bundles + launches the Python sidecar, manages auto-updates (in-app updater, signed payloads), native notifications, and the single-instance lifecycle.")
-        Container(web, "Web Frontend", "React / TypeScript / Vite / Bun", "Browser UI. Command palette, slash commands, tool inspector with diffs, file panel, telemetry dashboard, multi-agent split view. Connects to backend via REST + SSE.")
+        Container(desktop, "Desktop shell", "Tauri 2 / Rust", "macOS/Linux native shell. Embeds the React Web UI, bundles + launches the Python API sidecar, manages auto-updates (in-app updater, signed payloads), native notifications, and the single-instance lifecycle.")
+        Container(web, "Web Frontend", "React / TypeScript / Vite / Bun", "Shared desktop/browser/mobile UI. Command palette, slash commands, tool inspector with diffs, file panel, telemetry dashboard, multi-agent split view. Connects to backend via REST + SSE.")
         Container(api, "FastAPI Application", "Python / FastAPI / uvicorn", "Exposes REST + SSE endpoints. Handles session management, agent execution, agent loop, hooks, tools, multi-agent teams, memory (wiki + dream), provider fallback, SSE streaming.")
         ContainerDb(db, "Database", "SQLite / SQLModel / Alembic", "Persists chat sessions, messages, summaries, memory facts, and memory events.")
     }

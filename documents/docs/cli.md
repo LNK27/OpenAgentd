@@ -15,7 +15,7 @@ openagentd                            # start in the background
 | `--host` | `127.0.0.1` | Bind address |
 | `--port` | `4082` | API port |
 
-The server runs as a detached background process. The pre-built web UI is served by FastAPI on a single port (4082). Logs go to `~/.local/state/openagentd/logs/app/app.log`. The server auto-migrates the database on startup.
+The server runs as a detached background process and exposes the API on port 4082 by default. It does not serve the React Web UI; use the desktop app for the packaged UI or `make dev` from source for Vite + API development. Logs go to `~/.local/state/openagentd/logs/app/app.log`. The server auto-migrates the database on startup.
 
 If openagentd hasn't been initialised yet, `openagentd` automatically runs `openagentd init` before starting the server.
 

@@ -4,7 +4,7 @@ OpenAgentd is a desktop app that runs a team of AI agents on your machine. It's 
 
 ## Desktop app (recommended)
 
-A native double-click installer for users who don't want a terminal. The desktop build is a [Tauri 2](https://tauri.app) shell that launches a bundled Python sidecar — same backend, same web UI, no port to remember.
+A native double-click installer for users who don't want a terminal. The desktop build is a [Tauri 2](https://tauri.app) shell that embeds the React Web UI and launches a bundled Python API sidecar — no port to remember.
 
 ### macOS
 

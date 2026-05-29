@@ -427,8 +427,7 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
 
 ## 12. Embed and API
 
-The same HTTP + SSE API drives the bundled web UI. Embed it elsewhere with no
-extra work. Deeper doc: [`api/index.md`](./api/index.md).
+The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed it elsewhere with no extra work. Deeper doc: [`api/index.md`](./api/index.md).
 
 - **REST + SSE chat API** `[since v1.0]` — `POST /api/team/chat` is
   fire-and-forget (returns 202 in <50ms); the agent streams events on

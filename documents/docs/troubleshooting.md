@@ -68,8 +68,7 @@ Bun is only needed for development. Production installs (`pip install`) don't re
 
 ## Server starts but the web UI shows a blank page
 
-- If running from source without `make build-web`, use `make dev` instead — it starts uvicorn (:8000) and the Vite dev server (:5173) together with hot-reload.
-- If using `openagentd`, run `make build-web` first to bundle the frontend into the package.
+The FastAPI server is API-only and does not serve the React app. Use the desktop app for the packaged UI, or use `make dev` from a source checkout — it starts uvicorn (:8000) and the Vite dev server (:5173) together with hot-reload.
 
 ## `GOOGLE_API_KEY not set` or similar provider errors
 
