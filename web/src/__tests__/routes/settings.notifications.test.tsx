@@ -50,7 +50,7 @@ describe('NotificationSettingsPage', () => {
     expect(testButton.className).toContain('md:min-h-0')
   })
 
-  it('toggles desktop notifications', async () => {
+  it('toggles app notifications', async () => {
     render(<NotificationSettingsPage />)
 
     await userEvent.click(screen.getByRole('switch', { name: /enabled/i }))
@@ -76,7 +76,7 @@ describe('NotificationSettingsPage', () => {
       {
         kind: 'assistant_done',
         title: 'OpenAgentd notification test',
-        body: 'Desktop notifications are working.',
+        body: 'App notifications are working.',
       },
       { force: true },
     )

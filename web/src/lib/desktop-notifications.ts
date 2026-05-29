@@ -34,6 +34,11 @@ function isTauriRuntime(): boolean {
   return getPlatform().isTauri
 }
 
+function isMobileTauriRuntime(): boolean {
+  const platform = getPlatform()
+  return platform.isTauri && (platform.os === 'ios' || platform.os === 'android')
+}
+
 export function areDesktopNotificationsEnabled(): boolean {
   if (typeof window === 'undefined') return true
   return window.localStorage.getItem(ENABLED_KEY) !== 'false'
@@ -69,12 +74,13 @@ export function isBackgroundCompletion(toolName: string, result: string | undefi
 
 async function shouldNotify(options: { force?: boolean } = {}): Promise<DesktopNotificationResult | null> {
   if (!isTauriRuntime()) {
-    return { status: 'unsupported', message: 'Native desktop notifications only work in the Tauri desktop app.' }
+    return { status: 'unsupported', message: 'Native app notifications only work in the Tauri app.' }
   }
   if (!areDesktopNotificationsEnabled()) {
-    return { status: 'disabled', message: 'Desktop notifications are disabled.' }
+    return { status: 'disabled', message: 'App notifications are disabled.' }
   }
   if (options.force) return null
+  if (isMobileTauriRuntime()) return null
 
   try {
     const { getCurrentWindow } = await import('@tauri-apps/api/window')
@@ -89,7 +95,7 @@ async function shouldNotify(options: { force?: boolean } = {}): Promise<DesktopN
       : { status: 'disabled', message: 'Desktop notifications are skipped while the app window is focused.' }
   } catch (err) {
     console.warn('desktop notification focus check failed', err)
-    return { status: 'error', message: 'Could not check desktop window focus state.' }
+    return { status: 'error', message: 'Could not check app window focus state.' }
   }
 }
 

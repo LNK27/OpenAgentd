@@ -38,7 +38,7 @@ export function NotificationSettingsPage() {
         {
           kind: 'assistant_done',
           title: 'OpenAgentd notification test',
-          body: 'Desktop notifications are working.',
+          body: 'App notifications are working.',
         },
         { force: true },
       )
@@ -67,8 +67,9 @@ export function NotificationSettingsPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl space-y-5 p-6">
           <p className="text-sm leading-relaxed text-(--color-text-muted)">
-            Desktop notifications appear when OpenAgentd is running in the
-            desktop app and the window is hidden, minimized, or not focused.
+            App notifications appear when OpenAgentd is running in a Tauri
+            desktop or mobile app. Desktop notifications are skipped while the
+            app window is focused.
           </p>
 
           <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
@@ -98,7 +99,7 @@ export function NotificationSettingsPage() {
               <span className="text-(--color-text)">Play sound</span>
             </label>
             <p className="text-xs text-(--color-text-muted)">
-              Play a short in-app sound when a desktop notification is sent.
+              Play a short in-app sound when a native notification is sent.
             </p>
           </section>
 
@@ -107,8 +108,8 @@ export function NotificationSettingsPage() {
               Test
             </h2>
             <p className="text-xs text-(--color-text-muted)">
-              Send one notification now to confirm OS permissions and desktop
-              integration are working.
+              Send one notification now to confirm OS permissions and native
+              app integration are working.
             </p>
             <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleTest} disabled={!enabled || testing}>
               <BellRing size={12} aria-hidden="true" />

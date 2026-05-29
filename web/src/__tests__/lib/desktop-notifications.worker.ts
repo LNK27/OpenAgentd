@@ -6,12 +6,13 @@ let visible = true
 let minimized = false
 let permissionGranted = true
 let permissionResult: 'granted' | 'denied' = 'granted'
+let os = 'macos'
 const mockRequestPermission = mock(async () => permissionResult)
 const mockNotify = mock(async () => undefined)
 const mockPlay = mock(async () => undefined)
 
 mock.module('@/hooks/use-platform', () => ({
-  getPlatform: () => ({ isTauri, os: 'macos', isMacOverlay: isTauri }),
+  getPlatform: () => ({ isTauri, os, isMacOverlay: isTauri && os === 'macos' }),
 }))
 
 mock.module('@tauri-apps/api/window', () => ({
@@ -47,6 +48,7 @@ beforeEach(() => {
   minimized = false
   permissionGranted = true
   permissionResult = 'granted'
+  os = 'macos'
   mockRequestPermission.mockClear()
   mockNotify.mockClear()
   mockPlay.mockClear()
@@ -78,6 +80,16 @@ describe('desktop notification worker', () => {
     expect((await sendDesktopNotification(payload, { force: true })).status).toBe('sent')
     expect(mockNotify).toHaveBeenCalledTimes(1)
     expect(mockPlay).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends on mobile native app without desktop focus skip', async () => {
+    os = 'ios'
+    focused = true
+
+    const result = await sendDesktopNotification(payload)
+
+    expect(result.status).toBe('sent')
+    expect(mockNotify).toHaveBeenCalledTimes(1)
   })
 
   it('skips sound when notification sounds are disabled', async () => {

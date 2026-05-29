@@ -60,9 +60,11 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   → Updates, cached downloads, install-and-restart, signed minisign payloads,
   GitHub release notes rendered inline. Silent check at startup + every 6 hours.
   Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
-- **Native desktop notifications** `[v1.19.0]` — finished assistant turns,
-  background tasks, scheduled reminders. Per-session context (coding workspace
-  name when available). Settings → Notifications to toggle or send a test.
+- **Native app notifications** `[v1.19.0]` — finished assistant turns,
+  background tasks, scheduled reminders in the desktop app, plus local native
+  notifications in the remote-backend mobile shell `[v1.34.0]`. Per-session
+  context (coding workspace name when available). Settings → Notifications to
+  toggle or send a test.
 - **Notification sounds** `[v1.22.0]` — separate Play sound toggle so you can
   keep visual notifications on while muting audio.
 - **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,

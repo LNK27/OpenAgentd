@@ -142,6 +142,7 @@ fn remove_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             app_backend_status,
             app_save_backend_server,

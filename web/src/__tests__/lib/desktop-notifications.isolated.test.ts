@@ -39,6 +39,10 @@ describe('desktop notification library integration', () => {
     await runWorker('focused skip and forced send')
   })
 
+  it('sends native notifications in the mobile app without focused-window skip', async () => {
+    await runWorker('mobile native app')
+  })
+
   it('reports unsupported runtime before touching native APIs', async () => {
     await runWorker('unsupported runtime')
   })

@@ -18,6 +18,7 @@
     "core:app:default",
     "core:event:default",
     "opener:default",
+    "notification:default",
     "allow-app-backend-status",
     "allow-app-save-backend-server",
     "allow-app-remove-backend-server"
