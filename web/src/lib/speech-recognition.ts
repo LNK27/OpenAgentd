@@ -22,12 +22,18 @@ export interface SpeechRecognitionErrorEventLike {
   message?: string
 }
 
+interface SpeechRecognitionAudioEventLike {
+  type?: string
+}
+
 export interface SpeechRecognitionLike {
   continuous: boolean
   interimResults: boolean
   lang: string
   onresult: ((event: SpeechRecognitionEventLike) => void) | null
   onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
+  onaudiostart?: ((event: SpeechRecognitionAudioEventLike) => void) | null
+  onspeechstart?: ((event: SpeechRecognitionAudioEventLike) => void) | null
   onend: (() => void) | null
   start: () => void
   stop: () => void
@@ -87,35 +93,74 @@ export async function startClientSpeechRecognition(options: ClientSpeechOptions)
     throw new Error('Speech recognition is not supported in this browser or WebView.')
   }
 
-  const permissionStream = await requestMicrophonePermission()
-  stopMicrophonePermissionStream(permissionStream)
+  let permissionStream: MediaStream | null = null
+  try {
+    permissionStream = await requestMicrophonePermission()
+  } catch (err) {
+    console.warn('speech recognition microphone preflight failed; trying recognizer directly', err)
+  }
 
   const recognition = new Recognition()
   recognition.continuous = false
-  recognition.interimResults = false
+  recognition.interimResults = true
   recognition.lang = ''
+  let latestTranscript = ''
+  let emittedFinal = false
+
+  const emitFinal = (text: string): void => {
+    const trimmed = text.trim()
+    if (!trimmed || emittedFinal) return
+    emittedFinal = true
+    options.onFinal(trimmed)
+  }
 
   recognition.onresult = (event) => {
     let transcript = ''
+    let hasFinal = false
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
       const result = event.results[i]
-      if (result.isFinal) transcript += result[0]?.transcript ?? ''
+      transcript += result[0]?.transcript ?? ''
+      hasFinal = hasFinal || result.isFinal
     }
-    const trimmed = transcript.trim()
-    if (trimmed) options.onFinal(trimmed)
+    latestTranscript = transcript.trim() || latestTranscript
+    if (hasFinal) emitFinal(latestTranscript)
   }
 
   recognition.onerror = (event) => {
+    stopMicrophonePermissionStream(permissionStream)
+    permissionStream = null
     options.onError(speechErrorMessage(event))
   }
 
+  recognition.onaudiostart = () => {
+    stopMicrophonePermissionStream(permissionStream)
+    permissionStream = null
+  }
+
+  recognition.onspeechstart = () => {
+    stopMicrophonePermissionStream(permissionStream)
+    permissionStream = null
+  }
+
   recognition.onend = () => {
+    stopMicrophonePermissionStream(permissionStream)
+    permissionStream = null
+    emitFinal(latestTranscript)
     options.onEnd()
   }
 
-  recognition.start()
+  try {
+    recognition.start()
+  } catch (err) {
+    stopMicrophonePermissionStream(permissionStream)
+    throw err
+  }
 
   return {
-    stop: () => recognition.stop(),
+    stop: () => {
+      stopMicrophonePermissionStream(permissionStream)
+      permissionStream = null
+      recognition.stop()
+    },
   }
 }

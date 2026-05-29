@@ -51,10 +51,11 @@ mock.module('@/stores/useToastStore', () => ({
 let activeRecognition: MockSpeechRecognition | null = null
 let startThrows = false
 let getUserMediaThrows = false
+const mockTrackStop = mock(() => {})
 const mockGetUserMedia = mock(async () => {
   if (getUserMediaThrows) throw new Error('Microphone denied')
   return {
-    getTracks: () => [{ stop: mock(() => {}) }],
+    getTracks: () => [{ stop: mockTrackStop }],
   }
 })
 
@@ -64,6 +65,8 @@ class MockSpeechRecognition {
   lang = ''
   onresult: ((event: { resultIndex: number; results: Array<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null = null
   onerror: ((event: { error?: string; message?: string }) => void) | null = null
+  onaudiostart: (() => void) | null = null
+  onspeechstart: (() => void) | null = null
   onend: (() => void) | null = null
 
   start() {
@@ -77,6 +80,10 @@ class MockSpeechRecognition {
 
   emitFinal(transcript: string) {
     this.onresult?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript } }] })
+  }
+
+  emitInterim(transcript: string) {
+    this.onresult?.({ resultIndex: 0, results: [{ isFinal: false, 0: { transcript } }] })
   }
 
   emitError(error: string, message?: string) {
@@ -96,6 +103,7 @@ beforeEach(() => {
   startThrows = false
   getUserMediaThrows = false
   mockGetUserMedia.mockClear()
+  mockTrackStop.mockClear()
   Object.defineProperty(navigator, 'mediaDevices', {
     value: { getUserMedia: mockGetUserMedia },
     configurable: true,
@@ -195,6 +203,19 @@ describe('VoiceMicButton — transcript insertion', () => {
     await waitFor(() => expect(screen.getByLabelText('Start voice input')).toBeTruthy())
   })
 
+  it('emits the latest interim transcript when recognition ends without a final result', async () => {
+    const user = userEvent.setup()
+    let captured = ''
+    render(<VoiceMicButton voiceEnabled={true} onTranscript={(text) => { captured = text }} />)
+
+    await user.click(screen.getByLabelText('Start voice input'))
+    activeRecognition?.emitInterim(' partial speech ')
+    activeRecognition?.end()
+
+    await waitFor(() => expect(captured).toBe('partial speech'))
+    await waitFor(() => expect(screen.getByLabelText('Start voice input')).toBeTruthy())
+  })
+
   it('does not call onTranscript for empty final text', async () => {
     const user = userEvent.setup()
     let called = false
@@ -233,21 +254,22 @@ describe('VoiceMicButton — error handling', () => {
 
     await waitFor(() => expect(mockGetUserMedia).toHaveBeenCalledWith({ audio: true }))
     await waitFor(() => expect(screen.getByLabelText('Stop voice input')).toBeTruthy())
+    expect(mockTrackStop).not.toHaveBeenCalled()
+    activeRecognition?.onaudiostart?.()
+    expect(mockTrackStop).toHaveBeenCalled()
   })
 
-  it('shows toast when microphone permission check fails', async () => {
+  it('still starts speech recognition when microphone preflight fails', async () => {
     getUserMediaThrows = true
     const user = userEvent.setup()
     render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)
 
     await user.click(screen.getByLabelText('Start voice input'))
 
-    await waitFor(() => expect(mockPush).toHaveBeenCalled())
-    const call = mockPush.mock.calls[0][0] as Toast
-    expect(call.title).toBe('Voice input error')
-    expect(call.description).toBe('Microphone denied')
-    expect(activeRecognition).toBeNull()
-    expect(screen.getByLabelText('Start voice input')).toBeTruthy()
+    await waitFor(() => expect(mockGetUserMedia).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByLabelText('Stop voice input')).toBeTruthy())
+    expect(activeRecognition).not.toBeNull()
+    expect(mockPush).not.toHaveBeenCalled()
   })
 
   it('shows toast when speech recognition cannot start', async () => {
