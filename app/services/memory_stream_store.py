@@ -46,6 +46,7 @@ class _TurnState:
         "thinking",
         "tool_calls",
         "agent_statuses",
+        "agent_errors",
         "summarization",
         "usage",
         "error",
