@@ -9,11 +9,15 @@ module because the ``wiki_search`` tool imports them.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.agent.hooks.base import BaseAgentHook
+from app.services.markdown_text import (
+    get_ordered_exact_tokens,
+    get_token_sets,
+    score_token_overlap,
+)
 
 if TYPE_CHECKING:
     from app.agent.schemas.chat import AssistantMessage
@@ -72,7 +76,7 @@ class WikiInjectionHook(BaseAgentHook):
 
 def _tokenize(text: str) -> list[str]:
     """Lowercase, split on non-alphanumeric, drop tokens shorter than 2 chars."""
-    return [t for t in re.split(r"[^a-z0-9]+", text.lower()) if len(t) >= 2]
+    return get_ordered_exact_tokens(text)
 
 
 def _score_topics(query: str, topics: list) -> list[tuple]:
@@ -84,25 +88,18 @@ def _score_topics(query: str, topics: list) -> list[tuple]:
     if not query.strip():
         return [(t, 0.0) for t in topics]
 
-    query_tokens = set(_tokenize(query))
+    query_tokens = get_token_sets(query)
     results: list[tuple] = []
 
     for info in topics:
         stem = Path(info.path).stem  # e.g. "auth-strategy"
-        desc_tokens = _tokenize(info.description)
-        tag_tokens = [t for tag in info.tags for t in _tokenize(tag)]
-        stem_tokens = _tokenize(stem)
-
-        score = 0.0
-        for tok in desc_tokens:
-            if tok in query_tokens:
-                score += 1.0
-        for tok in tag_tokens:
-            if tok in query_tokens:
-                score += 1.5
-        for tok in stem_tokens:
-            if tok in query_tokens:
-                score += 0.5
+        score = (
+            score_token_overlap(query_tokens, get_token_sets(info.description), 1.0)
+            + score_token_overlap(
+                query_tokens, get_token_sets(" ".join(info.tags)), 1.5
+            )
+            + score_token_overlap(query_tokens, get_token_sets(stem), 0.5)
+        )
 
         results.append((info, score))
 

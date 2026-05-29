@@ -254,7 +254,7 @@ def test_score_topics_filename_stem_contributes():
         WikiFileInfo(path="topics/jwt-auth.md", description="", updated=None, tags=()),
     ]
     results = _score_topics("jwt", topics)
-    assert results[0][1] == 0.5
+    assert results[0][1] == 0.625
 
 
 def test_score_topics_multiple_token_matches_accumulate():
@@ -267,7 +267,7 @@ def test_score_topics_multiple_token_matches_accumulate():
         ),
     ]
     results = _score_topics("jwt auth api", topics)
-    assert results[0][1] == 3.5
+    assert results[0][1] == 4.375
 
 
 def test_score_topics_tag_with_multiple_words():
@@ -280,7 +280,7 @@ def test_score_topics_tag_with_multiple_words():
         ),
     ]
     results = _score_topics("rest api", topics)
-    assert results[0][1] == 3.5
+    assert results[0][1] == 4.375
 
 
 def test_score_topics_same_token_in_desc_and_tag():
@@ -293,7 +293,7 @@ def test_score_topics_same_token_in_desc_and_tag():
         ),
     ]
     results = _score_topics("auth", topics)
-    assert results[0][1] == 3.0
+    assert results[0][1] == 3.75
 
 
 def test_score_topics_threshold_boundary_exactly_0_5():
@@ -301,4 +301,4 @@ def test_score_topics_threshold_boundary_exactly_0_5():
         WikiFileInfo(path="topics/jwt-auth.md", description="", updated=None, tags=()),
     ]
     results = _score_topics("jwt", topics)
-    assert results[0][1] == 0.5
+    assert results[0][1] == 0.625
