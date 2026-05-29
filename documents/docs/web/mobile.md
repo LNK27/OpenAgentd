@@ -70,7 +70,7 @@ Right-side workspace explorer for `/coding` mode.
 ### FloatingInputBar (`FloatingInputBar.tsx`)
 - Mobile: static docked `<div>` at the bottom with `border-t`, `backdrop-blur`, `.pb-safe`. No drag, no localStorage position.
 - Desktop: draggable floating bar (existing behaviour unchanged).
-- Voice input: the mic button sits beside Send on mobile and desktop. When `voice.enabled` is false the button is shown disabled with a tooltip — it does not record. Recording starts and stops only from button taps/clicks; no mobile-specific silence auto-stop. Configure via **Settings → Voice** or edit `speech.yaml` directly.
+- Voice input: the mic button sits beside Send on mobile and desktop. It uses the current browser/WebView speech recognizer when available; unsupported runtimes show a disabled button with a tooltip. Listening starts and stops only from button taps/clicks; no mobile-specific silence auto-stop.
 
 ### MemoryPanel, WorkspaceFilesPanel, SchedulerPanel
 All three use **master/detail** on mobile — one pane at a time, never side-by-side:

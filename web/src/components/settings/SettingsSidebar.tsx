@@ -25,7 +25,6 @@ import {
   Info,
   Image,
   KeyRound,
-  Mic,
   Moon,
   Plug,
   Shield,
@@ -53,7 +52,6 @@ type SidebarPath =
   | '/settings/sandbox'
   | '/settings/dream'
   | '/settings/title-generation'
-  | '/settings/voice'
   | '/settings/notifications'
   | '/telemetry'
   | '/settings'
@@ -173,12 +171,6 @@ export function SettingsSidebar() {
         label: 'Title generation',
         icon: Type,
         matchPrefix: '/settings/title-generation',
-      },
-      {
-        to: '/settings/voice',
-        label: 'Voice',
-        icon: Mic,
-        matchPrefix: '/settings/voice',
       },
       {
         to: '/settings/notifications',

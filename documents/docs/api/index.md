@@ -200,24 +200,8 @@ return HTTP 422 on mismatch.
 
 ## Speech endpoints
 
-Browser voice input is documented in [`web/voice-input.md`](../web/voice-input.md).
-It records audio in the frontend, transcribes on the backend, and inserts the
-transcript into the existing chat input without auto-sending.
-
-| Method | Path | Returns |
-|--------|------|---------|
-| `GET` | `/api/speech/config` | `{enabled, model, language, max_file_mb}` — current voice config from `speech.yaml` |
-| `PUT` | `/api/speech/config` | `{enabled, model, language, max_file_mb}` — persist voice config to `speech.yaml` |
-| `POST` | `/api/speech/transcribe` | `{text}` — transcript for one uploaded recording |
-
-`PUT /api/speech/config` accepts JSON with fields `enabled` (bool), `model`
-(`"provider:name"` string), `language` (string), and `max_file_mb` (int > 0).
-The config is written to `speech.yaml` and hot-reloaded immediately — no server
-restart needed. Editable from **Settings → Voice** in the web UI.
-
-`POST /api/speech/transcribe` accepts `multipart/form-data` with one `file`
-field. V1 supports local transcription via `voice.model: local:base`, powered by
-`faster-whisper` (bundled with every install — no extras to enable).
+OpenAgentd does not expose speech endpoints. Browser/app voice input is
+client-side speech recognition documented in [`web/voice-input.md`](../web/voice-input.md).
 
 ## Settings
 

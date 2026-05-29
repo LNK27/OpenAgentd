@@ -69,10 +69,6 @@ export {
   useInstallSeedMutation,
 } from './useProvidersQuery'
 export {
-  useSpeechConfigQuery,
-  useUpdateSpeechConfigMutation,
-} from './useSpeechConfigQuery'
-export {
   useTitleGenerationSettingsQuery,
   useUpdateTitleGenerationSettingsMutation,
 } from './useTitleGenerationSettingsQuery'

@@ -1,13 +1,13 @@
 """Regression: importing the FastAPI app must not pull in optional native deps.
 
-On some Windows hosts ``onnxruntime`` (transitively imported by
-``faster_whisper`` and ``markitdown``) fails its DLL initialization routine.
+On some Windows hosts ``onnxruntime`` (transitively imported by optional
+media-processing packages such as ``markitdown``) fails its DLL initialization routine.
 Any module that imports those packages at top level therefore kills the
 sidecar before it can serve the handshake, leaving the desktop tray stuck on
 ``Status: Error``.
 
 These imports must stay strictly lazy.  The check runs in a fresh subprocess
-because the broader test suite legitimately imports speech-related modules in
+because the broader test suite legitimately imports optional media modules in
 other tests, polluting :data:`sys.modules` for in-process assertions.
 """
 
@@ -17,7 +17,6 @@ import subprocess
 import sys
 
 _FORBIDDEN_MODULES = [
-    "faster_whisper",
     "onnxruntime",
     "ctranslate2",
     "av",

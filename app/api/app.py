@@ -23,7 +23,6 @@ from app.api.routes.scheduler import router as scheduler_router
 from app.api.routes.settings import router as settings_router
 from app.api.routes.skills import router as skills_router
 from app.api.routes.snippets import router as snippets_router
-from app.api.routes.speech import router as speech_router
 from app.api.routes.team import router as team_router
 from app.api.routes.wiki import router as wiki_router
 from app.core.config import settings
@@ -153,7 +152,6 @@ def create_app() -> FastAPI:
     app.include_router(mcp_router, prefix="/api/mcp", tags=["mcp"])
     app.include_router(settings_router, prefix="/api/settings", tags=["settings"])
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
-    app.include_router(speech_router, prefix="/api/speech", tags=["speech"])
     app.include_router(dream_router, prefix="/api", tags=["dream"])
     app.include_router(
         diagnostics_router, prefix="/api/diagnostics", tags=["diagnostics"]

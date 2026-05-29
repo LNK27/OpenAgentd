@@ -45,7 +45,6 @@ import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalida
 import { useUIStore } from '@/stores/useUIStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
-import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FolderOpen, FolderCode, Home, ListTodo, Menu, MoreHorizontal, SlidersHorizontal, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -200,13 +199,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const selectedModel = sessionModel ?? ''
   const selectedThinkingLevel = sessionThinkingLevel ?? ''
 
-  // Voice input — enabled flag + local runtime availability from /api/speech/config.
-  const { data: speechConfig } = useSpeechConfigQuery()
-  const voiceUnavailableReason =
-    speechConfig?.availability?.local === 'unavailable'
-      ? speechConfig.availability.reason || 'The local speech runtime is unavailable on this machine.'
-      : null
-  const voiceEnabled = Boolean(speechConfig?.enabled && !voiceUnavailableReason)
+  const voiceEnabled = true
+  const voiceUnavailableReason = null
 
   // Workspace file/folder list for the InputBar's @-mention picker. Fetched
   // lazily — the query is keyed on workspace/session so coding and normal

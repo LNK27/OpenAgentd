@@ -132,7 +132,6 @@ def test_install_seed_writes_runtime_settings_model(tmp_path: Path) -> None:
     assert result.configs_written == [
         "multimodal.yaml",
         "settings.yaml",
-        "speech.yaml",
     ]
     settings = (tmp_path / "config" / "settings.yaml").read_text(encoding="utf-8")
     assert "title_generation:" in settings

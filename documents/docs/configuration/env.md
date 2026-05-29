@@ -39,7 +39,6 @@ See [`paths.md`](./paths.md) for what lives under each root and the production /
 | `SKILLS_DIR` | Defaults to `{OPENAGENTD_CONFIG_DIR}/skills`. |
 | `OPENAGENTD_PLUGINS_DIRS` | List of plugin directories separated by the OS path separator (`:` on macOS/Linux, `;` on Windows — same convention as `PATH`/`PYTHONPATH`). Defaults to `{OPENAGENTD_CONFIG_DIR}/plugins`. See [`agent/plugins.md`](../agent/plugins.md). |
 | `MULTIMODAL_CONFIG_PATH` | Defaults to `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml`. Drives `generate_image` / `generate_video`. |
-| `SPEECH_CONFIG_PATH` | Defaults to `{OPENAGENTD_CONFIG_DIR}/speech.yaml`. Drives browser-mic transcription. |
 
 ## LLM provider keys
 
@@ -85,12 +84,12 @@ Summarization thresholds, tool-result offload sizes, and sandbox limits are modu
 
 ## Optional extras
 
-Most features ship by default — voice transcription (`faster-whisper`), document conversion for PDF, DOCX, and HTML (`markitdown[pdf,docx]` plus markitdown core), and everything else needed to make the desktop app "just work" out of the box.
+Most features ship by default — document conversion for PDF, DOCX, and HTML (`markitdown[pdf,docx]` plus markitdown core), client-side voice input where the browser/WebView supports speech recognition, and everything else needed to make the desktop app "just work" out of the box.
 
 A few heavier features remain opt-in:
 
 | Extra | Enables | Install |
 |-------|---------|---------|
-| `audio` | File-attached audio transcription via markitdown's audio backend (`speech_recognition` + `pydub`). Distinct from the always-bundled microphone path which uses `faster-whisper`. | `uv sync --extra audio` |
+| `audio` | File-attached audio transcription via markitdown's audio backend (`speech_recognition` + `pydub`). Distinct from live microphone input, which uses client-side speech recognition. | `uv sync --extra audio` |
 | `azure-doc-intel` | Azure Document Intelligence server-side OCR fallback inside markitdown. | `uv sync --extra azure-doc-intel` |
 | `full` | All optional extras (`audio,azure-doc-intel`). | `uv sync --extra full` |

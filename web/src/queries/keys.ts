@@ -88,7 +88,4 @@ export const queryKeys = {
     providerModels: (providerId: string) => ['settings', 'providers', providerId, 'models'] as const,
     providerUsage: (providerId: string) => ['settings', 'providers', providerId, 'usage'] as const,
   },
-  speech: {
-    config: () => ['speech', 'config'] as const,
-  },
 }

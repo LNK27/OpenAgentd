@@ -56,7 +56,7 @@ Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Cop
 | [App chrome](./web/chrome.md) | Shared header, platform detection, Tauri drag, macOS overlay. |
 | [Chat input & queue](./web/chat-input.md) | Consecutive message queuing, `PendingMessageQueue`. |
 | [Coding sessions UI](./web/coding-sessions.md) | Coding session restore, workspace sidebar pagination, reload/error handling. |
-| [Voice input](./web/voice-input.md) | Browser mic, local STT, transcript insertion, settings. |
+| [Voice input](./web/voice-input.md) | Client speech recognition and transcript insertion. |
 | [Tool results](./web/tool-results.md) | Per-tool result renderers. |
 | [Workspace Files panel](./web/workspace-files.md) | Files drawer, previews, live invalidation. |
 | [Todos popover](./web/todos.md) | Task list display, live invalidation, shortcut. |

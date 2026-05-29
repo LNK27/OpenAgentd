@@ -242,23 +242,6 @@ async fn app_use_bundled_backend(app: AppHandle) -> Result<(), String> {
         .map_err(|e| format!("{e:#}"))
 }
 
-#[tauri::command]
-fn open_macos_microphone_settings() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
-            .spawn()
-            .map_err(|e| format!("open System Settings: {e}"))?;
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        Err("microphone settings shortcut is only available on macOS".into())
-    }
-}
-
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         let _ = window.unminimize();
@@ -1205,7 +1188,6 @@ fn main() {
             app_remove_backend_server,
             app_save_backend_server,
             app_use_bundled_backend,
-            open_macos_microphone_settings,
             set_tray_session,
             updater_check,
             updater_download,

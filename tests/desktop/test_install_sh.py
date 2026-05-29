@@ -378,7 +378,7 @@ class TestEntitlementsFallback:
         # Inline plist heredoc is keyed against ``PLIST`` (terminator)
         assert "<<'PLIST'" in text
         assert "com.apple.security.cs.allow-unsigned-executable-memory" in text
-        # Audio-input entitlement is required for faster-whisper mic.
+        # Audio-input entitlement allows client-side speech recognition mic access.
         assert "com.apple.security.device.audio-input" in text
 
 

@@ -27,7 +27,7 @@
 #   2. Strip any pre-existing invalid signature.
 #   3. Apply an ad-hoc signature (``-s -``) recursively, with the
 #      hardened-runtime entitlements that ``ctranslate2`` requires
-#      for ``faster-whisper`` to JIT its int8 kernels.
+#      for native dependencies that JIT kernels at runtime.
 #   4. Verify the result.
 #   5. (Optional, with ``--install``) copy to /Applications.
 #

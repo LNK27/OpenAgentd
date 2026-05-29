@@ -37,7 +37,7 @@ into**.
 | Native image + video generation | ✅ built-in | — | — | — | — | — |
 | Built-in telemetry dashboard | ✅ OpenAgentd | — | — | — | — | — |
 | Scheduling / cron / one-shot | ✅ OpenAgentd | — | — | — | — | — |
-| Voice input (local STT) | ✅ Whisper on-device | — | — | — | — | — |
+| Voice input | ✅ client speech recognition | — | — | — | — | — |
 | Documented HTTP API to embed | ✅ REST + SSE | — | — | — | — | — |
 
 ## Where openagentd fits

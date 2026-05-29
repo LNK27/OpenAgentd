@@ -19,7 +19,6 @@ Each agent is a single `.md` file with **YAML frontmatter** (config) and a **Mar
 | `{OPENAGENTD_CONFIG_DIR}/agents/coding/*.md` | Coding-mode team. Same rules — exactly one `role: lead`. |
 | `{OPENAGENTD_CONFIG_DIR}/settings.yaml` | Runtime settings for Dream and title generation. See [`agent/memory.md`](../agent/memory.md#dream-agent-config) and [`title-generation.md`](../title-generation.md). |
 | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | Image / video generation backends. |
-| `{OPENAGENTD_CONFIG_DIR}/speech.yaml` | Voice / speech config. |
 | `{OPENAGENTD_CONFIG_DIR}/mcp.json` | MCP client config — see [`agent/tools.md`](../agent/tools.md#mcp-servers-appagentmcp). |
 
 The Settings UI lists both normal and coding agents. Coding agents appear with names like `coding/openagentd`; their frontmatter `name:` remains the filename stem. Current first-party seeds are `openagentd`, `explorer`, `executor`, plus `coding/openagentd` and `coding/coder`. Seed install prunes obsolete untouched first-party files from older installs; custom files are kept.

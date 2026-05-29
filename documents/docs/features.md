@@ -383,14 +383,13 @@ Everything stays local. No third-party telemetry SaaS. Deeper doc:
 
 ## 10. Voice
 
-Local Whisper, on-device. Nothing leaves your machine.
+Client-side speech recognition. OpenAgentd does not run backend microphone transcription.
 
-- **Mic button in composer** `[since v1.0]` — click to record, click to stop.
-  Transcript is inserted into the chat input for review before sending. The
-  remote-backend mobile shell records in the WebView, declares iOS microphone
-  permission metadata, and uploads audio to the configured backend `[v1.34.0]`.
-- **Local Whisper STT** `[since v1.0]` — configurable via `speech.yaml` or
-  Settings → Voice. See [`web/voice-input.md`](./web/voice-input.md).
+- **Mic button in composer** `[since v1.0]` — click to start listening, click to
+  stop. Transcript text is inserted into the chat input for review before sending.
+- **Browser / OS speech recognition** `[v1.34.0]` — uses the current browser or
+  app WebView speech recognizer when available. No `/api/speech/*` backend,
+  `speech.yaml`, or bundled `faster-whisper`. See [`web/voice-input.md`](./web/voice-input.md).
 
 ---
 

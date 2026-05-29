@@ -134,11 +134,10 @@ and try again.
 
 ### macOS: app launches but immediately quits
 
-Most likely `ctranslate2` (the inference engine behind
-`faster-whisper`) failed JIT initialization because the
-`com.apple.security.cs.allow-unsigned-executable-memory`
-entitlement got stripped. Re-run `install.sh` — it re-applies the
-correct entitlements every time.
+Most likely a native dependency failed JIT initialization because the
+`com.apple.security.cs.allow-unsigned-executable-memory` entitlement got
+stripped. Re-run `install.sh` — it re-applies the correct entitlements every
+time.
 
 ### Linux: "openagentd: command not found" after install
 

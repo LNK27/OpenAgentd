@@ -51,7 +51,7 @@ A short list of the most important shipped capabilities. The canonical, version-
 
 **Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config, or override the lead model/thinking level per session from Session Settings.
 
-**Local-first operations.** Voice input is transcribed locally with Whisper, scheduled tasks run on cron/interval/one-shot timers, todos update a live board, and the telemetry dashboard stays local with no third-party SaaS.
+**Local-first operations.** Voice input uses your browser or OS speech recognizer without backend audio transcription, scheduled tasks run on cron/interval/one-shot timers, todos update a live board, and the telemetry dashboard stays local with no third-party SaaS.
 
 ---
 
@@ -235,21 +235,9 @@ The **dream agent** runs on a cron schedule, reads unprocessed sessions and note
 
 ## Voice input
 
-Click the mic button in the chat input to record. Click again to stop. The recording is transcribed on-device using [Whisper](https://github.com/openai/whisper) and inserted into the input for review — you still press Send manually. Nothing leaves your machine.
+Click the mic button in the chat input to start voice input. Click again to stop. OpenAgentd uses the speech recognition built into your browser or app WebView and inserts the final transcript into the input for review — you still press Send manually.
 
-**Enable it:** open **Settings → Voice** and toggle it on (or edit `~/.config/openagentd/speech.yaml` directly). `faster-whisper` ships with the default install — no extra to enable.
-
-**`speech.yaml` reference:**
-
-```yaml
-voice:
-  enabled: true
-  model: local:base    # local:base / local:small / local:medium
-  language: auto       # or a BCP-47 code: "en", "fr", "ja", …
-  max_file_mb: 25
-```
-
-The file is hot-reloaded on change — no server restart needed. V1 is local-only (`local:*`). No TTS, no auto-send, no silence auto-stop.
+There is no backend speech service, no `faster-whisper` dependency, and no `speech.yaml` setting. If the current browser/WebView does not expose speech recognition, the mic button is disabled with an explanatory tooltip. Platform privacy and cloud/local processing semantics are controlled by the browser or operating system speech service.
 
 ---
 
@@ -371,7 +359,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | [Todos popover](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/todos.md) | Task board, assignments, claims, dependencies, live updates |
 | [Tool rendering](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/tool-results.md) | Tool call/result UI and custom renderers |
 | [Chat input & queue](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/chat-input.md) | Consecutive message queuing, `PendingMessageQueue` |
-| [Voice input](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/voice-input.md) | Browser mic, local STT, transcript insertion, settings |
+| [Voice input](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/voice-input.md) | Client speech recognition and transcript insertion |
 | [Mobile layout](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/mobile.md) | Phone-first responsive design — breakpoints, safe areas |
 
 ### Contributing

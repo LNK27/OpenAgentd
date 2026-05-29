@@ -320,7 +320,7 @@ The `model` field mirrors the `provider:name` format used by agent `.md` files. 
 
 The file is loaded once and reloaded on mtime change — no server restart needed when editing.
 
-Voice/speech input is configured separately in `{OPENAGENTD_CONFIG_DIR}/speech.yaml` — see [`web/voice-input.md`](../web/voice-input.md) and [`configuration.md`](../configuration.md).
+Voice input uses client-side speech recognition and has no backend tool/config file — see [`web/voice-input.md`](../web/voice-input.md).
 
 **Registered backends:**
 

@@ -95,9 +95,9 @@ interface InputBarProps {
    */
   renderDragHandle?: () => React.ReactNode
   /**
-   * Whether voice input is enabled (from GET /api/speech/config).
+   * Whether voice input is enabled.
    * When false the mic button is shown disabled with an explanatory tooltip.
-   * When true the mic button records, transcribes, and appends to input.
+   * When true the mic button starts client-side speech recognition and appends the transcript to input.
    */
   voiceEnabled?: boolean
   /**

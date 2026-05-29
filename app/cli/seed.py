@@ -11,8 +11,8 @@ What ships
   pruned only when they still look like untouched legacy seed files.
 - ``skills/`` — optional user-editable skills. Core operational skills ship
   as read-only builtins under ``app/agent/builtin_skills`` instead.
-- Top-level config files: ``mcp.json`` plus generated ``settings.yaml``,
-  ``multimodal.yaml``, and ``speech.yaml``. These are the defaults the user can edit later;
+- Top-level config files: ``mcp.json`` plus generated ``settings.yaml``
+  and ``multimodal.yaml``. These are the defaults the user can edit later;
   any file already present in the user's config dir is left untouched.
   ``summarization.md`` is **not** seeded — the summariser prompt lives in
   code (see ``CHAT_SUMMARY_PROMPT`` / ``CODING_SUMMARY_PROMPT`` in
@@ -83,14 +83,6 @@ video:
   aspect_ratio: "16:9"
   resolution: "720p"
   duration_seconds: "8"
-"""
-
-_DEFAULT_SPEECH_YAML = """\
-voice:
-  enabled: false
-  model: local:base
-  language: auto
-  max_file_mb: 25
 """
 
 _REMOVED_FIRST_PARTY_AGENT_FILES: dict[str, str] = {
@@ -269,9 +261,6 @@ def _install_from_local(
         configs_written.append("settings.yaml")
     if _ensure_text_config(config_dir / "multimodal.yaml", _DEFAULT_MULTIMODAL_YAML):
         configs_written.append("multimodal.yaml")
-    if _ensure_text_config(config_dir / "speech.yaml", _DEFAULT_SPEECH_YAML):
-        configs_written.append("speech.yaml")
-
     for src in sorted(seed_dir.rglob("*")):
         if not src.is_file():
             continue
@@ -318,9 +307,6 @@ def _install_from_github(
         configs_written.append("settings.yaml")
     if _ensure_text_config(config_dir / "multimodal.yaml", _DEFAULT_MULTIMODAL_YAML):
         configs_written.append("multimodal.yaml")
-    if _ensure_text_config(config_dir / "speech.yaml", _DEFAULT_SPEECH_YAML):
-        configs_written.append("speech.yaml")
-
     with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as tf:
         for member in tf.getmembers():
             rel = _strip_repo_prefix(member.name)

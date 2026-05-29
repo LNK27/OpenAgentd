@@ -228,7 +228,7 @@ The bundler:
    SIGTERMs.
 
 Current slim bundle size: **~470 MB** uncompressed (macOS arm64), including
-`faster-whisper` + ONNX Runtime for built-in microphone voice input.
+client-side browser / WebView speech recognition for microphone voice input.
 Optional `[audio,azure-doc-intel]` extras add ~80 MB.
 
 ```bash

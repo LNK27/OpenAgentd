@@ -25,9 +25,8 @@ seed/
 > Summarisation, title generation, and Dream prompts are built in and are not
 > seeded as editable prompt files. Runtime choices such as enable/model/schedule
 > live in `{OPENAGENTD_CONFIG_DIR}/settings.yaml`, which the app creates from
-> the known schema instead of copying from `seed/`. `speech.yaml` and
-> `multimodal.yaml` are also generated from known schemas rather than copied
-> from GitHub seed content.
+> the known schema instead of copying from `seed/`. `multimodal.yaml` is also
+> generated from a known schema rather than copied from GitHub seed content.
 
 `README.md` (this file) is the only top-level item not copied — every
 other top-level entry ships, but `init` skips files the user already
@@ -49,4 +48,4 @@ has, so re-running `init` after a release won't clobber edits.
   outside files. Bundle reference scripts and templates in the same dir.
 - **Top-level configs are fill-in-gap defaults.** `mcp.json` only lands if the
   target file doesn't exist. Generated configs (`settings.yaml`,
-  `multimodal.yaml`, `speech.yaml`) follow the same no-overwrite rule.
+  `multimodal.yaml`) follow the same no-overwrite rule.

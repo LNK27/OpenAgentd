@@ -14,7 +14,6 @@ wiki.py / dream.py       Wiki, notes, Dream processing
 snapshot_service.py      Workspace/session snapshot support
 commands.py              Command handling helpers
 title_service.py         Title generation
-speech_transcription.py  Speech-to-text service
 ```
 
 ## Common feature checks

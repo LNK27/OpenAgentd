@@ -18,7 +18,6 @@ import { ProvidersSettingsPage } from './routes/settings.providers'
 import { MultimodalSettingsPage } from './routes/settings.multimodal'
 import { DreamSettingsPage } from './routes/settings.dream'
 import { TitleGenerationSettingsPage } from './routes/settings.title-generation'
-import { VoiceSettingsPage } from './routes/settings.voice'
 import { NotificationSettingsPage } from './routes/settings.notifications'
 import { TelemetryPage } from './routes/telemetry'
 import { SchedulerPage } from './routes/scheduler'
@@ -165,13 +164,6 @@ const settingsTitleGenerationRoute = createRoute({
   component: TitleGenerationSettingsPage,
 })
 
-// /settings/voice
-const settingsVoiceRoute = createRoute({
-  getParentRoute: () => settingsLayoutRoute,
-  path: 'voice',
-  component: VoiceSettingsPage,
-})
-
 // /settings/notifications
 const settingsNotificationsRoute = createRoute({
   getParentRoute: () => settingsLayoutRoute,
@@ -213,7 +205,6 @@ const routeTree = rootRoute.addChildren([
     settingsMultimodalRoute,
     settingsDreamRoute,
     settingsTitleGenerationRoute,
-    settingsVoiceRoute,
     settingsNotificationsRoute,
   ]),
   telemetryRoute,

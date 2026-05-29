@@ -119,11 +119,11 @@ Helpers live in `InputBar.mentions.ts` (`findActiveMention`, `findCommittedMenti
 
 ## Voice transcript insertion
 
-Voice input reuses the normal text input path. The mic button records browser
-audio, sends it to `POST /api/speech/transcribe`, then appends the returned
-transcript to the existing draft via the `onTranscript` callback (handled in
-`InputBar`). It does **not** call `sendMessage` automatically.
+Voice input reuses the normal text input path. The mic button starts the
+client-side speech recognizer and appends the final transcript to the existing
+draft via the `onTranscript` callback (handled in `InputBar`). It does **not**
+call `sendMessage` automatically.
 
 If the input already contains text, the transcript is appended with a space
 rather than replacing the draft. See [`voice-input.md`](./voice-input.md) for
-the full state machine and backend contract.
+the full state machine and runtime support contract.

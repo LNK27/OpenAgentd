@@ -55,8 +55,6 @@ interface Seed {
   providersConfigured?: number
   providersTotal?: number
   sandboxPatterns?: number
-  voiceEnabled?: boolean
-  voiceUnavailable?: boolean
 }
 
 function renderHub(seed: Seed = {}) {
@@ -99,15 +97,6 @@ function renderHub(seed: Seed = {}) {
       denied_patterns: Array.from({ length: seed.sandboxPatterns }, (_, i) => `pat-${i}`),
     })
   }
-  if (seed.voiceEnabled !== undefined) {
-    queryClient.setQueryData(queryKeys.speech.config(), {
-      enabled: seed.voiceEnabled,
-      availability: seed.voiceUnavailable
-        ? { local: 'unavailable', reason: 'onnxruntime failed to load' }
-        : { local: 'available', reason: null },
-    })
-  }
-
   const result = render(
     <QueryClientProvider client={queryClient}>
       <SettingsHubPage />
@@ -189,7 +178,6 @@ describe('SettingsHubPage — mobile nav', () => {
       providersConfigured: 2,
       providersTotal: 7,
       sandboxPatterns: 4,
-      voiceEnabled: true,
     })
 
     // One <a href="…"> per category, in the documented order.
@@ -202,7 +190,7 @@ describe('SettingsHubPage — mobile nav', () => {
         '/settings/providers',
         '/settings/sandbox',
         '/settings/dream',
-        '/settings/voice',
+        '/settings/notifications',
       ]),
     )
   })
@@ -255,34 +243,5 @@ describe('SettingsHubPage — mobile nav', () => {
     // At least one nav card should show the missing-data placeholder.
     const placeholders = screen.queryAllByText(/^–/)
     expect(placeholders.length).toBeGreaterThan(0)
-  })
-
-  it('voice card reflects the speech config enabled flag', () => {
-    isMobileFlag = true
-    renderHub({
-      health: { status: 'ok', version: '1.2.3' },
-      voiceEnabled: false,
-    })
-
-    const voiceLink = screen
-      .getAllByRole('link')
-      .find((el) => el.getAttribute('href') === '/settings/voice')
-    expect(voiceLink).toBeDefined()
-    expect(voiceLink!.textContent).toMatch(/disabled/i)
-  })
-
-  it('voice card shows unavailable when the local speech runtime cannot load', () => {
-    isMobileFlag = true
-    renderHub({
-      health: { status: 'ok', version: '1.2.3' },
-      voiceEnabled: true,
-      voiceUnavailable: true,
-    })
-
-    const voiceLink = screen
-      .getAllByRole('link')
-      .find((el) => el.getAttribute('href') === '/settings/voice')
-    expect(voiceLink).toBeDefined()
-    expect(voiceLink!.textContent).toMatch(/unavailable/i)
   })
 })

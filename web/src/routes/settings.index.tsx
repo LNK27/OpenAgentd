@@ -15,7 +15,6 @@ import {
   Info,
   Image,
   KeyRound,
-  Mic,
   Moon,
   Plug,
   Shield,
@@ -38,7 +37,6 @@ import {
   useProvidersQuery,
   useSandboxSettingsQuery,
   useSkillFilesQuery,
-  useSpeechConfigQuery,
 } from '@/queries'
 
 interface CardProps {
@@ -51,7 +49,6 @@ interface CardProps {
     | '/settings/sandbox'
     | '/settings/dream'
     | '/settings/title-generation'
-    | '/settings/voice'
     | '/settings/notifications'
   icon: LucideIcon
   title: string
@@ -243,7 +240,6 @@ export function SettingsHubPage() {
   const mcpQ = useMcpServersQuery()
   const providersQ = useProvidersQuery()
   const sandboxQ = useSandboxSettingsQuery()
-  const speechQ = useSpeechConfigQuery()
   const healthQ = useHealthQuery()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
 
@@ -252,9 +248,6 @@ export function SettingsHubPage() {
   const mcpCount = mcpQ.data?.servers.length ?? null
   const connectedProvidersCount = providersQ.data?.providers.filter((provider) => provider.is_configured).length ?? null
   const sandboxCount = sandboxQ.data?.denied_patterns.length ?? null
-  const voiceUnavailable = speechQ.data?.availability?.local === 'unavailable'
-  const voiceEnabled = Boolean(speechQ.data?.enabled && !voiceUnavailable)
-  const voiceLabel = voiceUnavailable ? 'unavailable' : voiceEnabled ? 'enabled' : 'disabled'
   const version = healthQ.data?.version
 
   return (
@@ -378,14 +371,6 @@ export function SettingsHubPage() {
                   description="Configure automatic chat title model and latency"
                   count={null}
                   countLabel=""
-                />
-                <SettingsNavCard
-                  to="/settings/voice"
-                  icon={Mic}
-                  title="Voice input"
-                  description="Transcribe mic recordings locally and insert into the chat input"
-                  count={null}
-                  countLabel={voiceLabel}
                 />
                 <SettingsNavCard
                   to="/settings/notifications"

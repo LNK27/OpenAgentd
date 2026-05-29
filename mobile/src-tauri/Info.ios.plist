@@ -3,6 +3,8 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>OpenAgentd uses the microphone to record voice input and send it to your configured remote backend for transcription.</string>
+  <string>OpenAgentd uses the microphone for voice input.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>OpenAgentd uses speech recognition to convert your voice input into text.</string>
 </dict>
 </plist>
