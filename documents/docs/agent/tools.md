@@ -447,7 +447,7 @@ The loader expands four placeholders in both the description (used in the agent'
 }
 ```
 
-Stored in `.openagentd/sessions/<session_id>/.todos.json` inside the session workspace. The store is session-scoped, so coding-mode sessions in the same project do not share todos. `counter` is monotonically increasing and cached in `state.metadata["_todos"]` within a turn.
+Stored in `{OPENAGENTD_DATA_DIR}/sessions/{session_id}/.todos.json`, not in the workspace or coding repo. The store is session-scoped, so coding-mode sessions in the same project do not share todos. `counter` is monotonically increasing and cached in `state.metadata["_todos"]` within a turn.
 
 Each item has these fields:
 

@@ -247,6 +247,22 @@ async def test_read_allows_active_session_artifact_path_only(sandbox_workspace):
 
 
 @pytest.mark.asyncio
+async def test_read_rejects_data_dir_outside_active_session(sandbox_workspace):
+    from app.agent.sandbox import _sandbox_ctx
+
+    token = set_sandbox(SandboxConfig(workspace=str(sandbox_workspace), session_id="s"))
+    try:
+        data_file = session_artifact_dir("s").parent.parent / "openagentd.db"
+        data_file.parent.mkdir(parents=True, exist_ok=True)
+        data_file.write_text("db bytes", encoding="utf-8")
+
+        with pytest.raises(ToolExecutionError):
+            await read_file.arun(path=str(data_file.resolve()))
+    finally:
+        _sandbox_ctx.reset(token)
+
+
+@pytest.mark.asyncio
 async def test_read_allows_log_paths(sandbox_workspace):
     from app.agent.sandbox import _sandbox_ctx
 

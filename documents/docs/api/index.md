@@ -642,7 +642,7 @@ changes.
 
 ## Todo list
 
-`GET /api/team/sessions/{session_id}/todos` returns the session-scoped todo list from `.openagentd/sessions/{session_id}/.todos.json`.
+`GET /api/team/sessions/{session_id}/todos` returns the session-scoped todo list from `{OPENAGENTD_DATA_DIR}/sessions/{session_id}/.todos.json`.
 
 **Response — `TodosResponse`:**
 
