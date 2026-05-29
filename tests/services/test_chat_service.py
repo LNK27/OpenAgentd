@@ -1057,6 +1057,68 @@ async def test_exclude_messages_before_summary_marks_old_summaries_excluded(sess
 
 
 @pytest.mark.asyncio
+async def test_get_messages_for_llm_preserves_skill_tool_pair_after_summary(session):
+    """Skill tool call/result pairs remain visible after compaction.
+
+    The live SummarizationHook already preserves these rows in memory. This
+    verifies the persisted summary-window loader keeps the same invariant after
+    a compacted session is reloaded.
+    """
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="load skill"))
+    await save_message(
+        session,
+        chat_session.id,
+        AssistantMessage(
+            content=None,
+            tool_calls=[
+                ToolCall(
+                    id="call_skill_1",
+                    function=FunctionCall(
+                        name="skill", arguments='{"skill_name":"guidelines"}'
+                    ),
+                )
+            ],
+        ),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(
+            content="Guideline instructions body",
+            tool_call_id="call_skill_1",
+            name="skill",
+        ),
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="Summary of previous non-skill work."),
+        is_summary=True,
+    )
+    await session.commit()
+
+    result = await get_messages_for_llm(session, chat_session.id)
+
+    skill_call = next(
+        m
+        for m in result
+        if isinstance(m, AssistantMessage)
+        and m.tool_calls
+        and m.tool_calls[0].function.name == "skill"
+    )
+    skill_result = next(
+        m for m in result if isinstance(m, ToolMessage) and m.name == "skill"
+    )
+
+    assert result[0].is_summary
+    assert skill_call.tool_calls[0].id == "call_skill_1"
+    assert skill_result.tool_call_id == "call_skill_1"
+    assert skill_result.content == "Guideline instructions body"
+
+
+@pytest.mark.asyncio
 async def test_get_messages_for_llm_summary_appears_exactly_once(session):
     """The summary row must appear exactly once even when other rows share its timestamp.
 

@@ -606,6 +606,7 @@ html[data-mobile-shell] [contenteditable="true"] {
 .oa-prose {
   color: var(--color-text);
   line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 .oa-prose p { margin-bottom: 0.75em; }
 .oa-prose p:last-child { margin-bottom: 0; }
