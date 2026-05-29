@@ -25,6 +25,7 @@
     "opener:default",
     "log:default",
     "updater:default",
+    "allow-request-voice-permissions",
     "allow-backend-health",
     "allow-backend-logs-path",
     "allow-app-backend-status",

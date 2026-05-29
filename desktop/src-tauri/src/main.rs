@@ -170,6 +170,59 @@ struct GitHubRelease {
     body: Option<String>,
 }
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[tauri::command]
+fn request_voice_permissions() -> Result<bool, String> {
+    use block2::RcBlock;
+    use objc2::runtime::Bool;
+    use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
+    use objc2_speech::{SFSpeechRecognizer, SFSpeechRecognizerAuthorizationStatus};
+    use std::sync::mpsc;
+
+    let audio_type = unsafe { AVMediaTypeAudio.expect("AVMediaTypeAudio is available") };
+    let microphone_status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(audio_type) };
+    let microphone_granted = if microphone_status == AVAuthorizationStatus::Authorized {
+        true
+    } else if microphone_status == AVAuthorizationStatus::Denied || microphone_status == AVAuthorizationStatus::Restricted {
+        false
+    } else {
+        let (tx, rx) = mpsc::channel();
+        let handler: RcBlock<dyn Fn(Bool)> = RcBlock::new(move |granted: Bool| {
+            let _ = tx.send(granted.as_bool());
+        });
+        unsafe {
+            AVCaptureDevice::requestAccessForMediaType_completionHandler(audio_type, &handler);
+        }
+        rx.recv().map_err(|_| "microphone permission request was cancelled".to_string())?
+    };
+
+    let speech_status = unsafe { SFSpeechRecognizer::authorizationStatus() };
+    let speech_granted = if speech_status == SFSpeechRecognizerAuthorizationStatus::Authorized {
+        true
+    } else if speech_status == SFSpeechRecognizerAuthorizationStatus::Denied
+        || speech_status == SFSpeechRecognizerAuthorizationStatus::Restricted
+    {
+        false
+    } else {
+        let (tx, rx) = mpsc::channel();
+        let handler: RcBlock<dyn Fn(SFSpeechRecognizerAuthorizationStatus)> = RcBlock::new(move |status: SFSpeechRecognizerAuthorizationStatus| {
+            let _ = tx.send(status == SFSpeechRecognizerAuthorizationStatus::Authorized);
+        });
+        unsafe {
+            SFSpeechRecognizer::requestAuthorization(&handler);
+        }
+        rx.recv().map_err(|_| "speech recognition permission request was cancelled".to_string())?
+    };
+
+    Ok(microphone_granted && speech_granted)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+#[tauri::command]
+fn request_voice_permissions() -> Result<bool, String> {
+    Ok(true)
+}
+
 #[tauri::command]
 async fn backend_health(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     let mut guard = state.sidecar.lock().await;
@@ -1182,6 +1235,7 @@ fn main() {
         .manage(state)
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
+            request_voice_permissions,
             backend_health,
             backend_logs_path,
             app_backend_status,

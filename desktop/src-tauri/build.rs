@@ -2,6 +2,7 @@ fn main() {
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new().commands(&[
+                "request_voice_permissions",
                 "backend_health",
                 "backend_logs_path",
                 "set_tray_session",

@@ -56,6 +56,17 @@ export interface ClientSpeechOptions {
   onEnd: () => void
 }
 
+async function requestNativeVoicePermissions(): Promise<void> {
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const granted = await invoke<boolean>('request_voice_permissions')
+    if (!granted) throw new Error('Microphone or speech recognition permission was denied.')
+  } catch (err) {
+    console.warn('native voice permission request failed; trying Web Speech API directly', err)
+  }
+}
+
 async function requestMicrophonePermission(): Promise<MediaStream | null> {
   if (typeof navigator === 'undefined') return null
   if (!navigator.mediaDevices?.getUserMedia) return null
@@ -92,6 +103,8 @@ export async function startClientSpeechRecognition(options: ClientSpeechOptions)
   if (!Recognition) {
     throw new Error('Speech recognition is not supported in this browser or WebView.')
   }
+
+  await requestNativeVoicePermissions()
 
   let permissionStream: MediaStream | null = null
   try {
