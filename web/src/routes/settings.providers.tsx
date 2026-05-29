@@ -557,7 +557,7 @@ function ModelsPanel({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs font-medium text-(--color-text-muted) hover:text-(--color-text)"
+        className="flex min-h-11 w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs font-medium text-(--color-text-muted) hover:text-(--color-text) md:min-h-0"
         aria-expanded={expanded}
       >
         <span>
@@ -582,7 +582,7 @@ function ModelsPanel({
               visible.map(({ qualifiedId }) => (
                 <li
                   key={qualifiedId}
-                  className="flex items-center gap-2 rounded px-2 py-1 hover:bg-(--bg-key)"
+                  className="flex min-h-11 items-center gap-2 rounded px-2 py-1 hover:bg-(--bg-key) md:min-h-0"
                 >
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--color-text)">
                     {qualifiedId}
@@ -590,10 +590,10 @@ function ModelsPanel({
                   <button
                     type="button"
                     onClick={() => void handleCopy(qualifiedId)}
-                    className="rounded p-1 text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)"
+                    className="flex h-8 w-8 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text) md:h-6 md:w-6"
                     aria-label={`Copy ${qualifiedId}`}
                   >
-                    <Copy size={11} aria-hidden="true" />
+                    <Copy size={13} className="md:h-[11px] md:w-[11px]" aria-hidden="true" />
                   </button>
                 </li>
               ))

@@ -125,6 +125,53 @@ describe('ProvidersSettingsPage', () => {
     expect(screen.queryByText(/personal ChatGPT accounts/)).toBeNull()
   })
 
+  it('keeps provider model rows and copy actions touch-sized before desktop compact sizing', async () => {
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: true,
+        providers: [
+          {
+            id: 'openai',
+            label: 'OpenAI',
+            description: 'OpenAI provider',
+            kind: 'api_key',
+            credentials: [],
+            env_var: 'OPENAI_API_KEY',
+            env_vars: [],
+            fallback_models: [],
+            oauth_command: '',
+            docs_url: '',
+            is_configured: true,
+            is_saved: true,
+            is_reachable: true,
+          },
+        ],
+      })),
+      http.post('http://localhost/api/settings/providers/openai/models', () => HttpResponse.json({
+        provider: 'openai',
+        models: ['gpt-test'],
+        source: 'provider',
+      })),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('OpenAI')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('1 models available')).toBeTruthy())
+    const toggle = screen.getByRole('button', { name: /1 models available/i })
+    expect(toggle.className).toContain('min-h-11')
+    expect(toggle.className).toContain('md:min-h-0')
+
+    fireEvent.click(toggle)
+    expect(screen.getByText('openai:gpt-test')).toBeTruthy()
+    const copy = screen.getByLabelText('Copy openai:gpt-test')
+    expect(copy.parentElement?.className).toContain('min-h-11')
+    expect(copy.className).toContain('h-8')
+    expect(copy.className).toContain('w-8')
+    expect(copy.className).toContain('md:h-6')
+    expect(copy.className).toContain('md:w-6')
+  })
+
   it('shows active usage for any connected OAuth provider', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
