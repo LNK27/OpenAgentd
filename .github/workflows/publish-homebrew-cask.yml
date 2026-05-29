@@ -9,8 +9,8 @@
 #
 # Trigger model:
 #   - ``workflow_run`` on **Release Desktop** completion: a desktop
-#     release just produced ``v<version>-desktop`` with the ``.dmg``
-#     attached, so the cask can pick it up immediately.
+#     release just attached an Apple Silicon ``.dmg`` to ``v<version>``,
+#     so the cask can pick it up immediately.
 #   - ``workflow_dispatch``: manual re-run, e.g. after fixing the cask
 #     template without cutting a fresh release.
 #

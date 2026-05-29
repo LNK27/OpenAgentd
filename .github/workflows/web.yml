@@ -5,12 +5,22 @@ on:
     branches: [main]
     paths:
       - "web/**"
+      - "desktop/src-tauri/tauri*.conf.json"
+      - "desktop/src-tauri/Cargo.toml"
+      - "desktop/src-tauri/Cargo.lock"
+      - "mobile/**"
       - ".github/workflows/web.yml"
+      - ".github/workflows/release-desktop.yml"
   pull_request:
     branches: [main]
     paths:
       - "web/**"
+      - "desktop/src-tauri/tauri*.conf.json"
+      - "desktop/src-tauri/Cargo.toml"
+      - "desktop/src-tauri/Cargo.lock"
+      - "mobile/**"
       - ".github/workflows/web.yml"
+      - ".github/workflows/release-desktop.yml"
 
 env:
   # Opt JS actions into Node.js 24 ahead of the June 2026 forced switch.
