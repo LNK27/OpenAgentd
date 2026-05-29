@@ -8,6 +8,10 @@ afterEach(() => {
   cleanup()
   delete (window as Window & { SpeechRecognition?: unknown }).SpeechRecognition
   delete (window as Window & { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: undefined,
+    configurable: true,
+  })
 })
 
 type Toast = { tone: string; title: string; description?: string }
@@ -46,6 +50,13 @@ mock.module('@/stores/useToastStore', () => ({
 
 let activeRecognition: MockSpeechRecognition | null = null
 let startThrows = false
+let getUserMediaThrows = false
+const mockGetUserMedia = mock(async () => {
+  if (getUserMediaThrows) throw new Error('Microphone denied')
+  return {
+    getTracks: () => [{ stop: mock(() => {}) }],
+  }
+})
 
 class MockSpeechRecognition {
   continuous = false
@@ -83,6 +94,12 @@ beforeEach(() => {
   useToastStoreMock.setState({ toasts: [] })
   activeRecognition = null
   startThrows = false
+  getUserMediaThrows = false
+  mockGetUserMedia.mockClear()
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia: mockGetUserMedia },
+    configurable: true,
+  })
   Object.defineProperty(window, 'SpeechRecognition', {
     value: MockSpeechRecognition,
     configurable: true,
@@ -206,6 +223,31 @@ describe('VoiceMicButton — error handling', () => {
     const call = mockPush.mock.calls[0][0] as Toast
     expect(call.tone).toBe('error')
     expect(call.description).toContain('permission was denied')
+  })
+
+  it('checks microphone permission before starting speech recognition', async () => {
+    const user = userEvent.setup()
+    render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)
+
+    await user.click(screen.getByLabelText('Start voice input'))
+
+    await waitFor(() => expect(mockGetUserMedia).toHaveBeenCalledWith({ audio: true }))
+    await waitFor(() => expect(screen.getByLabelText('Stop voice input')).toBeTruthy())
+  })
+
+  it('shows toast when microphone permission check fails', async () => {
+    getUserMediaThrows = true
+    const user = userEvent.setup()
+    render(<VoiceMicButton voiceEnabled={true} onTranscript={() => {}} />)
+
+    await user.click(screen.getByLabelText('Start voice input'))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalled())
+    const call = mockPush.mock.calls[0][0] as Toast
+    expect(call.title).toBe('Voice input error')
+    expect(call.description).toBe('Microphone denied')
+    expect(activeRecognition).toBeNull()
+    expect(screen.getByLabelText('Start voice input')).toBeTruthy()
   })
 
   it('shows toast when speech recognition cannot start', async () => {

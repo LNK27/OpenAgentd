@@ -65,26 +65,31 @@ export function VoiceMicButton({
   }, [])
 
   const startListening = useCallback(() => {
-    try {
-      const session = startClientSpeechRecognition({
-        onFinal: onTranscript,
-        onError: (message) => {
-          if (!mountedRef.current) return
-          pushToast({ tone: 'error', title: 'Voice input error', description: message })
-        },
-        onEnd: () => {
-          speechSessionRef.current = null
-          if (mountedRef.current) setVoiceState('idle')
-        },
+    startClientSpeechRecognition({
+      onFinal: onTranscript,
+      onError: (message) => {
+        if (!mountedRef.current) return
+        pushToast({ tone: 'error', title: 'Voice input error', description: message })
+      },
+      onEnd: () => {
+        speechSessionRef.current = null
+        if (mountedRef.current) setVoiceState('idle')
+      },
+    })
+      .then((session) => {
+        if (!mountedRef.current) {
+          session.stop()
+          return
+        }
+        speechSessionRef.current = session
+        setVoiceState('listening')
       })
-      speechSessionRef.current = session
-      setVoiceState('listening')
-    } catch (err) {
-      if (!mountedRef.current) return
-      const msg = err instanceof Error ? err.message : 'Speech recognition failed.'
-      pushToast({ tone: 'error', title: 'Voice input error', description: msg })
-      setVoiceState('idle')
-    }
+      .catch((err: unknown) => {
+        if (!mountedRef.current) return
+        const msg = err instanceof Error ? err.message : 'Speech recognition failed.'
+        pushToast({ tone: 'error', title: 'Voice input error', description: msg })
+        setVoiceState('idle')
+      })
   }, [onTranscript, pushToast])
 
   const stopListening = useCallback(() => {

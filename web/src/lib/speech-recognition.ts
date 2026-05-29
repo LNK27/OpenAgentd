@@ -50,6 +50,16 @@ export interface ClientSpeechOptions {
   onEnd: () => void
 }
 
+async function requestMicrophonePermission(): Promise<MediaStream | null> {
+  if (typeof navigator === 'undefined') return null
+  if (!navigator.mediaDevices?.getUserMedia) return null
+  return navigator.mediaDevices.getUserMedia({ audio: true })
+}
+
+function stopMicrophonePermissionStream(stream: MediaStream | null): void {
+  stream?.getTracks().forEach((track) => track.stop())
+}
+
 export function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
   if (typeof window === 'undefined') return null
   const speechWindow = window as SpeechRecognitionWindow
@@ -71,11 +81,14 @@ function speechErrorMessage(event: SpeechRecognitionErrorEventLike): string {
   return 'Speech recognition failed.'
 }
 
-export function startClientSpeechRecognition(options: ClientSpeechOptions): ClientSpeechSession {
+export async function startClientSpeechRecognition(options: ClientSpeechOptions): Promise<ClientSpeechSession> {
   const Recognition = getSpeechRecognitionConstructor()
   if (!Recognition) {
     throw new Error('Speech recognition is not supported in this browser or WebView.')
   }
+
+  const permissionStream = await requestMicrophonePermission()
+  stopMicrophonePermissionStream(permissionStream)
 
   const recognition = new Recognition()
   recognition.continuous = false

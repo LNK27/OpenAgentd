@@ -23,6 +23,12 @@ class MockSpeechRecognition {
 }
 
 beforeEach(() => {
+  Object.defineProperty(navigator, "mediaDevices", {
+    value: {
+      getUserMedia: async () => ({ getTracks: () => [{ stop: () => {} }] }),
+    },
+    configurable: true,
+  })
   Object.defineProperty(window, "SpeechRecognition", {
     value: MockSpeechRecognition,
     configurable: true,
@@ -34,6 +40,10 @@ afterEach(cleanup)
 
 afterEach(() => {
   delete (window as Window & { SpeechRecognition?: unknown }).SpeechRecognition
+  Object.defineProperty(navigator, "mediaDevices", {
+    value: undefined,
+    configurable: true,
+  })
 })
 
 describe("InputBar", () => {
