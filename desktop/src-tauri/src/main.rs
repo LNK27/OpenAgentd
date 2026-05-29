@@ -1094,12 +1094,12 @@ fn frontend_webview_url() -> Result<WebviewUrl> {
 fn frontend_init_script(token: Option<&str>, base_url: &str) -> String {
     let token_define = token.map(|t| {
         format!(
-            "Object.defineProperty(window, '__OAD_TOKEN__', {{ value: {token_json}, writable: false, configurable: false }});",
+            "Object.defineProperty(window, '__OAD_TOKEN__', {{ value: {token_json}, writable: true, configurable: true }});",
             token_json = serde_json::to_string(t).unwrap_or_else(|_| "\"\"".into())
         )
     }).unwrap_or_default();
     format!(
-        "Object.defineProperty(window, '__OAD_API_BASE_URL__', {{ value: {base_json}, writable: false, configurable: false }});{token_define}",
+        "Object.defineProperty(window, '__OAD_API_BASE_URL__', {{ value: {base_json}, writable: true, configurable: true }});{token_define}",
         base_json = serde_json::to_string(base_url).unwrap_or_else(|_| "\"\"".into())
     )
 }
@@ -1347,6 +1347,15 @@ mod tests {
             "Install"
         ));
         assert!(!dialog_result_is_accept(&MessageDialogResult::No, "Install"));
+    }
+
+    #[test]
+    fn frontend_init_script_allows_runtime_backend_switches() {
+        let script = frontend_init_script(Some("secret"), "http://127.0.0.1:4082");
+
+        assert!(script.contains("__OAD_API_BASE_URL__"));
+        assert!(script.contains("__OAD_TOKEN__"));
+        assert_eq!(script.matches("writable: true, configurable: true").count(), 2);
     }
 
     // ── format_update_prompt ────────────────────────────────────────────────
