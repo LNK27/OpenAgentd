@@ -285,8 +285,9 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
   }
 
   const listing = modelsMutation.isPending || autoModelsQ.isFetching
+  const isConnected = provider.is_configured || (provider.kind === 'oauth' && provider.is_saved)
   const isConfiguredButUnreachable =
-    hasReachabilityFailure || provider.is_reachable === false || (provider.is_saved && !provider.is_configured)
+    hasReachabilityFailure || (provider.kind !== 'oauth' && (provider.is_reachable === false || (provider.is_saved && !provider.is_configured)))
 
   return (
     <Card size="sm" className="rounded-md border-(--color-border) bg-(--bg-card)">
@@ -305,7 +306,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
               <AlertCircle size={12} aria-hidden="true" />
               Failed
             </span>
-          ) : provider.is_configured ? (
+          ) : isConnected ? (
             <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-success)">
               <CheckCircle2 size={12} aria-hidden="true" />
               Connected

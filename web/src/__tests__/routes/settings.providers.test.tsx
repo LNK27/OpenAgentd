@@ -61,7 +61,7 @@ function renderPage() {
 }
 
 describe('ProvidersSettingsPage', () => {
-  it('shows Failed instead of Connected when Codex OAuth model listing falls back', async () => {
+  it('shows Connected for saved Codex OAuth when model listing fails', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
         has_any_configured: true,
@@ -93,11 +93,8 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Codex')).toBeTruthy()
-    expect(screen.getByText('Failed')).toBeTruthy()
-    expect(screen.queryByText('Connected')).toBeNull()
-
-    expect(screen.getAllByText('Failed').length).toBeGreaterThan(0)
-    expect(screen.queryByText('Connected')).toBeNull()
+    expect(screen.getByText('Connected')).toBeTruthy()
+    expect(screen.queryByText('Failed')).toBeNull()
   })
 
   it('shows GitHub device-code copy for Copilot OAuth', async () => {
