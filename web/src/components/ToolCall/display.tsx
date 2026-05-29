@@ -16,6 +16,7 @@
 
 import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
+import { parsePatchText } from './diffUtils'
 
 /**
  * Keep argument values in headers easy to restyle consistently.
@@ -33,6 +34,20 @@ function str(parsed: Record<string, unknown>, key: string): string | null {
 /** Truncate a string to maxLen chars, appending ellipsis if cut. */
 function trunc(s: string, maxLen = 60): string {
   return s.length > maxLen ? s.slice(0, maxLen) + '…' : s
+}
+
+function patchPathSummary(patchText: string, maxLen = 96): string | null {
+  const paths = parsePatchText(patchText).flatMap((diff) => (
+    diff.moveTo ? [diff.path, diff.moveTo] : [diff.path]
+  ))
+  if (paths.length === 0) return null
+  const seen = new Set<string>()
+  const unique = paths.filter((path) => {
+    if (seen.has(path)) return false
+    seen.add(path)
+    return true
+  })
+  return trunc(unique.join(', '), maxLen)
 }
 
 function actionList(parsed: Record<string, unknown>): Record<string, unknown>[] {
@@ -403,6 +418,17 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
       header: fileName ? <Arg>{fileName}{rangeLabel}</Arg> : 'file',
       headerTitle: fileName ? `${fileName}${rangeLabel}` : 'file',
       formattedArgs: null,
+    }
+  }
+
+  // ── patch: all touched paths in header, full envelope as args ─────
+  if (name === 'patch') {
+    const patchText = str(parsed, 'patch_text')
+    const summary = patchText ? patchPathSummary(patchText) : null
+    return {
+      header: summary ? <Arg>{summary}</Arg> : 'patch',
+      headerTitle: summary ?? 'patch',
+      formattedArgs: patchText,
     }
   }
 

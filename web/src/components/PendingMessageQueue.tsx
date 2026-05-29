@@ -27,7 +27,7 @@ function QueuedMessageContent({ content }: { content: string }) {
           {expanded ? <ChevronUp size={14} className="md:h-3 md:w-3" /> : <ChevronDown size={14} className="md:h-3 md:w-3" />}
         </button>
       )}
-      <p className="break-words whitespace-pre-wrap">{visibleContent}</p>
+      <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{visibleContent}</p>
       {needsCollapse && !expanded && (
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"

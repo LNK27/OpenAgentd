@@ -161,7 +161,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
                {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
              </button>
            )}
-           <p className="break-words whitespace-pre-wrap">{renderMentionSegments(visibleContent)}</p>
+           <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{renderMentionSegments(visibleContent)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
