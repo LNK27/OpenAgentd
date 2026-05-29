@@ -94,7 +94,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
-  const { isMacOverlay } = usePlatform()
+  const { isMacOverlay, os } = usePlatform()
   // Manual drag pattern: a mousedown handler that only starts a drag
   // when the user pressed on the bare header, not on a child button.
   // The hook returns `{}` outside Tauri so the spread is a no-op in
@@ -103,6 +103,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const inputRef = useRef<InputBarHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
+  const mobileSidebarSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'files' | 'diff'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
@@ -290,8 +291,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         const sessionOptions = {
           mode,
           workspace: mode === 'coding' ? workspace : null,
-          model: sessionModel,
-          thinkingLevel: sessionThinkingLevel,
+          model: sessionIdState ? sessionModel : null,
+          thinkingLevel: sessionIdState ? sessionThinkingLevel : null,
         }
         beginResolvedSession(null, sessionOptions)
         const session = await resolveTeamSession({
@@ -322,7 +323,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         })
       }
     })()
-  }, [beginResolvedSession, isEmptyIdleSession, isMobile, mode, navigate, queryClient, sessionModel, sessionThinkingLevel, workspace])
+  }, [beginResolvedSession, isEmptyIdleSession, isMobile, mode, navigate, queryClient, sessionIdState, sessionModel, sessionThinkingLevel, workspace])
 
   const handleWorkspaceFiles = useCallback(() => {
     if (mode === 'coding') {
@@ -648,11 +649,41 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     return () => window.removeEventListener('keydown', handler)
   }, [cycleActiveAgent])
 
+  const handleMobileSidebarSwipeStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if ((os !== 'ios' && os !== 'android') || !isMobile || mobileSidebarOpen) return
+    const touch = event.touches[0]
+    if (!touch || touch.clientX > 24) return
+    mobileSidebarSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
+  }, [isMobile, mobileSidebarOpen, os])
+
+  const handleMobileSidebarSwipeMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const start = mobileSidebarSwipeStartRef.current
+    if (!start || (os !== 'ios' && os !== 'android') || !isMobile || mobileSidebarOpen) return
+    const touch = event.touches[0]
+    if (!touch) return
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+    if (deltaX > 56 && Math.abs(deltaY) < 36) {
+      setMobileSidebarOpen(true)
+      mobileSidebarSwipeStartRef.current = null
+    }
+  }, [isMobile, mobileSidebarOpen, os])
+
+  const handleMobileSidebarSwipeEnd = useCallback(() => {
+    mobileSidebarSwipeStartRef.current = null
+  }, [])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     // h-dvh handles iOS Safari's dynamic toolbar.
-    <div className="mobile-safe-shell mobile-viewport flex h-dvh flex-col bg-(--bg-page)">
+    <div
+      className="mobile-safe-shell mobile-viewport flex h-dvh flex-col bg-(--bg-page)"
+      onTouchStart={handleMobileSidebarSwipeStart}
+      onTouchMove={handleMobileSidebarSwipeMove}
+      onTouchEnd={handleMobileSidebarSwipeEnd}
+      onTouchCancel={handleMobileSidebarSwipeEnd}
+    >
       {/* 40 px header above the sidebar/content row. On macOS Tauri it
           doubles as the window drag region via useTauriDrag, with a
           70 px left inset reserved for the OS traffic-lights. */}

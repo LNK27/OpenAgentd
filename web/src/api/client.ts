@@ -233,7 +233,7 @@ export async function resolveTeamSession(options: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`resolveTeamSession failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'resolveTeamSession')
   return res.json()
 }
 

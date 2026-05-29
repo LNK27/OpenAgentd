@@ -116,8 +116,8 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
     let cancelled = false
     ;(async () => {
       const current = useTeamStore.getState()
-      const model = current.sessionModel
-      const thinkingLevel = current.sessionThinkingLevel
+      const model = current.sessionId ? current.sessionModel : null
+      const thinkingLevel = current.sessionId ? current.sessionThinkingLevel : null
       try {
         const session = await resolveTeamSession({
           mode,

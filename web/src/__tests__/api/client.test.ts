@@ -146,10 +146,13 @@ describe('resolveTeamSession', () => {
     expect(result.id).toBe('sid')
   })
 
-  it('throws when backend rejects resolve request', async () => {
-    globalThis.fetch = mock(() => Promise.resolve(new Response('bad', { status: 422 }))) as typeof fetch
+  it('throws backend detail when backend rejects resolve request', async () => {
+    globalThis.fetch = mock(() => Promise.resolve(new Response(
+      JSON.stringify({ detail: "workspace is required when mode='coding'." }),
+      { status: 422 },
+    ))) as typeof fetch
 
-    await expect(resolveTeamSession({ mode: 'coding' })).rejects.toThrow('resolveTeamSession failed: 422')
+    await expect(resolveTeamSession({ mode: 'coding' })).rejects.toThrow("workspace is required when mode='coding'.")
   })
 })
 
