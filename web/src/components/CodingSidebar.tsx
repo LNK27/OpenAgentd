@@ -85,6 +85,7 @@ function WorkspaceSessionList({
   currentSessionId,
   runningSessions,
   collapsed = false,
+  mobileActionsVisible = false,
   onSessionSelect,
   onSessionDelete,
   onSessionEdit,
@@ -93,6 +94,7 @@ function WorkspaceSessionList({
   currentSessionId?: string
   runningSessions?: SessionResponse[]
   collapsed?: boolean
+  mobileActionsVisible?: boolean
   onSessionSelect: (session: SessionResponse, workspacePath: string) => void
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onSessionEdit: (session: SessionResponse) => void
@@ -144,7 +146,7 @@ function WorkspaceSessionList({
                 e.stopPropagation()
                 onSessionEdit(session)
               }}
-              className="absolute right-6 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100"
+              className={`absolute right-6 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text) ${mobileActionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
               aria-label={`Edit session ${session.title || 'Untitled'}`}
             >
               <Pencil size={11} />
@@ -152,7 +154,7 @@ function WorkspaceSessionList({
             <button
               type="button"
               onClick={(e) => onSessionDelete(e, session)}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
+              className={`absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileActionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
               aria-label={`Delete session ${session.title || 'Untitled'}`}
             >
               <Trash2 size={11} />
@@ -188,6 +190,7 @@ export function CodingSidebar({
   const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
+  const mobileActionsVisible = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
   // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
   // We don't render an inline collapse toggle anymore — the topbar
@@ -577,7 +580,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => { void selectWorkspace(path, { create: true }) }}
-                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) group-hover:opacity-100"
+                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileActionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                   aria-label={`New session in ${workspaceLabel(path)}`}
                   title={`New session in ${workspaceLabel(path)}`}
                 >
@@ -586,7 +589,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => setRemoveWorkspaceTarget(path)}
-                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
+                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileActionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                   aria-label={`Remove ${workspaceLabel(path)} from sidebar`}
                   title="Remove from sidebar"
                 >
@@ -601,6 +604,7 @@ export function CodingSidebar({
                   currentSessionId={currentSessionId}
                   runningSessions={runningSessions}
                   collapsed={!isExpanded}
+                  mobileActionsVisible={mobileActionsVisible}
                   onSessionSelect={handleSessionSelect}
                   onSessionDelete={handleSessionDelete}
                   onSessionEdit={handleSessionEdit}
