@@ -22,6 +22,7 @@ from app.cli.commands.start import cmd_start
 from app.cli.commands.status import cmd_status
 from app.cli.commands.stop import cmd_stop
 from app.cli.commands.upgrade import cmd_upgrade
+from app.cli.commands.vault import cmd_vault_ingest
 from app.cli.commands.version import cmd_version
 from app.core.version import VERSION
 
@@ -242,6 +243,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_cleanup.set_defaults(func=cmd_cleanup, dry_run=True)
 
     # ── upgrade ───────────────────────────────────────────────────────────────
+    p_vault = sub.add_parser(
+        "vault",
+        help="Obsidian vault maintenance commands",
+    )
+    vault_sub = p_vault.add_subparsers(dest="vault_command", metavar="vault-command")
+    p_vault_ingest = vault_sub.add_parser(
+        "ingest",
+        help="Dry-run or apply human Obsidian vault ingest/reconcile",
+    )
+    p_vault_ingest.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write normalized frontmatter and repaired index changes",
+    )
+    p_vault_ingest.set_defaults(func=cmd_vault_ingest)
+
     sub.add_parser(
         "upgrade", help="Upgrade openagentd to the latest version"
     ).set_defaults(func=cmd_upgrade)

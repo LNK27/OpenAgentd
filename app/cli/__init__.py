@@ -36,6 +36,7 @@ from app.cli.commands.start import cmd_start
 from app.cli.commands.status import cmd_status
 from app.cli.commands.stop import cmd_stop
 from app.cli.commands.upgrade import cmd_upgrade
+from app.cli.commands.vault import cmd_vault_ingest
 from app.cli.commands.version import cmd_version
 from app.cli.main import build_parser, main
 from app.cli.paths import (
@@ -71,6 +72,7 @@ __all__ = [
     "cmd_status",
     "cmd_stop",
     "cmd_upgrade",
+    "cmd_vault_ingest",
     "cmd_version",
     # path helpers (kept public for tests)
     "_config_dir",

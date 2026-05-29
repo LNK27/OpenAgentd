@@ -230,6 +230,16 @@ class TestBuildParser:
         args = build_parser().parse_args(["cleanup", "--apply"])
         assert args.dry_run is False
 
+    def test_vault_ingest_subcommand_defaults_to_dry_run(self):
+        args = build_parser().parse_args(["vault", "ingest"])
+        assert args.func is cli.cmd_vault_ingest
+        assert args.apply is False
+
+    def test_vault_ingest_subcommand_accepts_apply(self):
+        args = build_parser().parse_args(["vault", "ingest", "--apply"])
+        assert args.func is cli.cmd_vault_ingest
+        assert args.apply is True
+
     def test_migrate_openclaw_subcommand(self):
         args = build_parser().parse_args(
             ["migrate", "openclaw", "--model", "openai:gpt-5.5"]
