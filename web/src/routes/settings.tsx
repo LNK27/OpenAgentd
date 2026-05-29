@@ -78,7 +78,7 @@ export function SettingsLayout() {
               onClick={() => setMobileSidebarOpen(false)}
               aria-hidden="true"
             />
-            <div className="mobile-safe-header fixed inset-y-0 left-0 z-40 flex">
+            <div className="mobile-safe-top fixed bottom-0 left-0 z-40 flex">
               <SettingsSidebar />
             </div>
           </>

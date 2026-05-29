@@ -60,6 +60,8 @@ interface TodosPopoverProps {
   todos: TodoItem[]
   /** When null/undefined the trigger is disabled (no active session). */
   sessionId: string | null
+  /** Render the topbar trigger. Set false when another control opens this popover. */
+  trigger?: boolean
 }
 
 export function TodosPopover({
@@ -67,6 +69,7 @@ export function TodosPopover({
   onOpenChange,
   todos,
   sessionId,
+  trigger = true,
 }: TodosPopoverProps) {
   // "Finished" includes cancelled — once a task leaves the active set
   // (whether shipped or dropped) it no longer needs attention. This is
@@ -83,18 +86,20 @@ export function TodosPopover({
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger
-        render={
-          <TopbarAction
-            Icon={ListTodo}
-            indicator={hasInProgress}
-            badge={progressLabel}
-            title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
-            aria-label="Task list"
-          />
-        }
-        disabled={!sessionId}
-      />
+      {trigger && (
+        <PopoverTrigger
+          render={
+            <TopbarAction
+              Icon={ListTodo}
+              indicator={hasInProgress}
+              badge={progressLabel}
+              title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
+              aria-label="Task list"
+            />
+          }
+          disabled={!sessionId}
+        />
+      )}
       <PopoverContent
         side="bottom"
         align="end"

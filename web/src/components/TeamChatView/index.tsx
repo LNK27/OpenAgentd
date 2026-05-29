@@ -20,7 +20,7 @@
  * that returning a freshly-built object on every render would trigger.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { AgentView } from '../AgentView'
@@ -47,7 +47,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, Check, ChevronDown, FolderOpen, FolderCode, Home, Menu, SlidersHorizontal, X } from 'lucide-react'
+import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FileText, FolderOpen, FolderCode, ListTodo, Menu, MessageSquarePlus, Moon, MoreHorizontal, PencilLine, RotateCcw, SlidersHorizontal, Square, Users, X } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
@@ -108,6 +108,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
+  const [showMobileActions, setShowMobileActions] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('agent')
@@ -597,6 +598,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     })
   }, [])
 
+  const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])
+
   const commands = useTeamCommands({
     viewMode,
     cycleViewMode,
@@ -658,28 +661,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           isMacOverlay ? 'select-none pl-[70px]' : ''
         }`}
       >
-          {/* Home — 56 px column on desktop to line up with the
-              collapsed sidebar; shrinks on mobile and macOS overlay
-              (where the parent already provides inset padding). */}
-          <div
-            className={`flex h-full shrink-0 items-center justify-center ${
-              isMacOverlay ? 'pl-2' : 'md:w-14'
-            }`}
-          >
-            <Link
-              to="/"
-              aria-label="Home"
-              title="Home"
-              className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-            >
-              <Home size={16} aria-hidden="true" />
-            </Link>
-          </div>
-
           {/* Hamburger target depends on mode: coding sidebar toggle,
               mobile drawer, or synthetic Ctrl+B for the normal sidebar
-              (whose collapse state is owned by Sidebar). */}
-          <div className="mr-2 flex shrink-0 items-center gap-1 pl-2 md:pl-0">
+              (whose collapse state is owned by Sidebar). On mobile it is
+              the single global navigation entry; Home lives in the drawer. */}
+          <div className={isMacOverlay ? 'mr-1 flex min-w-0 shrink items-center gap-1 pl-2 md:mr-2' : 'mr-1 flex min-w-0 shrink items-center gap-1 pl-2 md:mr-2 md:w-14 md:justify-center md:pl-0'}>
             <button
               type="button"
               onClick={() => {
@@ -698,11 +684,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               }}
               aria-label="Toggle sidebar"
               title="Toggle sidebar (Ctrl+B)"
-              className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-8 md:w-8"
             >
               <Menu size={16} aria-hidden="true" />
             </button>
-            {mode === 'coding' && workspace ? (
+            {mode === 'coding' && workspace && !isMobile ? (
               <span
                 className="ml-1 flex min-w-0 max-w-60 items-baseline gap-1 text-sm"
                 title={workspace}
@@ -710,7 +696,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 <span className="shrink-0 text-(--color-text-muted)">Workspace:</span>
                 <span className="truncate font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
               </span>
-            ) : mode !== 'coding' && sessionTitle ? (
+            ) : mode !== 'coding' && sessionTitle && !isMobile ? (
               <span
                 className="ml-1 max-w-60 truncate text-sm font-semibold text-(--color-text)"
                 title={sessionTitle}
@@ -723,8 +709,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           {/* Active-agent chip → dropdown of all members. Split view
               collapses to a count pill — each pane already shows its
               own agent. */}
-          <div className="flex min-w-0 flex-1 justify-start overflow-hidden">
-            {effectiveViewMode === 'agent' && activeAgent && (
+          <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1">
+            {isMobile && (
+              <div className="min-w-0 text-sm font-semibold text-(--color-text)">
+                <div className="truncate">{mode === 'coding' && workspace ? workspaceLabel(workspace) : sessionTitle || 'Cockpit'}</div>
+                {activeAgent && <div className="truncate font-mono text-[10px] font-normal text-(--color-text-muted)">{activeAgent}</div>}
+              </div>
+            )}
+            {effectiveViewMode === 'agent' && activeAgent && !isMobile && (
               <ActiveAgentSwitcher
                 activeAgent={activeAgent}
                 agents={agentNames}
@@ -740,54 +732,104 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             )}
           </div>
 
-          {/* Right cluster — tokens, dream, view toggle, panel
-              toggles via the shared AgentTopbar composite. */}
+          {/* Right cluster — desktop gets the full action row. Mobile gets
+              one compact menu so chat/coding headers stay readable. */}
           <div className="flex shrink-0 items-center">
-          <AgentTopbar
-            isMobile={isMobile}
-            tokens={
-              totalAll > 0
-                ? {
-                    input: totalPrompt,
-                    output: totalCompletion,
-                    cached: totalCached,
-                    pulsing: isTeamWorking,
-                  }
-                : undefined
-            }
-            dreamRunning={dreamMutation.isPending}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            todosSlot={
-              <TodosPopover
-                open={showTodos}
-                onOpenChange={setShowTodos}
-                todos={todos}
-                sessionId={sessionIdState}
-              />
-            }
-            filesAction={mode === 'coding'
-              ? workspace ? {
-                  Icon: FolderOpen,
-                  onClick: handleWorkspaceFiles,
-                  title: codingPanel === null ? 'Workspace files and git diff' : 'Close files and diff',
-                  ariaLabel: 'Workspace files and git diff',
-                } : undefined
-              : {
-                  Icon: FolderOpen,
-                  onClick: () => setShowFilesPanel((v) => !v),
-                  disabled: !sessionIdState,
-                  title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
-                  ariaLabel: 'Workspace files',
-                }}
-            agentsAction={{
-              Icon: SlidersHorizontal,
-              onClick: toggleAgentCapabilities,
-              title: 'Session model settings (Ctrl+A)',
-              ariaLabel: 'Session model settings',
-              className: agentCapabilitiesOpen ? 'mr-2 bg-(--bg-key) text-(--color-text)' : 'mr-2',
-            }}
-          />
+          {isMobile ? (
+            <MobileChatActions
+              open={showMobileActions}
+              onOpenChange={setShowMobileActions}
+              mode={mode}
+              workspace={workspace}
+              activeAgent={activeAgent}
+              agents={agentNames}
+              streams={agentStreams}
+              onSelectAgent={setActiveAgent}
+              todos={todos}
+              sessionId={sessionIdState}
+              onTodos={() => { setShowTodos(true); closeMobileActionsMenu() }}
+              onFiles={mode === 'coding'
+                ? workspace ? () => { handleWorkspaceFiles(); closeMobileActionsMenu() } : undefined
+                : sessionIdState ? () => { setShowFilesPanel((v) => !v); closeMobileActionsMenu() } : undefined}
+              onAgentSettings={() => { toggleAgentCapabilities(); closeMobileActionsMenu() }}
+              onWiki={() => { toggleWiki(); closeMobileActionsMenu() }}
+              onScheduler={() => { toggleScheduler(); closeMobileActionsMenu() }}
+              onDream={() => { handleDreamRun(); closeMobileActionsMenu() }}
+              onNewChat={() => { handleNewSession(); closeMobileActionsMenu() }}
+              onFocusInput={() => { focusInput(); closeMobileActionsMenu() }}
+              onStop={() => { useTeamStore.getState().stopTeam(); closeMobileActionsMenu() }}
+              onContinue={() => { continueTeam(); closeMobileActionsMenu() }}
+              onCompact={() => { useTeamStore.getState().compactTeam(); closeMobileActionsMenu() }}
+              onUndo={() => {
+                void useTeamStore.getState().undoTeam().then(async (response) => {
+                  const message = response?.message
+                  if (!message || message.role !== 'user' || message.is_summary) return
+                  inputRef.current?.setValue(message.content ?? '')
+                  const attachments = message.attachments ?? []
+                  const files = (await Promise.all(attachments.map((att) => attachmentToFile(att)))).filter((file): file is File => file !== null)
+                  inputRef.current?.setFiles(files)
+                  inputRef.current?.focus()
+                })
+                closeMobileActionsMenu()
+              }}
+              onRedo={() => {
+                void useTeamStore.getState().redoTeam().then(() => {
+                  inputRef.current?.setValue('')
+                  inputRef.current?.setFiles([])
+                })
+                closeMobileActionsMenu()
+              }}
+              dreamRunning={dreamMutation.isPending}
+              codingPanelOpen={codingPanel !== null}
+              agentSettingsOpen={agentCapabilitiesOpen}
+            />
+          ) : (
+            <AgentTopbar
+              isMobile={false}
+              tokens={
+                totalAll > 0
+                  ? {
+                      input: totalPrompt,
+                      output: totalCompletion,
+                      cached: totalCached,
+                      pulsing: isTeamWorking,
+                    }
+                  : undefined
+              }
+              dreamRunning={dreamMutation.isPending}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              todosSlot={
+                <TodosPopover
+                  open={showTodos}
+                  onOpenChange={setShowTodos}
+                  todos={todos}
+                  sessionId={sessionIdState}
+                />
+              }
+              filesAction={mode === 'coding'
+                ? workspace ? {
+                    Icon: FolderOpen,
+                    onClick: handleWorkspaceFiles,
+                    title: codingPanel === null ? 'Workspace files and git diff' : 'Close files and diff',
+                    ariaLabel: 'Workspace files and git diff',
+                  } : undefined
+                : {
+                    Icon: FolderOpen,
+                    onClick: () => setShowFilesPanel((v) => !v),
+                    disabled: !sessionIdState,
+                    title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
+                    ariaLabel: 'Workspace files',
+                  }}
+              agentsAction={{
+                Icon: SlidersHorizontal,
+                onClick: toggleAgentCapabilities,
+                title: 'Session model settings (Ctrl+A)',
+                ariaLabel: 'Session model settings',
+                className: agentCapabilitiesOpen ? 'mr-2 bg-(--bg-key) text-(--color-text)' : 'mr-2',
+              }}
+            />
+          )}
           </div>
       </header>
 
@@ -835,7 +877,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               </Button>
               <button
                 type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-8 md:w-8"
                 onClick={dismissSetupRequired}
                 aria-label="Dismiss provider setup notice"
               >
@@ -1005,6 +1047,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         sessionId={sessionIdState}
         onClose={() => setShowFilesPanel(false)}
       />
+      <TodosPopover
+        open={isMobile && showTodos}
+        onOpenChange={setShowTodos}
+        todos={todos}
+        sessionId={sessionIdState}
+        trigger={false}
+      />
       <WikiPanel open={wikiOpen} onClose={closeWiki} />
       <SchedulerPanel
         open={schedulerOpen}
@@ -1016,6 +1065,166 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />
       )}
     </div>
+  )
+}
+
+// ─── MobileChatActions ─────────────────────────────────────────────────────
+
+interface MobileChatActionsProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  mode: 'normal' | 'coding'
+  workspace: string | null
+  activeAgent: string | null
+  agents: string[]
+  streams: Record<string, AgentStream>
+  onSelectAgent: (agent: string) => void
+  todos: Array<{ status: string }>
+  sessionId: string | null
+  onTodos: () => void
+  onFiles?: () => void
+  onAgentSettings: () => void
+  onWiki: () => void
+  onScheduler: () => void
+  onDream: () => void
+  onNewChat: () => void
+  onFocusInput: () => void
+  onStop: () => void
+  onContinue: () => void
+  onCompact: () => void
+  onUndo: () => void
+  onRedo: () => void
+  dreamRunning: boolean
+  codingPanelOpen: boolean
+  agentSettingsOpen: boolean
+}
+
+function MobileChatActions({
+  open,
+  onOpenChange,
+  mode,
+  workspace,
+  activeAgent,
+  agents,
+  streams,
+  onSelectAgent,
+  todos,
+  sessionId,
+  onTodos,
+  onFiles,
+  onAgentSettings,
+  onWiki,
+  onScheduler,
+  onDream,
+  onNewChat,
+  onFocusInput,
+  onStop,
+  onContinue,
+  onCompact,
+  onUndo,
+  onRedo,
+  dreamRunning,
+  codingPanelOpen,
+  agentSettingsOpen,
+}: MobileChatActionsProps) {
+  const activeTodos = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
+
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger
+        data-no-drag
+        className="mr-1 flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+        aria-label="Open chat actions"
+        title="Chat actions"
+      >
+        <MoreHorizontal size={17} aria-hidden="true" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={8} className="w-[min(calc(100vw-1rem),20rem)] p-1.5">
+        <div className="px-2 py-2">
+          <p className="truncate text-sm font-semibold text-(--color-text)">
+            {mode === 'coding' && workspace ? workspaceLabel(workspace) : 'Chat actions'}
+          </p>
+          {activeAgent && (
+            <p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">Active: {activeAgent}</p>
+          )}
+        </div>
+
+        {activeAgent && agents.length > 1 && (
+          <>
+            <div className="px-2 pt-2 text-xs font-medium text-muted-foreground">Agents</div>
+            {agents.map((name) => (
+              <DropdownMenuItem
+                key={name}
+                onClick={() => { onSelectAgent(name); onOpenChange(false) }}
+                className="min-h-10 px-2"
+              >
+                <span className={`h-2 w-2 rounded-full ${dotClassFor(name, streams[name])}`} aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">{name}</span>
+                {name === activeAgent && <Check size={13} className="text-(--color-accent)" aria-hidden="true" />}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+
+        <div className="px-2 pt-2 text-xs font-medium text-muted-foreground">Compose</div>
+        <DropdownMenuItem onClick={onFocusInput} className="min-h-10 px-2">
+          <PencilLine size={15} aria-hidden="true" />
+          <span className="flex-1">Focus input</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onNewChat} className="min-h-10 px-2">
+          <MessageSquarePlus size={15} aria-hidden="true" />
+          <span className="flex-1">New chat</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onStop} className="min-h-10 px-2">
+          <Square size={15} aria-hidden="true" />
+          <span className="flex-1">Stop team</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onContinue} disabled={!sessionId} className="min-h-10 px-2">
+          <RotateCcw size={15} aria-hidden="true" />
+          <span className="flex-1">Continue</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onUndo} disabled={!sessionId} className="min-h-10 px-2">
+          <RotateCcw size={15} aria-hidden="true" />
+          <span className="flex-1">Undo last message</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onRedo} disabled={!sessionId} className="min-h-10 px-2">
+          <RotateCcw size={15} className="scale-x-[-1]" aria-hidden="true" />
+          <span className="flex-1">Redo messages</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onCompact} disabled={!sessionId} className="min-h-10 px-2">
+          <FileText size={15} aria-hidden="true" />
+          <span className="flex-1">Compact session</span>
+        </DropdownMenuItem>
+
+        <div className="px-2 pt-2 text-xs font-medium text-muted-foreground">Session</div>
+        <DropdownMenuItem onClick={onTodos} disabled={!sessionId} className="min-h-10 px-2">
+          <ListTodo size={15} aria-hidden="true" />
+          <span className="flex-1">Tasks</span>
+          {activeTodos > 0 && <span className="font-mono text-[10px] text-(--color-text-muted)">{activeTodos}</span>}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onFiles} disabled={!onFiles} className="min-h-10 px-2">
+          <FolderOpen size={15} aria-hidden="true" />
+          <span className="flex-1">{mode === 'coding' ? (codingPanelOpen ? 'Close workspace files' : 'Workspace files') : 'Session files'}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onAgentSettings} className="min-h-10 px-2">
+          <Users size={15} aria-hidden="true" />
+          <span className="flex-1">Agent settings</span>
+          {agentSettingsOpen && <Check size={13} className="text-(--color-accent)" aria-hidden="true" />}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onWiki} className="min-h-10 px-2">
+          <Brain size={15} aria-hidden="true" />
+          <span className="flex-1">Wiki</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onScheduler} className="min-h-10 px-2">
+          <CalendarClock size={15} aria-hidden="true" />
+          <span className="flex-1">Scheduler</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onDream} disabled={dreamRunning} className="min-h-10 px-2">
+          <Moon size={15} className={dreamRunning ? 'animate-pulse' : undefined} aria-hidden="true" />
+          <span className="flex-1">{dreamRunning ? 'Dream running…' : 'Run dream'}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -1058,7 +1267,7 @@ function ActiveAgentSwitcher({
     <DropdownMenu>
       <DropdownMenuTrigger
         data-no-drag
-        className="inline-flex min-w-0 shrink items-center gap-2 rounded-md px-2 py-1.5 font-mono text-xs leading-none font-semibold text-(--color-text) outline-none transition-all hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-accent)/40 sm:px-3"
+        className="inline-flex h-9 min-w-0 shrink items-center gap-2 rounded-md px-2 font-mono text-xs leading-none font-semibold text-(--color-text) outline-none transition-all hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-accent)/40 sm:h-auto sm:px-3 sm:py-1.5"
         aria-label={`Switch active agent (current: ${activeAgent})`}
       >
         <span

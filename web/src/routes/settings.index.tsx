@@ -65,7 +65,7 @@ function SettingsNavCard({ to, icon: Icon, title, description, count, countLabel
     <Link
       to={to}
       className={cn(
-        'group flex items-center gap-4 rounded-xl border border-(--color-border) bg-(--bg-card) p-4 text-(--color-text) transition-colors',
+        'group flex items-start gap-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4 text-(--color-text) transition-colors sm:items-center sm:gap-4',
         'hover:border-(--color-border-strong) hover:bg-(--color-surface)',
         'focus-visible:border-(--focus-ring) focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
       )}
@@ -78,13 +78,13 @@ function SettingsNavCard({ to, icon: Icon, title, description, count, countLabel
       </span>
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold text-(--color-text)">{title}</span>
-          <span className="rounded-md bg-(--bg-key) px-2 py-0.5 font-mono text-[10px] tabular-nums text-(--color-text-muted)">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+          <span className="text-sm font-semibold text-(--color-text)">{title}</span>
+          <span className="w-fit rounded-md bg-(--bg-key) px-2 py-0.5 font-mono text-[10px] tabular-nums text-(--color-text-muted)">
             {count === null ? '–' : count} {countLabel}
           </span>
         </div>
-        <p className="mt-0.5 truncate text-xs text-(--color-text-muted)">{description}</p>
+        <p className="mt-1 text-xs leading-5 text-(--color-text-muted) sm:truncate">{description}</p>
       </div>
 
       <ChevronRight
@@ -259,7 +259,7 @@ export function SettingsHubPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-8 px-4 pt-8 pb-12 sm:px-8">
+      <div className="mx-auto max-w-3xl space-y-6 px-3 pt-4 pb-8 sm:space-y-8 sm:px-8 sm:pt-8 sm:pb-12">
         <header className="flex items-center gap-3">
           <span
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"

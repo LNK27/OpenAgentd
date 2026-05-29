@@ -5,6 +5,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 import {
+  Home,
   Plus,
   Trash2,
   RefreshCw,
@@ -274,6 +275,13 @@ export function Sidebar({
 
             {/* Nav action buttons */}
             <nav aria-label="Primary" className={`space-y-0.5 pb-2 ${showIconOnly ? 'flex flex-col items-center px-1 pt-3' : 'px-2 pt-2'}`}>
+              {isMobile && (
+                <SidebarItem
+                  Icon={Home}
+                  label="Home"
+                  onClick={() => { navigate({ to: '/' }); onMobileClose?.() }}
+                />
+              )}
               {showIconOnly && onCommandPalette && (
                 <SidebarItem
                   Icon={Search}

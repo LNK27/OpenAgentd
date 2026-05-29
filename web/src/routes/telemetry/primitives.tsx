@@ -51,7 +51,7 @@ export function Table({
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-(--color-border) bg-(--bg-card)">
-      <table className="min-w-[360px] w-full text-xs">
+      <table className="w-full min-w-[320px] text-xs sm:min-w-[360px]">
         <thead>
           <tr className="border-b border-(--color-border) bg-(--bg-key)">
             {headers.map((h, i) => (

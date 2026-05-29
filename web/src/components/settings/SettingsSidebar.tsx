@@ -226,7 +226,7 @@ export function SettingsSidebar() {
   return (
     <nav
       aria-label="Settings categories"
-      className="flex h-full w-60 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar)"
+      className="flex h-full w-[min(18rem,calc(100vw-2rem))] shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) md:w-60"
     >
       <GroupLabel>Configuration</GroupLabel>
       <div className="flex flex-col">

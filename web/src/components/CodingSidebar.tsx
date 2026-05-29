@@ -30,6 +30,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
   Folder,
   HelpCircle,
+  Home,
   Loader2,
   Pencil,
   Plus,
@@ -505,6 +506,19 @@ export function CodingSidebar({
           : 'flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)'
       }
     >
+      {isMobile && (
+        <nav aria-label="Primary" className="px-2 pt-2">
+          <button
+            type="button"
+            onClick={() => { navigate({ to: '/' }); onMobileClose?.() }}
+            className="flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+          >
+            <Home size={15} aria-hidden="true" />
+            <span>Home</span>
+          </button>
+        </nav>
+      )}
+
       {/* Search trigger — opens the command palette (Ctrl+P). */}
       {onCommandPalette && (
         <div className="px-3 pt-3">
@@ -614,7 +628,7 @@ export function CodingSidebar({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => navigate({ to: '/settings' })}
+            onClick={() => { navigate({ to: '/settings' }); onMobileClose?.() }}
             className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             aria-label="Settings"
             title="Settings"

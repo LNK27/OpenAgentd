@@ -324,7 +324,7 @@ export function CodingWorkspacePanel({
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">Workspace</p>
             <p className="mt-1 truncate font-mono text-xs text-(--color-text)" title={workspace}>{workspaceLabel(workspace)}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-(--color-text-muted) hover:bg-(--bg-key)" aria-label="Close workspace panel">
+          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) hover:bg-(--bg-key) md:h-auto md:w-auto md:p-1" aria-label="Close workspace panel">
             <X size={16} />
           </button>
         </div>

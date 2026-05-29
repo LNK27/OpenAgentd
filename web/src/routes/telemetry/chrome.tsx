@@ -22,9 +22,9 @@ export function PageHeader({
     <AppHeader
       title="Telemetry"
       center={
-        <div className="ml-4 flex min-w-0 items-center gap-2 text-(--color-text-muted)">
+        <div className="ml-2 flex min-w-0 items-center gap-2 text-(--color-text-muted) sm:ml-4">
           {left}
-          <span className="truncate text-xs">{subtitle ?? 'Span aggregates & latency'}</span>
+          <span className="hidden truncate text-xs sm:inline">{subtitle ?? 'Span aggregates & latency'}</span>
           {isFetching && (
             <Loader2
               size={13}
@@ -36,7 +36,7 @@ export function PageHeader({
       }
       right={
         right ? (
-          <div className="flex shrink-0 items-center gap-2 pr-3">{right}</div>
+          <div className="flex shrink-0 items-center gap-1 pr-2 sm:gap-2 sm:pr-3">{right}</div>
         ) : undefined
       }
     />

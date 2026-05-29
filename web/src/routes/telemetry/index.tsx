@@ -112,7 +112,7 @@ function SummaryRoute({
         }
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
         {summary.isLoading ? (
           <LoadingState label="Loading span aggregates…" />
         ) : summary.isError ? (
@@ -163,7 +163,7 @@ function TraceDetailRoute({
         left={
           <button
             onClick={onBack}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) sm:h-7 sm:w-7"
             aria-label="Back to list"
           >
             <ArrowLeft size={14} />

@@ -48,6 +48,7 @@ mock.module('lucide-react', () => ({
   GitCompare: Icon,
   Globe: Icon,
   HelpCircle: Icon,
+  Home: Icon,
   Loader2: Icon,
   Pencil: Icon,
   Plus: Icon,

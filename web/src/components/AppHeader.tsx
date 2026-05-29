@@ -33,7 +33,7 @@ export interface AppHeaderProps {
 }
 
 const ICON_BUTTON =
-  'flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40'
+  'flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40 md:h-7 md:w-7'
 
 function DefaultStatus() {
   return (
@@ -72,7 +72,7 @@ export function AppHeader({
         className,
       )}
     >
-      <div className="flex shrink-0 items-center gap-1 pl-2">
+      <div className="flex min-w-0 shrink items-center gap-1 pl-2">
         <Link to={homeTo} aria-label="Home" title="Home" className={ICON_BUTTON}>
           <Home size={14} aria-hidden="true" />
         </Link>
@@ -90,17 +90,17 @@ export function AppHeader({
         )}
 
         {title && (
-          <span className="ml-2 truncate text-sm font-semibold text-(--color-text)">
+          <span className="ml-1 min-w-0 truncate text-sm font-semibold text-(--color-text) md:ml-2">
             {title}
           </span>
         )}
       </div>
 
-      <div className="flex min-w-0 flex-1 items-center">
+      <div className="hidden min-w-0 flex-1 items-center sm:flex">
         {center && <div className="min-w-0 flex-1">{center}</div>}
       </div>
 
-      <div className="flex shrink-0 items-center">{right ?? <DefaultStatus />}</div>
+      <div className="ml-auto flex shrink-0 items-center">{right ?? <DefaultStatus />}</div>
     </header>
   )
 }

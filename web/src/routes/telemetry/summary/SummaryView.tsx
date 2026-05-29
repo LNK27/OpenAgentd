@@ -36,7 +36,7 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
 
       <section>
         <SectionHeader>Usage</SectionHeader>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 lg:grid-cols-5">
           <Stat label="Input" value={formatCompact(totals.input_tokens)} />
           <Stat label="Output" value={formatCompact(totals.output_tokens)} />
           <Stat label="Cache hit" value={formatPercent(totals.cache_percent)} />
