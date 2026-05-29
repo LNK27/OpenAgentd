@@ -46,6 +46,7 @@ Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Cop
 | [Logging](./logging.md) | App log + per-session JSONL, rotation, console format. |
 | [Observability](./observability.md) | OpenTelemetry spans, DuckDB-backed `/api/observability/*`, `/telemetry` UI. |
 | [Desktop distribution](./desktop.md) | Tauri v2 shell, Python sidecar, token auth, release pipeline. |
+| [Mobile app](./mobile.md) | Tauri mobile shell for remote OpenAgentd API servers. |
 | [Title generation](./title-generation.md) | LLM-generated session titles, SSE event, config. |
 
 ### Frontend (`web/`)

@@ -36,30 +36,31 @@ struct AppState {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct SavedDesktopServer {
+struct SavedAppServer {
     base_url: String,
     name: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct DesktopBackendConfig {
+struct AppBackendConfig {
     active_base_url: Option<String>,
-    servers: Vec<SavedDesktopServer>,
+    servers: Vec<SavedAppServer>,
 }
 
 #[derive(Clone, Serialize)]
-struct DesktopBackendStatus {
+struct AppBackendStatus {
     base_url: String,
     sidecar_running: bool,
     external: bool,
-    servers: Vec<SavedDesktopServer>,
+    supports_bundled: bool,
+    servers: Vec<SavedAppServer>,
 }
 
-impl Default for DesktopBackendConfig {
+impl Default for AppBackendConfig {
     fn default() -> Self {
         Self {
             active_base_url: None,
-            servers: vec![SavedDesktopServer {
+            servers: vec![SavedAppServer {
                 base_url: "http://127.0.0.1:4082".to_string(),
                 name: Some("Local CLI server".to_string()),
             }],
@@ -189,7 +190,7 @@ async fn backend_logs_path(state: tauri::State<'_, AppState>) -> Result<String, 
 }
 
 #[tauri::command]
-async fn desktop_backend_status(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<DesktopBackendStatus, String> {
+async fn app_backend_status(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<AppBackendStatus, String> {
     let base_url = state
         .backend_base_url
         .lock()
@@ -202,51 +203,40 @@ async fn desktop_backend_status(app: AppHandle, state: tauri::State<'_, AppState
         .await
         .as_mut()
         .is_some_and(|s| s.is_alive());
-    let servers = load_desktop_backend_config(&app)
-        .unwrap_or_else(|_| DesktopBackendConfig::default())
+    let servers = load_app_backend_config(&app)
+        .unwrap_or_else(|_| AppBackendConfig::default())
         .servers;
-    Ok(DesktopBackendStatus {
+    Ok(AppBackendStatus {
         base_url,
         sidecar_running,
         external: !sidecar_running,
+        supports_bundled: true,
         servers,
     })
 }
 
 #[tauri::command]
-async fn desktop_set_backend_base_url(app: AppHandle, base_url: String) -> Result<(), String> {
+async fn app_save_backend_server(app: AppHandle, base_url: String, name: Option<String>) -> Result<AppBackendStatus, String> {
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
-    wait_for_health(&normalized, 20, Duration::from_millis(250))
-        .await
+    save_app_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref(), true)
         .map_err(|e| format!("{e:#}"))?;
-    save_desktop_backend_config(&app, Some(&normalized), None, false).map_err(|e| format!("{e:#}"))?;
-    switch_to_external_backend(&app, normalized)
+    app_backend_status(app.clone(), app.state())
         .await
         .map_err(|e| format!("{e:#}"))
 }
 
 #[tauri::command]
-async fn desktop_save_backend_server(app: AppHandle, base_url: String, name: Option<String>) -> Result<DesktopBackendStatus, String> {
+async fn app_remove_backend_server(app: AppHandle, base_url: String) -> Result<AppBackendStatus, String> {
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
-    save_desktop_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref(), true)
-        .map_err(|e| format!("{e:#}"))?;
-    desktop_backend_status(app.clone(), app.state())
+    remove_app_backend_server(&app, &normalized).map_err(|e| format!("{e:#}"))?;
+    app_backend_status(app.clone(), app.state())
         .await
         .map_err(|e| format!("{e:#}"))
 }
 
 #[tauri::command]
-async fn desktop_remove_backend_server(app: AppHandle, base_url: String) -> Result<DesktopBackendStatus, String> {
-    let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
-    remove_desktop_backend_server(&app, &normalized).map_err(|e| format!("{e:#}"))?;
-    desktop_backend_status(app.clone(), app.state())
-        .await
-        .map_err(|e| format!("{e:#}"))
-}
-
-#[tauri::command]
-async fn desktop_use_bundled_backend(app: AppHandle) -> Result<(), String> {
-    save_desktop_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
+async fn app_use_bundled_backend(app: AppHandle) -> Result<(), String> {
+    save_app_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
     restart_sidecar_and_reload_window(&app)
         .await
         .map_err(|e| format!("{e:#}"))
@@ -976,16 +966,16 @@ fn normalize_server_name(name: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn desktop_backend_config_path(app: &AppHandle) -> Result<PathBuf> {
+fn app_backend_config_path(app: &AppHandle) -> Result<PathBuf> {
     let dir = app.path().app_config_dir().context("resolve app config dir")?;
     std::fs::create_dir_all(&dir).context("create app config dir")?;
     Ok(dir.join("desktop-backend.json"))
 }
 
-fn load_desktop_backend_config(app: &AppHandle) -> Result<DesktopBackendConfig> {
-    let path = desktop_backend_config_path(app)?;
+fn load_app_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
+    let path = app_backend_config_path(app)?;
     if !path.exists() {
-        return Ok(DesktopBackendConfig::default());
+        return Ok(AppBackendConfig::default());
     }
     let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
     let value: serde_json::Value = serde_json::from_slice(&bytes)
@@ -1006,24 +996,24 @@ fn load_desktop_backend_config(app: &AppHandle) -> Result<DesktopBackendConfig> 
             .into_iter()
             .flatten()
             .filter_map(|server| server.as_str())
-            .map(|base_url| SavedDesktopServer {
+            .map(|base_url| SavedAppServer {
                 base_url: base_url.to_string(),
                 name: None,
             })
             .collect();
-        DesktopBackendConfig { active_base_url, servers }
+        AppBackendConfig { active_base_url, servers }
     } else {
         serde_json::from_value(value).with_context(|| format!("parse {}", path.display()))?
     };
     if config.servers.is_empty() {
-        config.servers = DesktopBackendConfig::default().servers;
+        config.servers = AppBackendConfig::default().servers;
     }
     Ok(config)
 }
 
-fn save_desktop_backend_config(app: &AppHandle, base_url: Option<&str>, name: Option<&str>, activate: bool) -> Result<()> {
-    let path = desktop_backend_config_path(app)?;
-    let mut config = load_desktop_backend_config(app).unwrap_or_default();
+fn save_app_backend_config(app: &AppHandle, base_url: Option<&str>, name: Option<&str>, activate: bool) -> Result<()> {
+    let path = app_backend_config_path(app)?;
+    let mut config = load_app_backend_config(app).unwrap_or_default();
     if activate {
         config.active_base_url = base_url.map(str::to_string);
     }
@@ -1033,7 +1023,7 @@ fn save_desktop_backend_config(app: &AppHandle, base_url: Option<&str>, name: Op
                 saved.name = Some(name.to_string());
             }
         } else {
-            config.servers.push(SavedDesktopServer {
+            config.servers.push(SavedAppServer {
                 base_url: url.to_string(),
                 name: name.map(str::to_string),
             });
@@ -1043,49 +1033,18 @@ fn save_desktop_backend_config(app: &AppHandle, base_url: Option<&str>, name: Op
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
 }
 
-fn remove_desktop_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {
-    let path = desktop_backend_config_path(app)?;
-    let mut config = load_desktop_backend_config(app).unwrap_or_default();
+fn remove_app_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {
+    let path = app_backend_config_path(app)?;
+    let mut config = load_app_backend_config(app).unwrap_or_default();
     config.servers.retain(|server| server.base_url != base_url);
     if config.active_base_url.as_deref() == Some(base_url) {
         config.active_base_url = None;
     }
     if config.servers.is_empty() {
-        config.servers = DesktopBackendConfig::default().servers;
+        config.servers = AppBackendConfig::default().servers;
     }
     let bytes = serde_json::to_vec_pretty(&config).context("serialize desktop backend config")?;
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
-}
-
-async fn switch_to_external_backend(app: &AppHandle, base: String) -> Result<()> {
-    shutdown_sidecar_now(app).await;
-    let init_script = frontend_init_script(None, &base);
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-        window.eval(&init_script).context("inject external backend config")?;
-        if cfg!(debug_assertions) {
-            window
-                .navigate("http://localhost:5173".parse().context("parse dev frontend url")?)
-                .context("navigate main window")?;
-        } else {
-            window.eval("window.location.assign('/');").ok();
-        }
-        show_main_window(app);
-    }
-    let state: tauri::State<'_, AppState> = app.state();
-    let _ = state.backend_base_url.lock().await.replace(base.clone());
-    state.desktop_token.lock().await.take();
-    app.emit(
-        "backend-ready",
-        BackendReady {
-            port: 0,
-            version: "external".to_string(),
-            base_url: base,
-            sidecar_running: false,
-        },
-    )
-    .ok();
-    update_tray_status(app, "Status: Running (external)");
-    Ok(())
 }
 
 fn frontend_webview_url() -> Result<WebviewUrl> {
@@ -1112,7 +1071,7 @@ fn frontend_init_script(token: Option<&str>, base_url: &str) -> String {
 async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
 
-    let configured_url = load_desktop_backend_config(&app)
+    let configured_url = load_app_backend_config(&app)
         .ok()
         .and_then(|cfg| cfg.active_base_url)
         .or_else(|| std::env::var("OPENAGENTD_DESKTOP_BASE_URL").ok())
@@ -1242,11 +1201,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             backend_health,
             backend_logs_path,
-            desktop_backend_status,
-            desktop_remove_backend_server,
-            desktop_save_backend_server,
-            desktop_set_backend_base_url,
-            desktop_use_bundled_backend,
+            app_backend_status,
+            app_remove_backend_server,
+            app_save_backend_server,
+            app_use_bundled_backend,
             open_macos_microphone_settings,
             set_tray_session,
             updater_check,

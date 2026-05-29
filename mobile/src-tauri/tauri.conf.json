@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenAgentd",
+  "mainBinaryName": "OpenAgentdMobile",
+  "version": "1.34.0",
+  "identifier": "com.openagentd.mobile",
+  "build": {
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": {
+      "cwd": "../..",
+      "script": "cd web && bun install --frozen-lockfile && bun run build"
+    },
+    "frontendDist": "../../web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "OpenAgentd",
+        "width": 390,
+        "height": 844,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self' http://127.0.0.1:* http://localhost:* http://192.168.0.0/16 https:",
+        "connect-src": "'self' http://127.0.0.1:* http://localhost:* http://192.168.0.0/16 https: ws://127.0.0.1:* ws://localhost:* ipc: https://ipc.localhost",
+        "script-src": "'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: http://127.0.0.1:* http://localhost:* http://192.168.0.0/16 https:",
+        "font-src": "'self' data:",
+        "media-src": "'self' blob: http://127.0.0.1:* http://localhost:* http://192.168.0.0/16 https:",
+        "frame-src": "'none'",
+        "object-src": "'none'",
+        "worker-src": "'self' blob:"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "category": "Productivity",
+    "copyright": "Copyright (c) 2026 OpenAgentd contributors",
+    "shortDescription": "OpenAgentd mobile shell for remote API servers.",
+    "longDescription": "OpenAgentd mobile embeds the shared Web UI and connects to a remote OpenAgentd API server.",
+    "targets": ["app"]
+  }
+}

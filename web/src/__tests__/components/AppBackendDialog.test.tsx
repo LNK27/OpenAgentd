@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { DesktopBackendDialog } from '@/components/DesktopBackendDialog'
+import { AppBackendDialog } from '@/components/AppBackendDialog'
 
 const originalFetch = globalThis.fetch
 const invokeCalls: Array<{ command: string; args: unknown }> = []
@@ -9,6 +9,7 @@ let statusPayload = {
   base_url: 'http://127.0.0.1:5999',
   sidecar_running: false,
   external: true,
+  supports_bundled: true,
   servers: [
     { base_url: 'http://127.0.0.1:4082', name: 'Local CLI' },
     { base_url: 'http://127.0.0.1:4999', name: null },
@@ -19,11 +20,10 @@ const invokeMock = mock(async (...args: unknown[]) => {
   const command = String(args[0])
   const commandArgs = args[1]
   invokeCalls.push({ command, args: commandArgs })
-  if (command === 'desktop_backend_status') return statusPayload
-  if (command === 'desktop_set_backend_base_url') return null
-  if (command === 'desktop_use_bundled_backend') return null
-  if (command === 'desktop_save_backend_server') return statusPayload
-  if (command === 'desktop_remove_backend_server') return statusPayload
+  if (command === 'app_backend_status') return statusPayload
+  if (command === 'app_save_backend_server') return statusPayload
+  if (command === 'app_remove_backend_server') return statusPayload
+  if (command === 'app_use_bundled_backend') return null
   throw new Error(`unexpected command: ${command}`)
 })
 
@@ -37,6 +37,7 @@ beforeEach(() => {
     base_url: 'http://127.0.0.1:5999',
     sidecar_running: false,
     external: true,
+    supports_bundled: true,
     servers: [
       { base_url: 'http://127.0.0.1:4082', name: 'Local CLI' },
       { base_url: 'http://127.0.0.1:4999', name: null },
@@ -57,9 +58,9 @@ afterEach(() => {
   delete window.__OAD_API_BASE_URL__
 })
 
-describe('DesktopBackendDialog', () => {
+describe('AppBackendDialog', () => {
   it('loads saved servers and shows live online/offline indicators', async () => {
-    render(<DesktopBackendDialog open onOpenChange={() => {}} />)
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     expect(await screen.findByText('Builtin Desktop App server')).toBeTruthy()
     expect(screen.getByText('Local CLI')).toBeTruthy()
@@ -70,27 +71,36 @@ describe('DesktopBackendDialog', () => {
     await waitFor(() => expect(screen.getByLabelText('Offline')).toBeTruthy())
   })
 
-  it('blocks incomplete URLs before invoking the desktop switch command', async () => {
+  it('hides the bundled server row when the shell does not support bundled backends', async () => {
+    statusPayload = { ...statusPayload, supports_bundled: false }
+
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await waitFor(() => expect(screen.queryByText('Builtin Desktop App server')).toBeNull())
+    expect(screen.getByText('Local CLI')).toBeTruthy()
+  })
+
+  it('blocks incomplete URLs before invoking a backend switch command', async () => {
     const user = userEvent.setup()
-    render(<DesktopBackendDialog open onOpenChange={() => {}} />)
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/add or connect server url/i), 'localhost')
     await user.click(screen.getByRole('button', { name: 'Check' }))
 
     expect(await screen.findByText('Enter a full server URL, including http:// or https://.')).toBeTruthy()
-    expect(invokeCalls.some((call) => call.command === 'desktop_set_backend_base_url')).toBe(false)
+    expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
   })
 
   it('connects the builtin desktop server through the bundled backend command', async () => {
     const user = userEvent.setup()
     const onOpenChange = mock(() => {})
-    render(<DesktopBackendDialog open onOpenChange={onOpenChange} />)
+    render(<AppBackendDialog open onOpenChange={onOpenChange} />)
 
     await user.click(await screen.findByText('Builtin Desktop App server'))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
-        command: 'desktop_use_bundled_backend',
+        command: 'app_use_bundled_backend',
         args: undefined,
       })
     })
@@ -99,7 +109,7 @@ describe('DesktopBackendDialog', () => {
 
   it('saves a server name without switching connections', async () => {
     const user = userEvent.setup()
-    render(<DesktopBackendDialog open onOpenChange={() => {}} />)
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:5050')
     await user.type(screen.getByLabelText(/server name/i), 'Workstation')
@@ -107,23 +117,23 @@ describe('DesktopBackendDialog', () => {
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
-        command: 'desktop_save_backend_server',
+        command: 'app_save_backend_server',
         args: { baseUrl: 'http://127.0.0.1:5050', name: 'Workstation' },
       })
     })
-    expect(invokeCalls.some((call) => call.command === 'desktop_set_backend_base_url')).toBe(false)
+    expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
   })
 
   it('removes a saved server', async () => {
     const user = userEvent.setup()
-    render(<DesktopBackendDialog open onOpenChange={() => {}} />)
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     const removeButtons = await screen.findAllByRole('button', { name: 'remove' })
     await user.click(removeButtons[0])
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
-        command: 'desktop_remove_backend_server',
+        command: 'app_remove_backend_server',
         args: { baseUrl: 'http://127.0.0.1:4082' },
       })
     })
@@ -131,37 +141,37 @@ describe('DesktopBackendDialog', () => {
 
   it('shows an error and does not switch when Check health probe fails', async () => {
     const user = userEvent.setup()
-    render(<DesktopBackendDialog open onOpenChange={() => {}} />)
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4999')
     await user.click(screen.getByRole('button', { name: 'Check' }))
 
     expect(await screen.findByText('Server did not respond to /api/health/live.')).toBeTruthy()
     expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:5999')
-    expect(invokeCalls.some((call) => call.command === 'desktop_set_backend_base_url')).toBe(false)
+    expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
   })
 
   it('checks and uses a valid typed URL without saving or closing', async () => {
     const user = userEvent.setup()
     const onOpenChange = mock(() => {})
-    render(<DesktopBackendDialog open onOpenChange={onOpenChange} />)
+    render(<AppBackendDialog open onOpenChange={onOpenChange} />)
 
     await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4082')
     await user.click(screen.getByRole('button', { name: 'Check' }))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
-    expect(invokeCalls.some((call) => call.command === 'desktop_set_backend_base_url')).toBe(false)
+    expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
   it('checks and uses a saved server directly without copying stale input', async () => {
     const user = userEvent.setup()
-    render(<DesktopBackendDialog open onOpenChange={() => {}} />)
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/add or connect server url/i), 'http://wrong.example')
     await user.click(await screen.findByText('Local CLI'))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
-    expect(invokeCalls.some((call) => call.command === 'desktop_set_backend_base_url')).toBe(false)
+    expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
   })
 })

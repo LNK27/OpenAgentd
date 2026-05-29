@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { DesktopBackendDialog } from '@/components/DesktopBackendDialog'
+import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 
 /**
@@ -41,7 +41,7 @@ export function HealthDot() {
       >
         <span className={`h-1.5 w-1.5 rounded-full ${bgColor} ${pulseClass}`} aria-hidden="true" />
       </button>
-      <DesktopBackendDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <AppBackendDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </>
   )
 }

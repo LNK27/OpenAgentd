@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 
-import { DesktopBackendDialog } from '@/components/DesktopBackendDialog'
+import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { Activity, AlertCircle, Code2, Gauge, Settings, Wifi } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
@@ -138,7 +138,7 @@ export function HomePage() {
           )}
         </div>
       </motion.div>
-      <DesktopBackendDialog open={backendDialogOpen} onOpenChange={setBackendDialogOpen} />
+      <AppBackendDialog open={backendDialogOpen} onOpenChange={setBackendDialogOpen} />
     </main>
   )
 }

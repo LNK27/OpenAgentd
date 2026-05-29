@@ -25,7 +25,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
-import { DesktopBackendDialog } from '@/components/DesktopBackendDialog'
+import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
@@ -285,7 +285,7 @@ export function SettingsHubPage() {
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-semibold text-(--color-text)">Backend connection</h2>
               <p className="mt-1 text-xs leading-5 text-(--color-text-muted)">
-                Connect the desktop shell to an existing CLI server, or switch back to the bundled local sidecar.
+                Connect this app to an existing OpenAgentd server, or switch back to the bundled local sidecar when available.
               </p>
             </div>
             <button
@@ -300,7 +300,7 @@ export function SettingsHubPage() {
 
         <UpdateSettingsCard />
 
-        <DesktopBackendDialog open={backendDialogOpen} onOpenChange={setBackendDialogOpen} />
+        <AppBackendDialog open={backendDialogOpen} onOpenChange={setBackendDialogOpen} />
 
         {/* Mobile picks up navigation from this list because the sidebar is
             hidden on small screens. */}

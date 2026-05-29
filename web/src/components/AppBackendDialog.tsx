@@ -3,25 +3,25 @@ import { Server } from 'lucide-react'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import {
-  getDesktopBackendStatus,
-  removeDesktopBackendServer,
-  saveDesktopBackendServer,
-  useBundledDesktopBackend,
-  type SavedDesktopServer,
-  type DesktopBackendStatus,
-} from '@/lib/desktop-backend'
+  getAppBackendStatus,
+  removeAppBackendServer,
+  saveAppBackendServer,
+  useBundledAppBackend,
+  type SavedAppServer,
+  type AppBackendStatus,
+} from '@/lib/app-backend'
 
-const DEFAULT_SERVERS: SavedDesktopServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local CLI server' }]
+const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local CLI server' }]
 
-interface DesktopBackendDialogProps {
+interface AppBackendDialogProps {
   /** Whether the connection dialog is visible. */
   open: boolean
   /** Called when the dialog should open or close. */
   onOpenChange: (open: boolean) => void
 }
 
-export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialogProps) {
-  const [status, setStatus] = useState<DesktopBackendStatus | null>(null)
+export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) {
+  const [status, setStatus] = useState<AppBackendStatus | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
   const [serverHealth, setServerHealth] = useState<Record<string, 'checking' | 'online' | 'offline'>>({})
@@ -31,7 +31,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    void getDesktopBackendStatus().then((next) => {
+    void getAppBackendStatus().then((next) => {
       if (cancelled) return
       setStatus(next)
       setBaseUrl('')
@@ -72,6 +72,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
         base_url: normalized,
         sidecar_running: false,
         external: true,
+        supports_bundled: prev?.supports_bundled ?? false,
         servers: prev?.servers ?? DEFAULT_SERVERS,
       }))
     } finally {
@@ -80,7 +81,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
   }
 
   async function connectBundled() {
-    await runConnectionSwitch(() => useBundledDesktopBackend())
+    await runConnectionSwitch(() => useBundledAppBackend())
   }
 
   async function saveServer() {
@@ -93,7 +94,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
     setPending(true)
     setError(null)
     try {
-      const next = await saveDesktopBackendServer(target, serverName)
+      const next = await saveAppBackendServer(target, serverName)
       setStatus(next)
       setBaseUrl('')
       setServerName('')
@@ -112,7 +113,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
     setPending(true)
     setError(null)
     try {
-      const next = await removeDesktopBackendServer(baseUrl)
+      const next = await removeAppBackendServer(baseUrl)
       setStatus(next)
       setServerHealth((prev) => {
         const { [baseUrl]: _removed, ...rest } = prev
@@ -130,7 +131,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
     setError(null)
     try {
       await action()
-      const next = await getDesktopBackendStatus()
+      const next = await getAppBackendStatus()
       setStatus(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -144,7 +145,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="desktop-backend-title"
+      aria-labelledby="app-backend-title"
       onClick={() => onOpenChange(false)}
     >
       <div
@@ -156,9 +157,9 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
             <Server size={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 id="desktop-backend-title" className="text-sm font-semibold">Backend connection</h2>
+            <h2 id="app-backend-title" className="text-sm font-semibold">Backend connection</h2>
             <p className="mt-1 text-xs leading-5 text-(--color-text-muted)">
-              Connect this desktop shell to a running OpenAgentd server.
+              Connect this app to a running OpenAgentd server.
             </p>
           </div>
         </div>
@@ -174,20 +175,22 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
           <div>
             <div className="mb-2 text-xs font-medium text-(--color-text)">Saved servers</div>
             <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => { void connectBundled() }}
-                className="flex w-full items-center justify-between rounded-md border border-(--color-border) px-3 py-2 text-left text-xs hover:bg-(--bg-page)"
-                disabled={pending}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <ServerStatusDot status={status?.sidecar_running ? 'online' : undefined} />
-                  <span className="truncate font-medium">Builtin Desktop App server</span>
-                </span>
-                <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 font-sans text-[10px] text-(--color-text-muted)">
-                  {status?.external ? 'connect' : 'active'}
-                </span>
-              </button>
+              {status?.supports_bundled !== false ? (
+                <button
+                  type="button"
+                  onClick={() => { void connectBundled() }}
+                  className="flex w-full items-center justify-between rounded-md border border-(--color-border) px-3 py-2 text-left text-xs hover:bg-(--bg-page)"
+                  disabled={pending}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <ServerStatusDot status={status?.sidecar_running ? 'online' : undefined} />
+                    <span className="truncate font-medium">Builtin Desktop App server</span>
+                  </span>
+                  <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 font-sans text-[10px] text-(--color-text-muted)">
+                    {status?.external ? 'connect' : 'active'}
+                  </span>
+                </button>
+              ) : null}
               {(status?.servers ?? DEFAULT_SERVERS).map((server) => (
                 <div
                   key={server.base_url}
@@ -226,12 +229,12 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
             </div>
           </div>
 
-          <label className="block text-xs font-medium text-(--color-text)" htmlFor="desktop-backend-url">
+          <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-url">
             Add or connect server URL
           </label>
           <div className="flex gap-2">
             <input
-              id="desktop-backend-url"
+              id="app-backend-url"
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
               placeholder="http://127.0.0.1:4082"
@@ -246,12 +249,12 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
               {pending ? 'Checking…' : 'Check'}
             </button>
           </div>
-          <label className="block text-xs font-medium text-(--color-text)" htmlFor="desktop-backend-name">
+          <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-name">
             Server name
           </label>
           <div className="flex gap-2">
             <input
-              id="desktop-backend-name"
+              id="app-backend-name"
               value={serverName}
               onChange={(event) => setServerName(event.target.value)}
               placeholder="Work laptop, Home server, Local CLI"
@@ -267,7 +270,7 @@ export function DesktopBackendDialog({ open, onOpenChange }: DesktopBackendDialo
             </button>
           </div>
           <p className="text-xs leading-5 text-(--color-text-muted)">
-            Check verifies the server and uses it for this desktop session. Save persists or renames it for future use.
+            Check verifies the server and uses it for this app session. Save persists or renames it for future use.
           </p>
 
           {error ? (

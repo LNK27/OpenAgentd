@@ -54,7 +54,7 @@ Linux that hosts the same FastAPI sidecar + React UI you would otherwise run
 from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](./web/chrome.md).
 
 - **Native desktop app for macOS, Linux** `[since v1.0]` — Tauri 2 shell,
-  bundled Python sidecar, one process, one port, no terminal required.
+  bundled Python sidecar, embedded Web UI, one process, no terminal required.
   *(Windows desktop builds dropped in v1.23.0 — see [§11](#11-distribution-and-updates).)*
 - **In-app auto-updater** `[v1.22.0]` — bottom-right update card + Settings → About
   → Updates, cached downloads, install-and-restart, signed minisign payloads,
@@ -100,6 +100,8 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   shapes optimized for small screens. See [`web/mobile.md`](./web/mobile.md).
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
+- **Remote-backend mobile shell** `[v1.34.0]` — Tauri mobile app scaffold embeds
+  the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
 
 ---
 
