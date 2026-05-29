@@ -4,6 +4,9 @@
   "mainBinaryName": "OpenAgentd-dev",
   "identifier": "com.openagentd.desktop.dev",
   "bundle": {
-    "resources": null
+    "resources": null,
+    "macOS": {
+      "infoPlist": "Info.plist"
+    }
   }
 }
