@@ -6,7 +6,7 @@ import {
   getAppBackendStatus,
   removeAppBackendServer,
   saveAppBackendServer,
-  useBundledAppBackend,
+  switchToBundledAppBackend,
   type SavedAppServer,
   type AppBackendStatus,
 } from '@/lib/app-backend'
@@ -81,7 +81,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
   }
 
   async function connectBundled() {
-    await runConnectionSwitch(() => useBundledAppBackend())
+    await runConnectionSwitch(() => switchToBundledAppBackend())
   }
 
   async function saveServer() {

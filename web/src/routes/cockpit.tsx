@@ -69,7 +69,7 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
             params: { sessionId: session.id },
             replace: true,
           })
-        } catch (err) {
+        } catch {
           if (cancelled) return
           removeCodingWorkspace(lastWorkspace.path)
           useTeamStore.setState((state) => {

@@ -30,7 +30,7 @@ export async function removeAppBackendServer(baseUrl: string): Promise<AppBacken
   return await invoke<AppBackendStatus>('app_remove_backend_server', { baseUrl })
 }
 
-export async function useBundledAppBackend(): Promise<void> {
+export async function switchToBundledAppBackend(): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core')
   await invoke('app_use_bundled_backend')
 }
