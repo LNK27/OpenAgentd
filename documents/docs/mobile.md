@@ -28,6 +28,7 @@ make dev                    # Tauri shell against Vite :5173
 make ios-init               # generate iOS project files
 make ios-dev                # run on simulator/device with --host
 make ios-dev-device <device-name> # run on a named physical iOS device
+make ios-install-device <device-name> # install production app with bundled Web UI
 make ios-clean              # remove generated iOS/Xcode state
 make ios-build              # build iOS app
 ```
@@ -45,4 +46,8 @@ cd web && bun dev --host 0.0.0.0
 uv run uvicorn app.server:app --host 0.0.0.0 --port 8000
 ```
 
-Generated iOS projects are local artifacts. If signing, bundle identifiers, or Xcode settings become stale, run `make ios-clean && make ios-init` and reapply local signing settings in Xcode. Local developer builds may temporarily use a unique identifier in `mobile/src-tauri/tauri.conf.json`; the source default is `com.openagentd.mobile`.
+Use `ios-install-device` for production device checks. It builds `web/dist` and installs the signed app bundle instead of using Vite `devUrl`.
+
+If iOS blocks the first launch, trust the developer profile on the phone in **Settings → General → VPN & Device Management**.
+
+Generated iOS projects are local artifacts. If signing, bundle identifiers, or Xcode settings become stale, put your Apple team ID in ignored `mobile/ios-team.txt`, then run `make ios-clean && make ios-init`. Local developer builds may temporarily use a unique identifier in `mobile/src-tauri/tauri.conf.json`; the source default is `com.openagentd.mobile`.

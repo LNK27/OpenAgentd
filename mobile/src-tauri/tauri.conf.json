@@ -26,13 +26,13 @@
     ],
     "security": {
       "csp": {
-        "default-src": "'self' http://127.0.0.1:* http://localhost:* http://192.168.0.0/16 https:",
-        "connect-src": "'self' http://127.0.0.1:* http://localhost:* http://192.168.0.0/16 https: ws://127.0.0.1:* ws://localhost:* ipc: https://ipc.localhost",
+        "default-src": "'self' http://127.0.0.1:* http://localhost:* https:",
+        "connect-src": "'self' http: https: ws: ipc: https://ipc.localhost",
         "script-src": "'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*",
         "style-src": "'self' 'unsafe-inline'",
-        "img-src": "'self' data: blob: http://127.0.0.1:* http://localhost:* http://192.168.0.0/16 https:",
+        "img-src": "'self' data: blob: http: https:",
         "font-src": "'self' data:",
-        "media-src": "'self' blob: http://127.0.0.1:* http://localhost:* http://192.168.0.0/16 https:",
+        "media-src": "'self' blob: http: https:",
         "frame-src": "'none'",
         "object-src": "'none'",
         "worker-src": "'self' blob:"

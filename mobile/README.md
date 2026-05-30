@@ -30,10 +30,11 @@ cd mobile/src-tauri && cargo tauri icon icons/icon.png
 
 ## iOS
 
-Initialize iOS project files once:
+Initialize iOS project files once. For local signing, put your Apple team ID in ignored `ios-team.txt` first.
 
 ```bash
 cd mobile
+printf 'TEAMID' > ios-team.txt
 make ios-init
 ```
 
@@ -41,6 +42,12 @@ Run on simulator/device:
 
 ```bash
 make ios-dev
+```
+
+Install a production build with bundled Web UI on a physical iPhone:
+
+```bash
+make ios-install-device <device-name>
 ```
 
 For a physical iPhone, expose the dev servers on the LAN first:
@@ -69,11 +76,17 @@ make ios-clean
 make ios-init
 ```
 
+The local team file is ignored and should not be committed.
+
 Build:
 
 ```bash
 make ios-build
 ```
+
+`ios-dev-device` uses Vite/dev servers. Use `ios-install-device` when you need to verify the built-in production UI from `../web/dist`.
+
+If iOS blocks the first launch, trust the developer profile on the phone in **Settings → General → VPN & Device Management**.
 
 Use **Backend connection** in the app to save/check a remote server. Simulator builds can usually reach the Mac with `http://localhost:8000`; physical devices normally need a LAN IP or HTTPS endpoint.
 

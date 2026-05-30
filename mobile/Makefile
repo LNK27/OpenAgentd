@@ -1,12 +1,18 @@
-.PHONY: dev ios-init ios-dev ios-dev-device ios-build ios-clean build clean
+.PHONY: dev ios-init ios-dev ios-dev-device ios-install-device ios-build ios-clean build clean
 
 IOS_DEVICE ?= $(word 2,$(MAKECMDGOALS))
+IOS_TEAM_FILE ?= ios-team.txt
+IOS_TEAM := $(shell test -f $(IOS_TEAM_FILE) && tr -d '[:space:]' < $(IOS_TEAM_FILE))
+IOS_TEAM_CONFIG = $(if $(IOS_TEAM),--config '{"bundle":{"iOS":{"developmentTeam":"$(IOS_TEAM)"}}}')
 
 dev: ## Run the mobile shell against the web Vite dev server
 	cd src-tauri && cargo tauri dev
 
 ios-init: ## Initialize Tauri iOS project files
 	cd src-tauri && cargo tauri ios init
+	@if [ -n "$(IOS_TEAM)" ]; then \
+		ruby -0pi -e 'gsub(/DEVELOPMENT_TEAM = "?[A-Z0-9]+"?;/, "DEVELOPMENT_TEAM = \"$(IOS_TEAM)\";")' src-tauri/gen/apple/openagentd-mobile.xcodeproj/project.pbxproj; \
+	fi
 
 ios-dev: ## Run on an iOS simulator/device
 	cd src-tauri && cargo tauri ios dev --host
@@ -18,11 +24,19 @@ ios-dev-device: ## Run on a named physical iOS device, e.g. `make ios-dev-device
 	fi
 	cd src-tauri && cargo tauri ios dev "$(IOS_DEVICE)" --host
 
+ios-install-device: ## Build and install the production iOS app on a device
+	@if [ -z "$(IOS_DEVICE)" ]; then \
+		echo "Usage: make ios-install-device <device-name>"; \
+		exit 2; \
+	fi
+	cd src-tauri && cargo tauri ios build $(IOS_TEAM_CONFIG)
+	xcrun devicectl device install app --device "$(IOS_DEVICE)" src-tauri/gen/apple/build/openagentd-mobile_iOS.xcarchive/Products/Applications/OpenAgentd.app
+
 %:
 	@:
 
 ios-build: ## Build the iOS app
-	cd src-tauri && cargo tauri ios build
+	cd src-tauri && cargo tauri ios build $(IOS_TEAM_CONFIG)
 
 ios-clean: ## Remove generated iOS/Xcode state
 	rm -rf src-tauri/gen ~/Library/Developer/Xcode/DerivedData/openagentd-mobile-*
