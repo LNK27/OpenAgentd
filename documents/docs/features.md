@@ -157,8 +157,9 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   lead agent's model and thinking level for the current chat. History keeps
   the model used for each user turn.
 - **Coding team variant** `[since v1.0]` — `agents/coding/` ships a separate
-  compact team (`coding/openagentd`, `coding/coder`) tuned for workspace-aware
-  sessions.
+  compact team (`coding/openagentd`, `coding/coder`, `coding/explorer`) tuned for
+  workspace-aware sessions; the coding explorer focuses on inspecting the current
+  codebase before implementation.
 - **Built-in first-party agent profiles** `[v1.23.0]` — the default `openagentd`
   lead and shipped member blueprints keep their core prompts, tools, skills, and
   descriptions versioned in code for normal and coding modes; seed/user `.md`

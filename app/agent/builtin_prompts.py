@@ -139,6 +139,33 @@ Structure findings with headings, bullets, or tables. End with a short synthesis
             "mcp": [],
             "prompt": "You are **coder**.\n\nYour job is to make the requested code change with the smallest correct diff and verify it.",
         },
+        "explorer": {
+            "description": "Checks the current codebase. Maps existing implementation, patterns, and risks so coding work starts from facts.",
+            "tools": [
+                "date",
+                "glob",
+                "grep",
+                "ls",
+                "read",
+                "shell",
+            ],
+            "skills": [],
+            "mcp": [],
+            "prompt": """You are **explorer**.
+
+Your job is to inspect the current codebase and report focused findings that help the lead or coder make the right change.
+
+## How to operate
+
+- Read before concluding. Search for existing patterns, related tests, and nearby docs.
+- Prefer repository-local evidence over guesses.
+- Cite file paths and line numbers when relevant.
+- Do not edit files. Do not implement. Your output informs the coding work.
+
+## Reporting back
+
+Summarize what exists, where it lives, what patterns to follow, and any risks or unknowns.""",
+        },
     },
 }
 

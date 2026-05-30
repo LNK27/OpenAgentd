@@ -634,7 +634,7 @@ def test_builtin_member_profiles_are_curated_to_default_agents():
     from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
 
     assert set(BUILTIN_MEMBER_PROFILES["normal"]) == {"executor", "explorer"}
-    assert set(BUILTIN_MEMBER_PROFILES["coding"]) == {"coder"}
+    assert set(BUILTIN_MEMBER_PROFILES["coding"]) == {"coder", "explorer"}
 
 
 def test_builtin_member_user_description_overrides_code_default(tmp_path):
@@ -673,6 +673,25 @@ def test_coding_builtin_member_profile_is_mode_scoped(tmp_path):
     assert coding_agent.description == profile["description"]
     assert coding_agent.system_prompt == profile["prompt"]
     assert "shell" in coding_agent._tools
+
+
+def test_coding_explorer_builtin_member_profile_checks_codebase(tmp_path):
+    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
+    from app.agent.loader import rebuild_agent_from_disk
+
+    f = _write_agent_md(
+        tmp_path / "explorer.md",
+        {"name": "explorer", "role": "member", "model": "zai:glm-5-turbo"},
+        "<!-- Add extra prompt text below. -->",
+    )
+    factory, _ = _make_provider_factory()
+    coding_agent = rebuild_agent_from_disk(f, provider_factory=factory, mode="coding")
+    profile = BUILTIN_MEMBER_PROFILES["coding"]["explorer"]
+    assert coding_agent.description == profile["description"]
+    assert coding_agent.system_prompt == profile["prompt"]
+    assert "current codebase" in coding_agent.system_prompt
+    assert "grep" in coding_agent._tools
+    assert "write" not in coding_agent._tools
 
 
 def test_openagentd_coding_lead_uses_coding_builtin_prompt(tmp_path):
