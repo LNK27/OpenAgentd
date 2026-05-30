@@ -77,10 +77,14 @@ def test_metadata_path_is_session_scoped_when_session_id_present(tmp_path):
 
     result = sandbox.metadata_path(".todos.json")
 
-    assert (
-        result
-        == tmp_path / "ws" / ".openagentd" / "sessions" / "session-1" / ".todos.json"
+    # Session artifacts live under OPENAGENTD_DATA_DIR/sessions/<sid>, never in
+    # the coding workspace (see app/agent/artifacts.py:session_artifact_dir).
+    from app.core.config import settings
+
+    assert result == (
+        Path(settings.OPENAGENTD_DATA_DIR) / "sessions" / "session-1" / ".todos.json"
     )
+    assert str(tmp_path / "ws") not in str(result)
 
 
 def test_metadata_path_falls_back_to_data_sessions_without_session_id(tmp_path):

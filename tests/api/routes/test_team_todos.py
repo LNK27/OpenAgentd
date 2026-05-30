@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +26,19 @@ from fastapi.testclient import TestClient
 from app.agent.tools.builtin.todo import TODOS_FILENAME
 
 pytestmark = pytest.mark.usefixtures("setup_db")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_data_dir(tmp_path, monkeypatch):
+    """Pin session-artifact storage to a per-test dir.
+
+    Session todos live under ``OPENAGENTD_DATA_DIR/sessions/<sid>``; without
+    this each test would share the process-wide ``.tests/data`` default and
+    leak todo state between tests.
+    """
+    monkeypatch.setattr(
+        "app.core.config.settings.OPENAGENTD_DATA_DIR", str(tmp_path / "data")
+    )
 
 
 @pytest.fixture
@@ -53,7 +67,17 @@ def session_id() -> str:
 
 
 def todos_path(root, session_id: str):
-    path = root / ".openagentd" / "sessions" / session_id / TODOS_FILENAME
+    """Resolve the session todo store the route actually reads.
+
+    The route reads ``app.agent.artifacts.todos_path(session_id)`` —
+    ``OPENAGENTD_DATA_DIR/sessions/<sid>/.todos.json`` — independent of the
+    coding workspace.  ``root`` is retained for call-site compatibility but no
+    longer affects the path; isolation comes from the per-test data dir pinned
+    by the autouse ``_isolate_data_dir`` fixture and the unique ``session_id``.
+    """
+    from app.core.config import settings
+
+    path = Path(settings.OPENAGENTD_DATA_DIR) / "sessions" / session_id / TODOS_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -86,10 +110,6 @@ class TestGetTodos:
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
 
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
-
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
@@ -98,13 +118,7 @@ class TestGetTodos:
     def test_missing_workspace_dir_returns_empty_list(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Workspace dir doesn't exist → returns empty list."""
-        fake_root = tmp_path / "does-not-exist"
-
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
-
+        """Missing session artifact dir → returns empty list."""
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
@@ -117,10 +131,6 @@ class TestGetTodos:
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_path(fake_root, session_id).write_text("{ invalid json }")
-
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
 
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
@@ -147,10 +157,6 @@ class TestGetTodos:
             )
         )
 
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
-
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
@@ -174,10 +180,6 @@ class TestGetTodos:
             ],
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
-
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
 
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
@@ -219,10 +221,6 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
-
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
@@ -256,10 +254,6 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
-
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
@@ -290,10 +284,6 @@ class TestGetTodos:
             ],
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
-
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
 
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
@@ -326,10 +316,6 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
-
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
@@ -361,10 +347,6 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
-
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
@@ -392,10 +374,6 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
-
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
@@ -411,10 +389,6 @@ class TestGetTodos:
         todos_data = {"counter": 0, "items": []}
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
-
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
@@ -428,10 +402,6 @@ class TestGetTodos:
         fake_root.mkdir(parents=True)
         todos_data = {"counter": 0}  # Missing 'items' key
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
-
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
 
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
@@ -456,10 +426,6 @@ class TestGetTodos:
             ],
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
-
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
 
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
@@ -507,10 +473,6 @@ class TestGetTodos:
             ],
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
-
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
 
         resp = client.get(f"/api/team/sessions/{session_id}/todos")
         assert resp.status_code == 200
@@ -566,17 +528,6 @@ class TestGetTodos:
         }
         todos_path(fake_root_2, session_id_2).write_text(json.dumps(todos_data_2))
 
-        def mock_workspace_dir(sid):
-            if sid == session_id_1:
-                return fake_root_1
-            elif sid == session_id_2:
-                return fake_root_2
-            return tmp_path / "unknown"
-
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", mock_workspace_dir)
-
         # Test session 1
         resp1 = client.get(f"/api/team/sessions/{session_id_1}/todos")
         assert resp1.status_code == 200
@@ -616,10 +567,6 @@ class TestGetTodos:
                 }
             )
         )
-
-        from app.api.routes.team import todos as team_routes
-
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: shared_root)
 
         resp1 = client.get(f"/api/team/sessions/{session_id_1}/todos")
         resp2 = client.get(f"/api/team/sessions/{session_id_2}/todos")

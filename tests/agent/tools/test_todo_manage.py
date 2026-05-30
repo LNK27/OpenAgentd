@@ -44,8 +44,17 @@ class MockState:
 
 
 @pytest.fixture
-def tmp_sandbox(tmp_path: Path) -> SandboxConfig:
-    """Create a temporary sandbox pointing to tmp_path."""
+def tmp_sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SandboxConfig:
+    """Create a temporary sandbox pointing to tmp_path.
+
+    Session artifacts (the todo store) live under ``OPENAGENTD_DATA_DIR`` —
+    pinned here to ``tmp_path`` so each test gets an isolated, empty store
+    instead of sharing the process-wide ``.tests/data`` default and leaking
+    todos between tests.
+    """
+    monkeypatch.setattr(
+        "app.core.config.settings.OPENAGENTD_DATA_DIR", str(tmp_path / "data")
+    )
     sandbox = SandboxConfig(workspace=str(tmp_path), session_id="session-1")
     set_sandbox(sandbox)
     yield sandbox
@@ -57,8 +66,15 @@ def todos_file(tmp_sandbox: SandboxConfig) -> Path:
     return tmp_sandbox.metadata_path(TODOS_FILENAME)
 
 
-def test_release_in_progress_for_actor_resets_claimed_tasks(tmp_path: Path) -> None:
-    todos = tmp_path / ".openagentd" / "sessions" / "session-1" / TODOS_FILENAME
+def test_release_in_progress_for_actor_resets_claimed_tasks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Session todos live under OPENAGENTD_DATA_DIR/sessions/<sid> — isolate it
+    # per-test and write the seed store where the function will actually read.
+    monkeypatch.setattr(
+        "app.core.config.settings.OPENAGENTD_DATA_DIR", str(tmp_path / "data")
+    )
+    todos = tmp_path / "data" / "sessions" / "session-1" / TODOS_FILENAME
     todos.parent.mkdir(parents=True)
     todos.write_text(
         json.dumps(
