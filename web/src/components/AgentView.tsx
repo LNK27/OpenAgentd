@@ -31,6 +31,7 @@ import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { partitionTurns } from '@/utils/turns'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
+import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { findCommittedMentions } from './InputBar.mentions'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
@@ -241,7 +242,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
 }
 
 
-function BlockRenderer({ block, isStreaming, sessionId, onRevert }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void }) {
+function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string> }) {
   switch (block.type) {
     case 'user': {
       // Me check if this is an inbox message (from another agent, not real user)
@@ -302,7 +303,7 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert }: { block: Con
             durationMs={block.durationMs}
             startedAt={block.startedAt}
           />
-          {block.toolDone && Boolean(mcpApp) ? (
+          {block.toolDone && Boolean(mcpApp) && latestMCPAppBlockIds?.has(block.id) ? (
             <div className="mt-2">
               <MCPAppResult mcpApp={mcpApp as never} sessionId={sessionId} toolCallId={block.toolCallId} />
             </div>
@@ -354,6 +355,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const totalLen = allBlocks.length
   const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
   const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
+  const latestMCPAppBlockIds = useMemo(() => latestMCPAppResourceBlockIds(allBlocks), [allBlocks])
 
   const isAtBottom = useCallback(() => {
     const el = scrollRef.current
@@ -471,6 +473,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                        isStreaming={false}
                          sessionId={sessionId}
                          onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                         latestMCPAppBlockIds={latestMCPAppBlockIds}
                         />
                    )
                  }
@@ -493,6 +496,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                             isStreaming={isStreaming}
                             sessionId={sessionId}
                             onRevert={isDirectUserBlock(block) && block.id === latestUserBlockId ? handleRevert : undefined}
+                            latestMCPAppBlockIds={latestMCPAppBlockIds}
                           />
                      )}
                    />

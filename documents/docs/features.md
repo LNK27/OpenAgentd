@@ -324,9 +324,10 @@ Four orthogonal ways to add capability. Deeper docs:
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`
   resources with MIME `text/html;profile=mcp-app`. First slice targets
-  interactive Excalidraw diagrams with a 90%-screen fullscreen edit overlay
-  and a same-server bridge that can invoke tools currently advertised by the
-  artifact's originating MCP server only.
+  interactive Excalidraw diagrams with a 90%-screen fullscreen edit overlay;
+  if later tool results reference the same UI resource, chat shows only the
+  newest artifact for that resource. The same-server bridge can invoke tools
+  currently advertised by the artifact's originating MCP server only.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.

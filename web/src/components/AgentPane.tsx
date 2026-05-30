@@ -25,6 +25,7 @@ import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { partitionTurns } from '@/utils/turns'
 import { formatTokens, extractSleepPrefix, formatTime } from '@/utils/format'
+import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { findCommittedMentions } from './InputBar.mentions'
 import type { AgentStream } from '@/stores/useTeamStore'
@@ -222,7 +223,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
 }
 
 
-function BlockRenderer({ block, isStreaming, sessionId, onRevert }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void }) {
+function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string> }) {
   switch (block.type) {
     case 'user': {
       const fromAgent = block.extra?.from_agent as string | undefined
@@ -282,7 +283,7 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert }: { block: Con
             durationMs={block.durationMs}
             startedAt={block.startedAt}
           />
-          {block.toolDone && Boolean(mcpApp) ? (
+          {block.toolDone && Boolean(mcpApp) && latestMCPAppBlockIds?.has(block.id) ? (
             <div className="mt-2">
               <MCPAppResult mcpApp={mcpApp as never} sessionId={sessionId} toolCallId={block.toolCallId} />
             </div>
@@ -374,6 +375,7 @@ export function AgentPane({
   const allBlocks = useMemo(() => [...stream.blocks, ...stream.currentBlocks], [stream.blocks, stream.currentBlocks])
   const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
   const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
+  const latestMCPAppBlockIds = useMemo(() => latestMCPAppResourceBlockIds(allBlocks), [allBlocks])
 
   // Me single scroll effect — block count or last block text changed
   const lastBlockContent = allBlocks[allBlocks.length - 1]?.content ?? ''
@@ -454,6 +456,7 @@ export function AgentPane({
                          isStreaming={false}
                            sessionId={sessionId}
                            onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                           latestMCPAppBlockIds={latestMCPAppBlockIds}
                           />
                      )
                    }
@@ -474,6 +477,7 @@ export function AgentPane({
                            block={block}
                            isStreaming={isStreaming}
                             sessionId={sessionId}
+                            latestMCPAppBlockIds={latestMCPAppBlockIds}
                           />
                        )}
                      />
