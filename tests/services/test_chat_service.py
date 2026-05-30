@@ -569,6 +569,8 @@ async def test_cancel_queued_user_message_skips_pop(session):
     await session.commit()
 
     assert cancelled is True
+    # Row must be hard-deleted from the database.
+    assert await session.get(SessionMessage, queued.id) is None
     popped = await pop_queued_user_messages(session, chat_session.id)
     assert popped == []
 

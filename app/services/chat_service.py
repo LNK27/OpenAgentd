@@ -725,11 +725,7 @@ async def cancel_queued_user_message(
         or row.extra.get("queue_status") != "queued"
     ):
         return False
-    extra = dict(row.extra)
-    extra["queue_status"] = "cancelled"
-    row.extra = extra
-    row.exclude_from_context = True
-    db.add(row)
+    await db.delete(row)
     await db.flush()
     return True
 
