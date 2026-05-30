@@ -2,7 +2,7 @@
 title: API Reference
 description: HTTP routes, SSE event protocol, file upload, workspace listing, media proxy, team chat, and planned speech endpoints.
 status: stable
-updated: 2026-05-20
+updated: 2026-05-30
 ---
 
 # API Reference
@@ -530,6 +530,11 @@ Server-internal fields (`converted_text` — the LLM-only document body — and
 metadata before returning to clients. Clients fetch bytes via the
 `/api/team/{sid}/uploads/{filename}` endpoint instead.
 
+The `url` field is the canonical client fetch URL for attachments. It may be a
+root-relative API path (for example `/api/team/{sid}/uploads/abc123.jpg`); web
+clients normalize that path against the configured API base URL before rendering
+thumbnails, opening file links, or re-fetching an attachment.
+
 ---
 
 ## Media proxy
@@ -562,6 +567,8 @@ Assistant messages are rendered via `MarkdownBlock` in the web UI.  Bare
 relative paths in `![alt](path)` are rewritten to the media proxy:
 
 - `![chart](chart.png)` → `GET /api/team/{session_id}/media/chart.png`
+- `![upload](/api/team/{session_id}/uploads/abc123.jpg)` → the same API path,
+  resolved against the configured API base URL
 - `![logo](https://…)` → passthrough (absolute URLs, `data:`, `blob:` unchanged)
 
 Agents can therefore write an image to the workspace (e.g. via `write` or

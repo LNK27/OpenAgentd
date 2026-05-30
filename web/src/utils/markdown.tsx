@@ -14,6 +14,7 @@ import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { Copy, Check, ImageOff, FileVideo } from 'lucide-react'
+import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
 import { ImageLightbox } from '@/components/ImageLightbox'
 
@@ -212,7 +213,7 @@ export function resolveImageSrc(src: string | undefined, sessionId?: string): st
   if (/^(https?:)?\/\//i.test(src)) return src
   if (src.startsWith('data:') || src.startsWith('blob:')) return src
   // Already points at our API — passthrough (avoid double-prefixing).
-  if (src.startsWith('/api/')) return apiUrl(src.slice('/api'.length))
+  if (src.startsWith('/api/')) return resolveApiUrl(src)
   // Bare path but no session to anchor against — passthrough (broken image).
   if (!sessionId) return src
   // Strip any leading ``./`` and any leading ``/`` to keep the proxy URL clean.

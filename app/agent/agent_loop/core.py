@@ -285,6 +285,8 @@ class Agent(Generic[TContext]):
         # Streaming returns ``last_usage`` per call; the loop tracks the latest
         # value so it can fold it into per-iteration logging and ``state.usage``.
         last_usage: Usage | None = None
+        empty_after_tool_continuations = 0
+        max_empty_after_tool_continuations = 3
 
         while iteration < self.max_iterations:
             # Top-of-iteration interrupt check.  Without this, an interrupt
@@ -379,6 +381,35 @@ class Agent(Generic[TContext]):
                 last_usage.completion_tokens if last_usage else 0,
                 last_usage.total_tokens if last_usage else 0,
             )
+
+            has_assistant_payload = bool(
+                (assistant_msg.content and assistant_msg.content.strip())
+                or (
+                    assistant_msg.reasoning_content
+                    and assistant_msg.reasoning_content.strip()
+                )
+                or tc_list
+            )
+            previous_was_tool = bool(messages and isinstance(messages[-1], ToolMessage))
+            if not has_assistant_payload and previous_was_tool:
+                empty_after_tool_continuations += 1
+                if empty_after_tool_continuations <= max_empty_after_tool_continuations:
+                    logger.warning(
+                        "agent_empty_after_tool_continue agent={} iteration={} attempt={}/{}",
+                        self.name,
+                        iteration,
+                        empty_after_tool_continuations,
+                        max_empty_after_tool_continuations,
+                    )
+                    continue
+                logger.warning(
+                    "agent_empty_after_tool_limit agent={} iteration={} attempts={}",
+                    self.name,
+                    iteration,
+                    empty_after_tool_continuations,
+                )
+            elif has_assistant_payload:
+                empty_after_tool_continuations = 0
 
             message_extra = dict(assistant_msg.extra or {})
             message_extra["duration_ms"] = round(

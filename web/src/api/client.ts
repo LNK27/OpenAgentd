@@ -114,6 +114,14 @@ export async function postTeamCommand(
   return res.json()
 }
 
+export function resolveApiUrl(url: string | undefined): string | undefined {
+  if (!url) return url
+  if (/^(https?:)?\/\//i.test(url)) return url
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url
+  if (url.startsWith('/api/')) return apiUrl(url.slice('/api'.length))
+  return url
+}
+
 export async function cancelQueuedTeamMessage(sessionId: string, messageId: string): Promise<void> {
   const res = await fetch(
     `${apiBaseUrl()}/team/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`,

@@ -34,6 +34,7 @@ import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { findCommittedMentions } from './InputBar.mentions'
+import { resolveApiUrl } from '@/api/client'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
 const SCROLL_THRESHOLD = 40
@@ -151,7 +152,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
                  return (
                    <ImageAttachment
                      key={idx}
-                     src={att.url || ''}
+                     src={resolveApiUrl(att.url) || ''}
                      alt={att.original_name || `Attachment ${idx + 1}`}
                    />
                  )
@@ -162,7 +163,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
                    key={idx}
                    name={att.original_name || att.filename || `File ${idx + 1}`}
                    mediaType={att.media_type}
-                   url={att.url}
+                   url={resolveApiUrl(att.url)}
                    clickable={!!att.url}
                  />
                )

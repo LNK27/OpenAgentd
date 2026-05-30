@@ -38,7 +38,7 @@ import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery, useTriggerDreamMutation } from '@/queries'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
-import { renderCommand, renderSnippet, resolveTeamSession } from '@/api/client'
+import { renderCommand, renderSnippet, resolveApiUrl, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
@@ -78,8 +78,9 @@ interface TeamChatViewProps {
 }
 
 async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
-  if (!att.url) return null
-  const res = await fetch(att.url)
+  const url = resolveApiUrl(att.url)
+  if (!url) return null
+  const res = await fetch(url)
   if (!res.ok) return null
   const blob = await res.blob()
   return new File(

@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-05-27
+updated: 2026-05-30
 ---
 
 # Features
@@ -132,6 +132,10 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 - **`/continue` resumes interrupted work** `[v1.5.0]` — restores the team's
   pending plan and resumes streaming from the last turn. Available in the
   command palette and assistant footer.
+- **Automatic empty-after-tool recovery** `[v1.36.0]` — if a provider returns
+  an empty assistant response immediately after a tool result, the lead keeps
+  the same turn moving instead of silently ending after the tool call. See
+  [`agent/loop.md`](./agent/loop.md#empty-after-tool-recovery).
 - **Queued follow-up messages** `[v1.12.0, v1.14.0]` — send another message
   while the agent is still replying; it's queued and dispatched in order. Long
   queued messages are collapsible while a response runs `[v1.22.0]`. Queued

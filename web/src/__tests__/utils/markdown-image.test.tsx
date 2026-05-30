@@ -3,7 +3,10 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { MarkdownBlock, resolveImageSrc } from "@/utils/markdown";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  delete window.__OAD_API_BASE_URL__;
+});
 
 describe("resolveImageSrc", () => {
   const sid = "019d9777-ebc9-770e-8b8c-698c9baa5d50";
@@ -36,6 +39,15 @@ describe("resolveImageSrc", () => {
   it("passes existing /api/ URLs through unchanged (no double-prefix)", () => {
     const api = `/api/team/${sid}/media/foo.png`;
     expect(resolveImageSrc(api, sid)).toBe(api);
+  });
+
+  it("rewrites existing /api/ URLs when a custom API base URL is configured", async () => {
+    const { setApiBaseUrl } = await import("@/api/base-url");
+    setApiBaseUrl("http://127.0.0.1:4082");
+
+    expect(resolveImageSrc(`/api/team/${sid}/media/foo.png`, sid)).toBe(
+      `http://127.0.0.1:4082/api/team/${sid}/media/foo.png`,
+    );
   });
 
   it("rewrites bare relative paths to the media proxy", () => {

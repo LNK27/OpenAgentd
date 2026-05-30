@@ -371,6 +371,30 @@ async def test_agent_run_max_iterations():
     assert last.tool_calls is not None
 
 
+async def test_agent_run_retries_empty_response_after_tool_result():
+    """Some providers can return an empty assistant immediately after a tool
+    result. The loop should continue instead of ending the turn silently."""
+
+    def lookup() -> str:
+        """Returns the value."""
+        return "value"
+
+    provider = MockProvider(
+        [
+            [make_tool_chunk("lookup", "call_1", "{}")],
+            [make_empty_chunk()],
+            [make_text_chunk("Final answer.")],
+        ]
+    )
+    agent = Agent(name="bot", llm_provider=provider, tools=[Tool(lookup)])
+
+    msgs = await agent.run([HumanMessage(content="lookup")])
+
+    assistants = [m for m in msgs if isinstance(m, AssistantMessage)]
+    assert len(assistants) == 2
+    assert assistants[-1].content == "Final answer."
+
+
 async def test_agent_run_calls_all_hooks():
     """All hook lifecycle methods are invoked during a run."""
     provider = MockProvider([[make_text_chunk("hi")]])

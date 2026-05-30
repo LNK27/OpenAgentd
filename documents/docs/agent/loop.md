@@ -1,8 +1,8 @@
 ---
 title: Agent Loop & Execution
-description: One-turn reasoning loop with iteration, tool dispatch, checkpointing, and interrupts.
+description: One-turn reasoning loop with iteration, tool dispatch, checkpointing, recovery, and interrupts.
 status: stable
-updated: 2026-05-25
+updated: 2026-05-30
 ---
 
 # Agent Loop
@@ -127,6 +127,8 @@ agent.run(messages, checkpointer=checkpointer)
     │
     ├─ checkpointer.sync(ctx, state)                   ← sync point 2: after after_model
     │
+    ├─ If previous message is ToolMessage and assistant payload is empty
+    │    └─ Continue automatically up to 3 times, then fall through
     ├─ If no tool_calls → BREAK (final answer)
     │
     ├─ ★ Pre-dispatch interrupt check
@@ -197,6 +199,27 @@ Primary provider (5 retries for transient failures)
 - Non-retryable errors (400, 401, 403) are raised immediately — no fallback.
 - The fallback provider gets the same retry budget (5 attempts with backoff).
 - Configured via `fallback_model` in the agent's `.md` frontmatter (see [configuration.md](../configuration.md#fallback-model)).
+
+## Empty-after-tool recovery
+
+Some providers can return an empty assistant message immediately after a tool
+result (`content_len=0`, `reasoning_len=0`, `tool_calls=0`). Treating that as a
+final response makes the lead appear to stop silently after the tool call. When
+the previous message is a `ToolMessage` and the assistant payload is empty, the
+loop now continues the same turn automatically instead of appending the empty
+assistant message.
+
+This recovery is bounded to three consecutive empty-after-tool responses. If the
+limit is reached, the loop falls back to the normal final-response path so a
+persistently empty provider cannot spin forever. This is separate from the
+user-facing `/continue` command; it is an automatic within-turn retry.
+
+Log events:
+
+| Log event | Level | Meaning |
+|-----------|-------|---------|
+| `agent_empty_after_tool_continue` | WARNING | Empty assistant payload after a tool result; the loop starts another iteration in the same turn. |
+| `agent_empty_after_tool_limit` | WARNING | Empty-after-tool recovery hit the three-attempt limit and falls through to the normal final-response path. |
 
 ### Key log events (retry/fallback)
 
@@ -286,6 +309,8 @@ A second failure mode occurs when the user stops the agent **during argument str
 | `agent_iteration` | INFO | `agent`, `iteration`, `max_iterations`, `messages` |
 | `llm_response` | INFO | `agent`, `iteration`, `elapsed`, `content_len`, `reasoning_len`, `tool_calls`, token counts |
 | `llm_usage_detail` | DEBUG | `cached_tokens`, `thoughts_tokens`, `tool_use_tokens` |
+| `agent_empty_after_tool_continue` | WARNING | `agent`, `iteration`, `attempt` — empty assistant payload after a tool result; loop continued automatically |
+| `agent_empty_after_tool_limit` | WARNING | `agent`, `iteration`, `attempts` — empty-after-tool recovery limit reached; loop fell through to normal final-response handling |
 | `tool_dispatch` | INFO | `agent`, `count`, tool names |
 | `tool_dispatch_skipped_interrupt` | INFO | `agent`, `count` — interrupt was set before tool execution started |
 | `tool_start` | INFO | `agent`, `tool`, `id`, args preview |
