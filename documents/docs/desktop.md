@@ -92,18 +92,24 @@ desktop token, not from CORP.
 
 ## Native menus and tray
 
-The shell installs both native app menus and a system tray menu in `desktop/src-tauri/src/main.rs`.
+The shell installs native app menus and a compact tray dropdown in `desktop/src-tauri/src/main.rs`.
 
-| Surface | Actions |
+| Surface | Purpose |
 |---------|---------|
-| App menu / menu bar | **OpenAgentd**: About OpenAgentd, Check for Updates…, Show OpenAgentd, Settings, Telemetry, Quit OpenAgentd. **File**: Chat, Coding, Quit. **Edit**: Undo, Redo, Cut, Copy, Paste, Select All. **View**: Reload (`⌘/Ctrl+R`), Force Reload (`⌘/Ctrl+Shift+R`), Zoom In (`⌘/Ctrl+=`), Zoom Out (`⌘/Ctrl+-`), Actual Size (`⌘/Ctrl+0`), Settings, Telemetry. **Window**: Minimize, Hide to Tray. |
-| System tray | Status, Session, Show OpenAgentd, Chat, Coding, Settings, Telemetry, Reload Window, Quit OpenAgentd. |
+| App menu / menu bar | Full desktop command surface: navigation, panels, settings, updates, reload/zoom, config, logs, and quit. |
+| System tray dropdown | Background quick actions only: status/session, show, Cockpit, Coding, Command Palette, Settings, config/logs, reload, quit. |
 
 The **Edit** submenu is required on macOS for native `⌘A` / `⌘C` / `⌘V` / `⌘X` / `⌘Z` to reach the webview's input fields — without it those shortcuts have no handler at the application level and the corresponding actions silently no-op inside the textarea. `Undo`/`Redo` are macOS-only and not registered on Windows/Linux; the other edit items work on all platforms.
 
 The **About OpenAgentd** item opens the native About panel populated with the app icon, name, version (from `Cargo.toml` / `tauri.conf.json`), copyright, and a link to the project repository.
 
+**Home**, **Cockpit**, **Coding**, **Settings**, **Providers**, **Notifications**, and **Telemetry** are route shortcuts. **Show OpenAgentd** only focuses the existing window state; **Home** intentionally resets the webview to the mode picker.
+
+**Command Palette**, **Wiki**, **Scheduled Tasks**, and **Session Settings** are bridged from native menu/tray events into the same React/Zustand actions used by the in-app shortcuts. They summon the window first, then open the requested overlay or panel. Scheduled tasks are a panel inside the cockpit today; the `/scheduler` route remains a compatibility redirect rather than a standalone page.
+
 The **View → Reload** action (`⌘/Ctrl+R`) calls `window.location.reload()` on the main webview, respecting the HTTP cache. The tray **Reload Window** action uses the same webview-only reload path for cases where the main window is hidden or wedged. **Force Reload** (`⌘/Ctrl+Shift+R`) keeps the native window alive, restarts the managed production sidecar, waits for health, then navigates the existing webview to the new backend port while preserving the current path/query/hash. In dev mode (`OPENAGENTD_DEV_BACKEND_URL`), Tauri does not own the backend process, so Force Reload falls back to webview-only reload. Reload always brings the window to front before refreshing so the user sees the result.
+
+The utility actions **View Config Folder** and **View Backend Log** are desktop diagnostics. Config opens the shared CLI/desktop config root (`$OPENAGENTD_CONFIG_DIR` or `~/.config/openagentd`). Backend log reveals the bundled sidecar's `backend.log` when the sidecar is running; it is unavailable when the app is connected only to an external backend.
 
 **Zoom In** / **Zoom Out** / **Actual Size** (`⌘/Ctrl+=`, `⌘/Ctrl+-`, `⌘/Ctrl+0`) drive `Webview::set_zoom` on the main window — the bare `=` key is bound so the user doesn't need Shift, matching Chrome and Safari. The zoom factor multiplies by 1.2 per press, clamped to `[0.5, 3.0]`, and resets to 1.0. State is session-only — not persisted across restarts — because the desktop shell has no other settings store.
 

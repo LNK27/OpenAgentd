@@ -69,6 +69,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   keep visual notifications on while muting audio.
 - **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,
   agents, files, slash commands, settings.
+- **Native menu/tray shortcuts** `[v1.38.0]` — menubar shortcuts for Home,
+  Cockpit, Coding, Command Palette, Wiki, Scheduled Tasks, Session Settings,
+  key settings pages, updates, reload, config folder, and backend log; compact
+  tray dropdown for status, quick navigation, reload, settings, and quit.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
