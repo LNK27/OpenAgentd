@@ -6,6 +6,7 @@ import { MarkdownBlock, resolveImageSrc } from "@/utils/markdown";
 afterEach(() => {
   cleanup();
   delete window.__OAD_API_BASE_URL__;
+  delete window.__OAD_TOKEN__;
 });
 
 describe("resolveImageSrc", () => {
@@ -41,6 +42,13 @@ describe("resolveImageSrc", () => {
     expect(resolveImageSrc(api, sid)).toBe(api);
   });
 
+  it("adds the desktop token query param to existing /api/ URLs", () => {
+    window.__OAD_TOKEN__ = "secret";
+    expect(resolveImageSrc(`/api/team/${sid}/media/foo.png`, sid)).toBe(
+      `/api/team/${sid}/media/foo.png?_token=secret`,
+    );
+  });
+
   it("rewrites existing /api/ URLs when a custom API base URL is configured", async () => {
     const { setApiBaseUrl } = await import("@/api/base-url");
     setApiBaseUrl("http://127.0.0.1:4082");
@@ -53,6 +61,13 @@ describe("resolveImageSrc", () => {
   it("rewrites bare relative paths to the media proxy", () => {
     expect(resolveImageSrc("chart.png", sid)).toBe(
       `/api/team/${sid}/media/chart.png`,
+    );
+  });
+
+  it("adds the desktop token query param to rewritten media proxy URLs", () => {
+    window.__OAD_TOKEN__ = "secret";
+    expect(resolveImageSrc("chart.png", sid)).toBe(
+      `/api/team/${sid}/media/chart.png?_token=secret`,
     );
   });
 

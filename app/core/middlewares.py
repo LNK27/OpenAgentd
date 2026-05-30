@@ -53,7 +53,7 @@ _DEFAULT_SECURITY_HEADERS: dict[str, str] = {
     "Referrer-Policy": "no-referrer",
     "Permissions-Policy": "geolocation=(), camera=(), microphone=(), payment=()",
     "Cross-Origin-Opener-Policy": "same-origin",
-    "Cross-Origin-Resource-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "cross-origin",
     "Content-Security-Policy": _DEFAULT_CSP,
 }
 

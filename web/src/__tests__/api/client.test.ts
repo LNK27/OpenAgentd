@@ -1,10 +1,35 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cancelQueuedTeamMessage, postTeamChat, resolveTeamSession, updateTeamSessionTitle } from '@/api/client'
+import { cancelQueuedTeamMessage, postTeamChat, resolveApiUrl, resolveTeamSession, updateTeamSessionTitle, workspaceMediaUrl } from '@/api/client'
 
 const originalFetch = globalThis.fetch
 
 afterEach(() => {
   globalThis.fetch = originalFetch
+  delete window.__OAD_TOKEN__
+})
+
+describe('workspaceMediaUrl', () => {
+  it('returns a media proxy URL without token in normal web mode', () => {
+    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/team/sid/media/output/chart.png')
+  })
+
+  it('adds the desktop token query param in desktop mode', () => {
+    window.__OAD_TOKEN__ = 'secret'
+    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/team/sid/media/output/chart.png?_token=secret')
+  })
+})
+
+describe('resolveApiUrl', () => {
+  it('adds the desktop token query param to relative API URLs', () => {
+    window.__OAD_TOKEN__ = 'secret'
+    expect(resolveApiUrl('/api/team/sid/uploads/image.png')).toBe('/api/team/sid/uploads/image.png?_token=secret')
+  })
+
+  it('does not add the token to blob or external URLs', () => {
+    window.__OAD_TOKEN__ = 'secret'
+    expect(resolveApiUrl('blob:http://localhost/1')).toBe('blob:http://localhost/1')
+    expect(resolveApiUrl('https://example.com/image.png')).toBe('https://example.com/image.png')
+  })
 })
 
 describe('postTeamChat', () => {

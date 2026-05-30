@@ -16,6 +16,7 @@ import 'katex/dist/katex.min.css'
 import { Copy, Check, ImageOff, FileVideo } from 'lucide-react'
 import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
+import { withTokenParam } from '@/api/auth'
 import { ImageLightbox } from '@/components/ImageLightbox'
 
 // Me: extensions we render as ``<video>`` instead of ``<img>``. The backend
@@ -218,7 +219,7 @@ export function resolveImageSrc(src: string | undefined, sessionId?: string): st
   if (!sessionId) return src
   // Strip any leading ``./`` and any leading ``/`` to keep the proxy URL clean.
   const cleaned = src.replace(/^\.\//, '').replace(/^\/+/, '')
-  return apiUrl(`/team/${encodeURIComponent(sessionId)}/media/${cleaned}`)
+  return withTokenParam(apiUrl(`/team/${encodeURIComponent(sessionId)}/media/${cleaned}`))
 }
 
 // ── MarkdownVideo ─────────────────────────────────────────────────────────────

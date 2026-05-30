@@ -112,7 +112,7 @@ class TestSecurityHeadersMiddleware:
         assert resp.headers["Referrer-Policy"] == "no-referrer"
         assert "geolocation=()" in resp.headers["Permissions-Policy"]
         assert resp.headers["Cross-Origin-Opener-Policy"] == "same-origin"
-        assert resp.headers["Cross-Origin-Resource-Policy"] == "same-origin"
+        assert resp.headers["Cross-Origin-Resource-Policy"] == "cross-origin"
         assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
         assert "frame-ancestors 'none'" in resp.headers["Content-Security-Policy"]
 

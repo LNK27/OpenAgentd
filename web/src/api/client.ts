@@ -7,6 +7,7 @@
  */
 
 import { apiBaseUrl, apiUrl } from './base-url'
+import { withTokenParam } from './auth'
 import { readSSE, type SSECallbacks } from './sse'
 import type {
   SessionDetailResponse,
@@ -118,7 +119,7 @@ export function resolveApiUrl(url: string | undefined): string | undefined {
   if (!url) return url
   if (/^(https?:)?\/\//i.test(url)) return url
   if (url.startsWith('data:') || url.startsWith('blob:')) return url
-  if (url.startsWith('/api/')) return apiUrl(url.slice('/api'.length))
+  if (url.startsWith('/api/')) return withTokenParam(apiUrl(url.slice('/api'.length)))
   return url
 }
 
@@ -294,7 +295,7 @@ export async function listWorkspaceFiles(sessionId: string): Promise<WorkspaceFi
  */
 export function workspaceMediaUrl(sessionId: string, path: string): string {
   const encoded = path.split('/').map(encodeURIComponent).join('/')
-  return apiUrl(`/team/${encodeURIComponent(sessionId)}/media/${encoded}`)
+  return withTokenParam(apiUrl(`/team/${encodeURIComponent(sessionId)}/media/${encoded}`))
 }
 
 /** Build the URL for serving a raw file from a *coding* workspace (not a

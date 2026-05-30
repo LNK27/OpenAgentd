@@ -77,13 +77,18 @@ agent tools). The token mitigates that.
 | Aspect                                       | Behavior                                                                                                   |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Token lifetime                               | One launch only. Regenerated next start. Never persisted.                                                  |
-| Token transport                              | `Authorization: Bearer …` for `fetch`/SSE; `?_token=…` for download links the browser can't header-stamp.  |
+| Token transport                              | `Authorization: Bearer …` for `fetch`/SSE; `?_token=…` for image/video/download URLs the browser can't header-stamp. |
 | Comparison                                   | `hmac.compare_digest` (constant-time).                                                                     |
 | Bypassable routes                            | `/api/health/live`, `/api/health/ready`, `/metrics`.                                                       |
 | Off-switch                                   | Unset `OPENAGENTD_DESKTOP_TOKEN` — the middleware becomes a no-op. CLI / Docker users keep open behaviour. |
 
 See `app/core/desktop_auth.py` for the implementation and
-`tests/core/test_desktop_auth.py` for the contract.
+`tests/core/test_desktop_auth.py` for the contract. The web layer centralizes
+this fallback in `resolveApiUrl()` and `workspaceMediaUrl()` so uploaded
+attachments, workspace media, previews, and downloads keep working when the UI
+origin differs from the backend origin. API responses use
+`Cross-Origin-Resource-Policy: cross-origin`; authorization still comes from the
+desktop token, not from CORP.
 
 ## Native menus and tray
 

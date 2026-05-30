@@ -110,7 +110,9 @@ SVG is classified as `image` (prefer the visual over the source view).
 ### Image preview
 
 Renders via `workspaceMediaUrl(sessionId, path)` (i.e. the `/media/` proxy),
-so the same path-traversal guard applies. The thumbnail has
+so the same path-traversal guard applies. In desktop-token mode the helper
+appends `?_token=…` because native `<img>`, `<video>`, and `<a download>` loads
+cannot carry the fetch `Authorization` header. The thumbnail has
 `cursor-zoom-in`; clicking opens the shared `ImageLightbox` component
 (full-screen, body-scroll locked, Esc / backdrop close).
 
