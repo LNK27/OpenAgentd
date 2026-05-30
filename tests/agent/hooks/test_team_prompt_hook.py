@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -17,7 +17,7 @@ from app.agent.mode.team.member import (
     TeamLead,
     TeamMember,
 )
-from app.agent.schemas.chat import AssistantMessage
+from app.agent.schemas.chat import AssistantMessage, HumanMessage
 from app.agent.state import AgentState, ModelRequest, RunContext
 
 
@@ -98,28 +98,34 @@ def _mock_team(
     team.members = members
     team.task_board = MagicMock()
     team.task_board.tasks = []
-    # ``TeamLead.build_protocol`` reads the cached restorable roster via
-    # ``restorable_instances_for_blueprint``. The roster is refreshed by
-    # ``AgentTeam.handle_user_message`` once per user turn (not by the
-    # hook). Both are stubbed here because the mock team has no DB.
-    team.refresh_restorable_index = AsyncMock(return_value=None)
-    team.restorable_instances_for_blueprint = MagicMock(return_value=[])
+    team.blueprints = {}
+    team.live_instances_for_blueprint = MagicMock(return_value=[])
     return team
 
 
-async def _get_injected_prompt(hook: AgentTeamProtocolHook, base_prompt: str) -> str:
-    """Call wrap_model_call and return the system_prompt the handler received."""
+async def _get_injected_request(
+    hook: AgentTeamProtocolHook,
+    base_prompt: str,
+    messages: tuple[HumanMessage, ...] = (),
+) -> ModelRequest:
+    """Call wrap_model_call and return the request the handler received."""
     ctx = make_ctx()
     state = make_state(base_prompt)
-    request = ModelRequest(messages=tuple(state.messages), system_prompt=base_prompt)
-    received: list[str] = []
+    request = ModelRequest(messages=messages, system_prompt=base_prompt)
+    received: list[ModelRequest] = []
 
     async def handler(req: ModelRequest) -> AssistantMessage:
-        received.append(req.system_prompt)
+        received.append(req)
         return AssistantMessage(content="ok")
 
     await hook.wrap_model_call(ctx, state, request, handler)
     return received[0]
+
+
+async def _get_injected_prompt(hook: AgentTeamProtocolHook, base_prompt: str) -> str:
+    """Call wrap_model_call and return the system_prompt the handler received."""
+    request = await _get_injected_request(hook, base_prompt)
+    return request.system_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -223,12 +229,17 @@ class TestProtocolInjection:
     def test_protocol_constants_capture_current_communication_contract(self):
         """Prompt constants should preserve the team routing contract."""
         assert "one brief progress note after delegation" in LEAD_COMMUNICATION_RULES
-        assert "Do not use plain text output" in MEMBER_COMMUNICATION_RULES
         assert (
-            "responding exactly `<sleep>` with no tool calls"
+            "Do not use plain text output for responses/results"
             in MEMBER_COMMUNICATION_RULES
         )
-        assert "team_message(to=[recipient])" in MEMBER_COMMUNICATION_RULES
+        # Idle / waiting / done -> the only response is the sleep token.
+        assert "exactly `<sleep>`" in MEMBER_COMMUNICATION_RULES
+        # Members address team_message to anyone on the team, not lead-only.
+        assert "anyone on the team" in MEMBER_COMMUNICATION_RULES
+        assert (
+            "return exactly `<sleep>` directly when waiting or idle" in MEMBER_PROTOCOL
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -237,67 +248,72 @@ class TestProtocolInjection:
 
 
 class TestRosterInjection:
-    """Test team roster section."""
+    """Roster stays OUT of the (static, cache-friendly) system prompt."""
 
     @pytest.mark.asyncio
-    async def test_lead_sees_all_members(self):
-        """Lead roster lists every member (not the lead itself)."""
+    async def test_hook_no_longer_appends_runtime_roster_context(self):
+        """Roster changes are persisted in history, not injected per model call."""
+        team = _mock_team()
+        hook = AgentTeamProtocolHook(team=team, agent_name="team-lead")
+        prior_messages = (
+            HumanMessage(content="A"),
+            HumanMessage(content="B"),
+            HumanMessage(content="C"),
+        )
+
+        request = await _get_injected_request(
+            hook,
+            "Base.",
+            messages=prior_messages,
+        )
+
+        assert request.messages[: len(prior_messages)] == prior_messages
+        assert len(request.messages) == len(prior_messages)
+
+    @pytest.mark.asyncio
+    async def test_lead_system_prompt_excludes_roster_and_blueprints(self):
+        """Lead system prompt never carries the dynamic roster/blueprint sections."""
         team = _mock_team(
             member_names=["researcher", "writer"],
             member_descs={"researcher": "Does research.", "writer": "Writes articles."},
         )
         hook = AgentTeamProtocolHook(team=team, agent_name="team-lead")
-        state = make_state("Base.")
-        prompt = await _get_injected_prompt(hook, state.system_prompt)
+        prompt = await _get_injected_prompt(hook, "Base.")
 
-        assert "**researcher**" in prompt
-        assert "**writer**" in prompt
-        assert "Does research." in prompt
-        assert "Writes articles." in prompt
+        assert "## Spawnable blueprints" not in prompt
+        assert "## Live members" not in prompt
+        assert "Does research." not in prompt
+        assert "Writes articles." not in prompt
 
     @pytest.mark.asyncio
-    async def test_member_sees_lead_and_other_members(self):
-        """Member roster lists lead + other members (not self)."""
+    async def test_member_system_prompt_excludes_dynamic_roster_and_blueprints(self):
+        """Member live roster + blueprints stay out of the system prompt."""
         team = _mock_team(lead_desc="Coordinates the team.")
+        team.blueprints = {
+            "executor": MagicMock(name="executor", description="Writes files."),
+        }
         hook = AgentTeamProtocolHook(team=team, agent_name="researcher")
-        state = make_state("Base.")
-        prompt = await _get_injected_prompt(hook, state.system_prompt)
+        prompt = await _get_injected_prompt(hook, "Base.")
 
-        assert "**team-lead** [lead]" in prompt
-        assert "**writer**" in prompt
-        # Me should not list self
-        roster_section = prompt.split("## Team members")[1]
-        assert "**researcher**" not in roster_section
+        assert "## Available members" not in prompt
+        assert "## Spawnable blueprints" not in prompt
 
     @pytest.mark.asyncio
-    async def test_member_description_fallback_to_name(self):
-        """When description is None, use the member name as fallback."""
-        team = _mock_team(member_descs={})
-        team.members["researcher"].agent.description = None
-        team.members["writer"].agent.description = None
-
+    async def test_lead_system_prompt_omits_no_blueprints_fallback(self):
+        """No-blueprints guidance belongs only in team_manage description."""
+        team = _mock_team(member_names=[])
+        team.blueprints = {}
         hook = AgentTeamProtocolHook(team=team, agent_name="team-lead")
-        state = make_state("Base.")
-        prompt = await _get_injected_prompt(hook, state.system_prompt)
+        request = await _get_injected_request(hook, "Base.")
+        rendered = (
+            request.system_prompt
+            + "\n"
+            + "\n".join(message.content for message in request.messages)
+        )
 
-        assert "**researcher**: researcher" in prompt
-        assert "**writer**: writer" in prompt
-
-    @pytest.mark.asyncio
-    async def test_single_member_team(self):
-        """Team with only one member — lead sees one member, member sees lead only."""
-        team = _mock_team(member_names=["researcher"])
-
-        hook = AgentTeamProtocolHook(team=team, agent_name="team-lead")
-        state = make_state("Base.")
-        prompt = await _get_injected_prompt(hook, state.system_prompt)
-        assert "**researcher**" in prompt
-
-        hook2 = AgentTeamProtocolHook(team=team, agent_name="researcher")
-        state2 = make_state("Base.")
-        prompt2 = await _get_injected_prompt(hook2, state2.system_prompt)
-        roster = prompt2.split("## Team members")[1]
-        assert "**team-lead** [lead]" in roster
+        assert "no member blueprints are available to spawn" not in rendered
+        assert "No member blueprints are available to spawn" not in rendered
+        assert "## Spawnable blueprints" not in rendered
 
 
 # ---------------------------------------------------------------------------
@@ -359,11 +375,22 @@ class TestProtocolConstants:
         )
         assert "Members are spawned on demand" in LEAD_COMMUNICATION_RULES
 
-    def test_member_communication_rules_enforces_team_message(self):
-        """MEMBER_COMMUNICATION_RULES enforces team_message as ONLY communication method."""
+    def test_lead_system_prompt_does_not_reference_roster_section(self):
+        """Spawnable blueprint usage belongs in team_manage/tool context."""
+        lead_prompt = f"{LEAD_COMMUNICATION_RULES}\n\n{LEAD_PROTOCOL}"
+        assert "## Spawnable blueprints" not in lead_prompt
+        assert "Spawnable blueprints` section" not in lead_prompt
+
+    def test_member_communication_rules_enforce_team_message_to_anyone(self):
+        """All member output routes via team_message — to any teammate, not lead-only."""
         assert "team_message" in MEMBER_COMMUNICATION_RULES
-        assert "Do not use plain text output" in MEMBER_COMMUNICATION_RULES
-        assert "Every result MUST go through" in MEMBER_COMMUNICATION_RULES
+        assert (
+            "Do not use plain text output for responses/results"
+            in MEMBER_COMMUNICATION_RULES
+        )
+        # Cross-member: members are not restricted to messaging the lead.
+        assert "Talk to peers directly" in MEMBER_COMMUNICATION_RULES
+        assert "anyone on the team who needs it" in MEMBER_COMMUNICATION_RULES
 
     def test_lead_message_format_has_user_prefix(self):
         """Lead message format includes [user]: prefix — members do not."""
@@ -380,6 +407,8 @@ class TestProtocolConstants:
         assert "delegate" in LEAD_PROTOCOL.lower()
         assert "peer handoff chain" in LEAD_PROTOCOL
         assert "not as a message bus" in LEAD_PROTOCOL
+        assert "do not execute the same task in parallel yourself" in LEAD_PROTOCOL
+        assert "reclaim or cancel the member task first" in LEAD_PROTOCOL
         assert "dependencies" in LEAD_PROTOCOL
         assert "assigned_to" in LEAD_PROTOCOL
         assert "explorer#1" not in LEAD_PROTOCOL
