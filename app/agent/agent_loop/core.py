@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Generic, TypeVar
 from uuid import uuid7 as _uuid7
 
+import httpx
 from loguru import logger
 
 from app.agent.agent_loop.streaming import stream_and_assemble
@@ -52,8 +53,16 @@ from app.agent.state import (
 )
 from app.agent.tools.registry import Tool
 
-MAX_AGENT_ITERATIONS = 100
+MAX_AGENT_ITERATIONS = 5000
 MAX_CONCURRENT_TOOLS = 10
+# How many times the loop will re-issue the model call within the same turn
+# after the provider (and any fallback) exhausts its own retry budget on a
+# transient connectivity failure (ReadTimeout / ConnectError).  Without this,
+# such an exhaustion raises straight out of ``run()`` and abandons all
+# completed tool work mid-task — the "agent stopped after a tool call" symptom.
+MAX_PROVIDER_RESUME_ATTEMPTS = 3
+# Base backoff (seconds) between in-loop resume attempts; grows linearly.
+PROVIDER_RESUME_BASE_DELAY = 2.0
 
 TContext = TypeVar("TContext", bound=AgentContext)
 
@@ -287,6 +296,7 @@ class Agent(Generic[TContext]):
         last_usage: Usage | None = None
         empty_after_tool_continuations = 0
         max_empty_after_tool_continuations = 3
+        provider_resume_attempts = 0
 
         while iteration < self.max_iterations:
             # Top-of-iteration interrupt check.  Without this, an interrupt
@@ -360,7 +370,53 @@ class Agent(Generic[TContext]):
                 return msg
 
             model_chain = build_model_chain(combined_hooks, ctx, state, _stream)
-            assistant_msg = await model_chain(model_request)
+            try:
+                assistant_msg = await model_chain(model_request)
+            except (httpx.ConnectError, httpx.ReadTimeout, TimeoutError) as exc:
+                # The provider (and any fallback) exhausted its retry budget on
+                # a transient connectivity failure.  Rather than letting this
+                # kill the whole turn mid-task — abandoning the tool work
+                # already done — resume the same turn a bounded number of
+                # times.  The next model call replays the identical message
+                # history, so the model continues from exactly where it left
+                # off.  Persisted work-so-far is already synced after each
+                # prior iteration's tool execution.
+                provider_resume_attempts += 1
+                if provider_resume_attempts > MAX_PROVIDER_RESUME_ATTEMPTS:
+                    logger.error(
+                        "agent_provider_resume_exhausted agent={} iteration={} "
+                        "attempts={} error={}",
+                        self.name,
+                        iteration,
+                        provider_resume_attempts - 1,
+                        type(exc).__name__,
+                    )
+                    raise
+                delay = PROVIDER_RESUME_BASE_DELAY * provider_resume_attempts
+                logger.warning(
+                    "agent_provider_resume agent={} iteration={} attempt={}/{} "
+                    "error={} delay={:.1f}s",
+                    self.name,
+                    iteration,
+                    provider_resume_attempts,
+                    MAX_PROVIDER_RESUME_ATTEMPTS,
+                    type(exc).__name__,
+                    delay,
+                )
+                if interrupt_event is not None:
+                    try:
+                        await asyncio.wait_for(interrupt_event.wait(), timeout=delay)
+                        break  # interrupt fired during backoff — stop the turn
+                    except TimeoutError:
+                        pass
+                else:
+                    await asyncio.sleep(delay)
+                iteration -= 1  # this iteration produced no assistant message
+                continue
+
+            # A successful model call clears the transient-failure budget so a
+            # later, unrelated hiccup gets the full resume allowance again.
+            provider_resume_attempts = 0
 
             tc_list = assistant_msg.tool_calls or []
             last_usage = iter_usage_holder[0]

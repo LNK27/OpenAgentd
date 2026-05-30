@@ -37,6 +37,22 @@ if TYPE_CHECKING:
 MAX_RETRIES = 5
 
 
+class StreamRestart:
+    """Sentinel yielded by :func:`stream_with_retry` when a retry restarts the
+    provider stream *after* real chunks were already emitted.
+
+    The provider's ``stream()`` is re-run from the beginning on each retry, so
+    any partial content/tool-call deltas the assembler already buffered must be
+    discarded — otherwise the retry's output is concatenated onto the partial
+    first attempt, producing duplicated content or corrupted tool-call JSON.
+    :func:`~app.agent.agent_loop.streaming.stream_and_assemble` resets its
+    buffers when it sees this marker.
+    """
+
+
+STREAM_RESTART = StreamRestart()
+
+
 async def _notify_provider_retry(
     hooks: list[BaseAgentHook] | None,
     ctx: RunContext | None,
@@ -210,12 +226,20 @@ async def stream_with_retry(
         providers.append((fallback_provider, fallback_label))
 
     last_exc: Exception | None = None
+    # Set once any provider attempt has yielded a real chunk downstream.  When a
+    # subsequent attempt begins we must tell the assembler to drop the partial
+    # buffer from the failed attempt (see ``StreamRestart``).
+    emitted_any = False
     for provider, provider_label in providers:
         for attempt in range(MAX_RETRIES):
             if interrupt_event is not None and interrupt_event.is_set():
                 return
             try:
+                if emitted_any:
+                    yield STREAM_RESTART
+                    emitted_any = False
                 async for chunk in provider.stream(**kwargs):
+                    emitted_any = True
                     yield chunk
                 return  # successful completion — stop retry loop
             except httpx.HTTPStatusError as exc:

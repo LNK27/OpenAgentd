@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from app.agent.agent_loop.retry import stream_with_retry
+from app.agent.agent_loop.retry import StreamRestart, stream_with_retry
 from app.agent.usage import usage_to_dict
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -198,6 +198,21 @@ async def stream_and_assemble(
         if interrupt_event is not None and interrupt_event.is_set():
             logger.debug("agent_streaming_interrupted agent={}", agent_name)
             break
+
+        # A retry restarted the provider stream after partial chunks were
+        # already buffered.  Drop the partial assembly so the retry's output
+        # replaces it instead of concatenating onto a half-formed message.
+        if isinstance(chunk, StreamRestart):
+            logger.warning(
+                "agent_stream_restart_reset agent={} dropped_content_len={} dropped_tool_calls={}",
+                agent_name,
+                len(full_content),
+                len(tool_calls_buffer),
+            )
+            full_content = ""
+            reasoning = ""
+            tool_calls_buffer = {}
+            continue
 
         for hook in hooks:
             await hook.on_model_delta(ctx, state, chunk)

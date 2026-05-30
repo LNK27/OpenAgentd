@@ -395,6 +395,109 @@ async def test_agent_run_retries_empty_response_after_tool_result():
     assert assistants[-1].content == "Final answer."
 
 
+async def test_agent_run_resumes_after_provider_timeout_mid_task():
+    """A ReadTimeout that exhausts the provider's own retry budget after a tool
+    call must not kill the turn. The loop resumes the same turn and finishes."""
+    import httpx
+    from unittest.mock import patch
+
+    call_count = 0
+
+    def lookup() -> str:
+        """Returns the value."""
+        return "value"
+
+    async def flaky_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            yield make_tool_chunk("lookup", "call_1", "{}")
+        elif call_count == 2:
+            # Provider exhausts its own retries on the post-tool model call.
+            raise httpx.ReadTimeout("timed out")
+        else:
+            yield make_text_chunk("Recovered answer.")
+
+    provider = MockProvider([[]])
+    provider.stream = flaky_stream  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider, tools=[Tool(lookup)])
+
+    with (
+        patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock),
+        patch("app.agent.agent_loop.core.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        msgs = await agent.run([HumanMessage(content="lookup")])
+
+    last = last_assistant(msgs)
+    assert last is not None
+    assert last.content == "Recovered answer."
+
+
+async def test_agent_run_provider_resume_budget_exhausted_raises():
+    """Persistent timeouts eventually give up rather than spinning forever."""
+    import httpx
+    from unittest.mock import patch
+
+    import pytest
+
+    async def always_timeout(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        raise httpx.ReadTimeout("timed out")
+        yield  # pragma: no cover — makes it an async generator
+
+    provider = MockProvider([[]])
+    provider.stream = always_timeout  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider)
+
+    with (
+        patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock),
+        patch("app.agent.agent_loop.core.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        with pytest.raises(httpx.ReadTimeout):
+            await agent.run([HumanMessage(content="hi")])
+
+
+async def test_stream_with_retry_resets_partial_on_mid_stream_retry():
+    """A retry after partial chunks must replace, not concatenate, the partial
+    output — the assembler drops the partial buffer on ``StreamRestart``."""
+    import httpx
+    from unittest.mock import patch
+
+    call_count = 0
+
+    async def partial_then_timeout(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # Emit a partial fragment, then fail mid-stream.
+            yield make_text_chunk("partial ")
+            raise httpx.ReadTimeout("timed out")
+        yield make_text_chunk("Clean answer.")
+
+    provider = MockProvider([[]])
+    provider.stream = partial_then_timeout  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider)
+
+    with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
+        msgs = await agent.run([HumanMessage(content="hi")])
+
+    last = last_assistant(msgs)
+    assert last is not None
+    # Must NOT be "partial Clean answer." — the partial fragment is dropped.
+    assert last.content == "Clean answer."
+
+
 async def test_agent_run_calls_all_hooks():
     """All hook lifecycle methods are invoked during a run."""
     provider = MockProvider([[make_text_chunk("hi")]])

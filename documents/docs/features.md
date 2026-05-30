@@ -136,6 +136,11 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   an empty assistant response immediately after a tool result, the lead keeps
   the same turn moving instead of silently ending after the tool call. See
   [`agent/loop.md`](./agent/loop.md#empty-after-tool-recovery).
+- **Provider-timeout resume for long tasks** `[v1.37.0]` — when a slow or flaky
+  model endpoint exhausts its retry/fallback budget mid-task (`ReadTimeout` /
+  `ConnectError`), the loop resumes the same turn from where it left off
+  instead of dropping the agent after a tool call. Bounded and interrupt-aware.
+  See [`agent/loop.md`](./agent/loop.md#provider-timeout-resume).
 - **Queued follow-up messages** `[v1.12.0, v1.14.0]` — send another message
   while the agent is still replying; it's queued and dispatched in order. Long
   queued messages are collapsible while a response runs `[v1.22.0]`. Queued

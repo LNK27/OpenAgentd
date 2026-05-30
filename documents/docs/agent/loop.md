@@ -27,7 +27,7 @@ agent = Agent(
     system_prompt="You are a helpful assistant.",
     tools=[web_search, date],
     hooks=[StreamingHook()],
-    max_iterations=100,
+    max_iterations=5000,
     max_concurrent_tools=10,
 )
 ```
@@ -42,7 +42,7 @@ agent = Agent(
 | `skills` | `[]` | Skill names advertised in the system prompt; loaded on demand via the `skill` tool |
 | `mcp_servers` | `[]` | MCP server names the agent was configured with (surfaced to the UI even when zero tools are ready) |
 | `hooks` | `[]` | `BaseAgentHook` instances — run in order |
-| `max_iterations` | `100` (`MAX_AGENT_ITERATIONS`) | Guards against infinite tool-call loops |
+| `max_iterations` | `5000` (`MAX_AGENT_ITERATIONS`) | Guards against infinite tool-call loops; high enough for long autonomous tasks |
 | `max_concurrent_tools` | `10` (`MAX_CONCURRENT_TOOLS`) | Semaphore for parallel tool execution |
 | `context` | `None` | Optional `AgentContext` subclass; accessible as `state.context` in hooks |
 | `model_id` | `None` | `"provider:model"` string used for capability lookup (`get_capabilities`) and logs |
@@ -111,6 +111,7 @@ agent.run(messages, checkpointer=checkpointer)
     ├─ checkpointer.sync(ctx, state)                   ← sync point 1: after before_model
     │
     ├─ build_model_chain → invoke wrap_model_call chain with model_request
+    │    ├─ On exhausted-retry ReadTimeout/ConnectError: resume same turn (≤3) after backoff
     │    └─ Innermost: _stream_and_assemble(req, ctx, state, hooks, interrupt_event, tool_defs)
     │         ├─ Prepends SystemMessage(req.system_prompt) at index 0 for provider call
     │         ├─ _stream_with_retry(messages=[SystemMessage, ...req.messages], tools=tool_defs|None)
@@ -221,6 +222,33 @@ Log events:
 | `agent_empty_after_tool_continue` | WARNING | Empty assistant payload after a tool result; the loop starts another iteration in the same turn. |
 | `agent_empty_after_tool_limit` | WARNING | Empty-after-tool recovery hit the three-attempt limit and falls through to the normal final-response path. |
 
+## Provider-timeout resume
+
+The retry/fallback layer ([above](#retry--fallback)) handles transient errors
+*within* a single model call. When the primary **and** fallback providers both
+exhaust their retry budget on a connectivity failure (`ReadTimeout` /
+`ConnectError`), the exception used to propagate straight out of `run()` —
+ending the turn mid-task and abandoning all tool work already completed in that
+turn. This is the most common "the agent stopped after a tool call" symptom on
+slow or flaky model endpoints.
+
+The loop now catches that exhausted-retry failure around the model call and
+**resumes the same turn**: it waits a short linear backoff, then re-issues the
+model call with the identical message history (work-so-far is already persisted
+by the post-tool checkpointer sync), so the model continues from exactly where
+it left off. The interrupt event is honoured during the backoff — a user Stop
+ends the turn instead of resuming.
+
+Resume is bounded by `MAX_PROVIDER_RESUME_ATTEMPTS` (3). After the budget is
+exhausted the original exception is re-raised so a persistently dead endpoint
+cannot loop forever. A successful model call resets the budget, so unrelated
+hiccups later in the same turn each get the full allowance.
+
+| Log event | Level | Meaning |
+|-----------|-------|---------|
+| `agent_provider_resume` | WARNING | Provider exhausted its retry budget on a transient failure; the loop will retry the same turn after a backoff. |
+| `agent_provider_resume_exhausted` | ERROR | Resume budget exhausted; the provider error is re-raised and the turn ends. |
+
 ### Key log events (retry/fallback)
 
 | Log event | Level | Meaning |
@@ -311,6 +339,9 @@ A second failure mode occurs when the user stops the agent **during argument str
 | `llm_usage_detail` | DEBUG | `cached_tokens`, `thoughts_tokens`, `tool_use_tokens` |
 | `agent_empty_after_tool_continue` | WARNING | `agent`, `iteration`, `attempt` — empty assistant payload after a tool result; loop continued automatically |
 | `agent_empty_after_tool_limit` | WARNING | `agent`, `iteration`, `attempts` — empty-after-tool recovery limit reached; loop fell through to normal final-response handling |
+| `agent_provider_resume` | WARNING | `agent`, `iteration`, `attempt`, `error`, `delay` — provider exhausted its retry budget; loop resumes the same turn after a backoff |
+| `agent_provider_resume_exhausted` | ERROR | `agent`, `iteration`, `attempts`, `error` — provider-resume budget exhausted; the error is re-raised and the turn ends |
+| `agent_stream_restart_reset` | WARNING | `agent`, `dropped_content_len`, `dropped_tool_calls` — a mid-stream retry restarted the provider stream; partial assembly was discarded |
 | `tool_dispatch` | INFO | `agent`, `count`, tool names |
 | `tool_dispatch_skipped_interrupt` | INFO | `agent`, `count` — interrupt was set before tool execution started |
 | `tool_start` | INFO | `agent`, `tool`, `id`, args preview |
