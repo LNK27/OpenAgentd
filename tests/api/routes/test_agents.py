@@ -136,7 +136,30 @@ async def test_list_includes_coding_agents(fs_dirs, client: AsyncClient):
 
     assert res.status_code == 200
     names = [row["name"] for row in res.json()["agents"]]
-    assert names == ["coding/openagentd", "lead"]
+    assert names == ["coding/coder", "coding/explorer", "coding/openagentd", "lead"]
+
+
+@pytest.mark.asyncio
+async def test_list_materialized_coding_explorer_uses_builtin_tools(
+    fs_dirs, client: AsyncClient
+):
+    agents_dir, _ = fs_dirs
+    coding_dir = agents_dir / "coding"
+    coding_dir.mkdir()
+    (coding_dir / "openagentd.md").write_text(
+        "---\nname: openagentd\nrole: lead\nmodel: codex:gpt-5.4\n---\n"
+    )
+
+    res = await client.get("/api/agents")
+
+    assert res.status_code == 200
+    rows = {row["name"]: row for row in res.json()["agents"]}
+    explorer = rows["coding/explorer"]
+    assert explorer["description"].startswith("Checks the current codebase")
+    assert set(["date", "glob", "grep", "ls", "read", "shell", "skill"]).issubset(
+        explorer["tools"]
+    )
+    assert "write" not in explorer["tools"]
 
 
 @pytest.mark.asyncio

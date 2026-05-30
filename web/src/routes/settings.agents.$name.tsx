@@ -201,7 +201,7 @@ export function AgentEditorPage() {
 }
 
 const NORMAL_BUILT_INS = new Set(['openagentd', 'explorer', 'executor'])
-const CODING_BUILT_INS = new Set(['openagentd', 'coder'])
+const CODING_BUILT_INS = new Set(['openagentd', 'coder', 'explorer'])
 
 function isBuiltInAgent(name: string, role: string): boolean {
   const isCoding = name.startsWith('coding/')

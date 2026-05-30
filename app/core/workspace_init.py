@@ -39,12 +39,29 @@ def ensure_workspace_initialized() -> None:
         )
     except SeedDownloadError as exc:
         logger.warning("workspace_seed_install_failed error={}", exc)
+        result = None
+
+    from app.agent.loader import ensure_builtin_agent_blueprints
+
+    default_written = ensure_builtin_agent_blueprints(agents_dir, mode="normal")
+    coding_written = ensure_builtin_agent_blueprints(
+        agents_dir / "coding", mode="coding"
+    )
+
+    if result is None:
+        logger.info(
+            "workspace_builtin_agents_installed agents={} coding_agents={}",
+            len(default_written),
+            len(coding_written),
+        )
         return
 
     logger.info(
-        "workspace_seed_installed agents={} skills={} configs={} source={}",
+        "workspace_seed_installed agents={} skills={} configs={} source={} builtin_agents={} builtin_coding_agents={}",
         len(result.agents_written),
         len(result.skills_written),
         len(result.configs_written),
         result.source,
+        len(default_written),
+        len(coding_written),
     )

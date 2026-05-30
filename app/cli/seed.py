@@ -89,6 +89,7 @@ _REMOVED_FIRST_PARTY_AGENT_FILES: dict[str, str] = {
     "agents/consultant.md": "consultant",
     "agents/coding/architect.md": "architect",
     "agents/coding/designer.md": "designer",
+    "agents/coding/executor.md": "executor",
     "agents/coding/qa.md": "qa",
 }
 

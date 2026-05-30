@@ -53,15 +53,17 @@ Usage
 from __future__ import annotations
 
 import re
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+
+import yaml
 
 from app.agent.schemas.agent import AgentContext
 
 if TYPE_CHECKING:
     from app.agent.mode.team.team import AgentTeam
 
-import yaml
 from loguru import logger
 from pydantic import BaseModel, model_validator
 
@@ -153,6 +155,105 @@ def parse_agent_md(path: Path) -> AgentConfig:
 
     raw_meta["system_prompt"] = body or "You are a helpful assistant."
     return AgentConfig.model_validate(raw_meta)
+
+
+def _builtin_agent_md(
+    *,
+    name: str,
+    role: str,
+    description: str,
+    model: str | None,
+    temperature: float,
+    thinking_level: str,
+) -> str:
+    frontmatter = {
+        "name": name,
+        "role": role,
+        "description": description,
+        "model": model,
+        "temperature": temperature,
+        "thinking_level": thinking_level,
+    }
+    return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False)}---\n\n"
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    tmp_path.replace(path)
+
+
+def ensure_builtin_agent_blueprints(agents_dir: Path, *, mode: str) -> list[str]:
+    """Materialise missing first-party member ``.md`` files for *mode*.
+
+    Built-in prompt/tool definitions live in code, so this does not depend on
+    the source ``seed/`` tree being bundled in production. User-owned files win:
+    existing ``.md`` files are never overwritten.
+    """
+    from app.agent.builtin_prompts import BUILTIN_AGENT_BLUEPRINTS
+    from app.cli.seed import PROVIDER_MODEL_TOKEN
+
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    model = _lead_model_for_dir(agents_dir) or PROVIDER_MODEL_TOKEN
+    written: list[str] = []
+    for name, blueprint in BUILTIN_AGENT_BLUEPRINTS.get(mode, {}).items():
+        target = agents_dir / f"{name}.md"
+        if target.exists():
+            continue
+        _atomic_write_text(
+            target,
+            _builtin_agent_md(
+                name=blueprint["name"],
+                role=blueprint["role"],
+                description=blueprint["description"],
+                model=model,
+                temperature=blueprint["temperature"],
+                thinking_level=blueprint["thinking_level"],
+            ),
+        )
+        written.append(target.name)
+    if written:
+        logger.info(
+            "builtin_agent_blueprints_materialized mode={} dir={} files={}",
+            mode,
+            agents_dir,
+            written,
+        )
+    return written
+
+
+def _lead_model_for_dir(agents_dir: Path) -> str | None:
+    if not agents_dir.exists():
+        return None
+    for path in sorted(agents_dir.glob("*.md")):
+        try:
+            cfg = parse_agent_md(path)
+        except Exception:
+            continue
+        if cfg.role == "lead" and member_model_is_configured(cfg.model):
+            return cfg.model
+    return None
+
+
+def _is_retired_builtin_member(mode: str, name: str) -> bool:
+    """Return whether a first-party member should be hidden for *mode*.
+
+    This lets newer curated builtin sets stop exposing old generated/shipped
+    files without deleting user config. A custom file with the same name still
+    stays on disk; it is just not a spawnable first-party blueprint in that mode.
+    """
+    if mode != "coding":
+        return False
+    return name == "executor"
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +536,10 @@ def load_team_from_dir(
     if not md_files:
         return None
 
+    if mode in ("normal", "coding"):
+        ensure_builtin_agent_blueprints(agents_dir, mode=mode)
+        md_files = sorted(agents_dir.glob("*.md"))
+
     # Carry source path so _build_agent can stamp config dependencies.
     agent_configs: list[tuple[AgentConfig, Path]] = []
     parse_errors: list[str] = []
@@ -476,7 +581,9 @@ def load_team_from_dir(
     member_entries = [
         (c, p)
         for (c, p) in agent_configs
-        if c.role == "member" and member_model_is_configured(c.model)
+        if c.role == "member"
+        and member_model_is_configured(c.model)
+        and not _is_retired_builtin_member(mode, c.name)
     ]
 
     # Validate: blueprint names must be unique and must not collide with the

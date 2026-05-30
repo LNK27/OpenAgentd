@@ -55,6 +55,10 @@ def test_ensure_workspace_initialized_creates_roots_and_seeds(
     assert (config / "skills").is_dir()
     assert (config / "plugins").is_dir()
     assert (tmp_path / "cache").is_dir()
+    assert (config / "agents" / "executor.md").is_file()
+    assert (config / "agents" / "explorer.md").is_file()
+    assert (config / "agents" / "coding" / "coder.md").is_file()
+    assert (config / "agents" / "coding" / "explorer.md").is_file()
     assert called == [(config, "__PROVIDER_MODEL__")]
 
 
@@ -100,6 +104,50 @@ def test_ensure_workspace_initialized_skips_seed_when_agents_exist(
     ensure_workspace_initialized()
 
     assert (config / "plugins").is_dir()
+
+
+def test_ensure_workspace_initialized_materializes_builtins_without_seed(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import app.core.workspace_init as workspace_init
+
+    config = tmp_path / "config"
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_DATA_DIR", str(tmp_path / "data")
+    )
+    monkeypatch.setattr(workspace_init.settings, "OPENAGENTD_CONFIG_DIR", str(config))
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state")
+    )
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path / "cache")
+    )
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "workspace")
+    )
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_WIKI_DIR", str(tmp_path / "wiki")
+    )
+    monkeypatch.setattr(workspace_init.settings, "AGENTS_DIR", str(config / "agents"))
+    monkeypatch.setattr(workspace_init.settings, "SKILLS_DIR", str(config / "skills"))
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_PLUGINS_DIRS", str(config / "plugins")
+    )
+
+    from app.cli.seed import SeedDownloadError
+
+    monkeypatch.setattr(
+        "app.cli.seed.install_seed",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(SeedDownloadError("offline")),
+    )
+
+    ensure_workspace_initialized()
+
+    assert (config / "agents" / "executor.md").is_file()
+    assert (config / "agents" / "explorer.md").is_file()
+    assert (config / "agents" / "coding" / "coder.md").is_file()
+    assert (config / "agents" / "coding" / "explorer.md").is_file()
 
 
 def test_replace_placeholder_updates_only_seed_model(tmp_path: Path) -> None:
@@ -201,3 +249,23 @@ def test_install_seed_keeps_custom_file_with_removed_first_party_name(
 
     assert result.agents_removed == []
     assert custom.exists()
+
+
+def test_install_seed_prunes_untouched_coding_executor(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "agents").mkdir()
+    (seed / "skills").mkdir()
+    config = tmp_path / "config"
+    legacy = config / "agents" / "coding" / "executor.md"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        "---\nname: executor\nrole: member\nmodel: codex:gpt-5\n---\n\n"
+        'You are "executor".\n\nOld shipped body.\n',
+        encoding="utf-8",
+    )
+
+    result = _install_from_local(seed, config, provider_model="codex:gpt-5")
+
+    assert result.agents_removed == ["coding/executor.md"]
+    assert not legacy.exists()

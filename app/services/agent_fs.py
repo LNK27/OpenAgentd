@@ -156,7 +156,16 @@ def list_agents() -> list[str]:
     root = agents_dir()
     if not root.exists():
         return []
-    return sorted(str(p.relative_to(root).with_suffix("")) for p in root.rglob("*.md"))
+    from app.agent.loader import ensure_builtin_agent_blueprints
+
+    coding_root = root / "coding"
+    if any(coding_root.glob("*.md")):
+        ensure_builtin_agent_blueprints(coding_root, mode="coding")
+    return sorted(
+        name
+        for p in root.rglob("*.md")
+        if (name := str(p.relative_to(root).with_suffix(""))) != "coding/executor"
+    )
 
 
 def read_agent(name: str) -> AgentFileRecord:

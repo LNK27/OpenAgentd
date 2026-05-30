@@ -54,6 +54,15 @@ class BuiltinMemberProfile(TypedDict):
     prompt: str
 
 
+class BuiltinAgentBlueprint(TypedDict):
+    name: str
+    role: str
+    mode: str
+    description: str
+    temperature: float
+    thinking_level: str
+
+
 BUILTIN_MEMBER_PROFILES: dict[str, dict[str, BuiltinMemberProfile]] = {
     "normal": {
         "executor": {
@@ -165,6 +174,45 @@ Your job is to inspect the current codebase and report focused findings that hel
 ## Reporting back
 
 Summarize what exists, where it lives, what patterns to follow, and any risks or unknowns.""",
+        },
+    },
+}
+
+BUILTIN_AGENT_BLUEPRINTS: dict[str, dict[str, BuiltinAgentBlueprint]] = {
+    "normal": {
+        "executor": {
+            "name": "executor",
+            "role": "member",
+            "mode": "normal",
+            "description": BUILTIN_MEMBER_PROFILES["normal"]["executor"]["description"],
+            "temperature": 0.5,
+            "thinking_level": "low",
+        },
+        "explorer": {
+            "name": "explorer",
+            "role": "member",
+            "mode": "normal",
+            "description": BUILTIN_MEMBER_PROFILES["normal"]["explorer"]["description"],
+            "temperature": 0.5,
+            "thinking_level": "low",
+        },
+    },
+    "coding": {
+        "coder": {
+            "name": "coder",
+            "role": "member",
+            "mode": "coding",
+            "description": BUILTIN_MEMBER_PROFILES["coding"]["coder"]["description"],
+            "temperature": 0.2,
+            "thinking_level": "low",
+        },
+        "explorer": {
+            "name": "explorer",
+            "role": "member",
+            "mode": "coding",
+            "description": BUILTIN_MEMBER_PROFILES["coding"]["explorer"]["description"],
+            "temperature": 0.2,
+            "thinking_level": "low",
         },
     },
 }

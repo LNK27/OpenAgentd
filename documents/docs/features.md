@@ -164,7 +164,9 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   lead and shipped member blueprints keep their core prompts, tools, skills, and
   descriptions versioned in code for normal and coding modes; seed/user `.md`
   files remain lightweight extension points for model knobs, extra capabilities,
-  and extra prompt text. Seed install also removes obsolete untouched
+  and extra prompt text. Missing first-party member blueprints are automatically
+  materialized from code when a team loads, so production builds do not depend on
+  bundling the source `seed/` tree. Seed install also removes obsolete untouched
   first-party files from older curated sets while preserving custom files.
 
 ---

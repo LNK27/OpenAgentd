@@ -482,7 +482,72 @@ def test_load_team_from_dir_valid_minimal(tmp_path):
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
     assert team.lead.name == "lead"
+    assert set(team.blueprints) == {"executor", "explorer"}
     assert team.members == {}
+
+
+def test_load_team_from_dir_materializes_coding_builtin_members(tmp_path):
+    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
+    from app.agent.loader import load_team_from_dir
+
+    d = _make_agents_dir(
+        tmp_path,
+        [
+            {"name": "openagentd", "role": "lead", "model": "zai:glm-5-turbo"},
+        ],
+    )
+    factory, _ = _make_provider_factory()
+    team = load_team_from_dir(d, provider_factory=factory, mode="coding")
+    assert team is not None
+    assert set(team.blueprints) == {"coder", "explorer"}
+    assert (d / "coder.md").is_file()
+    assert (d / "explorer.md").is_file()
+    assert "model: zai:glm-5-turbo" in (d / "explorer.md").read_text(encoding="utf-8")
+    assert (
+        team.blueprints["explorer"].description
+        == BUILTIN_MEMBER_PROFILES["coding"]["explorer"]["description"]
+    )
+
+
+def test_load_team_from_dir_does_not_overwrite_existing_builtin_member(tmp_path):
+    from app.agent.loader import load_team_from_dir
+
+    d = _make_agents_dir(
+        tmp_path,
+        [
+            {"name": "openagentd", "role": "lead", "model": "zai:glm-5-turbo"},
+            {
+                "name": "explorer",
+                "role": "member",
+                "description": "Custom explorer.",
+                "model": "zai:glm-5-turbo",
+                "_body": "Keep this prompt.",
+            },
+        ],
+    )
+    before = (d / "explorer.md").read_text(encoding="utf-8")
+    factory, _ = _make_provider_factory()
+    team = load_team_from_dir(d, provider_factory=factory, mode="coding")
+    assert team is not None
+    assert set(team.blueprints) == {"coder", "explorer"}
+    assert (d / "explorer.md").read_text(encoding="utf-8") == before
+    assert team.blueprints["explorer"].description == "Custom explorer."
+
+
+def test_coding_mode_hides_retired_executor_member(tmp_path):
+    from app.agent.loader import load_team_from_dir
+
+    d = _make_agents_dir(
+        tmp_path,
+        [
+            {"name": "openagentd", "role": "lead", "model": "zai:glm-5-turbo"},
+            {"name": "executor", "role": "member", "model": "zai:glm-5-turbo"},
+        ],
+    )
+    factory, _ = _make_provider_factory()
+    team = load_team_from_dir(d, provider_factory=factory, mode="coding")
+    assert team is not None
+    assert set(team.blueprints) == {"coder", "explorer"}
 
 
 def test_openagentd_lead_uses_builtin_prompt_with_extra(tmp_path):
@@ -968,7 +1033,7 @@ def test_load_team_discovers_all_agents(tmp_path):
     assert team is not None
     assert team.lead.name == "lead"
     # Members are lazy blueprints; nothing is live until spawned.
-    assert set(team.blueprints.keys()) == {"worker", "helper"}
+    assert set(team.blueprints.keys()) == {"executor", "explorer", "worker", "helper"}
     assert team.members == {}
 
 
@@ -990,7 +1055,7 @@ def test_load_team_skips_unconfigured_members(tmp_path):
     factory, _ = _make_provider_factory()
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
-    assert set(team.blueprints.keys()) == {"worker"}
+    assert set(team.blueprints.keys()) == {"executor", "explorer", "worker"}
 
 
 def test_load_team_parse_error_raises(tmp_path):
