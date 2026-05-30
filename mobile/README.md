@@ -25,7 +25,8 @@ make dev
 The mobile shell keeps `src-tauri/icons/icon.png` as the source icon. Generated icon outputs are ignored; regenerate them when the source changes:
 
 ```bash
-cd mobile/src-tauri && cargo tauri icon icons/icon.png
+cd mobile
+make ios-icons
 ```
 
 ## iOS
