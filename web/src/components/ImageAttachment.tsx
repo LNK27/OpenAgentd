@@ -41,7 +41,7 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
         <button
           type="button"
           onClick={() => setLightboxOpen(true)}
-          className="rounded-lg text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+          className="text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
           aria-label={`Open ${alt} preview`}
         >
           <img
@@ -50,7 +50,7 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
             loading="lazy"
             decoding="async"
             onError={() => setImageError(true)}
-            className={`${sizeClass} rounded-lg border border-(--color-border) object-cover shadow-sm`}
+            className={`${sizeClass} object-cover`}
           />
         </button>
         {removable && onRemove && (

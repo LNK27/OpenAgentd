@@ -347,7 +347,7 @@ function MarkdownImage({
       <button
         type="button"
         onClick={() => setLightboxOpen(true)}
-        className="my-2 block rounded-lg focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        className="my-2 block focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         aria-label={alt ? `Open image preview: ${alt}` : 'Open image preview'}
       >
         <img
@@ -357,7 +357,7 @@ function MarkdownImage({
           loading="lazy"
           decoding="async"
           onError={() => setErrored(true)}
-          className="max-h-[80vh] max-w-full cursor-zoom-in rounded-lg border border-(--color-border) object-contain transition-opacity hover:opacity-90"
+          className="max-h-[80vh] max-w-full cursor-zoom-in object-contain transition-opacity hover:opacity-90"
         />
       </button>
       <ImageLightbox
