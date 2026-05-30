@@ -12,17 +12,22 @@ collide with built-in tool names.
 
 from __future__ import annotations
 
+import base64
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import AnyUrl, BaseModel
 
 from app.agent.errors import ToolExecutionError
+from app.agent.schemas.chat import TextBlock, ToolResult
 from app.agent.tools.registry import Tool
 
 if TYPE_CHECKING:
     from mcp import ClientSession
     from mcp.types import Tool as MCPToolDef
+
+
+MCP_APP_MIME_TYPE = "text/html;profile=mcp-app"
 
 
 def _sanitize_schema(schema: dict[str, Any] | None) -> dict[str, Any]:
@@ -69,6 +74,7 @@ class MCPTool(Tool):
         self._server_name = server_name
         self._remote_name = mcp_tool.name
         self._session_provider = session_provider
+        self._mcp_tool = mcp_tool
 
         local_name = f"mcp_{server_name}_{mcp_tool.name}"
         description = (
@@ -109,7 +115,7 @@ class MCPTool(Tool):
         del _injected  # unused
         return await self._invoke(**kwargs)
 
-    async def _invoke(self, **kwargs: Any) -> str:
+    async def _invoke(self, **kwargs: Any) -> str | ToolResult:
         session = self._session_provider()
         if session is None:
             raise ToolExecutionError(
@@ -135,7 +141,94 @@ class MCPTool(Tool):
                 f"MCP tool '{self.name}' returned error: {text or '(no message)'}"
             )
 
-        return _extract_text(result.content)
+        text_summary = _extract_text(result.content)
+
+        mcp_app_meta = _get_ui_meta(self._mcp_tool)
+        resource_uri = mcp_app_meta.get("resourceUri")
+
+        if resource_uri:
+            try:
+                resource = await session.read_resource(AnyUrl(resource_uri))
+                app_resource = _extract_app_resource(resource, resource_uri)
+
+                if app_resource is not None:
+                    return ToolResult(
+                        parts=[TextBlock(text=text_summary)],
+                        mcp_app={
+                            "server": self._server_name,
+                            "tool": self._remote_name,
+                            "name": self.name,
+                            "resourceUri": resource_uri,
+                            "html": app_resource["html"],
+                            "mimeType": app_resource.get("mimeType"),
+                            "resourceMeta": app_resource.get("resourceMeta"),
+                            "toolMeta": mcp_app_meta,
+                            "tool_input": kwargs,
+                            "result": _dump_mcp_model(result),
+                        },
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "mcp_app_resource_fetch_failed server={} tool={} uri={} error={}",
+                    self._server_name,
+                    self._remote_name,
+                    resource_uri,
+                    exc,
+                )
+
+        return text_summary
+
+
+def _dump_mcp_model(value: Any) -> Any:
+    """Return a JSON-serialisable representation of an MCP SDK object."""
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json", by_alias=True, exclude_none=True)
+    return value
+
+
+def _get_ui_meta(mcp_tool: Any) -> dict[str, Any]:
+    """Extract MCP Apps tool metadata from Pydantic or plain test doubles."""
+    meta = getattr(mcp_tool, "meta", None) or getattr(mcp_tool, "_meta", None) or {}
+    if not isinstance(meta, dict):
+        return {}
+    ui = meta.get("ui")
+    if isinstance(ui, dict):
+        return ui
+    # Deprecated flat shape used by early MCP Apps drafts.
+    resource_uri = meta.get("ui/resourceUri")
+    return {"resourceUri": resource_uri} if isinstance(resource_uri, str) else {}
+
+
+def _extract_app_resource(
+    resource_result: Any, resource_uri: str
+) -> dict[str, Any] | None:
+    """Extract the HTML payload and UI metadata from a resources/read result."""
+    contents = getattr(resource_result, "contents", None)
+    if not isinstance(contents, list):
+        return None
+
+    for content in contents:
+        mime_type = getattr(content, "mimeType", None)
+        if mime_type != MCP_APP_MIME_TYPE:
+            continue
+        html = getattr(content, "text", None)
+        if not isinstance(html, str):
+            blob = getattr(content, "blob", None)
+            if isinstance(blob, str):
+                try:
+                    html = base64.b64decode(blob).decode("utf-8")
+                except (ValueError, UnicodeDecodeError):
+                    html = None
+        if not html:
+            continue
+        meta = getattr(content, "meta", None) or getattr(content, "_meta", None)
+        return {
+            "resourceUri": str(getattr(content, "uri", resource_uri)),
+            "mimeType": mime_type,
+            "html": html,
+            "resourceMeta": meta if isinstance(meta, dict) else None,
+        }
+    return None
 
 
 def _extract_text(content: Any) -> str:

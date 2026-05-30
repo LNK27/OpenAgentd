@@ -7,7 +7,7 @@ They are NOT part of the public API — see app/schemas/events.py for that.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -65,6 +65,7 @@ class ToolResult:
     """
 
     parts: list[ContentBlock]
+    mcp_app: dict[str, Any] | None = None
 
 
 class Usage(BaseModel):

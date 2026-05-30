@@ -403,6 +403,8 @@ Each tool is exposed to the LLM as `mcp_<server>_<tool>` (the convention `MCPToo
 
 **Permission gating:** the wildcard `mcp_*` is recognised by `ruleset_from_config` (see `app/agent/permission.py`), so a single rule can allow / deny / ask for every MCP tool at once.
 
+**MCP Apps artifacts:** tools that declare `_meta.ui.resourceUri` and return a `ui://` resource with MIME `text/html;profile=mcp-app` can render a sandboxed chat artifact. The first supported path targets Excalidraw MCP diagrams: the app appears as a sibling artifact after the completed tool call and can request a 90%-screen fullscreen edit overlay. OpenAgentd stores the app payload in the tool message's `extra.mcp_app` so reloads can rehydrate it, while the LLM-visible tool result remains plain text. This beta slice blocks app-requested server `tools/call` requests; checkpoint/export actions that require app-to-server calls are not proxied yet.
+
 **Source:** `app/agent/mcp/{config,manager,tools}.py`. Routes: `app/api/routes/mcp.py`.
 
 ### Skill loader (`builtin/skill.py`)

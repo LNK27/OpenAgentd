@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -112,6 +112,12 @@ def make_tool_executor(
                     "_multimodal_tool_parts", {}
                 )
                 pending[tc.id] = result_raw.parts
+
+                if result_raw.mcp_app:
+                    mcp_apps: dict[str, dict[str, Any]] = s.metadata.setdefault(
+                        "_mcp_apps", {}
+                    )
+                    mcp_apps[tc.id] = result_raw.mcp_app
             elif isinstance(result_raw, (dict, list)):
                 result = json.dumps(result_raw)
             else:

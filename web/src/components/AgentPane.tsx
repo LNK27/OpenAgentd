@@ -17,6 +17,7 @@ import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
+import { MCPAppResult } from './MCPAppResult'
 import { InboxBubble } from './InboxBubble'
 import { CompactionDivider } from './CompactionDivider'
 import { ImageAttachment } from './ImageAttachment'
@@ -268,18 +269,27 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert }: { block: Con
       }
       return <p className="rounded-md border border-(--color-border) bg-(--bg-muted) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
-    case 'tool':
+    case 'tool': {
+      const mcpApp = (block.extra as { mcp_app?: unknown } | undefined)?.mcp_app
       return (
-        <ToolCall
-          name={block.toolName || ''}
-          args={block.toolArgs}
-          done={block.toolDone}
-          liveOutput={block.toolOutput}
-          result={block.toolResult}
-          durationMs={block.durationMs}
-          startedAt={block.startedAt}
-        />
+        <div>
+          <ToolCall
+            name={block.toolName || ''}
+            args={block.toolArgs}
+            done={block.toolDone}
+            liveOutput={block.toolOutput}
+            result={block.toolResult}
+            durationMs={block.durationMs}
+            startedAt={block.startedAt}
+          />
+          {block.toolDone && Boolean(mcpApp) ? (
+            <div className="mt-2">
+              <MCPAppResult mcpApp={mcpApp as never} />
+            </div>
+          ) : null}
+        </div>
       )
+    }
     case 'text': {
       // Me sleep sentinel — show any preceding content normally, then append idle pill
       const sleepPrefix = extractSleepPrefix(block.content)

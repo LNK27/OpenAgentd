@@ -320,6 +320,11 @@ Four orthogonal ways to add capability. Deeper docs:
 - **MCP servers** `[since v1.0]` — any Model Context Protocol server, hot-reloaded
   via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Includes a
   bundled MCP installer skill `[v1.8.0]`.
+- **MCP Apps artifacts** `[v1.36.0]` *(beta)* — MCP tools that declare
+  `_meta.ui.resourceUri` can render `ui://` resources with MIME
+  `text/html;profile=mcp-app` as sandboxed chat artifacts. First slice targets
+  interactive Excalidraw diagrams with a 90%-screen fullscreen edit overlay;
+  app-requested server tool calls are blocked.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.

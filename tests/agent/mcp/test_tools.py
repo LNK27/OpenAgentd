@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from base64 import b64encode
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import AnyUrl
 
 from app.agent.errors import ToolExecutionError
 from app.agent.mcp.tools import MCPTool, _extract_text, _sanitize_schema
+from app.agent.schemas.chat import ToolResult
 
 
 class TestSanitizeSchema:
@@ -260,6 +263,53 @@ class TestMCPToolArun:
         result_text = await tool.arun(arg1="value1")
         assert result_text == "Success!"
         session.call_tool.assert_called_once_with("mytool", {"arg1": "value1"})
+
+    @pytest.mark.asyncio
+    async def test_arun_with_mcp_app_resource_uri_and_html_blob(self) -> None:
+        session = AsyncMock()
+        session.call_tool.return_value = SimpleNamespace(
+            isError=False,
+            content=[SimpleNamespace(type="text", text="Draw a diagram")],
+        )
+        html = "<html><head></head><body>mcp app</body></html>"
+        session.read_resource.return_value = SimpleNamespace(
+            contents=[
+                SimpleNamespace(
+                    uri="ui://excalidraw/mcp-app.html",
+                    mimeType="text/html;profile=mcp-app",
+                    blob=b64encode(html.encode()).decode(),
+                    _meta={
+                        "ui": {
+                            "prefersBorder": True,
+                            "permissions": {"clipboardWrite": True},
+                        }
+                    },
+                )
+            ]
+        )
+
+        mcp_tool = SimpleNamespace(
+            name="excalidraw",
+            description="Excalidraw",
+            inputSchema={"type": "object"},
+            _meta={"ui": {"resourceUri": "ui://excalidraw/mcp-app.html"}},
+        )
+        tool = MCPTool(
+            server_name="design", mcp_tool=mcp_tool, session_provider=lambda: session
+        )  # type: ignore[arg-type]
+
+        result = await tool.arun()
+        assert isinstance(result, ToolResult)
+        assert result.mcp_app is not None
+        assert result.mcp_app["resourceUri"] == "ui://excalidraw/mcp-app.html"
+        assert result.mcp_app["html"] == html
+        assert result.mcp_app["mimeType"] == "text/html;profile=mcp-app"
+        assert result.mcp_app["resourceMeta"] == {
+            "ui": {"prefersBorder": True, "permissions": {"clipboardWrite": True}}
+        }
+        read_resource_arg = session.read_resource.call_args.args[0]
+        assert isinstance(read_resource_arg, AnyUrl)
+        assert str(read_resource_arg) == "ui://excalidraw/mcp-app.html"
 
     @pytest.mark.asyncio
     async def test_arun_no_session_raises_error(self) -> None:

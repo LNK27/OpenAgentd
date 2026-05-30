@@ -16,7 +16,7 @@ import asyncio
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 from uuid import uuid7 as _uuid7
 
 from loguru import logger
@@ -463,6 +463,7 @@ class Agent(Generic[TContext]):
             multimodal_parts: dict[str, list[ContentBlock]] = state.metadata.pop(
                 "_multimodal_tool_parts", {}
             )
+            mcp_apps: dict[str, dict[str, Any]] = state.metadata.pop("_mcp_apps", {})
 
             cancelled = interrupt_event is not None and interrupt_event.is_set()
             tool_durations = state.metadata.pop("_tool_duration_ms", {})
@@ -479,6 +480,10 @@ class Agent(Generic[TContext]):
                 # Attach multimodal parts if the tool returned a ToolResult
                 if tc.id in multimodal_parts:
                     tool_msg.parts = multimodal_parts[tc.id]
+                if tc.id in mcp_apps:
+                    if tool_msg.extra is None:
+                        tool_msg.extra = {}
+                    tool_msg.extra["mcp_app"] = mcp_apps[tc.id]
                 messages.append(tool_msg)
 
             if cancelled:

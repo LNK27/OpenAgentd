@@ -343,6 +343,29 @@ describe("parseApiMessages", () => {
     expect(toolBlock?.toolDone).toBe(false);
   });
 
+  it("preserves mcp app metadata on tool results", () => {
+    const t = new Date().toISOString();
+    const msgs = [
+      makeMsg({
+        role: "assistant",
+        content: null,
+        tool_calls: [{ id: "tc1", type: "function", function: { name: "mcp_design_excalidraw", arguments: "{}" } }],
+        created_at: t,
+      }),
+      makeMsg({
+        role: "tool",
+        content: "Draw a diagram",
+        tool_call_id: "tc1",
+        extra: { mcp_app: { resourceUri: "ui://excalidraw/mcp-app.html", html: "<html></html>" } },
+        created_at: t,
+      }),
+    ];
+    const result = parseApiMessages(msgs);
+    const toolBlock = result[0].blocks.find((b) => b.type === "tool");
+    expect(toolBlock?.toolDone).toBe(true);
+    expect(toolBlock?.extra?.mcp_app).toEqual({ resourceUri: "ui://excalidraw/mcp-app.html", html: "<html></html>" });
+  });
+
   it("links tool result to tool block via tool_call_id and restores persisted duration", () => {
     const t = new Date().toISOString();
     const msgs = [

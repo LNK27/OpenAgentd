@@ -296,6 +296,10 @@ class StreamPublisherHook(BaseAgentHook):
 
         duration_ms = round((time.monotonic() - started) * 1000, 3)
         state.metadata.setdefault("_tool_duration_ms", {})[tool_call.id] = duration_ms
+        event_metadata = {"duration_ms": duration_ms}
+        mcp_app = state.metadata.get("_mcp_apps", {}).get(tool_call.id)
+        if mcp_app:
+            event_metadata["mcp_app"] = mcp_app
         end_tc_id = self._resolver.resolve_end(tool_call.id)
         await self._push(
             ToolEndEvent(
@@ -303,7 +307,7 @@ class StreamPublisherHook(BaseAgentHook):
                 tool_call_id=end_tc_id,
                 name=fn_name,
                 result=result or None,
-                metadata={"duration_ms": duration_ms},
+                metadata=event_metadata,
             )
         )
         return result

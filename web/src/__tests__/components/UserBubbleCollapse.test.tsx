@@ -13,7 +13,6 @@ beforeEach(() => {
   useTeamStore.setState({ sessionId: "test-session-123" })
 })
 
-
 afterEach(cleanup)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -733,6 +732,86 @@ describe("AgentPane — UserBubble collapse feature", () => {
   })
 
   // ── Timestamp visibility ─────────────────────────────────────────────────
+
+  it("shows MCP app artifact as sibling after completed tool block in AgentView", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "tool1",
+        type: "tool",
+        content: "",
+        toolName: "mcp_design_excalidraw",
+        toolDone: true,
+        toolResult: "",
+        extra: { mcp_app: { resourceUri: "ui://excalidraw/mcp-app.html", html: "<html><body>mcp app</body></html>" } },
+      },
+    ]
+
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const toolRow = container.querySelector(".tool-row-enter")
+    const iframe = container.querySelector("iframe")
+    expect(toolRow).toBeTruthy()
+    expect(iframe).toBeTruthy()
+    expect(screen.getByText(/ui:\/\/excalidraw\/mcp-app\.html/)).toBeTruthy()
+    expect(iframe?.closest(".mt-2")?.previousElementSibling).toBe(toolRow)
+  })
+
+  it("does not render MCP app artifact for incomplete tool blocks in AgentView", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "tool1",
+        type: "tool",
+        content: "",
+        toolName: "mcp_design_excalidraw",
+        toolDone: false,
+        toolResult: "",
+        extra: { mcp_app: { resourceUri: "ui://excalidraw/mcp-app.html", html: "<html><body>mcp app</body></html>" } },
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    expect(document.querySelector("iframe")).toBeNull()
+  })
+
+  it("shows MCP app artifact as sibling after completed tool block in AgentPane", () => {
+    const stream = createMockStream([
+      {
+        id: "tool1",
+        type: "tool",
+        content: "",
+        toolName: "mcp_design_excalidraw",
+        toolDone: true,
+        toolResult: "",
+        extra: { mcp_app: { resourceUri: "ui://excalidraw/mcp-app.html", html: "<html><body>mcp app</body></html>" } },
+      } as ContentBlock,
+    ])
+
+    const { container } = render(<AgentPane name="researcher" stream={stream} isLead={false} />)
+
+    const toolRow = container.querySelector(".tool-row-enter")
+    const iframe = container.querySelector("iframe")
+    expect(toolRow).toBeTruthy()
+    expect(iframe).toBeTruthy()
+    expect(screen.getByText(/ui:\/\/excalidraw\/mcp-app\.html/)).toBeTruthy()
+    expect(iframe?.closest(".mt-2")?.previousElementSibling).toBe(toolRow)
+  })
+
+  it("does not render MCP app artifact for incomplete tool blocks in AgentPane", () => {
+    const stream = createMockStream([
+      {
+        id: "tool1",
+        type: "tool",
+        content: "",
+        toolName: "mcp_design_excalidraw",
+        toolDone: false,
+        toolResult: "",
+        extra: { mcp_app: { resourceUri: "ui://excalidraw/mcp-app.html", html: "<html><body>mcp app</body></html>" } },
+      } as ContentBlock,
+    ])
+
+    render(<AgentPane name="researcher" stream={stream} isLead={false} />)
+    expect(document.querySelector("iframe")).toBeNull()
+  })
 
   it("shows timestamp on mouse hover in AgentPane", async () => {
     const user = userEvent.setup()

@@ -140,6 +140,7 @@ export function completeTool(
   toolCallId?: string,
   toolResult?: string,
   durationMs?: number,
+  extra?: Record<string, unknown>,
 ): ContentBlock[] {
   const result = [...blocks]
 
@@ -155,6 +156,7 @@ export function completeTool(
           toolDone: true,
           toolResult,
           durationMs: durationMs ?? block.durationMs,
+          extra: extra ? { ...(block.extra ?? {}), ...extra } : block.extra,
         }
         return result
       }
@@ -170,6 +172,7 @@ export function completeTool(
         toolDone: true,
         toolResult,
         durationMs: durationMs ?? block.durationMs,
+        extra: extra ? { ...(block.extra ?? {}), ...extra } : block.extra,
       }
       return result
     }

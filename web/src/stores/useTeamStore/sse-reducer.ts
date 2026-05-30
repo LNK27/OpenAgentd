@@ -190,6 +190,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           : typeof metadata?.duration_ms === 'number'
             ? metadata.duration_ms
             : undefined
+        const mcpApp = metadata?.mcp_app as Record<string, unknown> | undefined
         if (!TODO_MUTATING_TOOLS.has(toolName)) {
           set((draft) => {
             ensureAgent(draft, agent)
@@ -199,6 +200,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               toolCallId,
               result,
               durationMs,
+              mcpApp ? { mcp_app: mcpApp } : undefined,
             )
           })
         }
