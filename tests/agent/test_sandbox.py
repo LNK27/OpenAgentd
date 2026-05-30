@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from app.agent.sandbox import SandboxConfig
+from app.core.config import settings
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +126,31 @@ def test_workspace_under_denied_root_still_allowed(tmp_path):
     # Siblings of workspace under the denied root are not
     with pytest.raises(PermissionError, match="denied sandbox root"):
         sandbox.validate_path(str(denied / "other_file"))
+
+
+def test_state_logs_under_denied_root_allowed(tmp_path):
+    sandbox = SandboxConfig(
+        workspace=str(tmp_path / "ws"),
+        denied_roots=[Path(settings.OPENAGENTD_STATE_DIR).resolve()],
+        denied_patterns=[],
+    )
+    log_path = (
+        Path(settings.OPENAGENTD_STATE_DIR) / "logs" / "app" / "app.log"
+    ).resolve()
+
+    assert sandbox.validate_path(str(log_path)) == log_path
+
+
+def test_state_non_log_paths_still_rejected(tmp_path):
+    sandbox = SandboxConfig(
+        workspace=str(tmp_path / "ws"),
+        denied_roots=[Path(settings.OPENAGENTD_STATE_DIR).resolve()],
+        denied_patterns=[],
+    )
+
+    state_path = (Path(settings.OPENAGENTD_STATE_DIR) / "private").resolve()
+    with pytest.raises(PermissionError, match="denied sandbox root"):
+        sandbox.validate_path(str(state_path))
 
 
 # ---------------------------------------------------------------------------

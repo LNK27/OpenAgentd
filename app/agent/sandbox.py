@@ -137,6 +137,9 @@ class SandboxConfig:
         """Return the denied root or glob pattern that matched, or None."""
         if _path_is_under(resolved, self.workspace_root):
             return None
+        allowed = _allowed_internal_roots(self.session_id)
+        if any(_path_is_under(resolved, root) for root in allowed):
+            return None
         for denied in self.denied_roots:
             if _path_is_under(resolved, denied):
                 return denied
@@ -253,6 +256,16 @@ def _path_is_under(child: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _allowed_internal_roots(session_id: str | None) -> list[Path]:
+    """Return internal OpenAgentd paths agents may inspect."""
+    roots = [Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"]
+    if session_id:
+        from app.agent.artifacts import session_artifact_dir
+
+        roots.append(session_artifact_dir(session_id).resolve())
+    return roots
 
 
 def _looks_path_like(token: str) -> bool:

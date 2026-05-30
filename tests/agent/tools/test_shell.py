@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,6 +30,7 @@ from app.agent.tools.builtin.shell import (
     background_process,
     shell_tool,
 )
+from app.core.config import settings
 
 
 # ---------------------------------------------------------------------------
@@ -665,6 +667,45 @@ class TestSandboxCommandScan:
         result = await _shell(command="cat hello.txt")
         assert "[Succeeded]" in result
         assert "hi" in result
+
+    @pytest.mark.asyncio
+    async def test_allows_tail_of_state_log_path(self, tmp_path):
+        log_path = Path(settings.OPENAGENTD_STATE_DIR) / "logs" / "app" / "app.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("one\ntwo\n", encoding="utf-8")
+        sandbox = SandboxConfig(
+            workspace=str(tmp_path / "ws"),
+            denied_roots=[Path(settings.OPENAGENTD_STATE_DIR).resolve()],
+            denied_patterns=[],
+        )
+        token = set_sandbox(sandbox)
+        try:
+            result = await _shell(command=f"tail -n 1 {log_path.resolve()}")
+            assert "[Succeeded]" in result
+            assert "two" in result
+        finally:
+            from app.agent.sandbox import _sandbox_ctx
+
+            _sandbox_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_blocks_other_state_paths(self, tmp_path):
+        state_path = Path(settings.OPENAGENTD_STATE_DIR) / "private" / "token"
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text("secret", encoding="utf-8")
+        sandbox = SandboxConfig(
+            workspace=str(tmp_path / "ws"),
+            denied_roots=[Path(settings.OPENAGENTD_STATE_DIR).resolve()],
+            denied_patterns=[],
+        )
+        token = set_sandbox(sandbox)
+        try:
+            with pytest.raises(PermissionError, match="Sandbox blocked"):
+                await _shell(command=f"cat {state_path.resolve()}")
+        finally:
+            from app.agent.sandbox import _sandbox_ctx
+
+            _sandbox_ctx.reset(token)
 
     @pytest.mark.asyncio
     async def test_blocks_quoted_denied_path(self, tmp_path):

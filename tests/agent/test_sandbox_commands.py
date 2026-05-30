@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from app.agent.sandbox import SandboxConfig, _looks_path_like
+from app.core.config import settings
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +181,22 @@ def test_unbalanced_quotes_do_not_raise(tmp_path: Path) -> None:
 def test_no_patterns_means_no_match(tmp_path: Path) -> None:
     sandbox = _make(tmp_path)
     assert sandbox.check_command("cat /etc/passwd") is None
+
+
+def test_state_logs_are_exempt_from_denied_roots(tmp_path: Path) -> None:
+    logs_root = Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"
+    log_path = logs_root / "app" / "app.log"
+    sandbox = _make(tmp_path, denied_roots=[Path(settings.OPENAGENTD_STATE_DIR)])
+
+    assert sandbox.check_command(f"tail -n 220 {log_path}") is None
+
+
+def test_other_state_paths_remain_denied(tmp_path: Path) -> None:
+    state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
+    sandbox = _make(tmp_path, denied_roots=[state_root])
+
+    hit = sandbox.check_command(f"cat {state_root / 'secrets' / 'token'}")
+    assert hit is not None
 
 
 # ---------------------------------------------------------------------------
