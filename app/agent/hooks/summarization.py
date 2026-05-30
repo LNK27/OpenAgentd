@@ -435,7 +435,11 @@ class SummarizationHook(BaseAgentHook):
             ctx.agent_name,
             state.usage.last_prompt_tokens,
         )
-        await self._summarise(ctx, state)
+        await self._summarise(
+            ctx,
+            state,
+            system_prompt=request.system_prompt if request is not None else None,
+        )
 
         # Return a fresh request so the current LLM call sees the summary
         # immediately, without the loop needing to rebuild the message list.
@@ -447,7 +451,13 @@ class SummarizationHook(BaseAgentHook):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _summarise(self, ctx: "RunContext", state: "AgentState") -> None:
+    async def _summarise(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        *,
+        system_prompt: str | None = None,
+    ) -> None:
         """Generate summary and mutate state.messages — pure state transform + LLM call."""
         logger.info(
             "summarization_started session_id={} agent={}",
@@ -467,10 +477,15 @@ class SummarizationHook(BaseAgentHook):
                 "summarization.threshold": self._prompt_token_threshold,
             },
         ) as span:
-            await self._summarise_inner(ctx, state, span)
+            await self._summarise_inner(ctx, state, span, system_prompt=system_prompt)
 
     async def _summarise_inner(
-        self, ctx: "RunContext", state: "AgentState", span
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        span,
+        *,
+        system_prompt: str | None = None,
     ) -> None:
         """Core summarisation logic, called inside the OTel span."""
         # The agent loop injects SystemMessage separately per call, so it
@@ -528,12 +543,9 @@ class SummarizationHook(BaseAgentHook):
         # yields near-zero cache hits.
         has_prior_summary = any(m.is_summary for m in to_summarise)
         request_line = _MERGE_REQUEST if has_prior_summary else _SUMMARISE_REQUEST
+        prompt = system_prompt if system_prompt is not None else state.system_prompt
         summariser_messages = [
-            *(
-                [SystemMessage(content=state.system_prompt)]
-                if state.system_prompt
-                else []
-            ),
+            *([SystemMessage(content=prompt)] if prompt else []),
             *to_summarise,
             HumanMessage(content=f"{request_line}\n\n{self._summary_prompt}"),
         ]

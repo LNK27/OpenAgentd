@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.agent.state import AgentState, RunContext, UsageInfo
+from app.agent.state import AgentState, ModelRequest, RunContext, UsageInfo
 from app.agent.hooks.summarization import CODING_SUMMARY_PROMPT, SummarizationHook
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -877,6 +877,44 @@ async def test_summariser_input_preserves_normal_call_prefix(mock_provider):
     assert captured[0].content == "stable agent prompt"
     assert captured[1].content == "what is the capital of France?"
     assert captured[2].content == "Paris."
+
+
+@pytest.mark.asyncio
+async def test_summariser_uses_request_system_prompt_for_cache_prefix(mock_provider):
+    """The agent loop request carries the actual pre-prompt after prompt hooks."""
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        keep_last_assistants=0,
+    )
+    ctx = _make_ctx()
+    state = AgentState(
+        messages=[HumanMessage(content="hello")],
+        usage=UsageInfo(last_prompt_tokens=9999),
+        system_prompt="base prompt",
+    )
+    request = ModelRequest(
+        messages=tuple(state.messages_for_llm),
+        system_prompt="base prompt\n\n## Tools attached\n- shell",
+    )
+
+    captured: list = []
+
+    async def _capturing_stream(messages, **__):
+        captured.extend(messages)
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Summary."
+        chunk.usage = None
+        yield chunk
+
+    mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
+
+    await hook.before_model(ctx, state, request)
+
+    assert isinstance(captured[0], SystemMessage)
+    assert captured[0].content == "base prompt\n\n## Tools attached\n- shell"
 
 
 # ---------------------------------------------------------------------------
