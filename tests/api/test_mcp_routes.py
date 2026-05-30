@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
+from uuid import uuid4
 from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
@@ -12,6 +14,7 @@ from fastapi.testclient import TestClient
 from app.agent.mcp.config import HttpServerConfig, MCPConfig, StdioServerConfig
 from app.agent.mcp.manager import MCPServerStatus
 from app.api.routes.mcp import router
+from app.core.db import get_session
 
 
 def _make_app() -> FastAPI:
@@ -19,6 +22,35 @@ def _make_app() -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/mcp")
     return app
+
+
+def _make_app_with_mcp_app(row: object | None) -> FastAPI:
+    app = _make_app()
+
+    class _Result:
+        def first(self) -> object | None:
+            return row
+
+    class _Session:
+        async def exec(self, _stmt):  # noqa: ANN001
+            return _Result()
+
+    async def fake_session():
+        yield _Session()
+
+    app.dependency_overrides[get_session] = fake_session
+    return app
+
+
+def _mcp_app_row(
+    session_id: str, tool_call_id: str, server: str = "excalidraw"
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        session_id=session_id,
+        role="tool",
+        tool_call_id=tool_call_id,
+        extra={"mcp_app": {"server": server, "tool": "create_view"}},
+    )
 
 
 class TestListServers:
@@ -91,6 +123,141 @@ class TestGetServer:
             client = TestClient(app)
             response = client.get("/api/mcp/servers/missing")
             assert response.status_code == 404
+
+
+class TestMCPAppToolCall:
+    """Test POST /api/mcp/app-tools/call."""
+
+    def test_bound_artifact_tool_calls_live_server(self) -> None:
+        session_id = str(uuid4())
+        app = _make_app_with_mcp_app(_mcp_app_row(session_id, "tc1"))
+        with patch("app.api.routes.mcp.mcp_manager") as mock_manager:
+            mock_manager.call_app_tool = AsyncMock(
+                return_value=SimpleNamespace(
+                    model_dump=lambda **_kwargs: {
+                        "content": [{"type": "text", "text": "saved"}],
+                        "structuredContent": {"checkpointId": "cp1"},
+                    }
+                )
+            )
+            client = TestClient(app)
+
+            response = client.post(
+                "/api/mcp/app-tools/call",
+                json={
+                    "session_id": session_id,
+                    "tool_call_id": "tc1",
+                    "server": "excalidraw",
+                    "tool": "custom_chart_tool",
+                    "arguments": {"chartId": "chart1"},
+                },
+            )
+
+            assert response.status_code == 200
+            assert response.json()["result"]["structuredContent"] == {
+                "checkpointId": "cp1"
+            }
+            mock_manager.call_app_tool.assert_awaited_once_with(
+                "excalidraw", "custom_chart_tool", {"chartId": "chart1"}
+            )
+
+    def test_rejects_tools_not_advertised_by_server(self) -> None:
+        session_id = str(uuid4())
+        app = _make_app_with_mcp_app(_mcp_app_row(session_id, "tc1"))
+        with patch("app.api.routes.mcp.mcp_manager") as mock_manager:
+            mock_manager.call_app_tool = AsyncMock(
+                side_effect=ValueError("MCP tool 'missing_tool' is not available.")
+            )
+            client = TestClient(app)
+
+            response = client.post(
+                "/api/mcp/app-tools/call",
+                json={
+                    "session_id": session_id,
+                    "tool_call_id": "tc1",
+                    "server": "excalidraw",
+                    "tool": "missing_tool",
+                    "arguments": {},
+                },
+            )
+
+        assert response.status_code == 403
+        assert "not available" in response.json()["detail"]
+
+    def test_rejects_server_mismatch_against_bound_artifact(self) -> None:
+        session_id = str(uuid4())
+        app = _make_app_with_mcp_app(
+            _mcp_app_row(session_id, "tc1", server="excalidraw")
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/mcp/app-tools/call",
+            json={
+                "session_id": session_id,
+                "tool_call_id": "tc1",
+                "server": "other",
+                "tool": "save_checkpoint",
+                "arguments": {},
+            },
+        )
+
+        assert response.status_code == 403
+
+    def test_rejects_missing_artifact_binding(self) -> None:
+        app = _make_app_with_mcp_app(None)
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/mcp/app-tools/call",
+            json={
+                "session_id": str(uuid4()),
+                "tool_call_id": "missing",
+                "server": "excalidraw",
+                "tool": "save_checkpoint",
+                "arguments": {},
+            },
+        )
+
+        assert response.status_code == 404
+
+    def test_rejects_non_object_arguments(self) -> None:
+        app = _make_app_with_mcp_app(_mcp_app_row(str(uuid4()), "tc1"))
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/mcp/app-tools/call",
+            json={
+                "session_id": str(uuid4()),
+                "tool_call_id": "tc1",
+                "server": "excalidraw",
+                "tool": "save_checkpoint",
+                "arguments": ["not", "object"],
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_sanitizes_unexpected_mcp_failure(self) -> None:
+        session_id = str(uuid4())
+        app = _make_app_with_mcp_app(_mcp_app_row(session_id, "tc1"))
+        with patch("app.api.routes.mcp.mcp_manager") as mock_manager:
+            mock_manager.call_app_tool = AsyncMock(side_effect=Exception("secret"))
+            client = TestClient(app)
+
+            response = client.post(
+                "/api/mcp/app-tools/call",
+                json={
+                    "session_id": session_id,
+                    "tool_call_id": "tc1",
+                    "server": "excalidraw",
+                    "tool": "save_checkpoint",
+                    "arguments": {},
+                },
+            )
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "MCP app tool call failed."
 
 
 class TestCreateServer:

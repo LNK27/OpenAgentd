@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppBridge,
   buildAllowAttribute,
@@ -18,6 +17,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import type { Transport, TransportSendOptions } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { ExternalLink, Maximize2, X } from 'lucide-react'
+import { callMcpAppTool } from '@/api/client'
 
 interface MCPAppPayload {
   server?: string
@@ -46,6 +46,8 @@ interface MCPAppResourceUi {
 
 interface MCPAppResultProps {
   mcpApp: MCPAppPayload
+  sessionId?: string
+  toolCallId?: string
 }
 
 const HOST_INFO = { name: 'OpenAgentd', version: '1.0.0' }
@@ -53,7 +55,6 @@ const DEFAULT_HEIGHT = 420
 const MAX_HEIGHT = 900
 const INLINE_DISPLAY_MODE = 'inline' as const
 const FULLSCREEN_DISPLAY_MODE = 'fullscreen' as const
-
 function currentTheme(): 'light' | 'dark' {
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
 }
@@ -110,6 +111,14 @@ function wrapAppHtml(html: string, csp?: McpUiResourceCsp): string {
     return html.replace(/<head\b[^>]*>/i, (match) => `${match}${cspMeta}`)
   }
   return `<!doctype html><html><head>${cspMeta}</head><body>${html}</body></html>`
+}
+
+function errorToolResult(message: string): CallToolResult {
+  return { isError: true, content: [{ type: 'text', text: message }] }
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 class DeferredPostMessageTransport implements Transport {
@@ -170,7 +179,7 @@ class DeferredPostMessageTransport implements Transport {
   }
 }
 
-export function MCPAppResult({ mcpApp }: MCPAppResultProps) {
+export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const bridgeRef = useRef<AppBridge | null>(null)
   const [height, setHeight] = useState(DEFAULT_HEIGHT)
@@ -181,6 +190,17 @@ export function MCPAppResult({ mcpApp }: MCPAppResultProps) {
   const permissions = useMemo(() => resourceUi.permissions, [resourceUi.permissions])
   const title = mcpApp.tool ?? mcpApp.name ?? 'MCP App'
   const resourceUri = (mcpApp.resourceUri ?? resourceUi.resourceUri) as string | undefined
+  const updateHostDisplayMode = useCallback((nextMode: typeof INLINE_DISPLAY_MODE | typeof FULLSCREEN_DISPLAY_MODE) => {
+    const iframe = iframeRef.current
+    bridgeRef.current?.setHostContext({
+      displayMode: nextMode,
+      containerDimensions: nextMode === FULLSCREEN_DISPLAY_MODE ? { height: window.innerHeight, width: window.innerWidth } : { maxHeight: MAX_HEIGHT, width: iframe?.clientWidth ?? 0 },
+    })
+  }, [])
+
+  useEffect(() => {
+    updateHostDisplayMode(displayMode)
+  }, [displayMode, updateHostDisplayMode])
 
   useEffect(() => {
     if (displayMode !== FULLSCREEN_DISPLAY_MODE) return undefined
@@ -219,9 +239,9 @@ export function MCPAppResult({ mcpApp }: MCPAppResultProps) {
           toolInfo: { tool: asTool(mcpApp) },
           theme: currentTheme(),
           platform: 'web',
-          displayMode,
+          displayMode: INLINE_DISPLAY_MODE,
           availableDisplayModes: [INLINE_DISPLAY_MODE, FULLSCREEN_DISPLAY_MODE],
-          containerDimensions: displayMode === FULLSCREEN_DISPLAY_MODE ? { height: window.innerHeight, width: window.innerWidth } : { maxHeight: MAX_HEIGHT, width: iframe.clientWidth },
+          containerDimensions: { maxHeight: MAX_HEIGHT, width: iframe.clientWidth },
         },
       },
     )
@@ -248,10 +268,6 @@ export function MCPAppResult({ mcpApp }: MCPAppResultProps) {
     bridge.onrequestdisplaymode = async ({ mode }) => {
       const nextMode = mode === FULLSCREEN_DISPLAY_MODE ? FULLSCREEN_DISPLAY_MODE : INLINE_DISPLAY_MODE
       setDisplayMode(nextMode)
-      bridge.setHostContext({
-        displayMode: nextMode,
-        containerDimensions: nextMode === FULLSCREEN_DISPLAY_MODE ? { height: window.innerHeight, width: window.innerWidth } : { maxHeight: MAX_HEIGHT, width: iframe.clientWidth },
-      })
       return { mode: nextMode }
     }
     bridge.oninitialized = () => {
@@ -259,11 +275,25 @@ export function MCPAppResult({ mcpApp }: MCPAppResultProps) {
         if (!cancelled) setError(exc instanceof Error ? exc.message : String(exc))
       })
     }
-    // app-bridge only exposes the calls needed for embedded MCP apps; list-tools is not used here.
-    bridge.oncalltool = async ({ name }): Promise<CallToolResult> => ({
-      isError: true,
-      content: [{ type: 'text', text: `OpenAgentd cannot call MCP app tool '${name}' from the chat artifact yet.` }],
-    })
+    // Do not expose generic tool listing. The backend authorizes calls against
+    // this artifact's persisted session/tool-call binding and the same server's
+    // current advertised tool list before invoking anything.
+    bridge.oncalltool = async ({ name, arguments: args }): Promise<CallToolResult> => {
+      if (!sessionId || !toolCallId || !mcpApp.server) return errorToolResult('MCP app artifact is missing server/session binding.')
+      if (args !== undefined && !isJsonObject(args)) return errorToolResult('MCP app tool arguments must be a JSON object.')
+      try {
+        const response = await callMcpAppTool({
+          session_id: sessionId,
+          tool_call_id: toolCallId,
+          server: mcpApp.server,
+          tool: name,
+          arguments: args ?? {},
+        })
+        return response.result as CallToolResult
+      } catch (exc) {
+        return errorToolResult(exc instanceof Error ? exc.message : 'MCP app tool call failed.')
+      }
+    }
     bridge.onlistresources = async (): Promise<ListResourcesResult> => ({
       resources: resourceUri ? [asResource(mcpApp)] : [],
     })
@@ -311,7 +341,7 @@ export function MCPAppResult({ mcpApp }: MCPAppResultProps) {
       bridgeRef.current = null
       void bridge.close().catch(() => undefined)
     }
-  }, [csp, displayMode, mcpApp, permissions, resourceUri])
+  }, [csp, mcpApp, permissions, resourceUri, sessionId, toolCallId])
 
   if (!mcpApp.html) {
     return <p className="font-mono text-[11px] text-(--color-error)">MCP app resource did not include HTML.</p>
@@ -327,7 +357,7 @@ export function MCPAppResult({ mcpApp }: MCPAppResultProps) {
   )
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={displayMode === FULLSCREEN_DISPLAY_MODE ? 'fixed inset-0 z-50 flex flex-col gap-2 bg-black/60 p-[5vh] backdrop-blur-sm' : 'flex flex-col gap-2'}>
       <div className="flex items-center justify-between gap-2 font-mono text-[10px] text-(--color-text-muted)">
         <span className="min-w-0 truncate" title={resourceUri}>{title}{resourceUri ? ` · ${String(resourceUri)}` : ''}</span>
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[9px] uppercase tracking-wide">
@@ -339,32 +369,29 @@ export function MCPAppResult({ mcpApp }: MCPAppResultProps) {
           MCP app bridge error: {error}
         </p>
       )}
-      {displayMode === FULLSCREEN_DISPLAY_MODE ? (
-        createPortal(
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-[5vh] backdrop-blur-sm transition-opacity duration-200"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${title} fullscreen MCP app`}
+      <div
+        className={displayMode === FULLSCREEN_DISPLAY_MODE ? 'flex min-h-0 flex-1 items-center justify-center' : undefined}
+        role={displayMode === FULLSCREEN_DISPLAY_MODE ? 'dialog' : undefined}
+        aria-modal={displayMode === FULLSCREEN_DISPLAY_MODE ? 'true' : undefined}
+        aria-label={displayMode === FULLSCREEN_DISPLAY_MODE ? `${title} fullscreen MCP app` : undefined}
+      >
+        <div className={displayMode === FULLSCREEN_DISPLAY_MODE ? 'h-[90vh] w-[90vw]' : undefined}>
+          {iframe}
+        </div>
+        {displayMode === FULLSCREEN_DISPLAY_MODE ? (
+          <button
+            type="button"
+            onClick={() => setDisplayMode(INLINE_DISPLAY_MODE)}
+            className="absolute right-4 top-4 flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none [[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
+            aria-label="Close fullscreen MCP app"
           >
-            <button
-              type="button"
-              onClick={() => setDisplayMode(INLINE_DISPLAY_MODE)}
-              className="absolute right-4 top-4 flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none [[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
-              aria-label="Close fullscreen MCP app"
-            >
-              <X size={20} aria-hidden />
-            </button>
-            <div className="h-[90vh] w-[90vw]">
-              {iframe}
-            </div>
-          </div>,
-          document.body,
-        )
-      ) : iframe}
+            <X size={20} aria-hidden />
+          </button>
+        ) : null}
+      </div>
       <p className="flex items-center gap-1 font-mono text-[10px] text-(--color-text-muted)">
         <ExternalLink size={10} aria-hidden />
-        Experimental sandbox: app can render and receive the initial tool input/result; server tool calls from the app are blocked in this slice.
+        Experimental sandbox: app can render and receive the initial tool input/result; app tool calls stay bound to this artifact and its MCP server's current advertised tools.
       </p>
     </div>
   )

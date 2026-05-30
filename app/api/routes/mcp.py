@@ -5,8 +5,11 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
+from sqlmodel import col, select
 
 from app.agent.mcp import MCPServerStatus, mcp_manager
 from app.agent.mcp.config import (
@@ -20,6 +23,8 @@ from app.agent.mcp.oauth import allow_interactive_oauth, disallow_interactive_oa
 from app.api.schemas.mcp import (
     CreateServerRequest,
     HttpServerBody,
+    MCPAppToolCallRequest,
+    MCPAppToolCallResponse,
     OAuthBody,
     ServerDeleteResponse,
     ServerListResponse,
@@ -27,13 +32,13 @@ from app.api.schemas.mcp import (
     StdioServerBody,
     UpdateServerRequest,
 )
+from app.api.deps import DbSession
 from app.core.config import settings
+from app.models.chat import SessionMessage
 
 router = APIRouter()
 _MASKED_SECRET = "********"
 _ENV_REF_RE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
-
-
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 
@@ -189,6 +194,37 @@ def _to_response(
     )
 
 
+def _dump_mcp_result(value: Any) -> dict[str, Any]:
+    if hasattr(value, "model_dump"):
+        dumped = value.model_dump(mode="json", by_alias=True, exclude_none=True)
+        return dumped if isinstance(dumped, dict) else {"content": dumped}
+    return value if isinstance(value, dict) else {"content": value}
+
+
+async def _load_bound_mcp_app(
+    db: DbSession, session_id: str, tool_call_id: str
+) -> dict[str, Any]:
+    try:
+        session_uuid = UUID(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid session_id.") from exc
+
+    stmt = (
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == session_uuid)
+        .where(col(SessionMessage.role) == "tool")
+        .where(col(SessionMessage.tool_call_id) == tool_call_id)
+    )
+    row = (await db.exec(stmt)).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="MCP app artifact not found.")
+    extra = row.extra if isinstance(row.extra, dict) else {}
+    mcp_app = extra.get("mcp_app")
+    if not isinstance(mcp_app, dict):
+        raise HTTPException(status_code=404, detail="MCP app artifact not found.")
+    return mcp_app
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -209,6 +245,30 @@ async def get_server(name: str) -> ServerStatusResponse:
         raise HTTPException(status_code=404, detail=f"MCP server '{name}' not found.")
     cfg = load_config()
     return _to_response(status, cfg.servers.get(name))
+
+
+@router.post("/app-tools/call")
+async def call_mcp_app_tool(
+    body: MCPAppToolCallRequest, db: DbSession
+) -> MCPAppToolCallResponse:
+    mcp_app = await _load_bound_mcp_app(db, body.session_id, body.tool_call_id)
+    if mcp_app.get("server") != body.server:
+        raise HTTPException(status_code=403, detail="MCP app server mismatch.")
+
+    try:
+        result = await mcp_manager.call_app_tool(body.server, body.tool, body.arguments)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="MCP server not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail="MCP app tool call failed."
+        ) from exc
+
+    return MCPAppToolCallResponse(result=_dump_mcp_result(result))
 
 
 @router.post("/servers", status_code=201)

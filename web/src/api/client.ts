@@ -819,6 +819,14 @@ export type ServerStatus = {
 export type CreateServerRequest = { name: string; server: ServerBody }
 export type UpdateServerRequest = { server: ServerBody }
 export type ServerDeleteResponse = { name: string }
+export type MCPAppToolCallRequest = {
+  session_id: string
+  tool_call_id: string
+  server: string
+  tool: string
+  arguments: Record<string, unknown>
+}
+export type MCPAppToolCallResponse = { result: unknown }
 
 export async function listMcpServers(): Promise<{ servers: ServerStatus[] }> {
   const res = await fetch(`${apiBaseUrl()}/mcp/servers`)
@@ -867,6 +875,16 @@ export async function restartMcpServer(name: string): Promise<ServerStatus> {
 export async function connectMcpOAuth(name: string): Promise<ServerStatus> {
   const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/oauth/connect`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/oauth/connect`)
+  return res.json()
+}
+
+export async function callMcpAppTool(body: MCPAppToolCallRequest): Promise<MCPAppToolCallResponse> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/app-tools/call`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /mcp/app-tools/call')
   return res.json()
 }
 

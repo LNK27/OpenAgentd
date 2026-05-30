@@ -304,7 +304,7 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert }: { block: Con
           />
           {block.toolDone && Boolean(mcpApp) ? (
             <div className="mt-2">
-              <MCPAppResult mcpApp={mcpApp as never} />
+              <MCPAppResult mcpApp={mcpApp as never} sessionId={sessionId} toolCallId={block.toolCallId} />
             </div>
           ) : null}
         </div>

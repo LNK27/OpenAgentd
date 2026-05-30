@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.client.auth import OAuthRegistrationError
@@ -288,6 +288,44 @@ class TestMCPManagerWithMockedServer:
 
                 # Cleanup
                 await manager.stop()
+
+    @pytest.mark.asyncio
+    async def test_call_app_tool_uses_live_session_when_tool_is_available(self) -> None:
+        manager = MCPManager()
+        session = MagicMock()
+        session.call_tool = AsyncMock(return_value={"content": []})
+        runner = SimpleNamespace(
+            session=session,
+            status=MCPServerStatus(
+                name="test", transport="stdio", enabled=True, state="ready"
+            ),
+            tools=[SimpleNamespace(name="save_checkpoint")],
+        )
+        manager._runners["test"] = runner  # type: ignore[assignment]
+
+        result = await manager.call_app_tool(
+            "test", "save_checkpoint", {"checkpointId": "cp1"}
+        )
+
+        assert result == {"content": []}
+        session.call_tool.assert_awaited_once_with(
+            "save_checkpoint", {"checkpointId": "cp1"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_call_app_tool_rejects_unavailable_tool(self) -> None:
+        manager = MCPManager()
+        runner = SimpleNamespace(
+            session=MagicMock(),
+            status=MCPServerStatus(
+                name="test", transport="stdio", enabled=True, state="ready"
+            ),
+            tools=[SimpleNamespace(name="save_checkpoint")],
+        )
+        manager._runners["test"] = runner  # type: ignore[assignment]
+
+        with pytest.raises(ValueError, match="not available"):
+            await manager.call_app_tool("test", "not_allowed", {})
 
 
 class TestMCPManagerOAuth:

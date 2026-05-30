@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -93,3 +93,17 @@ class ServerListResponse(BaseModel):
 
 class ServerDeleteResponse(BaseModel):
     name: str
+
+
+class MCPAppToolCallRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    tool_call_id: str
+    server: Annotated[str, Field(min_length=1)]
+    tool: Annotated[str, Field(min_length=1)]
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class MCPAppToolCallResponse(BaseModel):
+    result: dict[str, Any]

@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 from mcp.client.auth import OAuthRegistrationError
+from mcp.types import CallToolResult
 
 from app.agent.mcp.config import (
     HttpServerConfig,
@@ -385,6 +386,26 @@ class MCPManager:
     def get_status(self, name: str) -> MCPServerStatus | None:
         runner = self._runners.get(name)
         return runner.status if runner else None
+
+    async def call_app_tool(
+        self, server_name: str, tool_name: str, arguments: dict
+    ) -> CallToolResult:
+        """Call an MCP server tool for an already-approved app bridge request."""
+        runner = self._runners.get(server_name)
+        if runner is None:
+            raise KeyError(server_name)
+        if runner.status.state != "ready" or runner.session is None:
+            raise RuntimeError(f"MCP server '{server_name}' is not connected.")
+        if tool_name not in {tool.name for tool in runner.tools}:
+            raise ValueError(f"MCP tool '{tool_name}' is not available.")
+
+        logger.debug(
+            "mcp_app_tool_call server={} tool={} args={}",
+            server_name,
+            tool_name,
+            list(arguments.keys()),
+        )
+        return await runner.session.call_tool(tool_name, arguments)
 
     # ── Public mutation API (used by /api/mcp routes) ────────────────────
 
