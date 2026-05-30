@@ -43,7 +43,7 @@ A short list of the most important shipped capabilities. The canonical, version-
 
 **Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view, resume interrupted work with `/continue`, or switch to a single unified view.
 
-**Use it as a coding cockpit.** Coding mode ships with a workspace-aware pair (`coding/openagentd`, `coding/coder`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works.
+**Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/coder`, `coding/explorer`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works.
 
 ![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
@@ -79,7 +79,7 @@ Full capability matrix (incl. Aider + opencode): [`documents/docs/comparison.md`
 | Platform | Artefact | First-launch note |
 |---|---|---|
 | macOS (Apple Silicon) | `brew install --cask lthoangg/tap/openagentd` *or* `OpenAgentd_*_aarch64.dmg` | The cask ad-hoc signs and installs automatically. With the `.dmg`, run the bundled `install.sh` then right-click → **Open**. The app is unsigned — [why](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md#desktop-unsigned). |
-| Linux | `OpenAgentd_*_amd64.AppImage` | `chmod +x` the AppImage, or run the bundled `install.sh --install` for a launcher entry. |
+| Linux | `OpenAgentd_*_amd64.deb` | Install with your package manager, e.g. `sudo apt install ./OpenAgentd_*_amd64.deb`. |
 
 macOS — after mounting the `.dmg`:
 
@@ -191,7 +191,7 @@ OpenAgentd ships with a compact cockpit team:
 
 Configure your team by editing `.md` files in your config directory. Exactly one agent must have `role: lead`; the rest are member blueprints. The lead uses `team_manage` to spawn/dismiss live instances (`executor#1`, `explorer#1`), `team_message` to delegate and collect results, and `team_configure` to grant or revoke a live member's skills, tools, or MCP servers without restarting.
 
-Fresh installs also seed a separate coding team under `agents/coding/`. Open `/coding` to select a server-local project folder and start workspace-aware sessions; Settings shows those agents as `coding/openagentd` and `coding/coder`.
+Fresh installs also seed a separate coding team under `agents/coding/`. Open `/coding` to select a server-local project folder and start workspace-aware sessions; Settings shows those agents as `coding/openagentd`, `coding/coder`, and `coding/explorer`.
 
 ![OpenAgentd agent architecture — loop, hooks, tools, providers, memory, and team mode](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/openagentd-agent-architecture.png)
 

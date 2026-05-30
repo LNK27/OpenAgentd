@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.30.0 · May 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.30.0)
+**Latest release:** v1.37.0 · May 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.37.0)
 
 ---
 
@@ -164,10 +164,11 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   lead and shipped member blueprints keep their core prompts, tools, skills, and
   descriptions versioned in code for normal and coding modes; seed/user `.md`
   files remain lightweight extension points for model knobs, extra capabilities,
-  and extra prompt text. Missing first-party member blueprints are automatically
-  materialized from code when a team loads, so production builds do not depend on
-  bundling the source `seed/` tree. Seed install also removes obsolete untouched
-  first-party files from older curated sets while preserving custom files.
+  and extra prompt text. Seed install also removes obsolete untouched first-party
+  files from older curated sets while preserving custom files.
+- **Automatic first-party member materialization** `[v1.37.0]` — missing shipped
+  member blueprints are restored from code when a team loads, so production builds
+  do not depend on bundling the source `seed/` tree.
 
 ---
 
@@ -339,7 +340,7 @@ Four orthogonal ways to add capability. Deeper docs:
   interactive Excalidraw diagrams with a 90%-screen fullscreen edit overlay;
   if later tool results reference the same UI resource, chat shows only the
   newest artifact for that resource. The same-server bridge can invoke tools
-  currently advertised by the artifact's originating MCP server only.
+  currently advertised by the artifact's originating MCP server only `[v1.37.0]`.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.
