@@ -94,7 +94,7 @@ function buildCsp(csp?: McpUiResourceCsp): string {
   const baseUriDomains = csp?.baseUriDomains?.length ? csp.baseUriDomains : ["'self'"]
   return [
     "default-src 'none'",
-    `script-src ${resourceDomains.join(' ')} 'unsafe-inline'`,
+    `script-src ${resourceDomains.join(' ')} 'unsafe-inline' 'unsafe-eval'`,
     `style-src ${resourceDomains.join(' ')} 'unsafe-inline'`,
     `img-src ${resourceDomains.join(' ')}`,
     `font-src ${resourceDomains.join(' ')}`,
@@ -105,12 +105,17 @@ function buildCsp(csp?: McpUiResourceCsp): string {
   ].join('; ')
 }
 
+function storageShimScript(): string {
+  return `<script>(function(){function createStorage(){var data=new Map();return{get length(){return data.size},key:function(index){return Array.from(data.keys())[index]||null},getItem:function(key){key=String(key);return data.has(key)?data.get(key):null},setItem:function(key,value){data.set(String(key),String(value))},removeItem:function(key){data.delete(String(key))},clear:function(){data.clear()}}}['localStorage','sessionStorage'].forEach(function(name){try{void window[name]}catch{Object.defineProperty(window,name,{value:createStorage(),configurable:true})}})})();</script>`
+}
+
 function wrapAppHtml(html: string, csp?: McpUiResourceCsp): string {
   const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${buildCsp(csp).replaceAll('"', '&quot;')}">`
+  const prefix = `${cspMeta}${storageShimScript()}`
   if (/<head\b[^>]*>/i.test(html)) {
-    return html.replace(/<head\b[^>]*>/i, (match) => `${match}${cspMeta}`)
+    return html.replace(/<head\b[^>]*>/i, (match) => `${match}${prefix}`)
   }
-  return `<!doctype html><html><head>${cspMeta}</head><body>${html}</body></html>`
+  return `<!doctype html><html><head>${prefix}</head><body>${html}</body></html>`
 }
 
 function errorToolResult(message: string): CallToolResult {

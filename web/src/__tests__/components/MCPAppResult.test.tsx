@@ -76,9 +76,55 @@ describe("MCPAppResult", () => {
     expect(iframe).toBeTruthy()
     expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts allow-forms")
     expect(iframe?.getAttribute("allow")).toContain("clipboard-write")
-    expect(iframe?.getAttribute("srcdoc")).toContain("script-src 'self' blob: data: 'unsafe-inline'")
+    expect(iframe?.getAttribute("srcdoc")).toContain("script-src 'self' blob: data: 'unsafe-inline' 'unsafe-eval'")
     expect(iframe?.getAttribute("title")).toBe("create_view")
     expect(screen.getByText(/Experimental sandbox:/)).toBeTruthy()
+  })
+
+  it("applies resource CSP domains for externally loaded MCP app modules", async () => {
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+          resourceMeta: {
+            ui: {
+              csp: {
+                resourceDomains: ["https://esm.sh"],
+                connectDomains: ["https://esm.sh"],
+              },
+            },
+          },
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("srcdoc")).toContain("mcp app"))
+
+    const srcdoc = document.body.querySelector("iframe")?.getAttribute("srcdoc") ?? ""
+    expect(srcdoc).toContain("script-src 'self' blob: data: https://esm.sh 'unsafe-inline' 'unsafe-eval'")
+    expect(srcdoc).toContain("connect-src 'self' https://esm.sh")
+  })
+
+  it("injects sandbox-safe storage shims before app scripts run", async () => {
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: '<html><head></head><body><script type="module">localStorage.getItem("x")</script></body></html>',
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("srcdoc")).toContain("localStorage"))
+
+    const srcdoc = document.body.querySelector("iframe")?.getAttribute("srcdoc") ?? ""
+    expect(srcdoc.indexOf("function createStorage")).toBeLessThan(srcdoc.indexOf('localStorage.getItem("x")'))
+    expect(srcdoc).toContain("'localStorage','sessionStorage'")
   })
 
   it("starts the bridge transport before loading srcdoc so app initialization is not missed", async () => {
