@@ -396,7 +396,10 @@ class MCPManager:
             raise KeyError(server_name)
         if runner.status.state != "ready" or runner.session is None:
             raise RuntimeError(f"MCP server '{server_name}' is not connected.")
-        if tool_name not in {tool.name for tool in runner.tools}:
+        advertised_tool_names = {
+            tool.name.removeprefix(f"mcp_{server_name}_") for tool in runner.tools
+        }
+        if tool_name not in advertised_tool_names:
             raise ValueError(f"MCP tool '{tool_name}' is not available.")
 
         logger.debug(

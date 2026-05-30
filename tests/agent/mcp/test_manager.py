@@ -299,7 +299,7 @@ class TestMCPManagerWithMockedServer:
             status=MCPServerStatus(
                 name="test", transport="stdio", enabled=True, state="ready"
             ),
-            tools=[SimpleNamespace(name="save_checkpoint")],
+            tools=[SimpleNamespace(name="mcp_test_save_checkpoint")],
         )
         manager._runners["test"] = runner  # type: ignore[assignment]
 
@@ -320,12 +320,35 @@ class TestMCPManagerWithMockedServer:
             status=MCPServerStatus(
                 name="test", transport="stdio", enabled=True, state="ready"
             ),
-            tools=[SimpleNamespace(name="save_checkpoint")],
+            tools=[SimpleNamespace(name="mcp_test_save_checkpoint")],
         )
         manager._runners["test"] = runner  # type: ignore[assignment]
 
         with pytest.raises(ValueError, match="not available"):
             await manager.call_app_tool("test", "not_allowed", {})
+
+    @pytest.mark.asyncio
+    async def test_call_app_tool_authorizes_remote_name_from_local_tool_name(
+        self,
+    ) -> None:
+        manager = MCPManager()
+        session = MagicMock()
+        session.call_tool = AsyncMock(return_value={"content": []})
+        runner = SimpleNamespace(
+            session=session,
+            status=MCPServerStatus(
+                name="excalidraw", transport="http", enabled=True, state="ready"
+            ),
+            tools=[SimpleNamespace(name="mcp_excalidraw_read_checkpoint")],
+        )
+        manager._runners["excalidraw"] = runner  # type: ignore[assignment]
+
+        result = await manager.call_app_tool(
+            "excalidraw", "read_checkpoint", {"id": "cp1"}
+        )
+
+        assert result == {"content": []}
+        session.call_tool.assert_awaited_once_with("read_checkpoint", {"id": "cp1"})
 
 
 class TestMCPManagerOAuth:
