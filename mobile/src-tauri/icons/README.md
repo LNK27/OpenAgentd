@@ -4,11 +4,10 @@
 The platform icon bundle is generated with:
 
 ```sh
-cd mobile/src-tauri && cargo tauri icon icons/icon.png
+cd mobile && make ios-icons
 ```
 
-That command writes the desktop bundle formats (`32x32.png`, `128x128.png`,
-`128x128@2x.png`, `icon.icns`, `icon.ico`) and mobile platform assets under
-`icons/android/`. For iOS, Tauri/Xcode copies generated AppIcon assets into
-`gen/apple/Assets.xcassets/AppIcon.appiconset/` during iOS project generation;
-`gen/` remains a local build artifact.
+That target runs `cargo tauri icon icons/icon.png --ios-color transparent`.
+When the generated Xcode project exists, Tauri writes the iOS AppIcon PNGs into
+`gen/apple/Assets.xcassets/AppIcon.appiconset/`. The generated desktop, Android,
+and iOS icon outputs remain local build artifacts.

@@ -166,13 +166,15 @@ describe("ToolResult — read", () => {
     expect(screen.getByText(/const x = 1/)).toBeTruthy()
   })
 
-  it("renders multi-line file content in a pre block", () => {
+  it("renders multi-line file content in a compact pre block", () => {
     render(<ToolResult toolName="read" result={"const x = 1\nconst y = 2"} />)
+    expect(screen.getByText("read")).toBeTruthy()
+    expect(screen.getByText("file contents")).toBeTruthy()
     expect(screen.getByText(/const x = 1/)).toBeTruthy()
     expect(screen.getByText(/const y = 2/)).toBeTruthy()
   })
 
-  it("promotes the [start-end/total] range header to a metadata line", () => {
+  it("promotes the [start-end/total] range header to a metadata label", () => {
     // The backend read tool prepends "[12-20/100]\n" when offset/limit are
     // active. We surface that as a quiet "lines 12–20 of 100" label so the
     // pre block shows only the actual file content.
@@ -180,6 +182,25 @@ describe("ToolResult — read", () => {
     expect(screen.getByText(/lines 12.20 of 100/)).toBeTruthy()
     // Raw bracketed header is no longer shown verbatim
     expect(screen.queryByText(/\[12-20\/100\]/)).toBeNull()
+  })
+
+  it("uses compact file chrome without diff line markers", () => {
+    const { container } = render(<ToolResult toolName="read" result={"line one\nline two"} />)
+
+    expect(container.querySelector("div[class*='bg-(--bg-key)']")).toBeTruthy()
+    expect(container.querySelector("div[class*='border-(--color-border)']")).toBeTruthy()
+    expect(screen.queryByText("+")).toBeNull()
+    expect(screen.queryByText("-")).toBeNull()
+  })
+
+  it("keeps scrolling on the read content instead of a sticky nested header", () => {
+    const { container } = render(<ToolResult toolName="read" result="line one" />)
+
+    const header = screen.getByText("read").parentElement
+    const body = container.querySelector("pre")
+    expect(header?.className).not.toContain("sticky")
+    expect(body?.className).toContain("max-h-80")
+    expect(body?.className).toContain("overflow-auto")
   })
 
   it("renders full content as-is when no range header is present", () => {

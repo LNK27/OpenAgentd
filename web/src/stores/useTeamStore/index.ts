@@ -39,6 +39,16 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
     }))
 }
 
+function isTransientStreamError(err: Error): boolean {
+  const message = err.message.toLowerCase()
+  return (
+    message.includes('load failed') ||
+    message.includes('failed to fetch') ||
+    message.includes('networkerror') ||
+    message.includes('network request failed')
+  )
+}
+
 function effectiveLeadModel(state: TeamStore, leadName: string | null, requestedModel?: string | null): string | null {
   return requestedModel ?? state.sessionModel ?? (leadName ? state.agentStreams[leadName]?.model : null) ?? null
 }
@@ -570,7 +580,7 @@ export const useTeamStore = create<TeamStore>()(
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             if (current._unloading || abort.signal.aborted) return
-            if (!current.isTeamWorking) {
+            if (isTransientStreamError(err) || !current.isTeamWorking) {
               set((draft) => { draft.isConnected = false })
               return
             }

@@ -12,7 +12,7 @@
  * rather than an overlay. Theme-aware, no hard-coded rgba.
  */
 
-import { ExternalLink, Globe } from 'lucide-react'
+import { ExternalLink, FileText, Globe } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -191,18 +191,22 @@ function FileListResult({ result }: { result: string }) {
 
 function FileReadResult({ result }: { result: string }) {
   // Detect the optional "[start-end/total]" header emitted by read when a
-  // range was requested. Promote it to a quiet metadata line so the pre
-  // block shows only the actual file content.
+  // range was requested. Promote it to quiet metadata so the code block shows
+  // only the actual file content.
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
-  const rangeLabel = match ? `lines ${match[1]}–${match[2]} of ${match[3]}` : null
+  const rangeLabel = match ? `lines ${match[1]}–${match[2]} of ${match[3]}` : 'file contents'
   const body = match ? match[4] : result
 
   return (
-    <div className="flex flex-col gap-1">
-      {rangeLabel && (
-        <span className="font-mono text-[10px] text-(--color-text-muted)">{rangeLabel}</span>
-      )}
-      <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+    <div className="min-w-0 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
+      <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-(--color-text-muted) uppercase">
+        <FileText size={12} className="shrink-0" aria-hidden />
+        <span className="truncate">read</span>
+        <span className="ml-auto shrink-0 font-normal normal-case tracking-normal">
+          {rangeLabel}
+        </span>
+      </div>
+      <pre className="max-h-80 min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)">
         {body}
       </pre>
     </div>

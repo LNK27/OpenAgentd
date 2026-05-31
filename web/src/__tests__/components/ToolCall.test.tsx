@@ -185,6 +185,27 @@ describe("ToolCall — web_search display", () => {
 })
 
 describe("ToolCall — diff stats", () => {
+  it("keeps diff file headers sticky within their own scroll container", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({
+      path: "src/main.py",
+      old_string: "old line",
+      new_string: "new line",
+    })
+
+    render(<ToolCall name="edit" args={args} done={true} result="Edit applied successfully" />)
+
+    await user.click(screen.getByRole("button", { name: "Expand edit details" }))
+    const header = screen.getByRole("button", { name: "Collapse diff for src/main.py" })
+
+    expect(header.className).toContain("sticky")
+    expect(header.className).toContain("top-0")
+    expect(header.className).toContain("z-10")
+    expect(header.parentElement?.className).toContain("max-h-80")
+    expect(header.parentElement?.className).toContain("overflow-y-auto")
+    expect(header.parentElement?.className).toContain("overflow-x-hidden")
+  })
+
   it("collapses the whole edit result when clicking the diff file header", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({
@@ -219,6 +240,61 @@ describe("ToolCall — diff stats", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Expand write details" })).toBeTruthy()
     })
+  })
+
+  it("renders read results with write/edit-style file chrome", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ path: "src/main.py", offset: 12, limit: 9 })
+
+    render(<ToolCall name="read" args={args} done={true} result={"[12-20/100]\nprint('hello')\nprint('bye')"} />)
+
+    expect(screen.getByRole("button", { name: "Expand read details" })).toBeTruthy()
+    expect(screen.queryByText("result")).toBeNull()
+
+    await user.click(screen.getByRole("button", { name: "Expand read details" }))
+
+    expect(screen.getByRole("button", { name: "Collapse read result" })).toBeTruthy()
+    expect(screen.getByText("lines 12–20 of 100")).toBeTruthy()
+    expect(screen.getByLabelText("Copy read result")).toBeTruthy()
+    expect(screen.getByText("12")).toBeTruthy()
+    expect(screen.getByText("13")).toBeTruthy()
+    expect(screen.getByText("print('hello')")).toBeTruthy()
+    expect(screen.getByText("print('bye')")).toBeTruthy()
+    expect(screen.queryByText(/\[12-20\/100\]/)).toBeNull()
+  })
+
+  it("collapses the whole read result when clicking the read file header", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ path: "src/main.py" })
+
+    render(<ToolCall name="read" args={args} done={true} result="file content" />)
+
+    await user.click(screen.getByRole("button", { name: "Expand read details" }))
+    expect(screen.getByRole("button", { name: "Collapse read result" })).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "Collapse read result" }))
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Expand read details" })).toBeTruthy()
+    })
+  })
+
+  it("copies read content from the file header copy button", async () => {
+    let copiedText = ""
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: async (text: string) => { copiedText = text } },
+      configurable: true,
+      writable: true,
+    })
+    const args = JSON.stringify({ path: "src/main.py" })
+
+    render(<ToolCall name="read" args={args} done={true} result={"[1-2/2]\nhello\nworld"} />)
+
+    await user.click(screen.getByRole("button", { name: "Expand read details" }))
+    await user.click(screen.getByLabelText("Copy read result"))
+
+    await waitFor(() => expect(copiedText).toBe("hello\nworld"))
   })
 
   it("shows deleted line count for rm from result metadata", () => {
@@ -443,7 +519,7 @@ describe("ToolCall — expand/collapse", () => {
     )
     await user.click(screen.getByRole("button"))
     expect(screen.getByText("result")).toBeTruthy()
-    expect(document.querySelector('[class*="max-h-80"][class*="overflow-auto"]')).toBeTruthy()
+    expect(screen.getByText("file content here")).toBeTruthy()
   })
 
   it("shows both args and result sections together", async () => {

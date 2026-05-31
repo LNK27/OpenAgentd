@@ -65,8 +65,8 @@ export function PendingMessageQueue() {
     <div className="flex flex-col gap-3">
       {messages.map((msg) => (
         <div key={msg.id} className="group flex justify-end">
-          <div className="flex max-w-[78%] flex-col items-end gap-1.5">
-            <div className="flex items-start gap-2">
+          <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
+            <div className="flex max-w-full items-start gap-2">
               <QueuedMessageContent content={msg.content} />
               <button
                 onClick={() => handleRemove(msg.id, msg.content)}

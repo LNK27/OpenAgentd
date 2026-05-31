@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.37.0 · May 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.37.0)
+**Latest release:** v1.39.0 · May 31, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.39.0)
 
 ---
 
@@ -69,6 +69,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   keep visual notifications on while muting audio.
 - **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,
   agents, files, slash commands, settings.
+- **Native menu/tray shortcuts** `[v1.39.0]` — menubar shortcuts for Home,
+  Cockpit, Coding, Command Palette, Wiki, Scheduled Tasks, Session Settings,
+  key settings pages, updates, reload, config folder, and backend log; compact
+  tray dropdown for status, quick navigation, reload, settings, and quit.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
@@ -99,7 +103,8 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation. See [`web/todos.md`](./web/todos.md).
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
-  shapes optimized for small screens. See [`web/mobile.md`](./web/mobile.md).
+  shapes, and composer keyboard behaviour optimized for small screens. See
+  [`web/mobile.md`](./web/mobile.md).
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Remote-backend mobile shell** `[v1.34.0]` — Tauri mobile app scaffold embeds

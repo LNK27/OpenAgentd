@@ -1028,14 +1028,25 @@ describe("connectStream", () => {
     expect(signal).toBeInstanceOf(AbortSignal)
   })
 
-  it("onError sets error and isConnected=false", () => {
+  it("onError sets error and isConnected=false for non-transport failures", () => {
     useTeamStore.setState({ sessionId: "s1", isTeamWorking: true })
     let callbacks!: { onError: (err: Error) => void }
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useTeamStore.getState().connectStream()
-    callbacks.onError(new Error("boom"))
-    expect(useTeamStore.getState().error).toBe("boom")
+    callbacks.onError(new Error("SSE parser failed"))
+    expect(useTeamStore.getState().error).toBe("SSE parser failed")
     expect(useTeamStore.getState().isConnected).toBe(false)
+  })
+
+  it("downgrades iOS transport stream failures while work continues", () => {
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true })
+    let callbacks!: { onError: (err: Error) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
+    callbacks.onError(new TypeError("Load failed"))
+    expect(useTeamStore.getState().error).toBeNull()
+    expect(useTeamStore.getState().isConnected).toBe(false)
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
   })
 
   it("ignores stream errors while the page is unloading", () => {

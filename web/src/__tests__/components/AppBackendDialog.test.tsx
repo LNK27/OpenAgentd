@@ -164,6 +164,21 @@ describe('AppBackendDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
+  it('checks and uses a LAN server URL', async () => {
+    globalThis.fetch = mock((...args: unknown[]) => {
+      const url = String(args[0])
+      const ok = url.startsWith('http://192.168.1.20:4082/')
+      return Promise.resolve(new Response(null, { status: ok ? 204 : 503 }))
+    }) as typeof fetch
+    const user = userEvent.setup()
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://192.168.1.20:4082')
+    await user.click(screen.getByRole('button', { name: 'Check' }))
+
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://192.168.1.20:4082'))
+  })
+
   it('checks and uses a saved server directly without copying stale input', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)

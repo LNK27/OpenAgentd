@@ -22,6 +22,21 @@ afterEach(cleanup)
 describe("AgentView — UserBubble collapse feature", () => {
   // ── Short message (≤10 lines) ────────────────────────────────────────────
 
+  it("allows user bubbles to span full width on mobile and caps width from md up", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "Full-width mobile message",
+      },
+    ]
+
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const wrapper = container.querySelector("div[class*='max-w-full'][class*='md:max-w-[78%]']")
+    expect(wrapper).toBeTruthy()
+  })
+
   it("shows full content without collapse button for short message (≤10 lines)", () => {
     const shortContent = "line1\nline2\nline3\nline4\nline5"
     const blocks: ContentBlock[] = [
