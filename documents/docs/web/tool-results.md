@@ -81,7 +81,7 @@ These stats are calculated dynamically from the tool arguments using `getDiffSta
 When expanded, the args and/or result sections slide open below the header inside one codeblock-style container:
 
 - The container uses `surface-raised`, `rounded-md`, `border border-(--color-border)`, and `bg-(--bg-card)`, matching markdown codeblock chrome.
-- For file-modifying tools (`edit`, `patch`, and `write`), the raw arguments and results are hidden. Instead, an inline Git-like **Diff View** (`DiffView.tsx`) is rendered directly inside the container, filling it completely without nested borders or padding. Completed `edit`, `patch`, and file `rm` calls use tool-result metadata for line-aware stats; multi-hunk patches reset numbering per hunk. File headers are clickable to collapse or expand each file diff.
+- For file-modifying tools (`edit`, `patch`, and `write`), the raw arguments and results are hidden. Instead, an inline Git-like **Diff View** (`DiffView.tsx`) is rendered directly inside the container, filling it completely without nested borders or padding. Completed `edit`, `patch`, and file `rm` calls use tool-result metadata for line-aware stats; multi-hunk patches reset numbering per hunk. File headers are sticky below the app header and clickable to collapse or expand each file diff.
 - For other tools, each section has a header strip (`bg-(--bg-key)`, bottom divider) with an uppercase 10px mono label (`arguments` / `terminal` / `output` / `result`) and a copy button when applicable.
 - Result content is capped with `max-h-80 overflow-auto`; live and terminal output use their own scrollable max heights.
 
@@ -194,7 +194,7 @@ Rendering:
 ### `FileReadResult` — `read`
 
 - Detects the optional `[start-end/total]\n` prefix emitted by the backend when `offset`/`limit` were used and promotes it to a quiet `lines N–M of T` metadata label.
-- Renders read output in a file-card surface that mirrors the edit/patch/write diff chrome: bordered wrapper, `bg-(--bg-key)` header strip, file icon, and scrollable monospace body.
+- Renders read output in a file-card surface that mirrors the edit/patch/write diff chrome: bordered wrapper, sticky `bg-(--bg-key)` header strip, file icon, and scrollable monospace body.
 - Shows file contents only — no diff line markers, additions/deletions, or hunk metadata.
 
 ### `TeamMessageResult` — `team_message`

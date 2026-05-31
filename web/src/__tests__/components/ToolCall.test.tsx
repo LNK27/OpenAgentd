@@ -185,6 +185,24 @@ describe("ToolCall — web_search display", () => {
 })
 
 describe("ToolCall — diff stats", () => {
+  it("keeps diff file headers sticky below the app header", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({
+      path: "src/main.py",
+      old_string: "old line",
+      new_string: "new line",
+    })
+
+    render(<ToolCall name="edit" args={args} done={true} result="Edit applied successfully" />)
+
+    await user.click(screen.getByRole("button", { name: "Expand edit details" }))
+    const header = screen.getByRole("button", { name: "Collapse diff for src/main.py" })
+
+    expect(header.className).toContain("sticky")
+    expect(header.className).toContain("top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))]")
+    expect(header.className).toContain("z-10")
+  })
+
   it("collapses the whole edit result when clicking the diff file header", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({

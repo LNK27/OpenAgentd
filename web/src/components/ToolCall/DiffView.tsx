@@ -51,7 +51,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           }
           setExpanded((value) => !value)
         }}
-        className="flex w-full items-center gap-2 bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) transition-colors hover:text-(--color-accent) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+        className="sticky top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-10 flex w-full items-center gap-2 bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) transition-colors hover:text-(--color-accent) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >

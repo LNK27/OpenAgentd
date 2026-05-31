@@ -199,7 +199,7 @@ function FileReadResult({ result }: { result: string }) {
 
   return (
     <div className="overflow-hidden rounded-md border border-(--color-border)">
-      <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-3 py-1.5 font-mono text-xs font-semibold text-(--color-text-2)">
+      <div className="sticky top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-10 flex items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-3 py-1.5 font-mono text-xs font-semibold text-(--color-text-2)">
         <FileText size={14} className="shrink-0 text-(--color-text-muted)" aria-hidden />
         <span className="truncate">Read output</span>
         <span className="ml-auto text-[10px] font-normal text-(--color-text-muted) uppercase">
