@@ -477,6 +477,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     void setTraySession(label)
   }, [mode, workspace, sessionTitle, isTeamWorking])
 
+  // Shell shortcut: start a message with `!` to run the rest as a shell command.
   // Slash commands for the input bar (type / to trigger).
   // Built-ins execute immediately on pick; user-defined commands are inserted
   // into the textarea (``keepInputOpen``) so the user can append
@@ -1052,13 +1053,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ref={inputRef}
             boundsRef={mainColumnRef}
             onSubmit={async (content, files) => {
-              const expanded = await expandUserCommand(content)
+              const shell = content.startsWith('!')
+              const command = shell ? content.slice(1).trim() : content
+              const expanded = shell ? `!${command}` : await expandUserCommand(content)
               const current = useTeamStore.getState()
               sendMessage(expanded, files, {
                 mode,
                 workspace,
                 model: current.sessionId ? selectedModel || null : null,
                 thinkingLevel: current.sessionId ? selectedThinkingLevel || null : null,
+                shell,
               })
             }}
             onStop={() => useTeamStore.getState().stopTeam()}

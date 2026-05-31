@@ -25,7 +25,9 @@ from uuid import uuid7
 from loguru import logger
 
 from app.core.paths import session_uploads_dir
+from app.agent.schemas.events import DoneEvent, ErrorEvent
 from app.services import memory_stream_store as stream_store
+from app.services.shell_service import dispatch_shell_command
 from app.services.stream_envelope import StreamEnvelope
 
 
@@ -437,6 +439,51 @@ async def dispatch_user_message(
         len(metas),
     )
     return sid, len(metas)
+
+
+async def dispatch_user_shell_command(
+    team: "AgentTeam",
+    *,
+    command: str,
+    session_id: str | None,
+    mode: str = "normal",
+    workspace: str | None = None,
+    model: str | None = None,
+    model_provided: bool = False,
+    thinking_level: str | None = None,
+    thinking_level_provided: bool = False,
+) -> str:
+    """Run a user-entered shell command in the session workspace."""
+    sid = session_id or str(uuid7())
+    await stream_store.init_turn(sid)
+
+    async def _run_shell() -> None:
+        try:
+            await dispatch_shell_command(
+                team,
+                command=command,
+                session_id=sid,
+                mode=mode,
+                workspace=workspace,
+                model=model,
+                model_provided=model_provided,
+                thinking_level=thinking_level,
+                thinking_level_provided=thinking_level_provided,
+            )
+        except Exception as exc:
+            logger.warning(
+                "agent_service_shell_failed session_id={} error={}", sid, exc
+            )
+            await stream_store.push_event(
+                sid,
+                StreamEnvelope.from_event(ErrorEvent(message=str(exc))),
+            )
+            await stream_store.push_event(sid, StreamEnvelope.from_event(DoneEvent()))
+            await stream_store.mark_done(sid)
+
+    asyncio.create_task(_run_shell(), name=f"user_shell:{sid}")
+    logger.info("agent_service_shell_dispatched session_id={}", sid)
+    return sid
 
 
 async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]:

@@ -218,6 +218,31 @@ async def team_chat(
 
     assert message is not None
 
+    if body.shell:
+        if files:
+            raise HTTPException(
+                status_code=422,
+                detail="Shell commands cannot include file uploads.",
+            )
+        command = message.strip()
+        if command.startswith("!"):
+            command = command[1:].strip()
+        if not command:
+            raise HTTPException(status_code=422, detail="Shell command is required.")
+        sid = await agent_service.dispatch_user_shell_command(
+            team_obj,
+            command=command,
+            session_id=session_id,
+            mode=mode,
+            workspace=workspace,
+            model=model,
+            model_provided=model_provided,
+            thinking_level=thinking_level,
+            thinking_level_provided=thinking_level_provided,
+        )
+        logger.info("team_chat_shell_received session_id={}", sid)
+        return {"status": "accepted", "session_id": sid}
+
     # Materialise the multipart uploads into transport-neutral attachments
     # so agent_service can validate + persist them without knowing about
     # FastAPI ``UploadFile``.

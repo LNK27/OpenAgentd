@@ -69,7 +69,7 @@ export interface TeamStoreState {
 }
 
 export interface TeamStoreActions {
-  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null }) => Promise<void>
+  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; shell?: boolean }) => Promise<void>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null) => void
   continueTeam: () => Promise<void>
   compactTeam: () => Promise<void>

@@ -186,6 +186,7 @@ uv run python -m manual.note --cat 2026-04-30-manual-test.md
 | `compaction_cache.py` | Live smoke for cache-first summarization; checks prompt-cache reads during compaction | `--turns N`, `--wait N`, `--session ID` |
 | `tool_result_offload_test.py` | Verify large tool results are offloaded to workspace | — |
 | `shell_output_delta.py` | Verify live `tool_output_delta` events from shell output | `--base URL`, `--message TEXT`, `--wait N` |
+| `bang_shell.py` | Verify opencode-style `!command` input dispatches directly to the shell tool, streams shell events, and persists shell history | `--base URL`, `--command TEXT`, `--expect TEXT`, `--session ID`, `--wait N` |
 
 ```bash
 # Check server health + configured agents
@@ -223,6 +224,10 @@ uv run python -m manual.otel_inspect --metrics
 
 # Verify live shell output deltas
 uv run python -m manual.shell_output_delta
+
+# Verify `!command` shell dispatch from the input-bar/API path
+uv run python -m manual.bang_shell
+uv run python -m manual.bang_shell --command "pwd && echo oad-bang-shell-ok"
 
 # Verify summarisation SSE events fire on a team turn (needs low token_threshold)
 uv run python -m manual.summarization_sse

@@ -442,6 +442,13 @@ describe("sendMessage", () => {
     expect(mockPostTeamChat.mock.calls[0][2]).toBe(false)
   })
 
+  it("passes shell option and visible bang command to postTeamChat", async () => {
+    useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
+    await useTeamStore.getState().sendMessage("!ls -la", undefined, { shell: true })
+    expect(mockPostTeamChat.mock.calls[0][0]).toBe("!ls -la")
+    expect(mockPostTeamChat.mock.calls[0]).toContain(true)
+  })
+
   it("sets sessionId from postTeamChat response", async () => {
     mockPostTeamChat.mockImplementation(() =>
       Promise.resolve({ status: "ok", session_id: "new-team-sid" })
