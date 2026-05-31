@@ -109,8 +109,29 @@ event: done           data: {}
 - 202 returned immediately (POST is non-blocking).
 - Lead creates todos via `todo_manage` and delegates via `team_message`.
 - Each member wakes, processes its inbox, and replies with `team_message`.
+- If a member claims/owns a todo but stops without `<sleep>` or `team_message`,
+  the runtime injects one hidden open-task reminder and reactivates that member.
 - Lead synthesises member outputs into a final assistant message.
 - `done` fires exactly once after every active agent becomes idle.
+
+---
+
+## Recipe 1a — Member open-task nudge
+
+Use the deterministic no-server smoke when validating the safety net. It forces
+a member to claim a todo, stop with plain text, then verifies the hidden nudge
+reactivates it so it reports via `team_message`:
+
+```bash
+uv run python -m manual.team_open_task_nudge --direct
+```
+
+The live-server mode exists, but real models may correctly refuse to stop
+incorrectly, so it is less deterministic:
+
+```bash
+uv run python -m manual.team_open_task_nudge
+```
 
 ---
 

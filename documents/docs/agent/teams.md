@@ -156,8 +156,11 @@ _run_activation() ← one-shot task
 │    ├─ set_sandbox(workspace_dir(lead_session_id))
 │    └─ await agent.run(run_messages, hooks=hooks, injected_tools=injected)
 │
-├─ _on_turn_success()
-│    └─ TeamMember only: safety net — if not _replied → send "[done — no explicit reply]" to lead
+├─ after agent.run()
+│    └─ TeamMember only: if the member ended without `<sleep>`/`team_message`
+│       while it still has open assigned/claimed todos, enqueue one hidden
+│       `[system]` reminder telling it to continue, report via `team_message`,
+│       or sleep. The nudge is bounded per task to avoid loops.
 ├─ (on error) _on_turn_error()
 │    ├─ Provider auth / unconfigured-model failures: push `agent_not_configured` to the lead stream
 │    ├─ TeamMember: notify lead via mailbox ("[name]: System error — temporarily unavailable…")
