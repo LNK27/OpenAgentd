@@ -193,13 +193,15 @@ describe("ToolResult — read", () => {
     expect(screen.queryByText("-")).toBeNull()
   })
 
-  it("keeps the read header sticky below the app header", () => {
+  it("keeps the read header sticky within its own scroll container", () => {
     render(<ToolResult toolName="read" result="line one" />)
 
     const header = screen.getByText("Read output").parentElement
     expect(header?.className).toContain("sticky")
-    expect(header?.className).toContain("top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))]")
+    expect(header?.className).toContain("top-0")
     expect(header?.className).toContain("z-10")
+    expect(header?.parentElement?.className).toContain("max-h-80")
+    expect(header?.parentElement?.className).toContain("overflow-auto")
   })
 
   it("renders full content as-is when no range header is present", () => {

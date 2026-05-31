@@ -185,7 +185,7 @@ describe("ToolCall — web_search display", () => {
 })
 
 describe("ToolCall — diff stats", () => {
-  it("keeps diff file headers sticky below the app header", async () => {
+  it("keeps diff file headers sticky within their own scroll container", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({
       path: "src/main.py",
@@ -199,8 +199,10 @@ describe("ToolCall — diff stats", () => {
     const header = screen.getByRole("button", { name: "Collapse diff for src/main.py" })
 
     expect(header.className).toContain("sticky")
-    expect(header.className).toContain("top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))]")
+    expect(header.className).toContain("top-0")
     expect(header.className).toContain("z-10")
+    expect(header.parentElement?.className).toContain("max-h-80")
+    expect(header.parentElement?.className).toContain("overflow-auto")
   })
 
   it("collapses the whole edit result when clicking the diff file header", async () => {
@@ -461,7 +463,7 @@ describe("ToolCall — expand/collapse", () => {
     )
     await user.click(screen.getByRole("button"))
     expect(screen.getByText("result")).toBeTruthy()
-    expect(document.querySelector('[class*="max-h-80"][class*="overflow-auto"]')).toBeTruthy()
+    expect(screen.getByText("file content here")).toBeTruthy()
   })
 
   it("shows both args and result sections together", async () => {

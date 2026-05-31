@@ -102,7 +102,8 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
 
   const { header, headerTitle, formattedArgs, language, suppressResult } =
     getToolDisplay(name, args)
-  const diffStats = (name === 'edit' || name === 'patch' || name === 'write' || name === 'rm') && args
+  const usesDiffView = name === 'edit' || name === 'patch' || name === 'write'
+  const diffStats = (usesDiffView || name === 'rm') && args
     ? getDiffStats(name, args, result)
     : null
   // Pending-state header comes from getToolDisplay's no-args branch
@@ -327,7 +328,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                           )}
                         </button>
                       </div>
-                      <div className="max-h-80 overflow-auto px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
+                      <div className="px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
                         <ToolResult toolName={name} result={shownResult} />
                       </div>
                     </div>
