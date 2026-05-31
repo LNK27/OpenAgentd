@@ -28,7 +28,8 @@ make dev                    # Tauri shell against Vite :5173
 make ios-init               # generate iOS project files
 make ios-dev                # run on simulator/device with --host
 make ios-dev-device <device-name> # run on a named physical iOS device
-make ios-install-device <device-name> # install production app with bundled Web UI
+make ios-install-device <device-name> # archive/install production app with bundled Web UI
+make ios-icons-force        # force-regenerate generated iOS AppIcon assets
 make ios-clean              # remove generated iOS/Xcode state
 make ios-build              # build iOS app
 ```
@@ -46,7 +47,7 @@ cd web && bun dev --host 0.0.0.0
 uv run uvicorn app.server:app --host 0.0.0.0 --port 8000
 ```
 
-Use `ios-install-device` for production device checks. It builds `web/dist` and installs the signed app bundle instead of using Vite `devUrl`.
+Use `ios-install-device` for production device checks. It builds `web/dist`, archives the iOS app, and installs the signed app bundle directly instead of exporting an IPA or using Vite `devUrl`. Generated AppIcon assets are reused across builds unless missing, stale, or force-regenerated with `ios-icons-force`.
 
 If iOS blocks the first launch, trust the developer profile on the phone in **Settings → General → VPN & Device Management**.
 
