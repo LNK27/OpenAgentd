@@ -195,3 +195,31 @@ class DreamNotesLog(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     filename: str = Field(index=True, unique=True)  # e.g. "2026-04-29-abc123.md"
     processed_at: datetime = Field(sa_column=Column(TZDateTime, nullable=False))
+
+
+class MemoryProcessedSource(SQLModel, table=True):
+    """Content-aware Dream v2 processing state for raw memory sources."""
+
+    __tablename__: str = "memory_processed_sources"  # type: ignore[reportIncompatibleVariableOverride]
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "source_type",
+            "source_id",
+            name="uq_memory_processed_sources_source",
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    source_type: str = Field(index=True, max_length=50)
+    source_id: str = Field(index=True, max_length=255)
+    content_hash: str = Field(max_length=64)
+    processed_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(TZDateTime, nullable=False),
+    )
+    pages_changed: str | None = Field(
+        default=None,
+        sa_column=Column(sa.Text(), nullable=True),
+    )  # JSON array
+    status: str = Field(max_length=20)
+    error: str | None = Field(default=None, sa_column=Column(sa.Text(), nullable=True))
