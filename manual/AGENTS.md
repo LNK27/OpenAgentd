@@ -110,6 +110,11 @@ uv run python -m manual.mention_attachments
 | `dream.py log` | Show `dream_log` entries (sessions processed) | `--notes`, `--all` |
 | `dream.py unmark` | Requeue a processed session or note | `--session ID`, `--note FILE` |
 | `dream.py lint` | Trigger wiki lint via `POST /api/dream/lint` or directly | `--direct`, `--base URL` |
+| `memory.py tree` | Show Memory v2 tree (`SCHEMA.md`, `INDEX.md`, `LOG.md`, `wiki/`, `imports/`, `notes/`) | — |
+| `memory.py search QUERY` | Search Memory v2 markdown files; optionally include raw DB messages | `--raw`, `--limit N` |
+| `memory.py maintain` | Run the deterministic Dream v2 maintainer directly; compiles pending sources into flat `wiki/*.md` pages and records `memory_processed_sources` | `--limit N` |
+| `memory.py index` | Print Memory v2 `INDEX.md` or placeholder | — |
+| `memory_bench.py longmemeval` | Run local LongMemEval-style deterministic retrieval harness with negative/abstention and per-type metrics; no dataset download | `--mode raw|wiki|wiki-plus-raw`, `--data PATH`, `--limit N`, `--top-k N` |
 | `wiki.py tree` | Show full wiki tree (system, knowledge dirs, notes) | `--unprocessed` |
 | `wiki.py read PATH` | Print a wiki file's contents | — |
 | `wiki.py write PATH` | Write a wiki file (content from `--content` or stdin) | `--content` |
@@ -140,6 +145,21 @@ uv run python -m manual.dream log --all
 # Requeue a session/note that was marked processed too early
 uv run python -m manual.dream unmark --session <SESSION_ID>
 uv run python -m manual.dream unmark --note 2026-05-17.md
+
+# Memory v2 tree/search helpers
+uv run python -m manual.memory tree
+uv run python -m manual.memory search "what does Hoang prefer?"
+uv run python -m manual.memory search "memory schema" --raw --limit 5
+uv run python -m manual.memory index
+
+# Compile pending Memory v2 sources into flat wiki pages
+uv run python -m manual.memory maintain --limit 1
+
+# LongMemEval-style retrieval baseline over a local dataset file
+# Rows may include type/question_type and negative/answerable flags for grouped abstention metrics.
+uv run python -m manual.memory_bench longmemeval --mode raw --limit 20 --top-k 10 --data PATH
+uv run python -m manual.memory_bench longmemeval --mode wiki --limit 20 --top-k 10 --data PATH
+uv run python -m manual.memory_bench longmemeval --mode wiki-plus-raw --limit 20 --top-k 10 --data PATH
 
 # Show wiki tree (all files)
 uv run python -m manual.wiki tree
