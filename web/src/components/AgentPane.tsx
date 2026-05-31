@@ -122,7 +122,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
       onMouseEnter={() => setShowTime(true)}
       onMouseLeave={() => setShowTime(false)}
     >
-      <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+      <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[85%]">
          {/* Attachments (compact) */}
          {attachments && attachments.length > 0 && (
            <div className="flex flex-wrap justify-end gap-1.5">

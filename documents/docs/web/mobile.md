@@ -66,6 +66,7 @@ Right-side workspace explorer for `/coding` mode.
 - View-mode toggle, token count, split/unified controls are hidden on mobile.
 - `Ctrl+P` (command palette) and `v` (cycle view mode) shortcuts no-op on mobile.
 - `CommandPalette` is never rendered on mobile (`!isMobile && showPalette`).
+- User and queued-message bubbles can use the full chat width on mobile; `md:` and wider viewports keep the narrower desktop caps.
 
 ### FloatingInputBar (`FloatingInputBar.tsx`) / InputBar (`InputBar.tsx`)
 - Mobile: static docked `<div>` at the bottom with `border-t`, `backdrop-blur`, `.pb-safe`. No drag, no localStorage position.

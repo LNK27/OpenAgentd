@@ -30,6 +30,20 @@ describe('PendingMessageQueue', () => {
     expect(screen.queryByText('Other session')).toBeNull()
   })
 
+  it('allows queued messages to span full width on mobile and caps width from md up', () => {
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [
+        { id: 'pending-1', sessionId: 'session-1', content: 'Queued message' },
+      ],
+    })
+
+    const { container } = render(<PendingMessageQueue />)
+
+    const wrapper = container.querySelector("div[class*='max-w-full'][class*='md:max-w-[78%]']")
+    expect(wrapper).toBeTruthy()
+  })
+
   it('keeps queued edit action visible and large enough for touch before desktop hover reveal', () => {
     useTeamStore.setState({
       sessionId: 'session-1',
