@@ -44,7 +44,7 @@ app/agent/
     └── team/           # AgentTeam, TeamLead, TeamMember, mailbox
         ├── hooks/          # AgentTeamProtocolHook, TeamInboxHook
         ├── tools.py        # team_message
-        └── manage.py       # team_manage, team_configure (lead-only)
+        └── manage.py       # team_manage (lead-only)
 ```
 
 ## Documents

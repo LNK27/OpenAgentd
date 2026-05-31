@@ -104,7 +104,7 @@ C4Component
         Component(scheduler, "Scheduler", "app/services/scheduler.py", "Cron, interval, and one-shot scheduled tasks. Runs via APScheduler with SQLite persistence. Results appear in the UI when the user returns.")
         Component(models, "Models", "app/models/", "SQLModel schemas: ChatSession, SessionMessage, ScheduledTask, etc.")
         Component(schemas, "Schemas", "app/agent/schemas/", "Pydantic wire types: chat.py (messages), agent.py (RunConfig, AgentContext), events.py (SSE).")
-        Component(teams, "Agent Teams", "app/agent/mode/team/", "AgentTeam, TeamLead, TeamMember, TeamMailbox, team_message/team_manage/team_configure tools.")
+        Component(teams, "Agent Teams", "app/agent/mode/team/", "AgentTeam, TeamLead, TeamMember, TeamMailbox, team_message/team_manage tools.")
         Component(logging, "Logging", "app/core/logging_config.py", "Loguru-based: app logs to {STATE_DIR}/logs/app/, per-session logs to {STATE_DIR}/logs/sessions/{id}/.")
     }
 

@@ -92,7 +92,7 @@ Two equivalent paths:
 
 ## Authoring rule
 
-Keep prompt bodies **tool-agnostic**. Don't hardcode tool names like `` `shell` `` or `` `web_search` `` in the prompt body. Runtime capabilities can change via `team_configure` ([`agent/teams.md`](../agent/teams.md)) or config edits, and a prompt that names tools that no longer exist drives weak models to hallucinate. Describe intent ("prefer in-place edits over rewriting whole files") instead of tool names.
+Keep prompt bodies **tool-agnostic**. Don't hardcode tool names like `` `shell` `` or `` `web_search` `` in the prompt body. Capabilities can change via config edits, and a prompt that names tools that no longer exist drives weak models to hallucinate. Describe intent ("prefer in-place edits over rewriting whole files") instead of tool names.
 
 ## Importing from other systems
 

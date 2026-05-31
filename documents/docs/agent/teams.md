@@ -306,7 +306,6 @@ Injected automatically — do not list in `tools:`.
 |---------|---------|-----|
 | `make_team_message_tool(mailbox, agent_name, role)` | `[team_message]` | All team agents (lead + members) |
 | `make_team_manage_tool(team)` | `[team_manage]` | Lead only |
-| `make_team_configure_tool(team)` | `[team_configure]` | Lead only |
 
 ### `team_message` tool
 
@@ -348,32 +347,12 @@ team_manage(action="spawn", members=["executor#1"])  # restore exact history
 team_manage(action="dismiss", members=["executor#1", "explorer#1"])
 ```
 
-### `team_configure` tool (lead-only)
-
-```
-team_configure(member: str, action: "add"|"remove"|"list", kind: "skill"|"tool"|"mcp" | None, name: str | None) -> str
-```
-
-The lead grants or revokes a live member's capabilities at runtime. Changes affect the current live member only; they do not rewrite blueprint/root `.md` files and can be reset by respawn or config drift reload. Use settings or the `self-healing` skill for persistent root/blueprint config changes.
-
-- `member` must be a regular live member (the lead is not a manageable target).
-- `kind` + `name` are required for `add` / `remove`, ignored by `list`.
-- Validation runs **before** mutation: unknown skill / tool / MCP server names, plus protected tool names (`skill`, `team_message`, `todo_manage`, `schedule_task`, `note`), are rejected with a clear error string.
-- `add` and `remove` are idempotent — already-present / not-present cases return a message and skip mutation.
-- `list` reads the live member's current runtime capabilities.
-
-Members do not have `team_configure` themselves. The protocol prompts in `app/agent/mode/team/member.py` enforce a lead-as-translator pattern:
-
-- **Members describe needs in plain language**, not registry names — e.g. *"I need to write files to disk"*, not *"grant me `write`"*. Members may not know what tools/skills/MCP servers actually exist.
-- **The lead translates the need to the exact registry name** and calls `team_configure(add)` — *"I need shadcn examples"* → `team_configure(member="executor#1", action="add", kind="mcp", name="shadcn")`.
-- **The lead prefers grant + re-delegate over self-execute** when a member explicitly asks for a capability — keeps separation of concerns; self-execute only as a last resort.
-
-Two related protocol invariants in the same file:
+Related protocol invariants in the same file:
 
 - **Members must verify before claiming.** After a tool call, members must read the result and never report success on a tool error. After mutating state (file write, etc.) the protocol asks for a cheap follow-up read (`ls`, `read`) before reporting completion. Catches LLM hallucination after a failed tool call.
 - **Lead must sanity-check claims before promising "done".** When a member reports it wrote a file at path X, lead is instructed to verify with a cheap read when feasible.
 
-> **Robustness contract:** `_build_agent` in `app/agent/loader.py` warn-and-skips unknown tool / MCP names instead of raising. This keeps blueprint loads resilient if a user-added override references a capability that later disappears (for example, an MCP server removed from `mcp.json`). `team_configure` validates up-front against the live registry so typos are rejected before mutating the live member.
+> **Robustness contract:** `_build_agent` in `app/agent/loader.py` warn-and-skips unknown tool / MCP names instead of raising. This keeps blueprint loads resilient if a user-added override references a capability that later disappears (for example, an MCP server removed from `mcp.json`).
 
 ---
 
@@ -536,7 +515,7 @@ graph TB
         Route["API Route\n─────────\nsave user msg to DB\ninit_turn(session_id)\nmailbox.send(lead)\nreturns 202"]
 
         subgraph AgentTeam["AgentTeam (starts at lifespan)"]
-            Lead["Team Lead\n──────────────\nTeamLead(TeamMemberBase)\nStreamPublisherHook\nteam_message · team_manage · team_configure\ntodo_manage"]
+            Lead["Team Lead\n──────────────\nTeamLead(TeamMemberBase)\nStreamPublisherHook\nteam_message · team_manage\ntodo_manage"]
 
             subgraph Mailbox["TeamMailbox"]
                 LI[lead inbox]

@@ -173,7 +173,7 @@ Set a `fallback_model` in your agent config for automatic failover on rate limit
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` |
 | Tasks | `todo_manage` |
-| Team coordination | `team_message`, `team_manage`, `team_configure` (teams only) |
+| Team coordination | `team_message`, `team_manage` (teams only) |
 | Utility | `date`, `skill` |
 
 Add any MCP server to expose more tools without writing code.
@@ -190,7 +190,7 @@ OpenAgentd ships with a compact cockpit team:
 | **executor** | Member blueprint | File creation, builds, shell commands, tangible artifacts |
 | **explorer** | Member blueprint | Web research, codebase exploration, information gathering |
 
-Configure your team by editing `.md` files in your config directory. Exactly one agent must have `role: lead`; the rest are member blueprints. The lead uses `team_manage` to spawn/dismiss live instances (`executor#1`, `explorer#1`), `team_message` to delegate and collect results, and `team_configure` to grant or revoke a live member's skills, tools, or MCP servers without restarting.
+Configure your team by editing `.md` files in your config directory. Exactly one agent must have `role: lead`; the rest are member blueprints. The lead uses `team_manage` to spawn/dismiss live instances (`executor#1`, `explorer#1`) and `team_message` to delegate and collect results.
 
 Fresh installs also seed a separate coding team under `agents/coding/`. Open `/coding` to select a server-local project folder and start workspace-aware sessions; Settings shows those agents as `coding/openagentd`, `coding/coder`, and `coding/explorer`.
 

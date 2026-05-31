@@ -13,7 +13,7 @@ Covers:
 - team_message recipient resolution: bare blueprint name routes to the
   unique live instance; ambiguous / not-spawned cases produce tailored
   errors; explicit handles route directly.
-- Lead-only injection of roster/configure tools.
+- Lead-only injection of roster tools.
 - Blueprints disallow ``#`` in names + lead-name collision.
 """
 
@@ -665,12 +665,12 @@ class TestRecipientResolution:
 
 
 class TestRosterManageTool:
-    async def test_lead_gets_manage_and_configure_tools(self, tmp_path):
+    async def test_lead_gets_manage_tool(self, tmp_path):
         team = _build_dynamic_team(tmp_path, {"executor": None})
         injected = team.get_injected_tools(team.lead.name)
         names = {t.name for t in injected}
         assert "team_manage" in names
-        assert "team_configure" in names
+        assert "team_configure" not in names
         assert "team_message" in names
         assert "todo_manage" in names
 

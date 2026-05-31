@@ -33,27 +33,14 @@ source code, adding built-in tools, touching files outside
 config directory — pass the absolute config path to `read` / `write` / `edit`
 rather than relative names.
 
-## Runtime member capability changes
+## Agent capability changes
 
-For a **temporary, live member-instance** capability change, use the lead-only
-runtime tool instead of this skill:
-
-```
-team_configure(member="<handle>", action="add"|"remove", kind="skill"|"tool"|"mcp", name="<value>")
-```
-
-`team_configure` validates the capability name against the live registry,
-rejects protected names (`skill`, `team_message`, `todo_manage`,
-`schedule_task`, `note`), and is idempotent. It does **not** edit root or
-blueprint `.md` files; changes are session/instance-local and may be reset by
-respawn or config drift reload.
-
-Use this self-healing workflow for persistent root/blueprint config changes:
+Use this self-healing workflow for root/blueprint config changes:
 
 - Adding persistent first-party extras to `tools:` / `skills:` / `mcp:` in an agent `.md` file.
 - Removing user-added extras from an agent `.md` file.
 - Explaining that built-in first-party capabilities cannot be removed through `.md` overrides; `.md` files are additive only.
-- Edits to the **lead's own** `.md` (lead is not a manageable target for `team_configure`).
+- Edits to the **lead's own** `.md`.
 - Multi-field changes (e.g. model + temperature + tools in one diff).
 - Anything outside `tools` / `skills` / `mcp` — `model`, `temperature`,
   `thinking_level`, `fallback_model`, system prompt body. (Summarisation
@@ -290,9 +277,8 @@ skill wires the resulting tools onto a specific agent. For first-party
 built-in profiles, `mcp:` and selective `mcp_*` tools in the `.md` are
 additive local overrides; they do not replace built-in capabilities.
 
-> **Temporary live member target?** Use `team_configure(member="<handle>", action="add"|"remove", kind="mcp", name="<server>")`
-> — see the runtime section above. The recipes below are for persistent
-> agent `.md` edits, including lead targets and selective `tools:` entries.
+The recipes below are for agent `.md` edits, including lead targets and
+selective `tools:` entries.
 
 Two ways:
 

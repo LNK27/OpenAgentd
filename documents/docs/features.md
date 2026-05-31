@@ -139,8 +139,6 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 - **`team_message` peer delegation** `[since v1.0]` — async mailbox between
   agents. Lead delegates with `team_message`; the recipient's next turn drains
   its inbox.
-- **`team_configure`** `[since v1.0]` — grant or revoke a live member's skills,
-  tools, or MCP servers at runtime without editing blueprint files or restarting.
 - **Split-pane live view** `[since v1.0]` — each active agent gets its own pane,
   streamed independently. See live whose turn is current, who's idle.
 - **Unified team view** `[since v1.0]` — single chronological transcript across
@@ -327,7 +325,7 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` |
 | Tasks | `todo_manage` |
-| Team coordination | `team_message`, `team_manage`, `team_configure` |
+| Team coordination | `team_message`, `team_manage` |
 | Utility | `date`, `skill` |
 
 - **Cross-tool `tool_output_delta` streaming** `[since v1.0]` — long-running

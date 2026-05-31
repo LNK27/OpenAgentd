@@ -609,42 +609,6 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     }
   }
 
-  // ── team_configure: capability mutation in header, hide raw JSON ────
-  if (name === 'team_configure') {
-    const member = str(parsed, 'member')
-    const action = str(parsed, 'action')
-    const kind = str(parsed, 'kind')
-    const capabilityName = str(parsed, 'name')
-    const target = member ?? 'member'
-    const capability = [kind, capabilityName].filter(Boolean).join(': ')
-    if (action === 'list') {
-      return {
-        header: <>Checking capabilities for <Arg>{target}</Arg></>,
-        headerTitle: `Checking capabilities for ${target}`,
-        formattedArgs: null,
-      }
-    }
-    if (action === 'add' && capability) {
-      return {
-        header: <>Granting <Arg>{capability}</Arg> to <Arg>{target}</Arg></>,
-        headerTitle: `Granting ${capability} to ${target}`,
-        formattedArgs: null,
-      }
-    }
-    if (action === 'remove' && capability) {
-      return {
-        header: <>Revoking <Arg>{capability}</Arg> from <Arg>{target}</Arg></>,
-        headerTitle: `Revoking ${capability} from ${target}`,
-        formattedArgs: null,
-      }
-    }
-    return {
-      header: <>Configuring <Arg>{target}</Arg></>,
-      headerTitle: `Configuring ${target}`,
-      formattedArgs: null,
-    }
-  }
-
   // ── Default: tool name as header, pretty-printed JSON as args ──────
   // Hide args entirely if the object is empty.
   if (Object.keys(parsed).length === 0) {

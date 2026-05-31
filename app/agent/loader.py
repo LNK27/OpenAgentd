@@ -383,8 +383,7 @@ def _build_agent(
         if tool_name not in tool_registry:
             # Soft-skip: settings/self-healing edits and disabled-then-rebuild
             # flows can leave a name in frontmatter briefly after the
-            # underlying tool/MCP server disappears between loads. Runtime
-            # team_configure validates up-front and only mutates live instances.
+            # underlying tool/MCP server disappears between loads.
 
             logger.warning(
                 "agent_unknown_tool agent={} tool={} available={}",
@@ -625,8 +624,7 @@ def load_team_from_dir(
 
     # Unknown tools / MCP servers in frontmatter are warn-and-skipped by
     # ``_build_agent`` so stale config entries or mcp.json edits never break
-    # agent load. Runtime ``team_configure`` validates names up-front before
-    # mutating live members.
+    # agent load.
 
     # Build the lead.  Members are NOT built — they are described by their
     # blueprints on the team and built on demand by ``AgentTeam.spawn``.

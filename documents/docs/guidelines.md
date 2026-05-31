@@ -224,7 +224,7 @@ For deeper context see [`architecture.md`](./architecture.md).
 
 ## Team protocol
 
-Multi-agent behaviour is controlled by `AgentTeamProtocolHook`, the `team_message` / `team_manage` / `team_configure` tool descriptions, and per-agent system prompts. The full design (member lifecycle, lead delegation rules, drift detection, lazy spawn) lives in [`agent/teams.md`](./agent/teams.md) and [`agent/team-lazy-spawn.md`](./agent/team-lazy-spawn.md). Manual smoke tests: [`testing/team.md`](./testing/team.md).
+Multi-agent behaviour is controlled by `AgentTeamProtocolHook`, the `team_message` / `team_manage` tool descriptions, and per-agent system prompts. The full design (member lifecycle, lead delegation rules, drift detection, lazy spawn) lives in [`agent/teams.md`](./agent/teams.md) and [`agent/team-lazy-spawn.md`](./agent/team-lazy-spawn.md). Manual smoke tests: [`testing/team.md`](./testing/team.md).
 
 ---
 
