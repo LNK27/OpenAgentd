@@ -421,20 +421,20 @@ fn force_reload_app(app: &AppHandle) {
 
 async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
-    let token = state
-        .desktop_token
-        .lock()
-        .await
-        .clone()
-        .ok_or_else(|| anyhow!("desktop token missing"))?;
+    let existing_token = state.desktop_token.lock().await.clone();
 
     shutdown_sidecar_now(app).await;
 
-    let mut sidecar = Sidecar::spawn_with_desktop_token(app, Some(&token)).context("spawn sidecar")?;
+    let mut sidecar = if let Some(token) = existing_token.as_deref() {
+        Sidecar::spawn_with_desktop_token(app, Some(token)).context("spawn sidecar")?
+    } else {
+        Sidecar::spawn(app).context("spawn sidecar")?
+    };
     let handshake: Handshake = sidecar
         .read_handshake(Duration::from_secs(30))
         .await
         .context("read sidecar handshake")?;
+    let token = handshake.token.clone();
 
     log::info!(
         "sidecar handshake: port={} pid={} version={}",
