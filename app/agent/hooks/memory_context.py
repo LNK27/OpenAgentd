@@ -8,6 +8,7 @@ from loguru import logger
 
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
+from app.services.memory import MemorySearchResult
 from app.services.memory import search_memory_files
 
 if TYPE_CHECKING:
@@ -22,6 +23,41 @@ if TYPE_CHECKING:
 MAX_MEMORY_QUERY_CHARS = 500
 MAX_MEMORY_CONTEXT_CHARS = 2_000
 MEMORY_CONTEXT_TOP_K = 3
+_AUTO_MEMORY_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "do",
+    "does",
+    "how",
+    "is",
+    "me",
+    "my",
+    "of",
+    "s",
+    "should",
+    "the",
+    "to",
+    "what",
+    "you",
+}
+_AUTO_MEMORY_IDENTITY_TOKENS = {"hoang", "user"}
+_AUTO_MEMORY_ALIASES = {
+    "answer": "answer",
+    "answers": "answer",
+    "answered": "answer",
+    "answering": "answer",
+    "respond": "answer",
+    "response": "answer",
+    "responses": "answer",
+    "prefer": "prefer",
+    "preferred": "prefer",
+    "prefers": "prefer",
+    "preference": "prefer",
+    "preferences": "prefer",
+    "want": "want",
+    "wants": "want",
+}
 
 
 class MemoryContextHook(BaseAgentHook):
@@ -53,6 +89,7 @@ class MemoryContextHook(BaseAgentHook):
             logger.warning("memory_context_search_failed error={}", exc)
             return await handler(request)
 
+        results = self._filter_relevant_results(query, results)
         if not results:
             return await handler(request)
 
@@ -75,6 +112,37 @@ class MemoryContextHook(BaseAgentHook):
             f"{request.system_prompt}\n\n{block}" if request.system_prompt else block
         )
         return await handler(request.override(system_prompt=new_prompt))
+
+    def _filter_relevant_results(
+        self, query: str, results: list[MemorySearchResult]
+    ) -> list[MemorySearchResult]:
+        query_tokens = self._meaningful_tokens(query)
+        if not query_tokens:
+            return []
+        filtered: list[MemorySearchResult] = []
+        for result in results:
+            result_tokens = self._meaningful_tokens(result.excerpt)
+            overlap = query_tokens & result_tokens
+            query_only = query_tokens - result_tokens
+            if not overlap:
+                continue
+            if len(overlap) == 1 and len(query_only) >= 2:
+                continue
+            filtered.append(result)
+        return filtered
+
+    def _meaningful_tokens(self, text: str) -> set[str]:
+        import re
+
+        tokens: set[str] = set()
+        for raw in re.findall(r"[a-z0-9]+", text.lower()):
+            token = _AUTO_MEMORY_ALIASES.get(raw, raw)
+            if token in _AUTO_MEMORY_STOPWORDS:
+                continue
+            if token in _AUTO_MEMORY_IDENTITY_TOKENS:
+                continue
+            tokens.add(token)
+        return tokens
 
     def _latest_user_text(self, request: "ModelRequest") -> str:
         for message in reversed(request.messages):

@@ -73,6 +73,22 @@ async def test_unrelated_query_does_not_inject_incidental_user_memory(
 
 
 @pytest.mark.asyncio
+async def test_domain_specific_preference_query_does_not_inject_generic_preference(
+    _memory_dir: Path,
+):
+    (_memory_dir / "wiki" / "user.md").write_text(
+        "# User\n\nHoang prefers direct fact-based answers.", encoding="utf-8"
+    )
+
+    result = await _invoke(
+        MemoryContextHook(),
+        _request(user="What is Hoang's preferred Kubernetes scheduler plugin?"),
+    )
+
+    assert result == "Base."
+
+
+@pytest.mark.asyncio
 async def test_relevant_memory_is_injected(_memory_dir: Path):
     (_memory_dir / "wiki" / "user.md").write_text(
         "# User\n\nHoang prefers direct fact-based answers.", encoding="utf-8"

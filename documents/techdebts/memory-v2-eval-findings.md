@@ -51,7 +51,7 @@ Interpretation:
 
 Next candidates to evaluate honestly:
 
-1. Require stronger topical overlap for automatic `MemoryContextHook` injection than for explicit `memory_search`.
+1. Require stronger topical overlap for automatic `MemoryContextHook` injection than for explicit `memory_search`. Initial implementation filters automatic injection by meaningful token overlap and ignores identity-only matches such as “Hoang” plus generic preference words.
 2. Add source/page type hints so `wiki/user.md` generic preference pages do not answer unrelated domain-specific preference queries.
 3. Add a reranker or LLM judge for automatic injection only, with citations and strict abstention instructions.
 4. Keep failures in `failures.jsonl` as first-class debugging artifacts.
