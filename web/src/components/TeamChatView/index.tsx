@@ -68,6 +68,7 @@ import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import { formatTokens } from '@/utils/format'
 import { setTraySession } from '@/lib/tray'
 
 interface TeamChatViewProps {
@@ -853,6 +854,15 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 onSelectAgent={setActiveAgent}
                 onWiki={() => { toggleWiki(); closeMobileActionsMenu() }}
                 onScheduler={() => { toggleScheduler(); closeMobileActionsMenu() }}
+                tokens={totalAll > 0
+                  ? {
+                      input: totalPrompt,
+                      output: totalCompletion,
+                      cached: totalCached,
+                      total: totalAll,
+                      pulsing: isTeamWorking,
+                    }
+                  : undefined}
               />
             </>
           ) : (
@@ -1192,6 +1202,13 @@ interface MobileChatActionsProps {
   onSelectAgent: (agent: string) => void
   onWiki: () => void
   onScheduler: () => void
+  tokens?: {
+    input: number
+    output: number
+    cached: number
+    total: number
+    pulsing: boolean
+  }
 }
 
 function MobileChatActions({
@@ -1205,6 +1222,7 @@ function MobileChatActions({
   onSelectAgent,
   onWiki,
   onScheduler,
+  tokens,
 }: MobileChatActionsProps) {
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -1244,6 +1262,17 @@ function MobileChatActions({
         )}
 
         <div className="px-2 pt-2 text-xs font-medium text-muted-foreground">Session</div>
+        {tokens && (
+          <DropdownMenuItem disabled className="min-h-10 px-2 opacity-100">
+            <span className="flex-1">Tokens</span>
+            <span className="inline-flex items-center gap-1.5 font-mono text-xs text-(--color-text)">
+              <span title={`Prompt: ${tokens.input.toLocaleString()}`}>in {formatTokens(tokens.input)}</span>
+              <span title={`Output: ${tokens.output.toLocaleString()}`}>out {formatTokens(tokens.output)}</span>
+              {tokens.cached > 0 && <span title={`Cached: ${tokens.cached.toLocaleString()}`}>cache {formatTokens(tokens.cached)}</span>}
+              {tokens.pulsing && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" aria-hidden="true" />}
+            </span>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={onWiki} className="min-h-10 px-2">
           <Brain size={15} aria-hidden="true" />
           <span className="flex-1">Wiki</span>
