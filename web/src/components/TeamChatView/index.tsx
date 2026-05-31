@@ -268,6 +268,40 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, agentWorkspace, hasCodingWorkspace, isCodingSessionLoading])
 
+  useEffect(() => {
+    if (!sessionId) return
+
+    const resumeStream = () => {
+      const state = useTeamStore.getState()
+      if (state.sessionId !== sessionId) return
+      if (state._workspace !== agentWorkspace) return
+      if (state.isConnected && !state._unloading) return
+
+      useTeamStore.setState({ _unloading: false })
+      if (state.isTeamWorking) {
+        void loadSession(sessionId, agentWorkspace).then(() => {
+          const current = useTeamStore.getState()
+          if (current.sessionId !== sessionId || current._workspace !== agentWorkspace) return
+          abortRef.current = connectStream()
+        })
+      } else {
+        abortRef.current = connectStream()
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') resumeStream()
+    }
+
+    window.addEventListener('pageshow', resumeStream)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.removeEventListener('pageshow', resumeStream)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, agentWorkspace])
+
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
   const isEmptyIdleSession = useCallback(() => useTeamStore.getState().isEmptyIdleSession(), [])
