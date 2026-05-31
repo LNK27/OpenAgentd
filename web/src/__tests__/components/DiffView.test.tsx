@@ -47,7 +47,9 @@ describe("DiffView", () => {
 
     render(<DiffView toolName="edit" args={args} />)
 
-    expect(screen.getAllByText('1')[0].parentElement?.className).toContain('sticky left-0')
+    const gutterClassName = screen.getAllByText('1')[0].parentElement?.className ?? ''
+    expect(gutterClassName).toContain('sticky left-0')
+    expect(gutterClassName).toContain('bg-(--bg-card)')
   })
 
   it("toggles edit diff when no outer collapse handler is provided", () => {

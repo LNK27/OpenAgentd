@@ -13,6 +13,8 @@ describe("ReadView", () => {
       />,
     )
 
-    expect(screen.getByText('42').parentElement?.className).toContain('sticky left-0')
+    const gutterClassName = screen.getByText('42').parentElement?.className ?? ''
+    expect(gutterClassName).toContain('sticky left-0')
+    expect(gutterClassName).toContain('bg-(--bg-card)')
   })
 })
