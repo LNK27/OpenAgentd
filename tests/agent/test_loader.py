@@ -187,8 +187,19 @@ def test_default_tool_registry_keys():
         "shell",
         "skill",
         "todo_manage",
+        "memory_search",
     }
     assert expected.issubset(registry.keys())
+
+
+def test_builtin_openagentd_tools_exist_in_default_registry():
+    from app.agent.builtin_prompts import openagentd_tools_for_mode
+
+    registry = _default_tool_registry()
+
+    for mode in ("normal", "coding"):
+        missing = set(openagentd_tools_for_mode(mode)) - set(registry)
+        assert missing == set()
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,7 @@
-"""WikiInjectionHook — inject wiki/USER.md into the system prompt.
+"""WikiInjectionHook — inject memory v2 wiki/user.md into the system prompt.
 
-Every LLM call receives ``wiki/USER.md`` in full (always — identity + preferences).
-Topic injection is no longer automatic; the agent uses the ``wiki_search`` tool
-to look up topics explicitly.
+Every LLM call receives a capped ``wiki/user.md`` excerpt when present. Topic
+injection is no longer automatic; the agent uses memory search tools explicitly.
 
 The BM25-style scoring helpers (``_score_topics``, ``_tokenize``) live in this
 module because the ``wiki_search`` tool imports them.
@@ -29,8 +28,12 @@ if TYPE_CHECKING:
 # ── Hook ─────────────────────────────────────────────────────────────────────
 
 
+USER_MEMORY_PATH = "wiki/user.md"
+USER_MEMORY_MAX_CHARS = 4_000
+
+
 class WikiInjectionHook(BaseAgentHook):
-    """Inject wiki/USER.md into the system prompt on every LLM call."""
+    """Inject memory v2 wiki/user.md into the system prompt on every LLM call."""
 
     async def wrap_model_call(
         self,
@@ -50,16 +53,18 @@ class WikiInjectionHook(BaseAgentHook):
         return await handler(request.override(system_prompt=new_prompt))
 
     def _read_user_md(self) -> str:
-        from app.services.wiki import USER_FILE, wiki_root
+        from app.services.memory import memory_root
 
-        root = wiki_root()
-        user_path = root / USER_FILE
+        user_path = memory_root() / USER_MEMORY_PATH
         if not user_path.exists():
             return ""
         try:
-            return user_path.read_text(encoding="utf-8").strip()
+            content = user_path.read_text(encoding="utf-8").strip()
         except (OSError, UnicodeDecodeError):
             return ""
+        if len(content) <= USER_MEMORY_MAX_CHARS:
+            return content
+        return content[:USER_MEMORY_MAX_CHARS].rstrip() + "\n\n[truncated]"
 
 
 # ── BM25-style relevance scoring (used by wiki_search tool) ──────────────────

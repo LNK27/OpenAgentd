@@ -1,4 +1,4 @@
-"""Tests for WikiInjectionHook — USER.md injection only.
+"""Tests for WikiInjectionHook — memory v2 user page injection only.
 
 Topic injection is no longer automatic; the agent uses wiki_search explicitly.
 BM25 scoring helpers are still tested here since wiki_search imports them.
@@ -64,7 +64,7 @@ async def _invoke(hook: WikiInjectionHook, req: ModelRequest) -> str:
 
 @pytest.mark.asyncio
 async def test_no_user_md_passes_through_unchanged(_wiki_dir: Path):
-    """When USER.md doesn't exist, the prompt is passed through unchanged."""
+    """When wiki/user.md doesn't exist, the prompt is passed through unchanged."""
     hook = WikiInjectionHook()
     req = _request("Base prompt.")
     received: list[str] = []
@@ -79,8 +79,9 @@ async def test_no_user_md_passes_through_unchanged(_wiki_dir: Path):
 
 @pytest.mark.asyncio
 async def test_user_md_injected_in_full(_wiki_dir: Path):
-    """USER.md content should be injected into the system prompt."""
-    (_wiki_dir / "USER.md").write_text(
+    """wiki/user.md content should be injected into the system prompt."""
+    (_wiki_dir / "wiki").mkdir()
+    (_wiki_dir / "wiki" / "user.md").write_text(
         "# User\n\n## Identity\nHoang, Saigon.\n", encoding="utf-8"
     )
     hook = WikiInjectionHook()
@@ -92,7 +93,8 @@ async def test_user_md_injected_in_full(_wiki_dir: Path):
 @pytest.mark.asyncio
 async def test_existing_prompt_preserved(_wiki_dir: Path):
     """The original system prompt should be preserved before the injected block."""
-    (_wiki_dir / "USER.md").write_text("# User\n", encoding="utf-8")
+    (_wiki_dir / "wiki").mkdir()
+    (_wiki_dir / "wiki" / "user.md").write_text("# User\n", encoding="utf-8")
     hook = WikiInjectionHook()
     result = await _invoke(hook, _request("CUSTOM BASE"))
     assert result.startswith("CUSTOM BASE")
@@ -101,8 +103,9 @@ async def test_existing_prompt_preserved(_wiki_dir: Path):
 
 @pytest.mark.asyncio
 async def test_empty_user_md_passes_through(_wiki_dir: Path):
-    """An empty USER.md should not inject anything."""
-    (_wiki_dir / "USER.md").write_text("", encoding="utf-8")
+    """An empty wiki/user.md should not inject anything."""
+    (_wiki_dir / "wiki").mkdir()
+    (_wiki_dir / "wiki" / "user.md").write_text("", encoding="utf-8")
     hook = WikiInjectionHook()
     req = _request("Base.")
     received: list[str] = []
@@ -113,6 +116,30 @@ async def test_empty_user_md_passes_through(_wiki_dir: Path):
 
     await hook.wrap_model_call(_ctx(), _state(), req, handler)
     assert received[0] == "Base."
+
+
+@pytest.mark.asyncio
+async def test_legacy_root_user_md_is_ignored(_wiki_dir: Path):
+    """Memory v2 does not inject legacy root USER.md."""
+    (_wiki_dir / "USER.md").write_text("legacy", encoding="utf-8")
+    hook = WikiInjectionHook()
+
+    result = await _invoke(hook, _request("Base."))
+
+    assert result == "Base."
+
+
+@pytest.mark.asyncio
+async def test_user_md_injection_is_capped(_wiki_dir: Path):
+    """Long wiki/user.md files should be capped before prompt injection."""
+    (_wiki_dir / "wiki").mkdir()
+    (_wiki_dir / "wiki" / "user.md").write_text("x" * 5000, encoding="utf-8")
+    hook = WikiInjectionHook()
+
+    result = await _invoke(hook, _request("Base."))
+
+    assert len(result) < 4100
+    assert "[truncated]" in result
 
 
 # ── BM25 unit tests (used by wiki_search) ────────────────────────────────────
