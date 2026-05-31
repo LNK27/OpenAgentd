@@ -1,10 +1,16 @@
-import { describe, it, expect, afterEach, beforeEach } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createRef } from "react"
 import { InputBar } from "@/components/InputBar"
 import type { InputBarHandle } from "@/components/InputBar"
 import type { AgentCapabilities } from "@/api/types"
+
+let isMobile = false
+
+mock.module("@/hooks/use-mobile", () => ({
+  useIsMobile: () => isMobile,
+}))
 
 class MockSpeechRecognition {
   continuous = false
@@ -23,6 +29,7 @@ class MockSpeechRecognition {
 }
 
 beforeEach(() => {
+  isMobile = false
   Object.defineProperty(navigator, "mediaDevices", {
     value: {
       getUserMedia: async () => ({ getTracks: () => [{ stop: () => {} }] }),
@@ -95,6 +102,24 @@ describe("InputBar", () => {
     expect(submitCount).toBe(0)
     // Should have newline in textarea
     expect((textarea as HTMLTextAreaElement).value).toContain("\n")
+  })
+
+  it("does not submit on Enter on mobile (allows newline)", async () => {
+    isMobile = true
+    const user = userEvent.setup()
+    let submitCount = 0
+    const onSubmit = () => {
+      submitCount++
+    }
+
+    render(<InputBar onSubmit={onSubmit} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "line1")
+    await user.keyboard("{Enter}")
+
+    expect(submitCount).toBe(0)
+    expect(textarea.value).toContain("\n")
   })
 
   it("does not submit when input is empty", async () => {

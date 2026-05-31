@@ -6,6 +6,7 @@ import { VoiceMicButton } from './VoiceMicButton'
 import { findActiveMention, rankFileRefs, type FileRef } from './InputBar.mentions'
 import { MentionOverlay } from './InputBar.overlay'
 import type { AgentCapabilities } from '@/api/types'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
@@ -198,6 +199,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
+  const isMobile = useIsMobile()
   const prefersReducedMotion = useReducedMotion()
 
   const history = useMemo(() => {
@@ -785,7 +787,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       }
     }
 
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       e.preventDefault()
       submit()
     }
@@ -924,7 +926,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       }}
       disabled={!canSend}
       aria-label="Send message"
-      title="Send (Enter) · New line (Shift+Enter) · Commands (/)"
+      title={isMobile ? 'Send message' : 'Send (Enter) · New line (Shift+Enter) · Commands (/)'}
       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
     >
       {disabled && !minimized ? (

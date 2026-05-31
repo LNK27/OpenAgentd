@@ -2,7 +2,7 @@
 title: Mobile Layout
 description: Phone-first responsive design — breakpoints, safe areas, master/detail patterns, and per-component mobile behaviour.
 status: stable
-updated: 2026-05-27
+updated: 2026-05-31
 ---
 
 # Mobile layout
@@ -67,9 +67,10 @@ Right-side workspace explorer for `/coding` mode.
 - `Ctrl+P` (command palette) and `v` (cycle view mode) shortcuts no-op on mobile.
 - `CommandPalette` is never rendered on mobile (`!isMobile && showPalette`).
 
-### FloatingInputBar (`FloatingInputBar.tsx`)
+### FloatingInputBar (`FloatingInputBar.tsx`) / InputBar (`InputBar.tsx`)
 - Mobile: static docked `<div>` at the bottom with `border-t`, `backdrop-blur`, `.pb-safe`. No drag, no localStorage position.
 - Desktop: draggable floating bar (existing behaviour unchanged).
+- Mobile keyboard: plain `Enter` inserts a newline; users submit with the Send button. Desktop keeps `Enter` to send and `Shift+Enter` for newline.
 - Voice input: the mic button sits beside Send on mobile and desktop. It uses the current browser/WebView speech recognizer when available; unsupported runtimes show a disabled button with a tooltip. Listening starts and stops only from button taps/clicks; no mobile-specific silence auto-stop.
 
 ### MemoryPanel, WorkspaceFilesPanel, SchedulerPanel

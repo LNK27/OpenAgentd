@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-05-30
+updated: 2026-05-31
 ---
 
 # Features
@@ -103,7 +103,8 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation. See [`web/todos.md`](./web/todos.md).
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
-  shapes optimized for small screens. See [`web/mobile.md`](./web/mobile.md).
+  shapes, and composer keyboard behaviour optimized for small screens. See
+  [`web/mobile.md`](./web/mobile.md).
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Remote-backend mobile shell** `[v1.34.0]` — Tauri mobile app scaffold embeds
