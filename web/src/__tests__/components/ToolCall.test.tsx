@@ -246,7 +246,7 @@ describe("ToolCall — diff stats", () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ path: "src/main.py", offset: 12, limit: 9 })
 
-    render(<ToolCall name="read" args={args} done={true} result={"[12-20/100]\nprint('hello')"} />)
+    render(<ToolCall name="read" args={args} done={true} result={"[12-20/100]\nprint('hello')\nprint('bye')"} />)
 
     expect(screen.getByRole("button", { name: "Expand read details" })).toBeTruthy()
     expect(screen.queryByText("result")).toBeNull()
@@ -256,7 +256,10 @@ describe("ToolCall — diff stats", () => {
     expect(screen.getByRole("button", { name: "Collapse read result" })).toBeTruthy()
     expect(screen.getByText("lines 12–20 of 100")).toBeTruthy()
     expect(screen.getByLabelText("Copy read result")).toBeTruthy()
+    expect(screen.getByText("12")).toBeTruthy()
+    expect(screen.getByText("13")).toBeTruthy()
     expect(screen.getByText("print('hello')")).toBeTruthy()
+    expect(screen.getByText("print('bye')")).toBeTruthy()
     expect(screen.queryByText(/\[12-20\/100\]/)).toBeNull()
   })
 

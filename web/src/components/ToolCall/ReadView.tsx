@@ -20,17 +20,27 @@ function parseArgs(args: string): { path: string } {
   return { path: 'file' }
 }
 
-function parseReadResult(result: string): { label: string; body: string } {
+function parseReadResult(result: string): { label: string; body: string; startLine: number } {
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
-  if (!match) return { label: 'file contents', body: result }
-  return { label: `lines ${match[1]}–${match[2]} of ${match[3]}`, body: match[4] }
+  if (!match) return { label: 'file contents', body: result, startLine: 1 }
+  return {
+    label: `lines ${match[1]}–${match[2]} of ${match[3]}`,
+    body: match[4],
+    startLine: Number(match[1]),
+  }
 }
 
 export function ReadView({ args, result, onCollapse }: ReadViewProps) {
   const [expanded, setExpanded] = useState(true)
   const [copied, setCopied] = useState(false)
   const { path } = useMemo(() => parseArgs(args), [args])
-  const { label, body } = useMemo(() => parseReadResult(result), [result])
+  const { label, body, startLine } = useMemo(() => parseReadResult(result), [result])
+  const lines = useMemo(() => {
+    const normalized = body.replace(/\r\n/g, '\n')
+    const values = normalized.split('\n')
+    if (values.length > 1 && values.at(-1) === '') values.pop()
+    return values.length > 0 ? values : ['']
+  }, [body])
 
   const handleCollapse = () => {
     if (onCollapse) {
@@ -88,9 +98,16 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
 
       {expanded && (
         <div className="overflow-x-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
-          <pre className="min-w-max whitespace-pre-wrap px-3 py-2.5 text-(--color-text)">
-            {body}
-          </pre>
+          <div className="min-w-max">
+            {lines.map((line, idx) => (
+              <div key={idx} className="flex items-stretch text-(--color-text) hover:bg-(--bg-key)/30">
+                <div className="flex shrink-0 select-none border-r border-(--color-border)/40 text-right text-[10px] text-(--color-text-subtle)">
+                  <span className="w-9 py-0.5 pr-1.5">{startLine + idx}</span>
+                </div>
+                <pre className="flex-1 whitespace-pre-wrap px-2 py-0.5">{line || ' '}</pre>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
