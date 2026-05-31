@@ -40,8 +40,8 @@ The Tauri shell:
 3. Reads stdout until the handshake line; extracts `{port, token}`.
 4. Polls `http://127.0.0.1:<port>/api/health/live` until it returns 200.
 5. Installs an `initialization_script` that sets `window.__OAD_TOKEN__ = "..."`.
-6. Navigates the webview to `http://127.0.0.1:<port>/`.
-7. On window-close: SIGTERM the sidecar; force-kill after 5s.
+6. Opens one or more WebViews against the same sidecar/token (`Cmd/Ctrl+N` for a secondary window).
+7. On app quit: SIGTERM the sidecar; force-kill after 5s.
 
 ## Development
 

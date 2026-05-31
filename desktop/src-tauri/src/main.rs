@@ -31,6 +31,7 @@ struct AppState {
     tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
     tray_session: Arc<Mutex<Option<MenuItem<Wry>>>>,
     update_state: Arc<Mutex<Option<CachedUpdateState>>>,
+    active_window_label: Arc<Mutex<String>>,
     /// Current webview zoom factor, mutated by the View > Zoom menu
     /// items. Session-only — not persisted across restarts.
     zoom: Arc<Mutex<f64>>,
@@ -70,7 +71,9 @@ impl Default for AppBackendConfig {
 }
 
 const MAIN_WINDOW: &str = "main";
+const SECONDARY_WINDOW_PREFIX: &str = "main-";
 const MENU_SHOW: &str = "show";
+const MENU_NEW_WINDOW: &str = "new_window";
 const MENU_HOME: &str = "home";
 const MENU_CHAT: &str = "chat";
 const MENU_CODING: &str = "coding";
@@ -305,6 +308,14 @@ async fn app_use_bundled_backend(app: AppHandle) -> Result<(), String> {
         .map_err(|e| format!("{e:#}"))
 }
 
+#[tauri::command]
+async fn app_new_window(app: AppHandle) -> Result<(), String> {
+    create_app_window(&app, None)
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("{e:#}"))
+}
+
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         let _ = window.unminimize();
@@ -313,16 +324,33 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
+fn target_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    let state: tauri::State<'_, AppState> = app.state();
+    let label = tauri::async_runtime::block_on(async { state.active_window_label.lock().await.clone() });
+    app.get_webview_window(&label)
+        .or_else(|| app.get_webview_window(MAIN_WINDOW))
+}
+
+fn show_target_window(app: &AppHandle) {
+    if let Some(window) = target_webview_window(app) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    } else {
+        show_main_window(app);
+    }
+}
+
 fn navigate_main_window(app: &AppHandle, path: &str) {
-    show_main_window(app);
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+    show_target_window(app);
+    if let Some(window) = target_webview_window(app) {
         let path_json = serde_json::to_string(path).unwrap_or_else(|_| "\"/\"".into());
         let _ = window.eval(format!("window.location.assign({path_json});"));
     }
 }
 
 fn emit_frontend_command(app: &AppHandle, command: &str) {
-    show_main_window(app);
+    show_target_window(app);
     let command = command.to_string();
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -380,8 +408,8 @@ fn quit_app(app: &AppHandle) {
 }
 
 fn reload_main_window(app: &AppHandle) {
-    show_main_window(app);
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+    show_target_window(app);
+    if let Some(window) = target_webview_window(app) {
         let _ = window.eval("window.location.reload();");
     }
 }
@@ -448,20 +476,19 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         .await
         .context("wait_for_health")?;
 
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-        let init_script = frontend_init_script(Some(&token), &base);
+    let init_script = frontend_init_script(Some(&token), &base);
+    let existing_windows: Vec<tauri::WebviewWindow> = app.webview_windows().into_values().collect();
+    for window in existing_windows {
         window.eval(&init_script).context("inject bundled backend config")?;
         if cfg!(debug_assertions) {
             window
                 .navigate("http://localhost:5173".parse().context("parse dev frontend url")?)
-                .context("navigate main window")?;
+                .context("navigate app window")?;
         } else {
             window.eval("window.location.assign('/');").ok();
         }
-        show_main_window(app);
-    } else {
-        return Err(anyhow!("main window missing"));
     }
+    show_target_window(app);
 
     let _ = state.desktop_token.lock().await.replace(token);
     let _ = state.backend_base_url.lock().await.replace(format!("http://127.0.0.1:{}", handshake.port));
@@ -484,6 +511,14 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
 fn handle_desktop_menu(app: &AppHandle, id: &str) {
     match id {
         MENU_SHOW => show_main_window(app),
+        MENU_NEW_WINDOW => {
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = create_app_window(&handle, None).await {
+                    log::error!("failed to create new window: {e:#}");
+                }
+            });
+        }
         MENU_HOME => navigate_main_window(app, "/"),
         MENU_CHAT => navigate_main_window(app, "/cockpit"),
         MENU_CODING => navigate_main_window(app, "/coding"),
@@ -535,9 +570,9 @@ fn set_zoom(app: &AppHandle, value: f64) {
 }
 
 fn apply_zoom_to_main(app: &AppHandle, factor: f64) {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+    for window in app.webview_windows().into_values() {
         if let Err(e) = window.set_zoom(factor) {
-            log::warn!("set_zoom({factor}) failed: {e}");
+            log::warn!("set_zoom({factor}) failed for {}: {e}", window.label());
         }
     }
 }
@@ -547,7 +582,7 @@ fn apply_zoom_to_main(app: &AppHandle, factor: f64) {
 /// The React shell owns updater UI. Rust keeps the menu working by focusing
 /// the main window and asking React to start a visible check.
 fn request_update_check(app: &AppHandle) {
-    show_main_window(app);
+    show_target_window(app);
     let _ = app.emit("updater-check-requested", ());
 }
 
@@ -845,6 +880,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         None::<&str>,
     )?;
     let app_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
+    let app_new_window = MenuItem::with_id(app, MENU_NEW_WINDOW, "New Window", true, Some("CmdOrCtrl+N"))?;
     let app_home = MenuItem::with_id(app, MENU_HOME, "Home", true, None::<&str>)?;
     let app_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
     let app_providers = MenuItem::with_id(app, MENU_PROVIDERS, "Providers", true, None::<&str>)?;
@@ -853,6 +889,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let app_open_config_dir = MenuItem::with_id(app, MENU_OPEN_CONFIG_DIR, "View Config Folder", true, None::<&str>)?;
     let app_reveal_backend_log = MenuItem::with_id(app, MENU_REVEAL_BACKEND_LOG, "View Backend Log", true, None::<&str>)?;
     let app_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, Some("CmdOrCtrl+Q"))?;
+    let file_new_window = MenuItem::with_id(app, MENU_NEW_WINDOW, "New Window", true, Some("CmdOrCtrl+N"))?;
     let file_home = MenuItem::with_id(app, MENU_HOME, "Home", true, Some("CmdOrCtrl+Shift+H"))?;
     let file_chat = MenuItem::with_id(app, MENU_CHAT, "Cockpit", true, Some("CmdOrCtrl+Shift+C"))?;
     let file_coding = MenuItem::with_id(app, MENU_CODING, "Coding", true, Some("CmdOrCtrl+Shift+K"))?;
@@ -909,6 +946,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&app_check_updates)
         .separator()
         .item(&app_show)
+        .item(&app_new_window)
         .item(&app_home)
         .separator()
         .item(&app_settings)
@@ -922,6 +960,8 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&app_quit)
         .build()?;
     let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&file_new_window)
+        .separator()
         .item(&file_home)
         .item(&file_chat)
         .item(&file_coding)
@@ -967,6 +1007,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     // Informational only; updated from ``set_tray_session``.
     let session = MenuItem::with_id(app, MENU_SESSION, TRAY_SESSION_IDLE, false, None::<&str>)?;
     let tray_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
+    let tray_new_window = MenuItem::with_id(app, MENU_NEW_WINDOW, "New Window", true, None::<&str>)?;
     let tray_chat = MenuItem::with_id(app, MENU_CHAT, "Cockpit", true, None::<&str>)?;
     let tray_coding = MenuItem::with_id(app, MENU_CODING, "Coding", true, None::<&str>)?;
     let tray_command_palette = MenuItem::with_id(app, MENU_COMMAND_PALETTE, "Command Palette…", true, None::<&str>)?;
@@ -982,6 +1023,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             &session,
             &PredefinedMenuItem::separator(app)?,
             &tray_show,
+            &tray_new_window,
             &tray_chat,
             &tray_coding,
             &tray_command_palette,
@@ -1193,6 +1235,51 @@ fn frontend_init_script(token: Option<&str>, base_url: &str) -> String {
     )
 }
 
+fn next_window_label(app: &AppHandle) -> String {
+    for i in 2.. {
+        let label = format!("{SECONDARY_WINDOW_PREFIX}{i}");
+        if app.get_webview_window(&label).is_none() {
+            return label;
+        }
+    }
+    unreachable!("unbounded window-label iterator should always return")
+}
+
+async fn build_app_window(app: &AppHandle, label: String, init_script: String) -> Result<tauri::WebviewWindow> {
+    let url = frontend_webview_url()?;
+    let builder = WebviewWindowBuilder::new(app, label, url)
+        .title("OpenAgentd")
+        .inner_size(1280.0, 820.0)
+        .min_inner_size(760.0, 560.0)
+        .initialization_script(&init_script)
+        .visible(false);
+    let builder = configure_window_chrome(builder);
+    let win = builder.build().context("build webview window")?;
+    let state: tauri::State<'_, AppState> = app.state();
+    win.set_zoom(*state.zoom.lock().await).ok();
+    win.show().context("show window")?;
+    win.set_focus().ok();
+    Ok(win)
+}
+
+async fn create_app_window(app: &AppHandle, label: Option<&str>) -> Result<tauri::WebviewWindow> {
+    let state: tauri::State<'_, AppState> = app.state();
+    let base = state
+        .backend_base_url
+        .lock()
+        .await
+        .clone()
+        .ok_or_else(|| anyhow!("backend is not ready"))?;
+    let token = state.desktop_token.lock().await.clone();
+    let init_script = frontend_init_script(token.as_deref(), &base);
+    build_app_window(
+        app,
+        label.map(str::to_string).unwrap_or_else(|| next_window_label(app)),
+        init_script,
+    )
+    .await
+}
+
 async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
 
@@ -1209,17 +1296,8 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
             log::warn!("external backend health check failed at startup: {e:#}");
         }
         let init_script = frontend_init_script(None, &base);
-        let url = frontend_webview_url()?;
-        let builder = WebviewWindowBuilder::new(&app, "main", url)
-            .title("OpenAgentd")
-            .inner_size(1280.0, 820.0)
-            .min_inner_size(760.0, 560.0)
-            .initialization_script(&init_script)
-            .visible(false);
-        let builder = configure_window_chrome(builder);
-        let win = builder.build().context("build webview window")?;
-        win.show().context("show window")?;
-        win.set_focus().ok();
+        let _ = state.backend_base_url.lock().await.replace(base.clone());
+        build_app_window(&app, MAIN_WINDOW.to_string(), init_script).await?;
         update_tray_status(&app, "Status: Running (external)");
         app.emit(
             "backend-ready",
@@ -1257,24 +1335,12 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     let token = handshake.token.clone();
     let init_script = frontend_init_script(Some(&token), &base);
 
-    let url = frontend_webview_url()?;
-
-    let builder = WebviewWindowBuilder::new(&app, "main", url)
-        .title("OpenAgentd")
-        .inner_size(1280.0, 820.0)
-        .min_inner_size(760.0, 560.0)
-        .initialization_script(&init_script)
-        .visible(false);
-    let builder = configure_window_chrome(builder);
-    let win = builder.build().context("build webview window")?;
-
-    win.show().context("show window")?;
-    win.set_focus().ok();
-    update_tray_status(&app, "Status: Running");
-
     let _ = state.sidecar.lock().await.replace(sidecar);
     let _ = state.desktop_token.lock().await.replace(handshake.token);
     let _ = state.backend_base_url.lock().await.replace(base.clone());
+
+    build_app_window(&app, MAIN_WINDOW.to_string(), init_script).await?;
+    update_tray_status(&app, "Status: Running");
 
     app.emit(
         "backend-ready",
@@ -1300,6 +1366,7 @@ fn main() {
         tray_status: Arc::new(Mutex::new(None)),
         tray_session: Arc::new(Mutex::new(None)),
         update_state: Arc::new(Mutex::new(None)),
+        active_window_label: Arc::new(Mutex::new(MAIN_WINDOW.to_string())),
         zoom: Arc::new(Mutex::new(ZOOM_DEFAULT)),
     };
 
@@ -1331,6 +1398,7 @@ fn main() {
             app_remove_backend_server,
             app_save_backend_server,
             app_use_bundled_backend,
+            app_new_window,
             set_tray_session,
             updater_check,
             updater_download,
@@ -1366,14 +1434,31 @@ fn main() {
         .run(|app, event| match event {
             RunEvent::WindowEvent {
                 label,
+                event: WindowEvent::Focused(true),
+                ..
+            } if label == MAIN_WINDOW || label.starts_with(SECONDARY_WINDOW_PREFIX) => {
+                let state: tauri::State<'_, AppState> = app.state();
+                tauri::async_runtime::block_on(async {
+                    *state.active_window_label.lock().await = label.to_string();
+                });
+            }
+            RunEvent::WindowEvent {
+                label,
                 event: WindowEvent::CloseRequested { api, .. },
                 ..
-            } if label == MAIN_WINDOW => {
+            } if label == MAIN_WINDOW || label.starts_with(SECONDARY_WINDOW_PREFIX) => {
                 let state: tauri::State<'_, AppState> = app.state();
                 if !state.quitting.load(Ordering::SeqCst) {
                     api.prevent_close();
-                    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-                        let _ = window.hide();
+                    if label == MAIN_WINDOW {
+                        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+                            let _ = window.hide();
+                        }
+                    } else if let Some(window) = app.get_webview_window(label.as_str()) {
+                        let _ = window.destroy();
+                        tauri::async_runtime::block_on(async {
+                            *state.active_window_label.lock().await = MAIN_WINDOW.to_string();
+                        });
                     }
                 }
             }
