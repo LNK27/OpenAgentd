@@ -89,7 +89,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   walks previous user prompts from the current chat plus local submissions. See
   [`web/chat-input.md`](./web/chat-input.md#composer-history-navigation).
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
-  arguments, status, results, and inline Git-like diffs for file edits.
+  arguments, status, results, and inline Git-like diffs for file edits. Read
+  results and file-change diffs keep line numbers visible while scrolling
+  horizontally.
 - **Inline diff previews with real line numbers** `[v1.20.0]` — file-changing tools
   show affected file's actual line numbers (not "starting at 1"), including
   multiple hunks. Collapsible per file. Delete counts shown in headers.

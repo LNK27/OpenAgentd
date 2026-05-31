@@ -90,7 +90,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
                 ? 'bg-[var(--color-diff-add-bg)]'
                 : isRemoved
                   ? 'bg-[var(--color-diff-del-bg)]'
-                  : 'hover:bg-(--bg-key)/30'
+                  : 'bg-(--bg-card) hover:bg-(--bg-key)/30'
 
               const lineText = isAdded
                 ? 'text-[var(--color-diff-add-text)]'
@@ -103,7 +103,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
               return (
                 <div key={idx} className={`flex items-stretch ${lineBg} ${lineText}`}>
                   {/* Line Numbers */}
-                  <div className="flex shrink-0 select-none border-r border-(--color-border)/40 text-right text-[10px] text-(--color-text-subtle)">
+                  <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)">
                     <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
                   </div>
                   {/* Code Line */}
