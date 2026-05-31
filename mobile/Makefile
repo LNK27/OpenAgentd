@@ -4,6 +4,9 @@ IOS_DEVICE ?= $(word 2,$(MAKECMDGOALS))
 IOS_TEAM_FILE ?= ios-team.txt
 IOS_TEAM := $(shell test -f $(IOS_TEAM_FILE) && tr -d '[:space:]' < $(IOS_TEAM_FILE))
 IOS_TEAM_CONFIG = $(if $(IOS_TEAM),--config '{"bundle":{"iOS":{"developmentTeam":"$(IOS_TEAM)"}}}')
+IOS_DEV_IDENTIFIER ?= com.dev.openagentd.mobile
+IOS_DEV_PRODUCT_NAME ?= OpenAgentd Dev
+IOS_DEV_APP_CONFIG = --config '{"identifier":"$(IOS_DEV_IDENTIFIER)","productName":"$(IOS_DEV_PRODUCT_NAME)"}'
 IOS_APPICONSET = src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset
 
 dev: ## Run the mobile shell against the web Vite dev server
@@ -31,7 +34,7 @@ ios-dev-device: ## Run on a named physical iOS device, e.g. `make ios-dev-device
 		echo "Usage: make ios-dev-device <device-name>"; \
 		exit 2; \
 	fi
-	cd src-tauri && cargo tauri ios dev "$(IOS_DEVICE)" --host
+	cd src-tauri && cargo tauri ios dev --host $(IOS_TEAM_CONFIG) $(IOS_DEV_APP_CONFIG) "$(IOS_DEVICE)"
 
 ios-install-device: ## Build and install the production iOS app on a device
 	@if [ -z "$(IOS_DEVICE)" ]; then \
