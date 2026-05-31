@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from 'bun:test'
-import { useRef } from 'react'
+import { createRef, useRef } from 'react'
 import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingInputBar } from '@/components/FloatingInputBar'
@@ -181,5 +181,30 @@ describe('FloatingInputBar', () => {
 
     expect(textarea.getAttribute('disabled')).toBeNull()
     expect(document.activeElement).toBe(textarea)
+  })
+
+  it('expands and inserts the first typed character through its imperative insertText handle', async () => {
+    const ref = createRef<InputBarHandle>()
+    function InsertHarness() {
+      const boundsRef = useRef<HTMLDivElement>(null)
+      return (
+        <div ref={boundsRef} style={{ position: 'relative', width: 1200, height: 800 }}>
+          <FloatingInputBar ref={ref} boundsRef={boundsRef} onSubmit={() => {}} />
+        </div>
+      )
+    }
+
+    render(<InsertHarness />)
+
+    const textarea = screen.getByLabelText('Message input') as HTMLTextAreaElement
+    expect(textarea.getAttribute('disabled')).not.toBeNull()
+
+    act(() => {
+      ref.current?.focus()
+      ref.current?.insertText('h')
+    })
+
+    expect(textarea.getAttribute('disabled')).toBeNull()
+    expect(textarea.value).toBe('h')
   })
 })

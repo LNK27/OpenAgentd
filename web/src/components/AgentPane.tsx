@@ -14,7 +14,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
-import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Check, Undo2, Terminal } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { MCPAppResult } from './MCPAppResult'
@@ -92,7 +92,7 @@ function renderMentionSegments(content: string): React.ReactNode[] {
   return out
 }
 
-function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null }) {
+function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -152,7 +152,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
            </div>
          )}
 
-          <div className="relative overflow-hidden rounded-sm border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm">
+          <div className={`relative overflow-hidden rounded-sm border px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm ${shell ? 'border-(--accent-blue)/30 bg-(--bg-key)' : 'border-(--color-border) bg-(--color-surface)'}`}>
            {/* Expand / collapse button — top-right inside bubble (compact) */}
            {needsCollapse && (
              <button
@@ -164,7 +164,13 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId }: { co
                {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
              </button>
            )}
-           <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{renderMentionSegments(visibleContent)}</p>
+           {shell && (
+             <div className="mb-1 flex items-center gap-1 font-mono text-[10px] text-(--color-text-muted)">
+               <Terminal size={11} aria-hidden="true" />
+               <span>Shell</span>
+             </div>
+           )}
+           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
@@ -232,7 +238,8 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
         return <InboxBubble content={block.content} fromAgent={fromAgent} compact />
       }
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} />
+      const shell = block.extra?.kind === 'user_shell'
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} shell={shell} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />

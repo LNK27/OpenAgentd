@@ -75,6 +75,7 @@ async def create_chat_session(
 _INTERRUPTED_TOOL_RESULT = (
     "Tool execution was interrupted before a result could be recorded."
 )
+USER_SHELL_LLM_CONTENT = "The following tool was executed by the user"
 
 
 async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
@@ -425,9 +426,10 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
             db_messages = (
                 await db.exec(_visible_messages_stmt(session_id, boundary))
             ).all()
-            return await asyncio.to_thread(
+            messages = await asyncio.to_thread(
                 _deserialize_messages, db_messages, sanitize_tool_pairs=True
             )
+            return _apply_llm_content_overrides(messages)
 
         # Fetch all non-hidden, non-summary messages.  This naturally includes:
         #   - keep_last_n messages (not hidden, created before the summary)
@@ -450,9 +452,10 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
             latest_summary.id,
         )
         # Me run in thread — _deserialize_messages does disk I/O for image hydration
-        return await asyncio.to_thread(
+        messages = await asyncio.to_thread(
             _deserialize_messages, db_messages, sanitize_tool_pairs=True
         )
+        return _apply_llm_content_overrides(messages)
     except Exception as e:
         logger.error("load_llm_messages_failed session_id={} error={}", session_id, e)
         raise
@@ -1158,6 +1161,15 @@ def _deserialize_messages(
         result = _sanitize_tool_message_pairs(result, db_messages)
 
     return result
+
+
+def _apply_llm_content_overrides(messages: list[ChatMessage]) -> list[ChatMessage]:
+    for msg in messages:
+        if not isinstance(msg, HumanMessage) or not msg.extra:
+            continue
+        if msg.extra.get("kind") == "user_shell":
+            msg.content = USER_SHELL_LLM_CONTENT
+    return messages
 
 
 def _message_row_by_id(

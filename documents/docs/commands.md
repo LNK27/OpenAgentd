@@ -71,6 +71,10 @@ template and sends the expanded body to the agent. The picker closes
 once you type a space, so the menu does not get in the way while you
 write arguments.
 
+Shell commands use a separate opencode-style shortcut: start a message with
+`!` to run the rest directly through the shell tool instead of sending a prompt.
+See [`shell-commands.md`](./shell-commands.md).
+
 ## API
 
 | Method & path | Purpose |

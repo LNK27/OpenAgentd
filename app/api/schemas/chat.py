@@ -39,6 +39,10 @@ class ChatForm(BaseModel):
     thinking_level: str | None = Field(
         None, description="Per-session lead thinking level override."
     )
+    shell: bool = Field(
+        False,
+        description="Run message text as a shell command instead of an agent prompt.",
+    )
 
     @classmethod
     def as_form(
@@ -50,6 +54,7 @@ class ChatForm(BaseModel):
         workspace: str | None = Form(None),
         model: str | None = Form(None),
         thinking_level: str | None = Form(None),
+        shell: bool = Form(False),
     ) -> "ChatForm":
         try:
             return cls(
@@ -60,6 +65,7 @@ class ChatForm(BaseModel):
                 workspace=workspace,
                 model=model,
                 thinking_level=thinking_level,
+                shell=shell,
             )
         except ValidationError as exc:
             raise HTTPException(

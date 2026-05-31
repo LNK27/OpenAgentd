@@ -168,6 +168,10 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         if (text) expand()
         innerRef.current?.appendValue(text)
       },
+      insertText: (text: string) => {
+        if (text) expand()
+        innerRef.current?.insertText(text)
+      },
       setFiles: (files: File[]) => {
         if (files.length > 0) expand()
         innerRef.current?.setFiles(files)

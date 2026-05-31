@@ -58,10 +58,16 @@ cd ../web && bun dev --host 0.0.0.0
 cd .. && uv run uvicorn app.server:app --host 0.0.0.0 --port 8000
 ```
 
-Then run the iOS app:
+Then run the iOS dev app:
 
 ```bash
 make ios-dev-device <device-name>
+```
+
+`ios-dev-device` uses the dev-only iOS bundle identifier `com.dev.openagentd.mobile` and display name `OpenAgentd Dev`, so it can be installed alongside the production app (`com.openagentd.mobile`). Override locally when needed:
+
+```bash
+make ios-dev-device <device-name> IOS_DEV_IDENTIFIER=com.example.openagentd.dev IOS_DEV_PRODUCT_NAME="OpenAgentd Dev"
 ```
 
 For example, if `cargo tauri ios dev` detects a device named `OfficePhone`, run:

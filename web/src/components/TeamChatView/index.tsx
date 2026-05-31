@@ -259,7 +259,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       if (cancelled) return
       const controller = connectStream()
       if (controller) abortRef.current = controller
-      if (!isMobile) requestAnimationFrame(() => inputRef.current?.focus())
     })()
 
     return () => {
@@ -308,10 +307,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const isEmptyIdleSession = useCallback(() => useTeamStore.getState().isEmptyIdleSession(), [])
 
   const handleNewSession = useCallback(() => {
-    if (isEmptyIdleSession()) {
-      if (!isMobile) requestAnimationFrame(() => inputRef.current?.focus())
-      return
-    }
+    if (isEmptyIdleSession()) return
     abortRef.current?.abort()
     abortRef.current = null
     inputRef.current?.setValue('')
@@ -346,14 +342,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         } else {
           navigate({ to: '/cockpit/$sessionId', params: { sessionId: session.id } })
         }
-        if (!isMobile) requestAnimationFrame(() => inputRef.current?.focus())
       } catch (err) {
         useTeamStore.setState((state) => {
           state.error = err instanceof Error ? err.message : 'Failed to create session'
         })
       }
     })()
-  }, [beginResolvedSession, isEmptyIdleSession, isMobile, mode, navigate, queryClient, sessionIdState, sessionModel, sessionThinkingLevel, workspace])
+  }, [beginResolvedSession, isEmptyIdleSession, mode, navigate, queryClient, sessionIdState, sessionModel, sessionThinkingLevel, workspace])
 
   const handleWorkspaceFiles = useCallback(() => {
     if (mode === 'coding') {
@@ -426,6 +421,28 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     return () => window.removeEventListener('focus-chat-input', handler)
   }, [focusInput])
 
+  useEffect(() => {
+    if (isMobile || showPalette || (mode === 'coding' && (!workspace || isCodingSessionLoading))) return
+
+    const isEditableElement = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false
+      if (target.isContentEditable) return true
+      return target.closest('input, textarea, select, [contenteditable="true"]') !== null
+    }
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key.length !== 1 || e.key.trim().length === 0) return
+      if (isEditableElement(e.target)) return
+      e.preventDefault()
+      inputRef.current?.focus()
+      inputRef.current?.insertText(e.key)
+    }
+
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [isCodingSessionLoading, isMobile, mode, showPalette, workspace])
+
   const handleAddFileComment = useCallback((path: string, startLine: number, endLine: number) => {
     const ref = startLine === endLine ? `@${path}#L${startLine}` : `@${path}#L${startLine}-L${endLine}`
     inputRef.current?.appendValue(`${ref} `)
@@ -477,6 +494,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     void setTraySession(label)
   }, [mode, workspace, sessionTitle, isTeamWorking])
 
+  // Shell shortcut: start a message with `!` to run the rest as a shell command.
   // Slash commands for the input bar (type / to trigger).
   // Built-ins execute immediately on pick; user-defined commands are inserted
   // into the textarea (``keepInputOpen``) so the user can append
@@ -1052,13 +1070,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ref={inputRef}
             boundsRef={mainColumnRef}
             onSubmit={async (content, files) => {
-              const expanded = await expandUserCommand(content)
+              const shell = content.startsWith('!')
+              const command = shell ? content.slice(1).trim() : content
+              const expanded = shell ? `!${command}` : await expandUserCommand(content)
               const current = useTeamStore.getState()
               sendMessage(expanded, files, {
                 mode,
                 workspace,
                 model: current.sessionId ? selectedModel || null : null,
                 thinkingLevel: current.sessionId ? selectedThinkingLevel || null : null,
+                shell,
               })
             }}
             onStop={() => useTeamStore.getState().stopTeam()}
@@ -1071,7 +1092,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             onFileRefsNeeded={() => setFileRefsEnabled(true)}
             isStreaming={isTeamWorking}
             disabled={mode === 'coding' && isCodingSessionLoading}
-            autoFocus={!isMobile && !sessionId}
             placeholder={
               dreamMutation.isPending
                 ? 'Dream is running…'

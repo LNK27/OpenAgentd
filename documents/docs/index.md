@@ -28,6 +28,7 @@ Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Cop
 | [CLI reference](./cli.md) | Every `openagentd` subcommand (`init`, `auth`, `stop`, `doctor`, `upgrade`, …). |
 | [Configuration](./configuration.md) | Env vars, XDG paths, agent `.md` files, providers, tools, skills, sandbox, hooks. |
 | [Slash commands](./commands.md) | Reusable `/name` prompt templates; reuses your opencode command library. |
+| [Shell commands](./shell-commands.md) | Opencode-style `!command` sends that run directly through the shell tool. |
 | [Troubleshooting](./troubleshooting.md) | Common install & runtime issues — desktop app then CLI / server. |
 | [Comparison](./comparison.md) | How OpenAgentd compares to Claude Code, Codex CLI, Cursor/Windsurf, Aider, opencode. |
 

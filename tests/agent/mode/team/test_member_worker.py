@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import uuid
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid7
@@ -10,11 +12,101 @@ from uuid import uuid7
 import pytest_asyncio
 
 from app.agent.agent_loop import Agent
+from app.agent.artifacts import TODOS_FILENAME
 from app.agent.mode.team.mailbox import Message
 from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    ChatCompletionChunk,
+    ChatCompletionChunkChoice,
+    ChatCompletionDelta,
+    ChatMessage,
+    ToolCallDelta,
+)
+from app.core import db as app_db
 from app.models.chat import ChatSession
+from app.services.chat_service import save_message
 from tests.agent.mode.team.conftest import MockTeamProvider
+
+
+class ClaimThenStopProvider(MockTeamProvider):
+    """Claim once, then stop with plain text; report only after the nudge."""
+
+    def __init__(self):
+        super().__init__("I am incorrectly stopping without team_message")
+        self.claimed = False
+        self.reported = False
+
+    def stream(
+        self,
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        self.call_count += 1
+        content = ""
+        for message in reversed(messages):
+            if getattr(message, "role", None) == "user":
+                content = message.content or ""
+                break
+        if "Claim this todo" in content and not self.claimed:
+            self.claimed = True
+            chunk = _tool_chunk(
+                "todo_manage",
+                "claim_task",
+                '{"actions":[{"action":"claim","task_id":"task_1"}]}',
+            )
+        elif "You still have open assigned task" in content and not self.reported:
+            self.reported = True
+            chunk = _tool_chunk(
+                "team_message",
+                "report_nudge",
+                '{"to":["lead"],"content":"Nudge received; reporting back."}',
+            )
+        else:
+            chunk = ChatCompletionChunk(
+                id="plain-stop",
+                created=1,
+                model="mock-model",
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0,
+                        delta=ChatCompletionDelta(
+                            content="I am incorrectly stopping without team_message"
+                        ),
+                        finish_reason="stop",
+                    )
+                ],
+            )
+
+        async def _gen():
+            yield chunk
+
+        return _gen()
+
+
+def _tool_chunk(name: str, tool_id: str, arguments: str) -> ChatCompletionChunk:
+    return ChatCompletionChunk(
+        id=tool_id,
+        created=1,
+        model="mock-model",
+        choices=[
+            ChatCompletionChunkChoice(
+                index=0,
+                delta=ChatCompletionDelta(
+                    tool_calls=[
+                        ToolCallDelta(
+                            index=0,
+                            id=tool_id,
+                            function={"name": name, "arguments": arguments},
+                        )
+                    ]
+                ),
+                finish_reason="tool_calls",
+            )
+        ],
+    )
 
 
 def _make_mock_db_factory():
@@ -48,6 +140,16 @@ def _make_mock_db_factory_with_session(session_row: ChatSession):
         yield mock_db
 
     return factory
+
+
+async def _seed_worker_assistant(worker: TeamMember, content: str) -> None:
+    worker.db_factory = app_db.async_session_factory
+    session_uuid = uuid.UUID(worker.session_id)
+    async with app_db.async_session_factory() as db:
+        db.add(ChatSession(id=session_uuid, agent_name=worker.name))
+        await db.flush()
+        await save_message(db, session_uuid, AssistantMessage(content=content))
+        await db.commit()
 
 
 @pytest_asyncio.fixture
@@ -380,6 +482,163 @@ class TestHandleMessagesFormatting:
 
 
 class TestSafetyNet:
-    """Safety net removed — _replied flag no longer exists on TeamMember."""
+    """Open-task safety net for members that stop without reporting."""
 
-    pass
+    async def test_member_plain_stop_with_claimed_task_is_reactivated_by_nudge(
+        self, team_with_db, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.core.config.settings.OPENAGENTD_DATA_DIR", str(tmp_path / "data")
+        )
+        team = team_with_db
+        worker = team.members["worker"]
+        provider = ClaimThenStopProvider()
+        worker.agent.llm_provider = provider
+        worker.db_factory = app_db.async_session_factory
+        team.lead.db_factory = app_db.async_session_factory
+        lead_session_id = "01900000-0000-7000-8000-000000000001"
+        team.lead.session_id = lead_session_id
+        worker.session_id = "01900000-0000-7000-8000-000000000002"
+        todos = tmp_path / "data" / "sessions" / lead_session_id / TODOS_FILENAME
+        todos.parent.mkdir(parents=True)
+        todos.write_text(
+            json.dumps(
+                {
+                    "counter": 1,
+                    "items": [
+                        {
+                            "task_id": "task_1",
+                            "content": "Investigate flaky test",
+                            "status": "pending",
+                            "priority": "high",
+                            "dependencies": [],
+                            "assigned_to": "worker",
+                            "claimed_by": None,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        async with app_db.async_session_factory() as db:
+            db.add(ChatSession(id=uuid.UUID(lead_session_id), agent_name="lead"))
+            db.add(
+                ChatSession(
+                    id=uuid.UUID(worker.session_id),
+                    parent_session_id=uuid.UUID(lead_session_id),
+                    agent_name="worker",
+                )
+            )
+            await db.commit()
+
+        await team.start()
+        await team.mailbox.send(
+            to="worker",
+            message=Message(
+                from_agent="lead",
+                to_agent="worker",
+                content="[lead]: Claim this todo: task_1. Then stop incorrectly without team_message.",
+            ),
+        )
+        deadline = asyncio.get_running_loop().time() + 5
+        while asyncio.get_running_loop().time() < deadline:
+            if (
+                provider.reported
+                and team.lead.state == "idle"
+                and worker.state == "idle"
+            ):
+                break
+            await asyncio.sleep(0.05)
+
+        assert provider.claimed is True
+        assert provider.reported is True
+        assert provider.call_count >= 3
+        store = json.loads(todos.read_text(encoding="utf-8"))
+        assert store["items"][0]["status"] == "in_progress"
+
+        await team.stop()
+
+    async def test_member_with_open_task_gets_nudged(
+        self, team_with_db, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.core.config.settings.OPENAGENTD_DATA_DIR", str(tmp_path / "data")
+        )
+        team = team_with_db
+        worker = team.members["worker"]
+        lead_session_id = "01900000-0000-7000-8000-000000000001"
+        team.lead.session_id = lead_session_id
+        todos = tmp_path / "data" / "sessions" / lead_session_id / TODOS_FILENAME
+        todos.parent.mkdir(parents=True)
+        todos.write_text(
+            json.dumps(
+                {
+                    "counter": 1,
+                    "items": [
+                        {
+                            "task_id": "task_1",
+                            "content": "Investigate flaky test",
+                            "status": "in_progress",
+                            "priority": "high",
+                            "dependencies": [],
+                            "assigned_to": "worker",
+                            "claimed_by": "worker",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        await team.start()
+        await _seed_worker_assistant(worker, "I found the file")
+        await worker._maybe_inject_open_task_nudge()
+
+        reminder = team.mailbox.receive_nowait("worker")
+        assert reminder.from_agent == "system"
+        assert "task_1" in reminder.content
+        assert "team_message" in reminder.content
+
+        await team.stop()
+
+    async def test_member_with_open_task_nudge_is_bounded(
+        self, team_with_db, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.core.config.settings.OPENAGENTD_DATA_DIR", str(tmp_path / "data")
+        )
+        team = team_with_db
+        worker = team.members["worker"]
+        lead_session_id = "01900000-0000-7000-8000-000000000001"
+        team.lead.session_id = lead_session_id
+        todos = tmp_path / "data" / "sessions" / lead_session_id / TODOS_FILENAME
+        todos.parent.mkdir(parents=True)
+        todos.write_text(
+            json.dumps(
+                {
+                    "counter": 1,
+                    "items": [
+                        {
+                            "task_id": "task_1",
+                            "content": "Investigate flaky test",
+                            "status": "in_progress",
+                            "priority": "high",
+                            "dependencies": [],
+                            "assigned_to": "worker",
+                            "claimed_by": "worker",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        await team.start()
+        await _seed_worker_assistant(worker, "I found the file")
+        await worker._maybe_inject_open_task_nudge()
+        team.mailbox.receive_nowait("worker")
+        await worker._maybe_inject_open_task_nudge()
+
+        assert team.mailbox.inbox_empty("worker")
+
+        await team.stop()

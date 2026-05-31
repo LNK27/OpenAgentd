@@ -117,6 +117,20 @@ describe('postTeamChat', () => {
     expect(form.get('thinking_level')).toBe('high')
   })
 
+  it('sends shell=true when posting a bang shell command', async () => {
+    let body: BodyInit | null | undefined
+    globalThis.fetch = mock((_url, init) => {
+      body = (init as RequestInit | undefined)?.body
+      return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
+    }) as typeof fetch
+
+    await postTeamChat('!ls -la', 'sid', false, undefined, 'normal', null, undefined, undefined, true)
+
+    const form = body as FormData
+    expect(form.get('message')).toBe('!ls -la')
+    expect(form.get('shell')).toBe('true')
+  })
+
   it('deletes queued messages by session and message id', async () => {
     let url: string | URL | Request | undefined
     let method: string | undefined

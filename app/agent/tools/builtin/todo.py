@@ -205,6 +205,27 @@ def release_in_progress_for_actor(
     return released
 
 
+def open_assigned_todos_for_actor(session_id: str, actor: str) -> list[dict]:
+    """Return unfinished todos assigned to or claimed by *actor* for *session_id*."""
+    path = todos_path(session_id)
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    store = _normalize_store(data if isinstance(data, dict) else {})
+    todos: list[dict] = []
+    for item in store.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") in {"completed", "cancelled"}:
+            continue
+        if item.get("assigned_to") == actor or item.get("claimed_by") == actor:
+            todos.append(dict(item))
+    return todos
+
+
 def _format_items(items: list[dict]) -> str:
     if not items:
         return "No todos."

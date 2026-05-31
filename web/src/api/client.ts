@@ -55,6 +55,7 @@ export async function postTeamChat(
   workspace?: string | null,
   model?: string | null,
   thinkingLevel?: string | null,
+  shell = false,
 ): Promise<{ status: string; session_id: string; message_id?: string }> {
   const formData = new FormData()
   if (message) {
@@ -77,6 +78,9 @@ export async function postTeamChat(
   }
   if (thinkingLevel !== undefined) {
     formData.append('thinking_level', thinkingLevel ?? '')
+  }
+  if (shell) {
+    formData.append('shell', 'true')
   }
   if (files && files.length > 0) {
     for (const file of files) {

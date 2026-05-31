@@ -69,6 +69,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   keep visual notifications on while muting audio.
 - **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,
   agents, files, slash commands, settings.
+- **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
+  typing on the chat surface to expand/focus the composer and capture the first
+  character without pressing `Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
 - **Native menu/tray shortcuts** `[v1.39.0]` — menubar shortcuts for Home,
   Cockpit, Coding, Command Palette, Wiki, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
@@ -77,13 +80,18 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
+- **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the
+  remainder directly through the shell tool without a model turn; history stores
+  the run as structured shell tool output. See [`shell-commands.md`](./shell-commands.md).
 - **Drag-and-drop files into chat** `[since v1.0]` — images, PDFs, text. Multimodal
   parts attach to the user message.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions. See
   [`web/chat-input.md`](./web/chat-input.md#composer-history-navigation).
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
-  arguments, status, results, and inline Git-like diffs for file edits.
+  arguments, status, results, and inline Git-like diffs for file edits. Read
+  results and file-change diffs keep line numbers visible while scrolling
+  horizontally.
 - **Inline diff previews with real line numbers** `[v1.20.0]` — file-changing tools
   show affected file's actual line numbers (not "starting at 1"), including
   multiple hunks. Collapsible per file. Delete counts shown in headers.

@@ -100,8 +100,8 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
         <div className="overflow-x-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
           <div className="min-w-max">
             {lines.map((line, idx) => (
-              <div key={idx} className="flex items-stretch text-(--color-text) hover:bg-(--bg-key)/30">
-                <div className="flex shrink-0 select-none border-r border-(--color-border)/40 text-right text-[10px] text-(--color-text-subtle)">
+              <div key={idx} className="flex items-stretch bg-(--bg-card) text-(--color-text) hover:bg-(--bg-key)/30">
+                <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-(--bg-card) text-right text-[10px] text-(--color-text-subtle)">
                   <span className="w-9 py-0.5 pr-1.5">{startLine + idx}</span>
                 </div>
                 <pre className="flex-1 whitespace-pre-wrap px-2 py-0.5">{line || ' '}</pre>

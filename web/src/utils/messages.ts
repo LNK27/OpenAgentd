@@ -19,6 +19,14 @@ function continuationSeparator(left: string, right: string): string {
   return ' '
 }
 
+function shellDisplayContent(msg: MessageResponse): string {
+  const command = msg.extra?.command
+  if (msg.extra?.kind === 'user_shell' && typeof command === 'string' && command.trim()) {
+    return command.trim().startsWith('!') ? command.trim() : `!${command.trim()}`
+  }
+  return msg.content || ''
+}
+
 function sortMessages(msgs: MessageResponse[]): MessageResponse[] {
   return [...msgs].sort((a, b) => {
     const ta = a.created_at ? new Date(a.created_at).getTime() : 0
@@ -118,7 +126,7 @@ export function parseApiMessages(msgs: MessageResponse[]): ChatMessage[] {
       result.push({
         id: msg.id,
         role: 'user',
-        content: msg.content || '',
+        content: shellDisplayContent(msg),
         blocks: [],
         timestamp: msg.created_at ? new Date(msg.created_at) : new Date(),
         attachments: msg.attachments ?? undefined,
@@ -230,7 +238,7 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
       result.push({
         id: msg.id,
         type: 'user',
-        content: msg.content || '',
+        content: shellDisplayContent(msg),
         extra: Object.keys(extra).length > 0 ? extra : undefined,
         timestamp,
         attachments: msg.attachments ?? undefined,

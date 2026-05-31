@@ -349,6 +349,78 @@ describe("InputBar", () => {
     expect(sendButton.getAttribute("title")).toMatch(/Shift\+Enter/)
   })
 
+  it("enters shell mode when bang is typed at the start", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} placeholder="Message the team…" />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "!")
+
+    expect(textarea.value).toBe("")
+    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
+    expect(textarea.placeholder).toBe("Enter shell command... git status")
+    expect(screen.getByLabelText("Shell mode")).toBeTruthy()
+    expect(screen.queryByLabelText("Attach file")).toBeNull()
+    expect(screen.queryByLabelText(/Voice input/)).toBeNull()
+  })
+
+  it("leaves shell mode with Backspace when command is empty", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} placeholder="Message the team…" />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "!")
+    await user.keyboard("{Backspace}")
+
+    expect(textarea.value).toBe("")
+    expect(screen.getByLabelText("Message input")).toBe(textarea)
+    expect(textarea.placeholder).toBe("Message the team…")
+    expect(screen.queryByLabelText("Shell mode")).toBeNull()
+  })
+
+  it("submits shell mode content with a visible bang prefix", async () => {
+    const user = userEvent.setup()
+    let submittedText = ""
+    render(<InputBar onSubmit={(text) => { submittedText = text }} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "!pwd")
+    await user.keyboard("{Enter}")
+
+    expect(submittedText).toBe("!pwd")
+    expect(textarea.value).toBe("")
+    expect(screen.getByLabelText("Message input")).toBe(textarea)
+  })
+
+  it("does not show slash commands while in shell mode", async () => {
+    const user = userEvent.setup()
+    render(
+      <InputBar
+        onSubmit={() => {}}
+        slashCommands={[{ id: "stop", label: "Stop", description: "Stop streaming" }]}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "!/")
+
+    expect(textarea.value).toBe("/")
+    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull()
+  })
+
+  it("restores shell mode when navigating to shell command history", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "!pwd")
+    await user.keyboard("{Enter}")
+    await user.keyboard("{ArrowUp}")
+
+    expect(textarea.value).toBe("pwd")
+    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
+  })
+
   it("wires slash command popup to the textarea for screen readers", async () => {
     const user = userEvent.setup()
     render(
@@ -587,7 +659,7 @@ describe("InputBar", () => {
 // Additional coverage: useImperativeHandle, capabilities, file handling, drag-drop
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("InputBar — useImperativeHandle (focus method)", () => {
+describe("InputBar — useImperativeHandle", () => {
   it("exposes a focus() method via ref that focuses the textarea", () => {
     const ref = createRef<InputBarHandle>()
     render(<InputBar onSubmit={() => {}} ref={ref} />)
@@ -608,6 +680,39 @@ describe("InputBar — useImperativeHandle (focus method)", () => {
     render(<InputBar onSubmit={() => {}} ref={ref} />)
     expect(ref.current).toBeTruthy()
     expect(typeof ref.current?.focus).toBe("function")
+    expect(typeof ref.current?.insertText).toBe("function")
+  })
+
+  it("inserts text at the current caret position via ref", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    act(() => {
+      ref.current?.setValue("helo")
+    })
+    act(() => {
+      textarea.focus()
+      textarea.setSelectionRange(2, 2)
+      ref.current?.insertText("l")
+    })
+
+    expect(textarea.value).toBe("hello")
+  })
+
+  it("supports first-key auto-capture after focusing an initially blurred input", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    act(() => {
+      ref.current?.focus()
+      ref.current?.insertText("h")
+    })
+
+    expect(document.activeElement).toBe(textarea)
+    expect(textarea.value).toBe("h")
   })
 })
 

@@ -37,13 +37,13 @@
 
 A short list of the most important shipped capabilities. The canonical, version-cited catalogue is [`documents/docs/features.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md); other feature requests and future work live in [GitHub issues](https://github.com/lthoangg/OpenAgentd/issues).
 
-**A cockpit, not a chat box.** Command palette (Ctrl+P), slash commands (`/init`, `/continue`, `/compact`, `/undo`, `/redo`), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back, including inline Git-like diffs for file edits.
+**A cockpit, not a chat box.** Command palette (Ctrl+P), slash commands (`/init`, `/continue`, `/compact`, `/undo`, `/redo`), opencode-style shell sends (`!git status`), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back, including inline Git-like diffs for file edits.
 
 ![Tool call inspector — arguments, execution status, and results](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/tool-call-inspector.png)
 
 **Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view, resume interrupted work with `/continue`, or switch to a single unified view.
 
-**Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/coder`, `coding/explorer`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works.
+**Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/coder`, `coding/explorer`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works. Type `!` in the composer to switch into shell-command mode and run commands directly without asking the model first.
 
 ![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
@@ -64,6 +64,7 @@ Coding agents (Claude Code, Codex CLI, Cursor, Windsurf, Aider, opencode) all ru
 | **Surface**                | Desktop app + web cockpit                   | Terminal (CLI)              | Terminal (CLI)        | IDE (VS Code fork)        |
 | **Multi-agent**            | Lead + workers, split-pane live view        | Sub-agents (sequential)     | —                     | —                         |
 | **Watch live**             | Tool inspector + diffs + per-call timing    | Terminal text               | Terminal text         | Inline in editor          |
+| **Direct shell from input**| `!command` shell mode + structured history  | CLI shell escapes           | CLI shell escapes     | Terminal/editor tasks     |
 | **`/undo` across chat**    | Restores workspace files from any prior turn| —                           | —                     | Editor undo only          |
 | **Providers**              | 15 — bring your own keys                    | Anthropic only              | OpenAI only           | A few, subscription       |
 | **License / cost**         | Apache 2.0, your keys                       | Proprietary + sub           | Proprietary + sub     | $20/mo+ subscription      |

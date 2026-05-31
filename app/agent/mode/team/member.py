@@ -61,6 +61,8 @@ from app.core.db import DbFactory, resolve_db_factory
 from app.models.chat import ChatSession, SessionMessage
 from app.services.chat_service import get_messages_for_llm, save_message
 
+MAX_OPEN_TASK_NUDGES = 1
+
 if TYPE_CHECKING:
     from app.agent.mode.team.mailbox import TeamMailbox
     from app.agent.mode.team.team import AgentTeam
@@ -203,6 +205,30 @@ async def _mark_last_assistant_interrupted(
         )
 
 
+def _open_task_nudge_content(open_todos: list[dict], lead_name: str) -> str:
+    """Build the hidden task-reminder prompt for a member."""
+    lines = [
+        "[system]: You still have open assigned task(s). Do not stop yet.",
+        "",
+    ]
+    for index, todo in enumerate(open_todos, start=1):
+        task_id = todo.get("task_id", "unknown")
+        content = todo.get("content", "Untitled task")
+        status = todo.get("status", "unknown")
+        lines.append(f'{index}. "{content}" ({task_id}, status: {status})')
+    lines.extend(
+        [
+            "",
+            "If a task is complete, report the result to the lead using "
+            f'`team_message(to=["{lead_name}"])`.',
+            "If you are blocked, report the blocker to the lead using `team_message`.",
+            "If more work is needed, continue working. If you need to wait, "
+            "respond exactly `<sleep>`.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 # =============================================================================
 # TeamMemberBase — shared worker infrastructure
 # =============================================================================
@@ -255,6 +281,7 @@ class TeamMemberBase(abc.ABC):
         # Bound at register() time
         self._team: AgentTeam | None = None
         self._mailbox: TeamMailbox | None = None
+        self._open_task_nudge_counts: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -897,6 +924,8 @@ class TeamMemberBase(abc.ABC):
                 llm_provider=runtime_provider,
                 model_id=runtime_model,
             )
+
+            await self._maybe_inject_open_task_nudge()
         finally:
             reset_role(role_token)
             _sandbox_ctx.reset(token)
@@ -907,6 +936,96 @@ class TeamMemberBase(abc.ABC):
             await _mark_last_assistant_interrupted(
                 self.db_factory, uuid.UUID(self.session_id)
             )
+
+    async def _maybe_inject_open_task_nudge(self) -> None:
+        """Wake members that ended normally while assigned todos remain open."""
+        if self._role_label != "member" or self.db_factory is None:
+            return
+        assert self._team is not None
+        assert self._mailbox is not None
+
+        try:
+            from app.agent.tools.builtin.todo import open_assigned_todos_for_actor
+
+            open_todos = open_assigned_todos_for_actor(
+                self._team.lead.session_id,
+                self.name,
+            )
+        except Exception as exc:
+            logger.warning(
+                "team_member_open_task_lookup_failed name={} error={}", self.name, exc
+            )
+            return
+        if not open_todos:
+            return
+
+        try:
+            async with resolve_db_factory(self.db_factory)() as db:
+                rows = (
+                    await db.exec(
+                        select(SessionMessage)
+                        .where(
+                            col(SessionMessage.session_id) == uuid.UUID(self.session_id)
+                        )
+                        .order_by(col(SessionMessage.created_at).desc())
+                        .limit(10)
+                    )
+                ).all()
+        except Exception as exc:
+            logger.warning(
+                "team_member_open_task_history_failed name={} error={}", self.name, exc
+            )
+            return
+        if not rows:
+            return
+
+        last = rows[0]
+        if last.role != "assistant" or last.tool_calls:
+            return
+        if (last.content or "").strip() in {"<sleep>", "[sleep]"}:
+            return
+
+        for row in rows:
+            tool_calls = row.tool_calls or []
+            if any(
+                call.get("function", {}).get("name") == "team_message"
+                for call in tool_calls
+            ):
+                return
+            if row.id == last.id:
+                break
+
+        task_ids = [
+            todo.get("task_id")
+            for todo in open_todos
+            if isinstance(todo.get("task_id"), str)
+        ]
+        nudge_keys = [f"{self._team.lead.session_id}:{task_id}" for task_id in task_ids]
+        if nudge_keys and all(
+            self._open_task_nudge_counts.get(key, 0) >= MAX_OPEN_TASK_NUDGES
+            for key in nudge_keys
+        ):
+            logger.info(
+                "team_member_open_task_nudge_suppressed name={} tasks={}",
+                self.name,
+                task_ids,
+            )
+            return
+        for key in nudge_keys:
+            self._open_task_nudge_counts[key] = (
+                self._open_task_nudge_counts.get(key, 0) + 1
+            )
+
+        content = _open_task_nudge_content(open_todos, self._team.lead.name)
+        logger.info("team_member_open_task_nudge name={} tasks={}", self.name, task_ids)
+        await self._mailbox.send(
+            to=self.name,
+            message=Message(
+                from_agent="system",
+                to_agent=self.name,
+                content=content,
+            ),
+        )
 
 
 # =============================================================================
