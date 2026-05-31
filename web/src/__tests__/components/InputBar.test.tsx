@@ -659,7 +659,7 @@ describe("InputBar", () => {
 // Additional coverage: useImperativeHandle, capabilities, file handling, drag-drop
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("InputBar — useImperativeHandle (focus method)", () => {
+describe("InputBar — useImperativeHandle", () => {
   it("exposes a focus() method via ref that focuses the textarea", () => {
     const ref = createRef<InputBarHandle>()
     render(<InputBar onSubmit={() => {}} ref={ref} />)
@@ -680,6 +680,39 @@ describe("InputBar — useImperativeHandle (focus method)", () => {
     render(<InputBar onSubmit={() => {}} ref={ref} />)
     expect(ref.current).toBeTruthy()
     expect(typeof ref.current?.focus).toBe("function")
+    expect(typeof ref.current?.insertText).toBe("function")
+  })
+
+  it("inserts text at the current caret position via ref", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    act(() => {
+      ref.current?.setValue("helo")
+    })
+    act(() => {
+      textarea.focus()
+      textarea.setSelectionRange(2, 2)
+      ref.current?.insertText("l")
+    })
+
+    expect(textarea.value).toBe("hello")
+  })
+
+  it("supports first-key auto-capture after focusing an initially blurred input", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    act(() => {
+      ref.current?.focus()
+      ref.current?.insertText("h")
+    })
+
+    expect(document.activeElement).toBe(textarea)
+    expect(textarea.value).toBe("h")
   })
 })
 

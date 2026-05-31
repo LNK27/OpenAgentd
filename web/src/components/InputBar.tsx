@@ -141,6 +141,7 @@ export interface InputBarHandle {
   focus: () => void
   setValue: (text: string) => void
   appendValue: (text: string) => void
+  insertText: (text: string) => void
   setFiles: (files: File[]) => void
 }
 
@@ -324,6 +325,23 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       setMentionRange(null)
       setSnippetRange(null)
       requestAnimationFrame(resize)
+    },
+    insertText: (text: string) => {
+      const el = textareaRef.current
+      setValue((prev) => {
+        const start = el?.selectionStart ?? prev.length
+        const end = el?.selectionEnd ?? start
+        const next = prev.slice(0, start) + text + prev.slice(end)
+        requestAnimationFrame(() => {
+          el?.setSelectionRange(start + text.length, start + text.length)
+          resize()
+        })
+        return next
+      })
+      setShellMode(false)
+      setHistoryIndex(-1)
+      setMentionRange(null)
+      setSnippetRange(null)
     },
     setFiles: (nextFiles: File[]) => {
       setFiles(nextFiles)

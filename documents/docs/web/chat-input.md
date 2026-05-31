@@ -58,7 +58,7 @@ Stored in `useTeamStore._pendingMessages: PendingMessage[]`.
 
 `PendingMessageQueue` renders queued messages inside the conversation timeline below the streaming assistant response. Each queued item uses the normal right-aligned user bubble shape with a small × button (labelled "Edit queued message") and a `Queued` label. Clicking × dispatches a `queue:restore-draft` `CustomEvent`; `TeamChatView` listens for it and moves the queued text back into the composer (overwriting any current draft, matching `/undo` semantics) before removing the queued row — so the user can edit or resend instead of losing what they typed.
 
-The desktop floating composer starts as a compact action strip and expands on focus, `Ctrl+I`, New Chat focus, attachment/content insertion, or the Chat affordance. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
+The desktop floating composer starts as a compact action strip and expands on explicit focus, `Ctrl+I`, attachment/content insertion, the Chat affordance, or type-to-focus: when no editable element is focused, pressing a printable key on the cockpit/coding chat surface focuses the composer and inserts that first character. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
 
 Keyboard submit differs by viewport: desktop `Enter` submits and `Shift+Enter` inserts a newline; mobile `Enter` inserts a newline and the Send button submits.
 
@@ -78,8 +78,9 @@ the same metadata persisted by the backend.
 The `InputBarHandle` ref exposes:
 - `focus()` — expand the floating composer when needed, then focus the textarea
 - `setValue(text)` — expand the floating composer when needed, inject text, and trigger height recalculation
+- `insertText(text)` — insert text at the current caret/selection, used by type-to-focus so the first keypress is not lost
 
-`newSession()` aborts any active team SSE stream and resets the live roster/scroll state before focusing the empty composer, so stale tokens or scroll affordances from the previous session do not leak into the fresh chat.
+`newSession()` aborts any active team SSE stream and resets the live roster/scroll state without automatically focusing the empty composer, so stale tokens, scroll affordances, or unwanted keyboard capture from the previous session do not leak into the fresh chat.
 
 ### Composer history navigation
 
