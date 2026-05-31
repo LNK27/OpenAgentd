@@ -2,7 +2,7 @@
 title: Tool Call & Result Rendering
 description: Inline tool-call rows with per-tool summaries, codeblock-style args/result panels, and custom renderers.
 status: stable
-updated: 2026-05-17
+updated: 2026-05-31
 ---
 
 # Tool Call & Result Rendering
@@ -193,9 +193,9 @@ Rendering:
 
 ### `FileReadResult` — `read`
 
-- Detects the optional `[start-end/total]\n` prefix emitted by the backend when `offset`/`limit` were used and promotes it to a quiet `lines N–M of T` metadata line above the content.
-- Content rendered in a scrollable `<pre>` (`max-h-80`, `whitespace-pre-wrap`, `break-words`).
-- No `FileText` icon, no `file content` caption (the outer `result` caption already marks the section).
+- Detects the optional `[start-end/total]\n` prefix emitted by the backend when `offset`/`limit` were used and promotes it to a quiet `lines N–M of T` metadata label.
+- Renders read output in a file-card surface that mirrors the edit/patch/write diff chrome: bordered wrapper, `bg-(--bg-key)` header strip, file icon, and scrollable monospace body.
+- Shows file contents only — no diff line markers, additions/deletions, or hunk metadata.
 
 ### `TeamMessageResult` — `team_message`
 

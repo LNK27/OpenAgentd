@@ -12,7 +12,7 @@
  * rather than an overlay. Theme-aware, no hard-coded rgba.
  */
 
-import { ExternalLink, Globe } from 'lucide-react'
+import { ChevronRight, ExternalLink, FileText, Globe } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -191,20 +191,27 @@ function FileListResult({ result }: { result: string }) {
 
 function FileReadResult({ result }: { result: string }) {
   // Detect the optional "[start-end/total]" header emitted by read when a
-  // range was requested. Promote it to a quiet metadata line so the pre
+  // range was requested. Promote it to a quiet metadata pill so the code
   // block shows only the actual file content.
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
-  const rangeLabel = match ? `lines ${match[1]}–${match[2]} of ${match[3]}` : null
+  const rangeLabel = match ? `lines ${match[1]}–${match[2]} of ${match[3]}` : 'file contents'
   const body = match ? match[4] : result
 
   return (
-    <div className="flex flex-col gap-1">
-      {rangeLabel && (
-        <span className="font-mono text-[10px] text-(--color-text-muted)">{rangeLabel}</span>
-      )}
-      <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
-        {body}
-      </pre>
+    <div className="overflow-hidden rounded-md border border-(--color-border)">
+      <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-3 py-1.5 font-mono text-xs font-semibold text-(--color-text-2)">
+        <FileText size={14} className="shrink-0 text-(--color-text-muted)" aria-hidden />
+        <span className="truncate">Read output</span>
+        <span className="ml-auto text-[10px] font-normal text-(--color-text-muted) uppercase">
+          {rangeLabel}
+        </span>
+        <ChevronRight size={13} className="rotate-90 shrink-0 text-(--color-text-muted)" aria-hidden />
+      </div>
+      <div className="overflow-x-auto bg-(--bg-card)">
+        <pre className="min-w-max whitespace-pre-wrap px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
+          {body}
+        </pre>
+      </div>
     </div>
   )
 }
