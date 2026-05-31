@@ -40,7 +40,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
         : 'text-(--color-text-muted)'
 
   return (
-    <div className="flex max-h-80 flex-col overflow-auto border-b border-(--color-border) last:border-b-0">
+    <div className="flex max-h-80 flex-col overflow-y-auto overflow-x-hidden border-b border-(--color-border) last:border-b-0">
       {/* File Header */}
       <button
         type="button"

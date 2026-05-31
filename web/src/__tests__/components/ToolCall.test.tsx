@@ -202,7 +202,8 @@ describe("ToolCall — diff stats", () => {
     expect(header.className).toContain("top-0")
     expect(header.className).toContain("z-10")
     expect(header.parentElement?.className).toContain("max-h-80")
-    expect(header.parentElement?.className).toContain("overflow-auto")
+    expect(header.parentElement?.className).toContain("overflow-y-auto")
+    expect(header.parentElement?.className).toContain("overflow-x-hidden")
   })
 
   it("collapses the whole edit result when clicking the diff file header", async () => {
