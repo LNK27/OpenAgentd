@@ -62,6 +62,19 @@ The desktop floating composer starts as a compact action strip and expands on fo
 
 Keyboard submit differs by viewport: desktop `Enter` submits and `Shift+Enter` inserts a newline; mobile `Enter` inserts a newline and the Send button submits.
 
+### Shell mode
+
+Typing `!` as the first character enters shell mode, matching opencode's shortcut.
+The `!` is not inserted into the textarea; instead the placeholder changes to
+`Enter shell command...`, and the left-side attach/voice controls collapse into a
+compact Shell card. Backspace on an empty shell command, or Escape, exits back to
+normal chat mode.
+
+Submitting shell mode prefixes the visible history/API message with `!`, sets the
+`shell=true` API flag, and marks the optimistic user block as `extra.kind =
+"user_shell"` so it renders with shell styling immediately. Reloaded history uses
+the same metadata persisted by the backend.
+
 The `InputBarHandle` ref exposes:
 - `focus()` — expand the floating composer when needed, then focus the textarea
 - `setValue(text)` — expand the floating composer when needed, inject text, and trigger height recalculation

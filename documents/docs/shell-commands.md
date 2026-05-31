@@ -19,6 +19,12 @@ OpenAgentd dispatches the command directly through the built-in shell tool. The
 current turn does **not** call the model first and does not ask the agent whether
 to run a tool.
 
+In the web/desktop composer, typing `!` as the first character switches the input
+into shell mode: the `!` disappears, the placeholder changes to `Enter shell
+command...`, and the attach/voice controls are replaced by a compact Shell card.
+Press Backspace on an empty shell command, or Escape, to return to normal chat
+mode.
+
 ## What is saved in history
 
 Shell sends are stored as normal shell-tool history so the UI, replay, and future
@@ -27,6 +33,10 @@ model context stay structured:
 1. visible user row: `!<command>`
 2. assistant shell tool call with the command arguments
 3. shell tool result
+
+The visible user row is styled as a shell command (Shell label, terminal icon,
+monospace command text) both optimistically right after send and after history
+reload.
 
 Future model turns see an opencode-style synthetic user marker — `The following
 tool was executed by the user` — followed by the shell tool call/result. This

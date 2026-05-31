@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
-import { ArrowUp, File, Folder, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
+import { ArrowUp, File, Folder, Loader2, MessageCircle, Paperclip, Square, Terminal } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
@@ -190,6 +190,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const [snippetRange, setSnippetRange] = useState<
     { start: number; end: number; query: string } | null
   >(null)
+  const [shellMode, setShellMode] = useState(false)
   // The active @-mention window (positions in ``value``) — null when no
   // mention is being edited at the caret. Recomputed on every keystroke
   // and on caret-only moves (arrow keys, clicks) via ``syncMention``.
@@ -221,8 +222,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const el = textareaRef.current
     if (!el) return
     const caret = el.selectionStart ?? el.value.length
-    const next = findActiveMention(el.value, caret)
-    setSnippetRange(next ? null : findActiveSnippet(el.value, caret))
+    const next = shellMode ? null : findActiveMention(el.value, caret)
+    setSnippetRange(next || shellMode ? null : findActiveSnippet(el.value, caret))
     setMentionRange((prev) => {
       if (!prev && !next) return prev
       if (
@@ -233,7 +234,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       ) return prev
       return next
     })
-  }, [])
+  }, [shellMode])
 
   // Create blob URLs for files — memoized to avoid recreating on every render
   const blobUrls = useMemo(() => {
@@ -304,6 +305,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     focus: () => textareaRef.current?.focus(),
     setValue: (text: string) => {
       setValue(text)
+      setShellMode(false)
       setHistoryIndex(-1)
       // Programmatic value replacement invalidates any open mention picker —
       // its ``start``/``end`` indices refer to the old text.
@@ -317,6 +319,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         const spacer = prev && !/\s$/.test(prev) ? ' ' : ''
         return `${prev}${spacer}${text}`
       })
+      setShellMode(false)
       setHistoryIndex(-1)
       setMentionRange(null)
       setSnippetRange(null)
@@ -354,10 +357,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const submit = useCallback(() => {
     const trimmed = value.trim()
     if (!trimmed || disabled) return
-    onSubmit(trimmed, files.length > 0 ? files : undefined)
-    setLocalHistory((prev) => prev[0] === trimmed ? prev : [trimmed, ...prev].slice(0, 100))
+    const submitted = shellMode ? `!${trimmed}` : trimmed
+    onSubmit(submitted, files.length > 0 ? files : undefined)
+    setLocalHistory((prev) =>
+      prev[0] === submitted ? prev : [submitted, ...prev].slice(0, 100),
+    )
     setHistoryIndex(-1)
     setValue('')
+    setShellMode(false)
     setFiles([])
     // Clear the mention picker too — it tracks positions inside the value
     // we just wiped. Without this, a picker that was open at submit time
@@ -367,7 +374,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [value, disabled, onSubmit, files])
+  }, [value, disabled, onSubmit, files, shellMode])
 
   const buildAcceptString = useCallback((): string => {
     const parts: string[] = [
@@ -470,7 +477,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
   // ── Slash command filtering ────────────────────────────────────────────────
 
-  const slashFilter = value.startsWith('/') && !value.includes(' ')
+  const slashFilter = !shellMode && value.startsWith('/') && !value.includes(' ')
     ? value.slice(1).toLowerCase()
     : null
 
@@ -575,6 +582,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
   const executeSlashCommand = useCallback((cmd: SlashCommand) => {
     if (cmd.isSeparator) return
+    setShellMode(false)
     if (cmd.keepInputOpen) {
       // Insert ``/<id> `` and keep the textarea focused so the user can
       // append arguments. Submission is what triggers the action — the
@@ -606,6 +614,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const spacerAfter = after && !/^\s/.test(after) && rendered ? ' ' : ''
     const next = before + spacerBefore + rendered + spacerAfter + after
     setValue(next)
+    setShellMode(false)
     setSnippetRange(null)
     setSnippetMenuIndex(0)
     const el = textareaRef.current
@@ -658,6 +667,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const after = value.slice(mentionRange.end)
     const next = before + insertion + after
     setValue(next)
+    setShellMode(false)
     setMentionRange(null)
     setSnippetRange(null)
     setMentionMenuIndex(0)
@@ -681,6 +691,27 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // legacy fallback for browsers that don't surface ``isComposing`` on the
     // React synthetic event.
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
+    if (e.key === '!' && !shellMode && value.length === 0) {
+      e.preventDefault()
+      setShellMode(true)
+      setMentionRange(null)
+      setSnippetRange(null)
+      return
+    }
+
+    if (shellMode) {
+      if (e.key === 'Backspace' && value.length === 0) {
+        e.preventDefault()
+        setShellMode(false)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setShellMode(false)
+        return
+      }
+    }
 
     // Mention menu navigation takes priority over slash navigation: a
     // composed message can contain both `/cmd` (only valid at start) and
@@ -767,6 +798,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         if (nextIndex < 0) {
           setHistoryIndex(-1)
           setValue('')
+          setShellMode(false)
           setMentionRange(null)
           setSnippetRange(null)
           requestAnimationFrame(resize)
@@ -774,13 +806,16 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         }
         if (nextIndex >= history.length) return
         const next = history[nextIndex]
+        const shellHistoryEntry = next.startsWith('!')
+        const nextValue = shellHistoryEntry ? next.slice(1) : next
         setHistoryIndex(nextIndex)
-        setValue(next)
+        setShellMode(shellHistoryEntry)
+        setValue(nextValue)
         setMentionRange(null)
         setSnippetRange(null)
         requestAnimationFrame(() => {
           const el = textareaRef.current
-          el?.setSelectionRange(next.length, next.length)
+          el?.setSelectionRange(nextValue.length, nextValue.length)
           resize()
         })
         return
@@ -794,18 +829,31 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setValue(e.target.value)
+    const nextValue = e.target.value
+    if (!shellMode && nextValue === '!') {
+      setShellMode(true)
+      setValue('')
+      setHistoryIndex(-1)
+      setSlashMenuIndex(0)
+      setSnippetMenuIndex(0)
+      setMentionMenuIndex(0)
+      setMentionRange(null)
+      setSnippetRange(null)
+      requestAnimationFrame(resize)
+      return
+    }
+    setValue(nextValue)
     setHistoryIndex(-1)
     setSlashMenuIndex(0)
     setSnippetMenuIndex(0)
     setMentionMenuIndex(0)
     // ``selectionStart`` is already at the post-change caret position by the
     // time React fires onChange.
-    const caret = e.target.selectionStart ?? e.target.value.length
-    const next = findActiveMention(e.target.value, caret)
+    const caret = e.target.selectionStart ?? nextValue.length
+    const next = shellMode ? null : findActiveMention(nextValue, caret)
     if (next) onFileRefsNeeded?.()
     setMentionRange(next)
-    setSnippetRange(next ? null : findActiveSnippet(e.target.value, caret))
+    setSnippetRange(next || shellMode ? null : findActiveSnippet(nextValue, caret))
     resize()
   }
 
@@ -815,6 +863,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       const trimmed = prev.trimEnd()
       return trimmed ? `${trimmed} ${transcript}` : transcript
     })
+    setShellMode(false)
     requestAnimationFrame(resize)
   }, [resize])
 
@@ -828,7 +877,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // can re-expand when the user attaches a file via the slim strip.
   // Edge-triggered on the boolean — not on the underlying length values —
   // so we only re-render the parent when crossing 0↔1.
-  const hasContent = hasText || files.length > 0
+  const hasContent = hasText || shellMode || files.length > 0
   const lastHasContentRef = useRef(hasContent)
   useEffect(() => {
     if (lastHasContentRef.current !== hasContent) {
@@ -898,6 +947,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       <MessageCircle size={14} aria-hidden="true" />
     </button>
   ) : null
+
+  const effectivePlaceholder = shellMode
+    ? 'Enter shell command... git status'
+    : disabled
+      ? 'Waiting for response…'
+      : isStreaming
+        ? 'Queue a follow-up or /stop…'
+        : placeholder
 
   const activePopupId = mentionMenuOpen ? mentionMenuId : snippetMenuOpen ? snippetMenuId : slashMenuOpen ? slashMenuId : undefined
   const activeOptionId = mentionMenuOpen
@@ -973,7 +1030,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         onPaste={handlePaste}
         onFocus={(e) => {
           onFocus?.()
-          if (findActiveMention(value, e.currentTarget.selectionStart ?? value.length)) onFileRefsNeeded?.()
+          if (!shellMode && findActiveMention(value, e.currentTarget.selectionStart ?? value.length)) onFileRefsNeeded?.()
         }}
         onBlur={() => {
           const canMinimize = value.trim().length === 0 && files.length === 0
@@ -984,15 +1041,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           setMentionRange(null)
         }}
         disabled={disabled || minimized}
-        placeholder={
-          minimized
-            ? ''
-            : disabled
-              ? 'Waiting for response…'
-              : isStreaming
-                ? 'Queue a follow-up or /stop…'
-                : placeholder
-        }
+        placeholder={minimized ? '' : effectivePlaceholder}
         rows={1}
         autoFocus={autoFocus}
         tabIndex={minimized ? -1 : 0}
@@ -1029,7 +1078,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // text-layout paths drift by 1–2px, leaving the squiggle a word
         // off. Same call Discord/Slack/ChatGPT make for the same reason.
         spellCheck={false}
-        aria-label="Message input"
+        aria-label={shellMode ? 'Shell command input' : 'Message input'}
         aria-expanded={mentionMenuOpen || snippetMenuOpen || slashMenuOpen}
         aria-controls={activePopupId}
         aria-activedescendant={activeOptionId}
@@ -1221,9 +1270,18 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
                 minimized ? 'cursor-text' : ''
               }`}
             >
-              {attachEl}
-              {voiceEl}
-              {chatEl}
+              {!minimized && shellMode ? (
+                <div className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-border) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text-2)" aria-label="Shell mode">
+                  <Terminal size={13} aria-hidden="true" />
+                  <span>Shell</span>
+                </div>
+              ) : (
+                <>
+                  {attachEl}
+                  {voiceEl}
+                  {chatEl}
+                </>
+              )}
               {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's
                   w-fit ↔ w-full. ``-ml-2`` absorbs the parent gap-2
                   when collapsed. */}

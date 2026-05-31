@@ -313,6 +313,7 @@ export const useTeamStore = create<TeamStore>()(
             extra: {
               ...(effectiveModel ? { model: effectiveModel } : {}),
               ...(effectiveThinkingLevel ? { thinking_level: effectiveThinkingLevel } : {}),
+              ...(options?.shell ? { kind: 'user_shell', command: content.replace(/^!/, '').trim() } : {}),
             },
           })
         }
