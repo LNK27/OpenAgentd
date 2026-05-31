@@ -500,6 +500,41 @@ describe("_handleSSEEvent: usage", () => {
     expect(usage.cachedTokens).toBe(3);       // latest turn cache only
   });
 
+  it("uses backend turn_total usage as the authoritative multi-call turn total", () => {
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
+      cached_tokens: 10, metadata: { agent: "lead" },
+    });
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 120, completion_tokens: 30, total_tokens: 150,
+      cached_tokens: 15, metadata: { agent: "lead" },
+    });
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 220, completion_tokens: 50, total_tokens: 270,
+      cached_tokens: 25, metadata: { agent: "lead", turn_total: true },
+    });
+
+    const usage = useTeamStore.getState().agentStreams["lead"].usage;
+    expect(usage.promptTokens).toBe(220);
+    expect(usage.completionTokens).toBe(50);
+    expect(usage.totalTokens).toBe(270);
+    expect(usage.cachedTokens).toBe(25);
+  });
+
+  it("clears stale cache count when backend turn_total omits cached_tokens", () => {
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
+      cached_tokens: 10, metadata: { agent: "lead" },
+    });
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 120, completion_tokens: 30, total_tokens: 150,
+      metadata: { agent: "lead", turn_total: true },
+    });
+
+    const usage = useTeamStore.getState().agentStreams["lead"].usage;
+    expect(usage.cachedTokens).toBe(0);
+  });
+
   it("ignores event with no agent field", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 10, completion_tokens: 5, total_tokens: 15,

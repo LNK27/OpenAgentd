@@ -289,17 +289,19 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
       case 'usage': {
         const meta = d.metadata as Record<string, unknown> | undefined
-        if (meta?.turn_total) break
         const agent = (meta?.agent as string) ?? (d.agent as string)
         if (!agent) break
         set((draft) => {
           ensureAgent(draft, agent)
           const stream = draft.agentStreams[agent]
           const u = stream.usage
-          u.promptTokens     = (d.prompt_tokens as number) || 0
-          u.completionTokens = stream._completionBase + ((d.completion_tokens as number) || 0)
-          u.cachedTokens     = (d.cached_tokens as number) ?? u.cachedTokens
+          const promptTokens = (d.prompt_tokens as number) || 0
+          const completionTokens = (d.completion_tokens as number) || 0
+          u.promptTokens     = promptTokens
+          u.completionTokens = stream._completionBase + completionTokens
+          u.cachedTokens     = (d.cached_tokens as number) ?? (meta?.turn_total ? 0 : u.cachedTokens)
           u.totalTokens      = u.promptTokens + u.completionTokens
+          stream._completionEstimated = completionTokens
         })
         break
       }

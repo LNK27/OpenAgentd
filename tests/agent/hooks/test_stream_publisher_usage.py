@@ -20,7 +20,13 @@ def _make_hook(session_id="sess-1", agent_name="lead") -> StreamPublisherHook:
     return StreamPublisherHook(session_id=session_id, agent_name=agent_name)
 
 
-def _make_chunk_with_usage(prompt=100, completion=40, total=140, cached=None):
+def _make_chunk_with_usage(
+    prompt=100,
+    completion=40,
+    total=140,
+    cached=None,
+    model="mock",
+):
     usage = Usage(
         prompt_tokens=prompt,
         completion_tokens=completion,
@@ -31,7 +37,7 @@ def _make_chunk_with_usage(prompt=100, completion=40, total=140, cached=None):
     delta = ChatCompletionDelta(content=None)
     choice = ChatCompletionChunkChoice(index=0, delta=delta, finish_reason="stop")
     return ChatCompletionChunk(
-        id="c1", created=1000, model="mock", choices=[choice], usage=usage
+        id="c1", created=1000, model=model, choices=[choice], usage=usage
     )
 
 
@@ -118,3 +124,55 @@ async def test_on_model_delta_usage_session_id_correct():
         await hook.on_model_delta(MagicMock(), state, _make_chunk_with_usage())
 
     assert pushed_to[0] == "team-lead-sess"
+
+
+async def test_after_agent_emits_turn_total_after_multiple_usage_events():
+    """Multiple model calls also publish a final aggregate turn usage event."""
+    hook = _make_hook(agent_name="lead")
+    pushed = []
+
+    with patch(
+        "app.services.memory_stream_store.push_event",
+        new_callable=AsyncMock,
+        side_effect=lambda sid, ev: pushed.append(ev),
+    ):
+        state = _make_state()
+        await hook.on_model_delta(
+            MagicMock(),
+            state,
+            _make_chunk_with_usage(
+                prompt=100,
+                completion=20,
+                total=120,
+                cached=10,
+                model="model-a",
+            ),
+        )
+        await hook.on_model_delta(
+            MagicMock(),
+            state,
+            _make_chunk_with_usage(
+                prompt=120,
+                completion=30,
+                total=150,
+                cached=15,
+                model="model-b",
+            ),
+        )
+        await hook.after_agent(MagicMock(), state, MagicMock())
+
+    usage_events = [event for event in pushed if event.event == "usage"]
+    assert len(usage_events) == 3
+    assert usage_events[0].data["metadata"].get("turn_total") is None
+    assert usage_events[1].data["metadata"].get("turn_total") is None
+
+    total = usage_events[2].data
+    assert total["prompt_tokens"] == 220
+    assert total["completion_tokens"] == 50
+    assert total["total_tokens"] == 270
+    assert total["cached_tokens"] == 25
+    assert total["metadata"] == {
+        "turn_total": True,
+        "agent": "lead",
+        "models": ["model-a", "model-b"],
+    }
