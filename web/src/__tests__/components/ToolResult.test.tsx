@@ -166,9 +166,9 @@ describe("ToolResult — read", () => {
     expect(screen.getByText(/const x = 1/)).toBeTruthy()
   })
 
-  it("renders multi-line file content in a card-like pre block", () => {
+  it("renders multi-line file content in a compact pre block", () => {
     render(<ToolResult toolName="read" result={"const x = 1\nconst y = 2"} />)
-    expect(screen.getByText("Read output")).toBeTruthy()
+    expect(screen.getByText("read")).toBeTruthy()
     expect(screen.getByText("file contents")).toBeTruthy()
     expect(screen.getByText(/const x = 1/)).toBeTruthy()
     expect(screen.getByText(/const y = 2/)).toBeTruthy()
@@ -184,7 +184,7 @@ describe("ToolResult — read", () => {
     expect(screen.queryByText(/\[12-20\/100\]/)).toBeNull()
   })
 
-  it("uses file-card chrome without diff line markers", () => {
+  it("uses compact file chrome without diff line markers", () => {
     const { container } = render(<ToolResult toolName="read" result={"line one\nline two"} />)
 
     expect(container.querySelector("div[class*='bg-(--bg-key)']")).toBeTruthy()
@@ -193,15 +193,14 @@ describe("ToolResult — read", () => {
     expect(screen.queryByText("-")).toBeNull()
   })
 
-  it("keeps the read header sticky within its own scroll container", () => {
-    render(<ToolResult toolName="read" result="line one" />)
+  it("keeps scrolling on the read content instead of a sticky nested header", () => {
+    const { container } = render(<ToolResult toolName="read" result="line one" />)
 
-    const header = screen.getByText("Read output").parentElement
-    expect(header?.className).toContain("sticky")
-    expect(header?.className).toContain("top-0")
-    expect(header?.className).toContain("z-10")
-    expect(header?.parentElement?.className).toContain("max-h-80")
-    expect(header?.parentElement?.className).toContain("overflow-auto")
+    const header = screen.getByText("read").parentElement
+    const body = container.querySelector("pre")
+    expect(header?.className).not.toContain("sticky")
+    expect(body?.className).toContain("max-h-80")
+    expect(body?.className).toContain("overflow-auto")
   })
 
   it("renders full content as-is when no range header is present", () => {

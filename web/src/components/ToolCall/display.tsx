@@ -402,22 +402,15 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     }
   }
 
-  // ── read: file name (+ optional range) in header, hide args ────────
+  // ── read: file name in header, custom result renderer shows content ──
   if (name === 'read') {
     const path = str(parsed, 'path')
     const fileName = path ? path.split('/').pop() ?? path : null
-    const offset = parsed['offset'] != null && parsed['offset'] !== 0 ? Number(parsed['offset']) : null
-    const limit = parsed['limit'] != null ? Number(parsed['limit']) : null
-    let rangeLabel = ''
-    if (offset !== null || limit !== null) {
-      const start = offset ?? 0
-      const end = limit !== null ? start + limit : ''
-      rangeLabel = ` [${start}:${end}]`
-    }
     return {
-      header: fileName ? <Arg>{fileName}{rangeLabel}</Arg> : 'file',
-      headerTitle: fileName ? `${fileName}${rangeLabel}` : 'file',
+      header: fileName ? <Arg>{fileName}</Arg> : 'file',
+      headerTitle: fileName ? fileName : 'file',
       formattedArgs: null,
+      suppressResult: true,
     }
   }
 

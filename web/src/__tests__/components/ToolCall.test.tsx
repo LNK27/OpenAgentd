@@ -241,6 +241,58 @@ describe("ToolCall — diff stats", () => {
     })
   })
 
+  it("renders read results with write/edit-style file chrome", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ path: "src/main.py", offset: 12, limit: 9 })
+
+    render(<ToolCall name="read" args={args} done={true} result={"[12-20/100]\nprint('hello')"} />)
+
+    expect(screen.getByRole("button", { name: "Expand read details" })).toBeTruthy()
+    expect(screen.queryByText("result")).toBeNull()
+
+    await user.click(screen.getByRole("button", { name: "Expand read details" }))
+
+    expect(screen.getByRole("button", { name: "Collapse read result" })).toBeTruthy()
+    expect(screen.getByText("lines 12–20 of 100")).toBeTruthy()
+    expect(screen.getByLabelText("Copy read result")).toBeTruthy()
+    expect(screen.getByText("print('hello')")).toBeTruthy()
+    expect(screen.queryByText(/\[12-20\/100\]/)).toBeNull()
+  })
+
+  it("collapses the whole read result when clicking the read file header", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ path: "src/main.py" })
+
+    render(<ToolCall name="read" args={args} done={true} result="file content" />)
+
+    await user.click(screen.getByRole("button", { name: "Expand read details" }))
+    expect(screen.getByRole("button", { name: "Collapse read result" })).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "Collapse read result" }))
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Expand read details" })).toBeTruthy()
+    })
+  })
+
+  it("copies read content from the file header copy button", async () => {
+    let copiedText = ""
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: async (text: string) => { copiedText = text } },
+      configurable: true,
+      writable: true,
+    })
+    const args = JSON.stringify({ path: "src/main.py" })
+
+    render(<ToolCall name="read" args={args} done={true} result={"[1-2/2]\nhello\nworld"} />)
+
+    await user.click(screen.getByRole("button", { name: "Expand read details" }))
+    await user.click(screen.getByLabelText("Copy read result"))
+
+    await waitFor(() => expect(copiedText).toBe("hello\nworld"))
+  })
+
   it("shows deleted line count for rm from result metadata", () => {
     const args = JSON.stringify({ path: "src/old.txt" })
     const result = [

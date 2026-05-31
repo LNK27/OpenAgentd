@@ -23,6 +23,7 @@ import { ToolResult } from '../ToolResult'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
+import { ReadView } from './ReadView'
 import { getDiffStats } from './diffUtils'
 import type { ToolCallState } from './types'
 
@@ -103,6 +104,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
   const { header, headerTitle, formattedArgs, language, suppressResult } =
     getToolDisplay(name, args)
   const usesDiffView = name === 'edit' || name === 'patch' || name === 'write'
+  const usesReadView = name === 'read'
   const diffStats = (usesDiffView || name === 'rm') && args
     ? getDiffStats(name, args, result)
     : null
@@ -114,6 +116,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
   const visibleHeader = header
   const shownResult = suppressResult ? undefined : result
   const shownLiveOutput = shownResult ? undefined : liveOutput
+  const hasReadResult = usesReadView && Boolean(result)
   const isShell = language === 'bash'
   const isShellTerminal = isShell && Boolean(formattedArgs)
   const shellResult = isShell ? formatShellResult(shownResult) : null
@@ -156,7 +159,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
     }
   }
 
-  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult)
+  const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult)
   const expanded = manualExpanded ?? Boolean(shownLiveOutput)
   const displayName = name || 'tool'
   const toolLabel = formatToolLabel(displayName)
@@ -233,9 +236,15 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
             className="overflow-hidden"
           >
             <section className="surface-raised group relative mt-1 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
-              {name === 'edit' || name === 'patch' || name === 'write' ? (
+              {usesDiffView ? (
                 <DiffView
                   toolName={name}
+                  args={args || ''}
+                  result={result}
+                  onCollapse={() => setManualExpanded(false)}
+                />
+              ) : usesReadView && result ? (
+                <ReadView
                   args={args || ''}
                   result={result}
                   onCollapse={() => setManualExpanded(false)}
