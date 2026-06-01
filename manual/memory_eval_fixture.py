@@ -109,10 +109,21 @@ def seed_eval_corpus() -> None:
             "Breaking changes are allowed for Memory v2. Migration revision "
             "00000009 must follow 00000008 and must not duplicate 00000005. "
             "Turbovec is only a future candidate semantic backend, not the "
-            "default MVP.",
+            "default MVP. Source citations should stay attached to promoted "
+            "facts, for example [session:11111111-1111-1111-1111-111111111111]. "
+            "A stale candidate once said USER.md was mandatory, but the current "
+            "decision is that Memory v2 has no mandatory root USER.md taxonomy. "
+            "A later session changed the maintainer name from WikiBot to Dream.",
             memory_kind="decision",
             scope="project",
-            topics=["memory", "migration", "turbovec", "decision"],
+            topics=[
+                "memory",
+                "migration",
+                "turbovec",
+                "decision",
+                "citations",
+                "stale",
+            ],
         ),
     )
 
@@ -239,6 +250,24 @@ def fixture_rows() -> list[dict[str, Any]]:
             "type": "decision",
             "question": "What is Turbovec's role in Memory v2?",
             "answers": ["future candidate semantic backend"],
+        },
+        {
+            "id": "citation-preserved",
+            "type": "citation_correctness",
+            "question": "Which source citation is attached to the Memory v2 promoted fact example?",
+            "answers": ["session:11111111-1111-1111-1111-111111111111"],
+        },
+        {
+            "id": "stale-user-md",
+            "type": "stale_fact",
+            "question": "What is the current decision about mandatory root USER.md taxonomy?",
+            "answers": ["no mandatory root USER.md taxonomy"],
+        },
+        {
+            "id": "temporal-maintainer",
+            "type": "temporal_context",
+            "question": "After the later session, what is the Memory v2 maintainer called?",
+            "answers": ["Dream"],
         },
         {
             "id": "raw-session-personalization",

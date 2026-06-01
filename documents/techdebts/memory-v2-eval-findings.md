@@ -216,3 +216,45 @@ Added unit coverage and implementation hardening for deterministic Dream v2:
 - source-page/frontmatter boilerplate is filtered before promotion.
 
 This improves release confidence for the markdown wiki maintainer without introducing an ontology, vector DB, or LLM summarizer.
+
+## 2026-06-01 — Automatic injection hardening iteration
+
+Tightened automatic prompt injection without changing explicit candidate retrieval:
+
+- diagnostics now compare normalized meaningful query tokens against normalized page tokens, so query aliases such as `want -> support` and page words such as `help -> support` can match for recall diagnostics;
+- `MemoryContextHook` treats broad product/page topics such as `memory`, `openagentd`, and `v2` as generic for automatic injection;
+- automatic injection now rejects pages that only match generic product context while query-specific unanswered detail terms remain missing, such as cloud regions, scheduler plugins, vector databases, ontologies, or mandatory taxonomy details;
+- explicit `memory_search` remains broader and still writes pre-filter candidates when the eval uses `--write-candidates`.
+
+The manual fixture also grew first-pass quality rows for citation preservation, stale-fact correction, and temporal/context maintainer naming. These are still retrieval/injection checks, not final-answer grading.
+
+Manual run:
+
+```bash
+uv run python -m manual.memory_eval_fixture --mode injection --run --debug-hits --write-candidates
+```
+
+Result after the hardening change:
+
+```json
+{
+  "items": 35,
+  "positive_items": 24,
+  "negative_items": 11,
+  "recall@1": 0.625,
+  "recall@5": 0.625,
+  "recall@10": 0.625,
+  "mrr@10": 0.625,
+  "candidate_false_positive_rate": 1.0,
+  "false_positive_rate": 0.0,
+  "injection_false_positive_rate": 0.0,
+  "failures": 9
+}
+```
+
+Interpretation:
+
+- The stricter injection filter eliminates synthetic negative prompt-injection false positives in this fixture.
+- Candidate false positives remain `1.0`; broad explicit retrieval is still intentionally inspectable rather than hidden.
+- Positive injection recall dropped; that is an honest safety/recall trade-off, not a benchmark win. The remaining positive misses are mostly precise factual QA (`Python 3.14`, `Tailwind v4`, `Dream`, canonical raw sources, eval styles, breaking changes, and the new citation/stale/temporal rows) that explicit retrieval can still surface but automatic injection now avoids unless there is stronger query-specific overlap.
+- Next hardening should recover safe positive injection recall with better page metadata or a cited answerability judge, not by adding fixture-specific exceptions.

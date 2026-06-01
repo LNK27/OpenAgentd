@@ -80,6 +80,12 @@ _SEARCH_STOPWORDS = {
     "with",
 }
 _TOPIC_ALIASES = {
+    "do": "support",
+    "does": "support",
+    "help": "support",
+    "helps": "support",
+    "want": "support",
+    "wants": "support",
     "answer": "response-style",
     "answers": "response-style",
     "answering": "response-style",
@@ -297,12 +303,13 @@ def _diagnose_file_result(
 ) -> dict[str, object]:
     text_tokens = set(_tokens(f"{rel_path}\n{text}"))
     meaningful = _meaningful_query_tokens(query)
+    meaningful_text_tokens = _meaningful_query_tokens(f"{rel_path}\n{text}")
     metadata = _frontmatter_metadata(text)
     topics = metadata.get("topics")
     topic_set = topics if isinstance(topics, set) else set()
     matched_tokens = sorted(query_tokens & text_tokens)
-    meaningful_matched = sorted(meaningful & text_tokens)
-    meaningful_missing = sorted(meaningful - text_tokens)
+    meaningful_matched = sorted(meaningful & meaningful_text_tokens)
+    meaningful_missing = sorted(meaningful - meaningful_text_tokens)
     topic_overlap = sorted(meaningful & topic_set)
     is_domain_preference = bool(_DOMAIN_PREFERENCE_RE.search(query)) and bool(
         meaningful - topic_set

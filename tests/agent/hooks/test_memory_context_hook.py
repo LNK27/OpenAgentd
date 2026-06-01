@@ -136,6 +136,47 @@ async def test_metadata_topics_allow_matching_domain_memory(_memory_dir: Path):
 
 
 @pytest.mark.asyncio
+async def test_product_topic_alone_does_not_inject_for_unanswered_detail(
+    _memory_dir: Path,
+):
+    (_memory_dir / "wiki" / "project-openagentd.md").write_text(
+        _memory_page(
+            "OpenAgentd is Hoang's main project.",
+            topics=["openagentd", "project"],
+        ),
+        encoding="utf-8",
+    )
+
+    result = await _invoke(
+        MemoryContextHook(),
+        _request(
+            user="Which cloud region does Hoang prefer for OpenAgentd deployments?"
+        ),
+    )
+
+    assert result == "Base."
+
+
+@pytest.mark.asyncio
+async def test_injection_keeps_supported_memory_goal(_memory_dir: Path):
+    (_memory_dir / "wiki" / "session-local.md").write_text(
+        _memory_page(
+            "OpenAgentd Memory v2 should help through implicit personalization.",
+            topics=["memory", "personalization"],
+        ),
+        encoding="utf-8",
+    )
+
+    result = await _invoke(
+        MemoryContextHook(),
+        _request(user="What does Hoang want memory to do?"),
+    )
+
+    assert "## Relevant memory" in result
+    assert "implicit personalization" in result
+
+
+@pytest.mark.asyncio
 async def test_memory_search_failure_does_not_block_model_call(monkeypatch):
     def _raise(*args, **kwargs):
         raise RuntimeError("boom")

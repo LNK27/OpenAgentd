@@ -44,6 +44,16 @@ _AUTO_MEMORY_STOPWORDS = {
     "what",
     "you",
 }
+_AUTO_MEMORY_QUERY_ALIASES = {
+    "do": "support",
+    "does": "support",
+    "want": "support",
+    "wants": "support",
+}
+_AUTO_MEMORY_TEXT_ALIASES = {
+    "help": "support",
+    "helps": "support",
+}
 _AUTO_MEMORY_ALIASES = {
     "answer": "answer",
     "answers": "answer",
@@ -52,15 +62,25 @@ _AUTO_MEMORY_ALIASES = {
     "respond": "answer",
     "response": "answer",
     "responses": "answer",
-    "prefer": "prefer",
-    "preferred": "prefer",
-    "prefers": "prefer",
-    "preference": "prefer",
-    "preferences": "prefer",
+    "personalization": "personalization",
+    "personalisation": "personalization",
+    "personalize": "personalization",
+    "personalized": "personalization",
+    "prefer": "preferences",
+    "preferred": "preferences",
+    "prefers": "preferences",
+    "preference": "preferences",
+    "preferences": "preferences",
     "want": "want",
     "wants": "want",
 }
 _AUTO_MEMORY_TOPIC_ALIASES = {
+    "do": "support",
+    "does": "support",
+    "help": "support",
+    "helps": "support",
+    "want": "support",
+    "wants": "support",
     "answer": "response-style",
     "answers": "response-style",
     "answering": "response-style",
@@ -72,14 +92,44 @@ _AUTO_MEMORY_TOPIC_ALIASES = {
     "responses": "response-style",
     "personalization": "personalization",
     "personalisation": "personalization",
+    "personalize": "personalization",
+    "personalized": "personalization",
+    "deploy": "deployment",
+    "deployment": "deployment",
+    "deployments": "deployments",
     "prefer": "preferences",
     "preferred": "preferences",
     "preference": "preferences",
     "preferences": "preferences",
     "prefers": "preferences",
 }
-_AUTO_MEMORY_GENERIC_TOPICS = {"preferences"}
+_AUTO_MEMORY_GENERIC_TOPICS = {"memory", "openagentd", "preferences"}
 _AUTO_MEMORY_DOMAIN_TERMS = {"kubernetes", "scheduler", "plugin"}
+_AUTO_MEMORY_BROAD_PRODUCT_TERMS = {"memory", "openagentd", "v2"}
+_AUTO_MEMORY_UNANSWERED_QUERY_TERMS = {
+    "cloud",
+    "database",
+    "deployment",
+    "deployments",
+    "mandatory",
+    "ontology",
+    "plugin",
+    "region",
+    "root",
+    "scheduler",
+    "taxonomy",
+    "user.md",
+    "vector",
+}
+_AUTO_MEMORY_HIGH_INTENT_TOKENS = {
+    "answer",
+    "direct",
+    "personalization",
+    "preferences",
+    "response",
+    "style",
+    "support",
+}
 
 
 class MemoryContextHook(BaseAgentHook):
@@ -138,7 +188,7 @@ class MemoryContextHook(BaseAgentHook):
     def _filter_relevant_results(
         self, query: str, results: list[MemorySearchResult]
     ) -> list[MemorySearchResult]:
-        query_tokens = self._meaningful_tokens(query)
+        query_tokens = self._meaningful_tokens(query, query=True)
         if not query_tokens:
             return []
         filtered: list[MemorySearchResult] = []
@@ -150,10 +200,28 @@ class MemoryContextHook(BaseAgentHook):
                 continue
             if len(overlap) == 1 and len(query_only) >= 2:
                 continue
+            if not self._has_answerable_overlap(query_tokens, overlap, query_only):
+                continue
             if not self._metadata_allows_injection(query, result):
                 continue
             filtered.append(result)
         return filtered
+
+    def _has_answerable_overlap(
+        self,
+        query_tokens: set[str],
+        overlap: set[str],
+        query_only: set[str],
+    ) -> bool:
+        if not query_only:
+            return True
+        non_generic_overlap = overlap - _AUTO_MEMORY_BROAD_PRODUCT_TERMS
+        if non_generic_overlap:
+            unanswered = query_only & _AUTO_MEMORY_UNANSWERED_QUERY_TERMS
+            return not unanswered
+        if overlap & _AUTO_MEMORY_HIGH_INTENT_TOKENS:
+            return True
+        return False
 
     def _metadata_allows_injection(
         self, query: str, result: MemorySearchResult
@@ -167,13 +235,19 @@ class MemoryContextHook(BaseAgentHook):
 
         query_topics = self._query_topics(query)
         topic_overlap = topics & query_topics
-        if topic_overlap - _AUTO_MEMORY_GENERIC_TOPICS:
+        non_generic_topic_overlap = topic_overlap - _AUTO_MEMORY_GENERIC_TOPICS
+        if non_generic_topic_overlap:
             return True
         if "response-style" in topic_overlap:
             return True
         if query_topics & _AUTO_MEMORY_DOMAIN_TERMS:
             return bool(topic_overlap & (query_topics - _AUTO_MEMORY_GENERIC_TOPICS))
-        return bool(topic_overlap)
+        if query_topics <= _AUTO_MEMORY_BROAD_PRODUCT_TERMS:
+            return bool(topic_overlap)
+        if query_topics & _AUTO_MEMORY_HIGH_INTENT_TOKENS and topic_overlap:
+            return True
+        non_generic_query_topics = query_topics - _AUTO_MEMORY_GENERIC_TOPICS
+        return bool(topic_overlap & non_generic_query_topics)
 
     def _memory_metadata(self, rel_path: str) -> dict[str, object]:
         try:
@@ -214,10 +288,11 @@ class MemoryContextHook(BaseAgentHook):
             topics.add(token)
         return topics
 
-    def _meaningful_tokens(self, text: str) -> set[str]:
+    def _meaningful_tokens(self, text: str, *, query: bool = False) -> set[str]:
         tokens: set[str] = set()
         for raw in re.findall(r"[a-z0-9]+", text.lower()):
-            token = _AUTO_MEMORY_ALIASES.get(raw, raw)
+            alias = _AUTO_MEMORY_QUERY_ALIASES if query else _AUTO_MEMORY_TEXT_ALIASES
+            token = alias.get(raw, _AUTO_MEMORY_ALIASES.get(raw, raw))
             if token in _AUTO_MEMORY_STOPWORDS:
                 continue
             tokens.add(token)
