@@ -1,235 +1,265 @@
 ---
-title: Wiki Memory
-description: Wiki memory system - raw sessions and notes are consolidated into a Karpathy-style LLM wiki by the dream agent.
-status: stable
-updated: 2026-05-17
+title: Memory v2 / Dream Wiki
+description: Karpathy-style markdown memory system maintained by Dream with deterministic retrieval and benchmark hooks.
+status: hardening
+updated: 2026-06-01
 ---
 
-# Wiki Memory
+# Memory v2 / Dream Wiki
 
-**Sources:** `app/services/wiki.py`, `app/services/dream.py`, `app/services/dream_scheduler.py`, `app/agent/hooks/wiki_injection.py`, `app/agent/tools/builtin/wiki_search.py`, `app/agent/tools/builtin/note.py`
+**Sources:** `app/services/memory.py`, `app/services/dream.py`, `app/agent/hooks/wiki_injection.py`, `app/agent/tools/builtin/memory_search.py`, `app/core/wiki_seed.py`, `manual/memory.py`, `manual/memory_bench.py`, [`../../techdebts/memory-v2-fact-contract.md`](../../techdebts/memory-v2-fact-contract.md)
 
-OpenAgentd uses a wiki memory system:
+OpenAgentd is moving from the legacy taxonomy-heavy wiki to a simpler Karpathy-style Memory v2 system:
 
-| Layer | What | Where |
-|------|------|-------|
-| Raw | All chat messages | SQLite (`session_messages`) |
-| Notes | Agent/user notes written mid-session | `wiki/notes/` |
-| Wiki | Consolidated durable knowledge | `wiki/topics/`, `wiki/entities/`, `wiki/sources/`, `wiki/comparisons/`, `wiki/USER.md`, `wiki/INDEX.md` |
+1. Raw sources stay canonical.
+2. **Dream** maintains editable markdown pages from those sources.
+3. Retrieval is benchmarkable through deterministic `memory_search` and LongMemEval-style harnesses.
+4. The first implementation avoids a mandatory ontology: no required `USER.md`, `topics/`, `entities/`, `sources/`, `comparisons/`, `INDEX` lint taxonomy, graph DB, or vector DB.
 
-The wiki layout follows Karpathy's LLM-Wiki pattern: every non-trivial source gets a source page, durable concepts and entities are promoted into interlinked pages, and each page carries source traceability in frontmatter.
+Breaking changes are allowed during the transition. Legacy wiki services still exist for compatibility, but Memory v2 primitives live in `app/services/memory.py`. This work is release hardening, not an experimental-preview feature gate; the known gaps below must be resolved before a normal release claim.
 
 ---
 
-## Directory layout
+## Storage layout
+
+Memory v2 currently reuses `OPENAGENTD_WIKI_DIR` as the root while the implementation settles.
 
 ```text
 {OPENAGENTD_WIKI_DIR}/
-  USER.md           # pure YAML durable user facts, injected into every prompt
-  INDEX.md          # dream-maintained table of contents
-  LOG.md            # service-managed append-only dream/lint log
-  LINT.md           # latest dream lint report
-  topics/           # concept pages, kept as the legacy name for compatibility
-    {slug}.md
-  entities/         # people, tools, products, organizations, concrete things
-    {slug}.md
-  sources/          # one summary page per ingested source
-    {slug}.md
-  comparisons/      # X-vs-Y comparison pages
-    {slug}.md
-  notes/            # agent notes, one file per day, append-only input
-    {date}.md
+  SCHEMA.md      # Dream maintainer rules and conventions
+  INDEX.md       # human/agent navigation
+  LOG.md         # Dream activity log
+
+  notes/         # raw note-tool files; append-only input
+    2026-05-31.md
+
+  imports/       # raw imported documents/articles
+    karpathy-llm-wiki.md
+
+  wiki/          # compiled memory pages maintained by Dream
+    user.md
+    openagentd.md
+    memory-system.md
 ```
 
-`OPENAGENTD_WIKI_DIR` defaults to `.openagentd/wiki/` in dev or `~/.local/share/openagentd-wiki/` in prod.
+`app/core/wiki_seed.py` seeds the Memory v2 root files and directories. For compatibility during migration it may still seed some legacy paths.
 
-`USER.md`, `INDEX.md`, and `LOG.md` cannot be deleted via the API. `LINT.md` can be deleted because lint regenerates it.
-
----
-
-## Components
-
-### `WikiInjectionHook`
-
-`app/agent/hooks/wiki_injection.py` injects `USER.md` into the system prompt on every LLM call. Knowledge pages are never auto-injected; the agent calls `wiki_search` explicitly.
-
-`USER.md` is intended to be pure YAML, not markdown prose. The default seed is:
+Compiled `wiki/*.md` pages should use small YAML frontmatter that keeps retrieval debuggable without imposing a taxonomy:
 
 ```yaml
-identity: {}
-preferences: []
-working_style: []
-projects: []
-```
-
-### `note` tool
-
-`app/agent/tools/builtin/note.py` appends a `## HH:MM UTC` entry to `wiki/notes/{date}.md`. Notes are plain markdown with one file per day and no frontmatter. This is the only write path to `wiki/notes/`.
-
-### `wiki_search` tool
-
-`app/agent/tools/builtin/wiki_search.py` runs BM25 keyword search over `topics/`, `entities/`, `sources/`, and `comparisons/`.
-
-### Dream agent
-
-`app/services/dream.py` reads unprocessed sessions and note files, runs the dream agent with a fresh instance per item, and writes durable output to `USER.md`, `INDEX.md`, `topics/`, `entities/`, `sources/`, and `comparisons/`. The service appends `LOG.md` entries after runs. Processed items are tracked in `dream_log` and `dream_notes_log`.
-
-- Sessions with no messages are auto-skipped and marked processed without consuming a batch slot.
-- Empty-session draining is capped at `max(100, batch_size * 100)` per run.
-- The dream agent uses a built-in system prompt and fixed agent name, with `enabled`, `model`, and `schedule` read from `settings.yaml`.
-- The dream agent sandbox workspace is `wiki_root()`, so `read("USER.md")` and `write("topics/slug.md")` use bare wiki-relative paths.
-- Sessions and notes are interleaved as session, note, session, note up to the run cap.
-- Scheduled runs process up to `batch_size`; manual runs use `drain=True` and process all pending non-empty items.
-- If Dream is disabled or model-less, non-empty sessions and notes remain pending and the run returns `skipped`; they are not marked processed without synthesis.
-- Each item is wrapped in `asyncio.wait_for(..., timeout=timeout_seconds)`.
-- On timeout or LLM error, the item is not marked processed and retries on the next run.
-- If the dream agent fails to load, the item is counted as failed and remains pending for retry.
-- Transcripts are capped at `DEFAULT_MAX_PROMPT_CHARS = 60_000` with middle elision; per-message cap is `4_000` chars.
-- `_run_lock` serializes in-process dream and lint runs.
-- Wiki context is rebuilt before each item so later items in a drain can see pages created by earlier items.
-- `wiki/notes/` is append-only input and dream must not modify or delete it.
-- `LOG.md` is service-managed and dream must not edit it.
-
-`app/services/dream_scheduler.py` runs the scheduler.
-
-- `start()` is idempotent and only starts when Dream has `enabled: true` in `settings.yaml`.
-- `enabled: false` disables scheduled runs only; manual runs still work when a model is configured.
-- The scheduler reparses `settings.yaml` on each iteration, so direct file edits to schedule or `enabled` are picked up without restart.
-- `reload()` from `PUT /api/dream/config` takes effect without restart.
-- `stop()` cancels the loop and awaits any in-flight fire for clean shutdown.
-
 ---
-
-## `wiki/notes/` format
-
-Plain markdown, no frontmatter. One file per day; all note tool calls append to that day's file.
-
-```markdown
-## 14:32 UTC
-
-User prefers Vim. Always use terminal-based editors.
-
-## 14:45 UTC
-
-Decided to use SQLite WAL mode for performance.
-```
-
----
-
-## Knowledge page format
-
-Every file under `topics/`, `entities/`, `sources/`, and `comparisons/` should have YAML frontmatter:
-
-```markdown
----
-description: One-sentence summary used by search and the UI.
-tags: [tag1, tag2]
-updated: YYYY-MM-DD UTC
-confidence: high | medium | low
+description: Dream v2 compiled memory for session:<uuid>
+updated: 2026-05-31
+tags: [memory-v2, dream]
+memory_kind: conversation   # e.g. profile, conversation, note, import
+scope: session              # e.g. user, project, session, note_entry, import
+topics: [openagentd, memory, response-style]
+confidence: medium
 sources:
-  - session-a1b2c3d4
-  - note-2026-05-17
-related:
-  - "[[related-slug]]"
+  - session:<uuid>
 ---
 ```
 
-`sources/{Source-Slug}.md` is mandatory for every non-trivial source. Session source slugs use `session-<last-8-uuid-hex>`. Note source slugs use `note-<filename-stem>`.
-
-Body content should use Obsidian-style wikilinks such as `[[asyncio-cancellation]]` and `[[session-a1b2c3d4]]`.
+`memory_kind`, `scope`, and `topics` are hints for conservative automatic injection and debugging. They are not mandatory directories or ontology tables, and missing metadata falls back to lexical filtering.
 
 ---
 
-## Dream agent config
+## Raw sources and citations
 
-Dream uses a built-in prompt and runtime settings from `.openagentd/config/settings.yaml`. The dream agent working directory is `wiki_root()`, so built-in wiki writes use bare paths such as `USER.md`, `sources/session-a1b2c3d4.md`, and `topics/auth.md`.
+| Source type | Canonical source | Citation form |
+| --- | --- | --- |
+| Chat sessions/messages | SQLite `chat_sessions` + `session_messages` | `session:<uuid>`, `message:<uuid>` |
+| Note entries | `notes/*.md` | `note:<filename>#<entry_id>` for Dream state; whole-file search currently returns `note:<filename>` |
+| Imports | `imports/*.md` | `import:<slug>` |
+| Compiled pages | `wiki/*.md` plus root docs | `wiki:<slug>` |
 
-`read`, `write`, `edit`, `rm`, `ls`, and `wiki_search` are always injected through `_REQUIRED_TOOLS` in `app/services/dream.py`, regardless of the `tools:` field in frontmatter.
-
-| Field | Default | Purpose |
-|-------|---------|---------|
-| `enabled` | `false` | Scheduler switch. Manual runs still work when a model is configured. |
-| `model` | `""` | `provider:model` used by the Dream agent. |
-| `schedule` | `0 2 * * *` | Cron expression in UTC. |
-| `batch_size` | `1` | Items per scheduled run. Sessions and notes are interleaved. |
-| `timeout_seconds` | `300` | Per-item LLM timeout. Items that exceed it retry next run. |
-
-Configure via `/settings/dream` or edit `settings.yaml` directly. `PUT /api/dream/config` reloads the scheduler live.
+DB messages are **not** duplicated into `raw/sessions/YYYY-MM-DD/<session-id>.md`; SQLite remains the canonical raw chat store.
 
 ---
 
-## Data flow
+## Memory service
+
+`app/services/memory.py` provides the Memory v2 primitives:
+
+| Function | Purpose |
+| --- | --- |
+| `memory_root()` | Current memory root, backed by `OPENAGENTD_WIKI_DIR`. |
+| `seed_memory()` | Create `SCHEMA.md`, `INDEX.md`, `LOG.md`, `notes/`, `imports/`, and `wiki/`. |
+| `validate_memory_path()` | Allow only root Memory v2 files and one-level `notes/`, `imports/`, `wiki/` markdown files. |
+| `list_memory_tree()` | Return grouped system/wiki/import/note file metadata. |
+| `read_memory_file()` / `write_memory_file()` | Read/write validated Memory v2 markdown files. |
+| `search_memory_files()` | Deterministic token-overlap search over Memory v2 markdown files. |
+| `extract_memory_facts()` / `search_memory_facts()` | Extract and search cited fact bullets from compiled `wiki/*.md` pages; active facts are separate from stale/conflict candidates. |
+| `search_memory_messages()` | Deterministic token-overlap search over visible, non-excluded DB messages. |
+| `memory_search()` | Merge file results and optional raw DB message results. |
+
+Search starts with deterministic token overlap for repeatable tests and benchmarks. Embeddings/vector search are intentionally not part of the MVP.
+
+`app/services/memory_vector.py` defines the optional semantic backend seam for future vector search. The default backend is explicitly `disabled`, so Memory v2 still works without embeddings, native dependencies, or a vector database. Runtime settings accept:
+
+```yaml
+memory_vector:
+  enabled: false
+  backend: disabled  # future: turbovec
+  embedding_model: null
+  dim: null
+  index_path: null
+```
+
+Selecting `backend: turbovec` is recognized as experimental intent but currently reports unavailable; it does not import `turbovec` or change retrieval behavior yet.
+
+---
+
+## `memory_search` tool
+
+`app/agent/tools/builtin/memory_search.py` is the primary retrieval tool for Memory v2. It searches compiled wiki pages, raw note/import files, root Memory files, and visible chat messages when a DB session is available.
+
+The tool returns cited excerpts such as:
 
 ```text
-Agent mid-session
-  -> note tool appends to wiki/notes/{date}.md
-
-Every LLM call
-  -> WikiInjectionHook injects USER.md
-
-Agent needs past context
-  -> calls wiki_search
-  -> BM25 over topics/, entities/, sources/, comparisons/
-
-Dream runs by schedule
-  -> scheduler fires run_dream(drain=False)
-  -> empty sessions auto-skipped
-  -> sessions + notes interleaved up to batch_size
-  -> wiki context rebuilt before each item
-  -> per-item fresh dream agent, sandbox = wiki_root()
-  -> writes source/topic/entity/comparison pages, USER.md, INDEX.md
-  -> service appends LOG.md
-  -> marks processed in dream_log / dream_notes_log
-  -> timeout or error leaves item unprocessed for retry
-
-Manual dream run
-  -> POST /api/dream/run or manual.dream run --direct
-  -> run_dream(drain=True)
-  -> drains pending non-empty items in one call
-  -> skipped config/model runs leave items pending
-
-Manual dream recovery
-  -> manual.dream unmark --session <id> or --note <filename>
-  -> removes dream_log / dream_notes_log rows
-  -> requeues items that were marked processed too early
-
-Dream lint
-  -> POST /api/dream/lint or manual.dream lint
-  -> inspects current wiki
-  -> writes LINT.md only
-  -> service appends LOG.md
+1. source=wiki:user path=wiki/user.md score=0.812
+   title: wiki/user.md
+   excerpt: Hoang prefers direct, detailed, fact-based dialogue.
 ```
 
----
-
-## Path validation rules (`validate_wiki_path`)
-
-All client-supplied paths go through `validate_wiki_path` in `app/services/wiki.py` before any disk operation. Rules:
-
-- Must be relative, with no leading `/` or `~`.
-- Must end in `.md`.
-- No `..` or `.` segments.
-- Root-level files are limited to `USER.md`, `INDEX.md`, `LOG.md`, and `LINT.md`.
-- Sub-directories are limited to `topics/`, `entities/`, `sources/`, `comparisons/`, and `notes/`.
-- Paths are limited to two components, such as `topics/auth.md`.
-- Final `Path.resolve()` must remain inside `wiki_root()` to block symlink escapes.
+`wiki_search` remains available for legacy pages under `topics/`, `entities/`, `sources/`, and `comparisons/`.
 
 ---
 
-## What lives where
+## Prompt injection
 
-| Concern | Location |
-|---------|---------|
-| Wiki file ops, path validation, frontmatter parsing | `app/services/wiki.py` |
-| Data types (`WikiFileInfo`, `WikiTree`, `WikiPathError`) | `app/services/wiki.py` |
-| Dream runner, drain semantics, source slug injection | `app/services/dream.py` |
-| Dream lint operation | `app/services/dream.py` |
-| Dream config parser (`parse_dream_md`, `DreamAgentConfig`) | `app/services/dream.py` |
-| Dream scheduler | `app/services/dream_scheduler.py` |
-| USER.md injection | `app/agent/hooks/wiki_injection.py` |
-| Note writing | `app/agent/tools/builtin/note.py` |
-| Wiki search (BM25) | `app/agent/tools/builtin/wiki_search.py` |
-| DB tables | `app/models/chat.py` (`DreamLog`, `DreamNotesLog`) |
-| Migrations | `app/migrations/versions/00000004_create_dream_log.py` |
-| Seed defaults | `app/core/wiki_seed.py`, generated `settings.yaml` |
-| Manual scripts | `manual/wiki.py`, `manual/note.py`, `manual/dream.py` |
+`WikiInjectionHook` now reads `wiki/user.md` as a normal markdown page and injects a capped excerpt into the system prompt when present.
+
+- Legacy root `USER.md` is not the Memory v2 injection source.
+- The injected user page is capped to keep prompts bounded.
+- Other memory pages are not auto-injected; agents should call `memory_search`.
+
+`MemoryContextHook` also runs a conservative automatic lookup against the latest user message and injects a small cited `Relevant memory` block when there are matches. This is the first step toward implicit personalization: durable preferences can help the agent without the user repeating them every turn, while the injected context stays small, cited, and query-relevant.
+
+Automatic injection is stricter than explicit `memory_search`. It searches cited active fact bullets in compiled `wiki/*.md`, ignores stale/conflict candidates, ignores identity-only matches such as “Hoang”, and uses frontmatter `topics` to avoid applying generic preference memory to unrelated domain questions. For example, a `wiki/user.md` page tagged `topics: [preferences, response-style]` can help “How should you answer Hoang?” when it contains a cited active fact, but should not be injected for “What is Hoang's preferred Kubernetes scheduler plugin?” unless there is a Kubernetes-specific cited fact.
+
+Release-readiness note: explicit retrieval and automatic injection are evaluated separately. Explicit `memory_search` is allowed to surface weak cited candidates for debugging; `MemoryContextHook` is the safer path that decides whether those candidates should enter the prompt automatically.
+
+---
+
+## Dream processing state
+
+Memory v2 adds `memory_processed_sources` with migration `00000009_create_memory_processed_sources.py`:
+
+```text
+source_type
+source_id
+content_hash
+processed_at
+pages_changed
+status
+error
+```
+
+The unique source identity is `(source_type, source_id)`. Content changes are detected by comparing `content_hash`, so missing rows, changed hashes, and failed rows are pending.
+
+Current helper functions in `app/services/dream.py` can hash/select pending sources for:
+
+- DB sessions, excluding Dream's own sessions;
+- timestamp-headed note entries;
+- import files.
+
+Important transition note: the legacy `run_dream` loop still exists for compatibility and still writes the old taxonomy with `dream_log` / `dream_notes_log`. The explicit v2 maintainer `process_memory_sources()` / `run_memory_maintenance()` is the Memory v2 path. It now does two deterministic steps per pending source:
+
+1. Keep one source-compiled provenance page such as `wiki/session-<uuid>.md`, `wiki/note-entry-<slug>.md`, or `wiki/import-<slug>.md`.
+2. Promote durable, cited statements into curated flat pages such as `wiki/user.md`, `wiki/openagentd.md`, and `wiki/memory-v2.md`.
+
+The curated pages are still simple markdown, not a mandatory taxonomy. Each active fact is a markdown bullet under `## Facts`, includes a raw source citation like `[session:<uuid>]`, and carries a stable `fact_id=...` marker derived from its canonical content. Dream also records conservative ignored-source notes for opt-out, secret-like, or temporary-noise content without copying the sensitive text.
+
+Dream v2 deduplicates equivalent durable facts by canonical key, merges raw citations onto one active fact line, and records changed/equivalent wording under `## Conflicts / stale candidates` instead of silently duplicating or overwriting. Automatic injection treats that stale/conflict section as non-active; explicit/debug retrieval can still expose it when requested. Dream also filters source-page/frontmatter boilerplate so generated provenance metadata is not promoted back into curated memory.
+
+The deterministic compiler adds frontmatter metadata to source and curated pages:
+
+- `memory_kind`: `conversation`, `note`, or `import` based on source type.
+- `scope`: the raw source type (`session`, `note_entry`, or `import`).
+- `topics`: a small deterministic token list used by automatic injection reranking and eval debugging.
+
+---
+
+## Manual commands
+
+```bash
+# Inspect Memory v2 tree
+uv run python -m manual.memory tree
+
+# Search Memory v2 markdown files
+uv run python -m manual.memory search "what does Hoang prefer?"
+
+# Include raw DB message search
+uv run python -m manual.memory search "memory schema" --raw --limit 5
+
+# Run the deterministic Dream v2 maintainer directly
+uv run python -m manual.memory maintain --limit 1
+
+# Print INDEX.md
+uv run python -m manual.memory index
+
+# Inspect optional semantic vector backend status
+uv run python -m manual.memory vector status
+```
+
+`manual.memory maintain --limit` calls `process_memory_sources(db, limit=...)`, which consumes pending Memory v2 sources, writes deterministic source pages under `wiki/`, updates curated durable pages when eligible facts are found, refreshes `INDEX.md`, and records status plus changed pages in `memory_processed_sources`.
+
+---
+
+## Benchmark harness
+
+`manual.memory_bench` provides a local LongMemEval-style retrieval harness. It does not download datasets; pass a local JSON/JSONL file.
+
+```bash
+uv run python -m manual.memory_bench longmemeval --mode raw --limit 20 --top-k 10 --data PATH
+uv run python -m manual.memory_bench longmemeval --mode wiki --limit 20 --top-k 10 --data PATH
+uv run python -m manual.memory_bench longmemeval --mode wiki-plus-raw --limit 20 --top-k 10 --data PATH
+uv run python -m manual.memory_bench longmemeval --mode injection --limit 20 --top-k 10 --data PATH
+uv run python -m manual.memory_bench longmemeval --mode wiki --top-k 5 --data PATH --debug-hits --write-candidates
+```
+
+For the synthetic Memory v2 regression benchmark, seed a matching local corpus and JSONL fixture from `manual/`:
+
+```bash
+uv run python -m manual.memory_eval_fixture
+uv run python -m manual.memory_eval_fixture --run
+uv run python -m manual.memory_eval_fixture --run --debug-hits --write-candidates
+uv run python -m manual.memory_eval_fixture --mode injection --run --debug-hits --write-candidates
+OPENAGENTD_WIKI_DIR=/tmp/openagentd-memory-eval uv run python -m manual.memory_eval_fixture --run
+```
+
+This benchmark is intentionally manual, not a unit test. Unit tests cover parser/search/policy correctness; manual runs record quality metrics and failures.
+
+Outputs are written under:
+
+```text
+.openagentd/evals/runs/<timestamp>/
+  config.json
+  results.jsonl
+  metrics.json
+  failures.jsonl
+  candidates.jsonl  # when --write-candidates is set
+  report.md
+```
+
+Use `--debug-hits` to include matched tokens, missing meaningful tokens, page topics, topic overlap, and rerank multipliers on each result. Use `--write-candidates` to write pre-abstention candidates plus dropped/kept source lists for failure analysis.
+
+Current metrics:
+
+- Positive/answerable rows: Recall@1, Recall@5, Recall@10, MRR@10, and failures.
+- Negative/abstention rows: abstention rate, candidate false-positive rate, final false-positive rate, and failures.
+- `--mode injection`: searches cited active fact bullets, applies the same MemoryContextHook relevance filter used for automatic prompt injection, and reports `injection_false_positive_rate` separately from candidate false positives.
+- Per-type breakdowns when rows include `type` or `question_type`.
+
+Rows are treated as negative/abstention cases when they set `negative: true`, `abstain: true`, `answerable: false`, `should_answer: false`, or have no answers. The harness accepts common query fields (`question`, `query`, `input`, `prompt`) and answer fields (`answer`, `answers`, `evidence`, `reference`).
+
+---
+
+## Known gaps
+
+- Dream v2 currently compiles and promotes facts deterministically; LLM synthesis over those sources is still future work.
+- `wiki_search` is still legacy; `memory_search` is the v2 retrieval primitive.
+- Existing roots may lack `SCHEMA.md` until seeding runs.
+- API routes for Memory v2 are not implemented yet; MVP access is service/manual/tool based.
+- The LongMemEval harness is a deterministic baseline, not a complete official benchmark runner.

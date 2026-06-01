@@ -36,7 +36,7 @@ from app.agent.mode.team.member import (
     TeamMember,
     TeamMemberBase,
 )
-from app.agent.mode.team.manage import make_team_configure_tool, make_team_manage_tool
+from app.agent.mode.team.manage import make_team_manage_tool
 from app.agent.mode.team.tools import make_team_message_tool
 from app.agent.multimodal import build_parts_from_metas
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
@@ -1378,7 +1378,7 @@ class AgentTeam:
 
         Everyone gets ``team_message`` and ``todo_manage`` so members can claim
         assigned tasks. The lead additionally gets ``team_manage`` (roster
-        spawn/dismiss) and ``team_configure`` (capability management).
+        spawn/dismiss).
         """
         from app.agent.tools.builtin.todo import make_todo_manage_tool
 
@@ -1392,7 +1392,6 @@ class AgentTeam:
 
         if agent_name == self.lead.name:
             tools.append(make_team_manage_tool(self))
-            tools.append(make_team_configure_tool(self))
 
         return tools
 

@@ -41,7 +41,6 @@ Active team tools (each has a `@tool` registration in code):
 
 - `team_message` — peer-to-peer message between team agents. The only way members reach the lead and each other.
 - `team_manage` — lead-only roster operations.
-- `team_configure` — lead-only runtime capability changes for live members.
 - `todo_manage` — task board, injected for lead and members.
 
 > Older docs referenced `send_message`, `create_tasks`, `claim_task`, `broadcast`, `message_leader` — those tool names no longer exist. The current surface is `team_message` + `todo_manage`.

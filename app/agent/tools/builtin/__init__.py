@@ -9,6 +9,7 @@ from .filesystem import (
     remove_path,
     write_file,
 )
+from .memory_search import memory_search
 from .note import note_tool
 from .schedule import schedule_task
 from .shell import background_process, shell_tool
@@ -28,6 +29,7 @@ __all__ = [
     "list_directory",
     "patch_file",
     "load_skill",
+    "memory_search",
     "note_tool",
     "read_file",
     "remove_path",

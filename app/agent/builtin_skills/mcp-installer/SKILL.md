@@ -21,7 +21,8 @@ python3 "$SCRIPT" <command> [options]
 ```
 
 The script talks to the daemon at `http://localhost:4082/api/mcp` by default.
-Pass `--base <url>` to override.
+Pass `--base <url>` to override. MCP server config is global in
+`{OPENAGENTD_CONFIG_DIR}/mcp.json`.
 
 ## Commands
 
@@ -157,10 +158,7 @@ always proceed to wiring after these commands regardless of daemon state.
 6. **Wire into an agent.** Installing alone does NOT make the tools callable.
    This step is **mandatory** — do not consider the install complete until done.
 
-   **The lead must wire it.** Two paths:
-
-   - **Temporary live member target**: call `team_configure(member="<handle>", action="add", kind="mcp", name="<server>")` directly. One tool call, validates against the live registry, and affects the current live member only.
-   - **Lead target, or any non-trivial multi-field edit**: call `skill("self-healing")` and follow its diff workflow.
+   **The lead must wire it.** Call `skill("self-healing")` and follow its diff workflow.
 
    Do not delegate this step to a member agent, even if the member ran the steps above.
 

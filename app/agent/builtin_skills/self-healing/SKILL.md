@@ -2,10 +2,10 @@
 name: self-healing
 description: >-
   Update or upgrade the agent's own configuration on request — swap the model,
-  tune thinking/temperature, add tools/skills, change the image-generation
-  provider/model, or install a new skill. Use when the user says things like
-  "upgrade yourself", "switch your model to X", "use Gemini for images",
-  "add the plugin-installer skill to yourself", "make yourself faster/smarter".
+  tune thinking/temperature, add tools or MCP servers, change the
+  image-generation provider/model, or install a new skill. Use when the user
+  says things like "upgrade yourself", "switch your model to X", "use Gemini
+  for images", "make yourself faster/smarter".
 ---
 
 # Self-Healing Skill
@@ -22,7 +22,7 @@ under `{OPENAGENTD_CONFIG_DIR}/`. No code changes, no restarts. Agent
 |--------|------|-----------------|
 | Agent model / params | `{OPENAGENTD_CONFIG_DIR}/agents/{name}.md` frontmatter | "switch to gpt-5", "use Claude", "lower temperature", "turn on high thinking", "add a fallback model" |
 | Agent tools | same file, `tools:` list | Additive local overrides on top of any built-in first-party profile tools. "give yourself shell access", "let yourself browse the web" |
-| Agent skills | same file, `skills:` list | Additive local overrides on top of any built-in first-party profile skills. "enable the plugin-installer skill for yourself" |
+| Agent skill metadata | same file, `skills:` list | Rare additive explicit metadata/drift hooks. Installing a new skill normally does **not** require editing agent files; the `skill` tool discovers skills from project/global roots. |
 | Agent MCP tools | same file, `mcp:` list (bulk) or `tools:` list (selective) | Additive local overrides on top of any built-in first-party profile MCP servers/tools. "let yourself use the filesystem MCP", "remove the github MCP from yourself" — see "MCP tools on agents" below |
 | Image / video generation | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | "generate images with Gemini instead", "switch to Veo for video", "make images higher quality", "use 1080p video" |
 | New skills | `{OPENAGENTD_CONFIG_DIR}/skills/{name}/SKILL.md` | "install a skill for reviewing pull requests" — **delegate to `skill-installer`** |
@@ -33,27 +33,15 @@ source code, adding built-in tools, touching files outside
 config directory — pass the absolute config path to `read` / `write` / `edit`
 rather than relative names.
 
-## Runtime member capability changes
+## Agent capability changes
 
-For a **temporary, live member-instance** capability change, use the lead-only
-runtime tool instead of this skill:
+Use this self-healing workflow for root/blueprint config changes:
 
-```
-team_configure(member="<handle>", action="add"|"remove", kind="skill"|"tool"|"mcp", name="<value>")
-```
-
-`team_configure` validates the capability name against the live registry,
-rejects protected names (`skill`, `team_message`, `todo_manage`,
-`schedule_task`, `note`), and is idempotent. It does **not** edit root or
-blueprint `.md` files; changes are session/instance-local and may be reset by
-respawn or config drift reload.
-
-Use this self-healing workflow for persistent root/blueprint config changes:
-
-- Adding persistent first-party extras to `tools:` / `skills:` / `mcp:` in an agent `.md` file.
+- Adding persistent first-party extras to `tools:` / `mcp:` in an agent `.md` file.
+- Editing `skills:` only when the user explicitly wants agent-file metadata changed; do not add a skill there as part of normal skill installation.
 - Removing user-added extras from an agent `.md` file.
 - Explaining that built-in first-party capabilities cannot be removed through `.md` overrides; `.md` files are additive only.
-- Edits to the **lead's own** `.md` (lead is not a manageable target for `team_configure`).
+- Edits to the **lead's own** `.md`.
 - Multi-field changes (e.g. model + temperature + tools in one diff).
 - Anything outside `tools` / `skills` / `mcp` — `model`, `temperature`,
   `thinking_level`, `fallback_model`, system prompt body. (Summarisation
@@ -183,7 +171,7 @@ No team teardown, no in-flight turn disruption, no restart.
 | Agent `.md` frontmatter or system prompt | **Next turn** of that agent (drift detection). |
 | `mcp.json` (server added / removed / edited) | After `mcp-installer apply`, on the **next turn** of every agent that references the server. |
 | `SKILL.md` body edited | **Next turn** of any agent listing the skill (drift detection re-stamps the file). |
-| New skill installed via `skill-installer` | **Next turn** of any agent you add it to (the `skills:` list change is itself drift). |
+| New skill installed via `skill-installer` | Immediately loadable by exact `skill("name")`; the visible skill catalog refreshes on the next catalog/tool-description rebuild. No agent `.md` edit is required. |
 | `multimodal.yaml` | Read lazily on every `generate_image` / `generate_video` call — instant. |
 
 The only changes that still require a process restart are: adding or
@@ -203,7 +191,7 @@ Only these keys are valid. Reject any request to invent new ones.
 | `temperature` | float, typically `0.0`–`1.0` |
 | `thinking_level` | `none` \| `low` \| `medium` \| `high` |
 | `tools` | extra tools layered on top of any built-in first-party profile tools: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `wiki_search`, `generate_image`, `generate_video`, plus `mcp_<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`note`, `schedule_task`, `todo_manage`) are also injected automatically. |
-| `skills` | extra skills layered on top of any built-in first-party profile skills; names of discovered skill directories (project/global OpenAgentd, opencode-compatible, or bundled read-only skills) |
+| `skills` | optional explicit skill metadata/drift hooks; names of discovered skill directories (project/global OpenAgentd, opencode-compatible, or bundled read-only skills). Do not use this as the normal skill-install wiring step. |
 | `responses_api` | `true` to force OpenAI Responses API |
 
 Validation invariants to preserve:
@@ -290,9 +278,8 @@ skill wires the resulting tools onto a specific agent. For first-party
 built-in profiles, `mcp:` and selective `mcp_*` tools in the `.md` are
 additive local overrides; they do not replace built-in capabilities.
 
-> **Temporary live member target?** Use `team_configure(member="<handle>", action="add"|"remove", kind="mcp", name="<server>")`
-> — see the runtime section above. The recipes below are for persistent
-> agent `.md` edits, including lead targets and selective `tools:` entries.
+The recipes below are for agent `.md` edits, including lead targets and
+selective `tools:` entries.
 
 Two ways:
 
@@ -352,11 +339,11 @@ tools:
 
 ## Delegating to `skill-installer`
 
-If the user wants a **new** skill body (not an edit to an existing
-agent file) — "install a code-review skill", "add a skill for
-generating SVGs", "fetch this skill from https://…" — call
-`skill("skill-installer")` and follow its workflow. Do not write
-`SKILL.md` files from inside this skill.
+If the user wants a **new** skill body — "install a code-review skill",
+"add a skill for generating SVGs", "fetch this skill from https://…" — call
+`skill("skill-installer")` and follow its workflow. Do not write `SKILL.md`
+files from inside this skill, and do not edit agent `.md` `skills:` lists unless
+the user explicitly asked for that metadata change.
 
 ## Examples
 

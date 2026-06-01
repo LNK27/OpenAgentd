@@ -5,6 +5,7 @@ fn main() {
                 "request_voice_permissions",
                 "backend_health",
                 "backend_logs_path",
+                "app_new_window",
                 "set_tray_session",
                 "updater_check",
                 "updater_download",

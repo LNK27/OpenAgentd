@@ -206,11 +206,13 @@ workspace/
 # (e.g. the repo root and `desktop/src-tauri/.openagentd/` from desktop
 # dev builds).
 .openagentd/dev/
+.openagentd/evals/
 .openagentd/sessions/
 **/.openagentd/cache/
 **/.openagentd/config/
 **/.openagentd/data/
 **/.openagentd/dev/
+**/.openagentd/evals/
 **/.openagentd/memory/
 **/.openagentd/sessions/
 **/.openagentd/state/

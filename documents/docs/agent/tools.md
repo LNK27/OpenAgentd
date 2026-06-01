@@ -536,7 +536,7 @@ Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (RE
 
 `todo_manage`, `schedule_task`, and `note` are **always injected into the lead agent** — do not list them in `tools:`. In team mode, `todo_manage` is also injected into members so they can claim assigned tasks.
 
-In team mode, `team_message` and `todo_manage` are injected into every agent; `team_manage` and `team_configure` are injected into the lead only — see [`teams.md`](teams.md#team-communication-tools).
+In team mode, `team_message` and `todo_manage` are injected into every agent; `team_manage` is injected into the lead only — see [`teams.md`](teams.md#team-communication-tools).
 
 ---
 

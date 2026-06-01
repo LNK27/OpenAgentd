@@ -77,7 +77,6 @@ A few tools are injected by the framework — do **not** list them in `tools:`.
 | `note` | Lead agents. (Also listable explicitly if a member needs it.) |
 | `team_message` | All team agents. Peer-to-peer messaging. |
 | `team_manage` | Lead agents in team mode. Roster operations. |
-| `team_configure` | Lead agents in team mode. Runtime capability changes for live members. |
 
 ## MCP tools
 

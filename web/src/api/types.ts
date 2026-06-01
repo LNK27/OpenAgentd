@@ -275,15 +275,19 @@ export interface WikiFileInfo {
 export interface WikiTree {
   /** Root files: USER.md, INDEX.md, LOG.md, LINT.md (any that exist). */
   system: WikiFileInfo[]
-  /** notes/ — session dumps written by the agent (read-only in the UI). */
+  /** notes/ — raw note entries written by tools/agents. */
   notes: WikiFileInfo[]
-  /** topics/ — concept pages (abstract ideas, techniques). */
+  /** imports/ — raw imported Memory v2 documents. */
+  imports: WikiFileInfo[]
+  /** wiki/ — Memory v2 curated and source-compiled pages. */
+  wiki: WikiFileInfo[]
+  /** topics/ — legacy concept pages (abstract ideas, techniques). */
   topics: WikiFileInfo[]
-  /** entities/ — concrete things (people, tools, orgs, products). */
+  /** entities/ — legacy concrete things (people, tools, orgs, products). */
   entities: WikiFileInfo[]
-  /** sources/ — one-page summaries per ingested source. */
+  /** sources/ — legacy one-page summaries per ingested source. */
   sources: WikiFileInfo[]
-  /** comparisons/ — X-vs-Y pages. */
+  /** comparisons/ — legacy X-vs-Y pages. */
   comparisons: WikiFileInfo[]
 }
 

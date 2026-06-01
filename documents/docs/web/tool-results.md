@@ -31,7 +31,6 @@ ToolCall/index.tsx                  (inline row + header + expand/collapse)
         ├── FileReadResult          — read
         ├── TeamMessageResult       — team_message
         ├── TeamManageResult        — team_manage
-        ├── TeamConfigureResult     — team_configure
         └── GenericResult           — everything else (bg, web_fetch, date,
                                        write, edit, rm, skill, math, …)
 ```
@@ -131,7 +130,6 @@ Verbs are **deterministic** (no randomised phrase pools). Argument values shown 
 | `bg` | Action-based — e.g. `Listing background processes…`, `Checking process `*[pid]*`…`, `Reading output of process `*[pid]*`…`, `Stopping process `*[pid]*`…`, `Managing background process…` | hidden | — |
 | `team_message` | `Preparing message…` (pending, no args yet) → Messaging *[recipients]* (joined by `, `, truncated at 60 chars) | message `content` only (no JSON wrapper) | `arguments` |
 | `team_manage` | `Spawning` *[members]* or `Dismissing` *[members]* | hidden | — |
-| `team_configure` | Capability action summary, e.g. `Granting` *[tool: write]* `to` *[executor#1]* | hidden | — |
 | `generate_image` | Painting *[filename]* (normalised: any trailing extension stripped, `.png` appended to match the backend `_sanitise_filename`), or `Painting an image…` when filename is absent | `prompt` string only (`images: …` line prepended in edit mode) | `arguments` |
 | `generate_video` | **Extension mode:** `Extending [filename]` / `Extending a video…`. **Other modes:** `Filming [filename]` / `Filming a video…`. Header switches on `extend_video` being set. | `extend_video` / `first_frame` / `last_frame` / `references` input lines (when set) prepended to the `prompt` | `arguments` |
 
@@ -208,10 +206,6 @@ Plain monospace text, no icon. All colors are theme tokens — no raw Tailwind p
 ### `TeamManageResult` — `team_manage`
 
 Backend returns compact roster text such as `Spawned: executor#1. Dismissed: explorer#1. Errors: reviewer#1: not live.`. The renderer groups each `Label: value` segment into rows and colors error groups with `--color-error`.
-
-### `TeamConfigureResult` — `team_configure`
-
-Capability list output (`Capabilities for 'executor#1' ...`) renders as a heading plus monospace rows. Mutation success/error strings render as a single monospace line, with known validation failures colored via `--color-error`.
 
 ### `GenericResult` — everything else
 

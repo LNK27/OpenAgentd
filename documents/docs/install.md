@@ -179,7 +179,7 @@ The API and web UI start on a single port: http://localhost:4082. Database migra
 
 ### 4. Customize your agent
 
-Edit `~/.config/openagentd/agents/openagentd.md` to change the model, add tools, attach skills, or rewrite the system prompt. The agent picks up changes at the end of the next turn — no restart needed.
+Edit `~/.config/openagentd/agents/openagentd.md` to change the model, add tools/MCP, or rewrite the system prompt. Install skills under `~/.config/openagentd/skills/`; no agent-file edit is needed for normal skill discovery. The agent picks up agent-file changes at the end of the next turn — no restart needed.
 
 See [Configuration](configuration.md) for the full reference.
 

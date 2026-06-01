@@ -1,4 +1,4 @@
-.PHONY: dev ios-init ios-icons ios-dev ios-dev-device ios-install-device ios-build ios-clean build clean
+.PHONY: dev ios-init ios-icons ios-icons-force ios-dev ios-dev-device ios-install-device ios-build ios-clean build clean
 
 IOS_DEVICE ?= $(word 2,$(MAKECMDGOALS))
 IOS_TEAM_FILE ?= ios-team.txt
@@ -8,6 +8,7 @@ IOS_DEV_IDENTIFIER ?= com.dev.openagentd.mobile
 IOS_DEV_PRODUCT_NAME ?= OpenAgentd Dev
 IOS_DEV_APP_CONFIG = --config '{"identifier":"$(IOS_DEV_IDENTIFIER)","productName":"$(IOS_DEV_PRODUCT_NAME)"}'
 IOS_APPICONSET = src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset
+IOS_ICON_STAMP = $(IOS_APPICONSET)/.openagentd-icons.stamp
 
 dev: ## Run the mobile shell against the web Vite dev server
 	cd src-tauri && cargo tauri dev
@@ -19,11 +20,22 @@ ios-init: ## Initialize Tauri iOS project files
 	fi
 	$(MAKE) ios-icons
 
-ios-icons: ## Regenerate iOS AppIcon assets from the shared OpenAgentd icon
+$(IOS_ICON_STAMP): src-tauri/icons/icon.png
 	cd src-tauri && cargo tauri icon icons/icon.png --ios-color transparent
 	@if [ -d src-tauri/icons/ios ]; then \
 		mkdir -p $(IOS_APPICONSET); \
 		cp src-tauri/icons/ios/*.png $(IOS_APPICONSET)/; \
+		touch $(IOS_ICON_STAMP); \
+	fi
+
+ios-icons: $(IOS_ICON_STAMP) ## Generate iOS AppIcon assets when missing or stale
+
+ios-icons-force: ## Force-regenerate iOS AppIcon assets from the shared OpenAgentd icon
+	cd src-tauri && cargo tauri icon icons/icon.png --ios-color transparent
+	@if [ -d src-tauri/icons/ios ]; then \
+		mkdir -p $(IOS_APPICONSET); \
+		cp src-tauri/icons/ios/*.png $(IOS_APPICONSET)/; \
+		touch $(IOS_ICON_STAMP); \
 	fi
 
 ios-dev: ## Run on an iOS simulator/device
@@ -42,7 +54,7 @@ ios-install-device: ## Build and install the production iOS app on a device
 		exit 2; \
 	fi
 	$(MAKE) ios-icons
-	cd src-tauri && cargo tauri ios build $(IOS_TEAM_CONFIG)
+	cd src-tauri && cargo tauri ios build --archive-only $(IOS_TEAM_CONFIG)
 	xcrun devicectl device install app --device "$(IOS_DEVICE)" src-tauri/gen/apple/build/openagentd-mobile_iOS.xcarchive/Products/Applications/OpenAgentd.app
 
 %:

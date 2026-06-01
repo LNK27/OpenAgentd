@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-05-31
+updated: 2026-06-01
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.39.0 · May 31, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.39.0)
+**Latest release:** v1.41.0 · June 1, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.41.0)
 
 ---
 
@@ -76,6 +76,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   Cockpit, Coding, Command Palette, Wiki, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
   tray dropdown for status, quick navigation, reload, settings, and quit.
+- **Multiple desktop windows** `[v1.41.0]` — open additional cockpit windows from
+  File → New Window, the tray menu, or `Cmd/Ctrl+N`; all windows share the same
+  sidecar/backend session and desktop auth token.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
@@ -136,8 +139,6 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 - **`team_message` peer delegation** `[since v1.0]` — async mailbox between
   agents. Lead delegates with `team_message`; the recipient's next turn drains
   its inbox.
-- **`team_configure`** `[since v1.0]` — grant or revoke a live member's skills,
-  tools, or MCP servers at runtime without editing blueprint files or restarting.
 - **Split-pane live view** `[since v1.0]` — each active agent gets its own pane,
   streamed independently. See live whose turn is current, who's idle.
 - **Unified team view** `[since v1.0]` — single chronological transcript across
@@ -174,7 +175,7 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   workspace-aware sessions; the coding explorer focuses on inspecting the current
   codebase before implementation.
 - **Built-in first-party agent profiles** `[v1.23.0]` — the default `openagentd`
-  lead and shipped member blueprints keep their core prompts, tools, skills, and
+  lead and shipped member blueprints keep their core prompts, tools, and
   descriptions versioned in code for normal and coding modes; seed/user `.md`
   files remain lightweight extension points for model knobs, extra capabilities,
   and extra prompt text. Seed install also removes obsolete untouched first-party
@@ -255,6 +256,13 @@ OpenAgentd carries durable, editable memory across sessions. Deeper doc:
   standard repo- and folder-scoped agent context files.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).
+- **Memory v2 / Dream v2 wiki** `[v1.41.0]` — Karpathy-style markdown memory
+  with `SCHEMA.md`, `INDEX.md`, `LOG.md`, `notes/`, `imports/`, and `wiki/`;
+  deterministic Dream maintenance compiles canonical DB sessions, notes, and
+  imports into cited active fact bullets; explicit `memory_search`, conservative
+  automatic relevant-memory injection, a VSCode-like memory tree UI, and manual
+  LongMemEval-style retrieval/injection evals expose quality and false-positive
+  failures. See [`agent/memory.md`](./agent/memory.md).
 
 ---
 
@@ -324,7 +332,7 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` |
 | Tasks | `todo_manage` |
-| Team coordination | `team_message`, `team_manage`, `team_configure` |
+| Team coordination | `team_message`, `team_manage` |
 | Utility | `date`, `skill` |
 
 - **Cross-tool `tool_output_delta` streaming** `[since v1.0]` — long-running
@@ -370,7 +378,7 @@ Four orthogonal ways to add capability. Deeper docs:
   namespace level is supported and displayed in the composer as colon syntax
   (`/git:commit`) `[v1.27.x]`.
 - **Self-healing skill** `[v1.14.0]` — agent edits its own `.md` config (model,
-  tools, skills, MCP) and the runtime picks up the change at end-of-turn.
+  tools, MCP) and the runtime picks up the change at end-of-turn.
 
 ---
 

@@ -37,13 +37,7 @@ class WikiFileInfoResponse(BaseModel):
 
 
 class WikiTreeResponse(BaseModel):
-    """Mirrors the Karpathy LLM-Wiki page-type split.
-
-    ``system`` is the bucket for root-level files (USER, INDEX, LOG, LINT).
-    ``notes`` is the raw input log.  The remaining four are knowledge dirs
-    populated by the dream agent — ``topics`` keeps its legacy name even
-    though it semantically holds *concept* pages.
-    """
+    """Memory/wiki tree grouped by root files and one-level subdirectories."""
 
     system: list[WikiFileInfoResponse]
     notes: list[WikiFileInfoResponse]
@@ -51,6 +45,8 @@ class WikiTreeResponse(BaseModel):
     entities: list[WikiFileInfoResponse] = Field(default_factory=list)
     sources: list[WikiFileInfoResponse] = Field(default_factory=list)
     comparisons: list[WikiFileInfoResponse] = Field(default_factory=list)
+    wiki: list[WikiFileInfoResponse] = Field(default_factory=list)
+    imports: list[WikiFileInfoResponse] = Field(default_factory=list)
 
 
 class WikiFileResponse(BaseModel):
@@ -90,7 +86,7 @@ async def get_wiki_tree(
     ),
     db: AsyncSession = Depends(get_session),
 ) -> WikiTreeResponse:
-    """Return the full wiki tree (system + notes + four knowledge dirs)."""
+    """Return the full memory/wiki tree."""
     unprocessed: set[str] | None = None
     if unprocessed_only:
         unprocessed = set(await get_unprocessed_notes(db))
@@ -99,6 +95,8 @@ async def get_wiki_tree(
     return WikiTreeResponse(
         system=[_info(i) for i in tree.system],
         notes=[_info(i) for i in tree.notes],
+        imports=[_info(i) for i in tree.imports],
+        wiki=[_info(i) for i in tree.wiki],
         topics=[_info(i) for i in tree.topics],
         entities=[_info(i) for i in tree.entities],
         sources=[_info(i) for i in tree.sources],

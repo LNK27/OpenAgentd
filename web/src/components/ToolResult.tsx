@@ -267,41 +267,6 @@ function TeamManageResult({ result }: { result: string }) {
   )
 }
 
-function TeamConfigureResult({ result }: { result: string }) {
-  const isError =
-    result.startsWith('Member ') ||
-    result.startsWith('Failed ') ||
-    result.startsWith('Action ') ||
-    result.startsWith('Unknown ')
-  const isCapabilityList = result.startsWith('Capabilities for ')
-
-  if (!isCapabilityList) {
-    return (
-      <span
-        className={`font-mono text-[11px] leading-relaxed ${
-          isError ? 'text-(--color-error)' : 'text-(--color-text-2)'
-        }`}
-      >
-        {result}
-      </span>
-    )
-  }
-
-  const [heading, ...rows] = result.split('\n')
-  return (
-    <div className="space-y-1 font-mono text-[11px] leading-relaxed">
-      <div className="font-medium text-(--color-text-2)">{heading}</div>
-      <ul className="space-y-0.5">
-        {rows.map((row) => (
-          <li key={row} className="text-(--color-text-muted)">
-            {row}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
 // ---------------------------------------------------------------------------
 // Generic fallback renderer
 // ---------------------------------------------------------------------------
@@ -352,9 +317,6 @@ export function ToolResult({ toolName, result }: { toolName: string; result: str
   }
   if (toolName === 'team_manage') {
     return <TeamManageResult result={result} />
-  }
-  if (toolName === 'team_configure') {
-    return <TeamConfigureResult result={result} />
   }
   // web_fetch, date, math, skill, etc.
   return <GenericResult result={result} />

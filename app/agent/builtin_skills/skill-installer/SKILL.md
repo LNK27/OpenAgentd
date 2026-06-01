@@ -7,30 +7,33 @@ description: >-
 
 # Skill Installer
 
+Use this skill when the user wants to add a **new skill body**. Do not use it
+for changing models, tools, MCP servers, plugins, or other agent configuration.
+
 ## Discovery order
 
-OpenAgentd discovers skills from five roots, in this order. The first skill
-with a given name wins:
+OpenAgentd discovers skills from these roots, in order. The first skill with a
+given `name` wins:
 
-1. `{cwd}/.openagentd/skills/{skill-name}/SKILL.md` — project-specific OpenAgentd skill.
-2. `{cwd}/.opencode/skills/{skill-name}/SKILL.md` — project opencode-compatible skill.
-3. `{SKILLS_DIR}/{skill-name}/SKILL.md` — global OpenAgentd skill.
-4. `~/.config/opencode/skills/{skill-name}/SKILL.md` — global opencode-compatible skill.
+1. `{cwd}/.openagentd/skills/{skill-name}/SKILL.md`
+2. `{cwd}/.opencode/skills/{skill-name}/SKILL.md`
+3. `{SKILLS_DIR}/{skill-name}/SKILL.md`
+4. `~/.config/opencode/skills/{skill-name}/SKILL.md`
 5. Bundled OpenAgentd operational skills — read-only fallback.
 
-Default to `{SKILLS_DIR}` for user-global installs unless the user explicitly
-asks for a project-local skill or an opencode-shared skill.
-If the target name already exists only as a bundled skill, install an override
-in `{SKILLS_DIR}` (or the requested project root); never edit bundled files.
+Default to `{SKILLS_DIR}` unless the user explicitly asks for a project-local or
+opencode-shared skill. If the target name exists only as a bundled skill, install
+a writable override; never edit bundled files.
 
 ## Skill file format
 
-A skill is a directory at `{root}/{skill-name}/` containing at minimum a `SKILL.md` file. The `SKILL.md` has YAML frontmatter and a Markdown body:
+A skill is a directory containing at minimum a `SKILL.md` file with YAML
+frontmatter and a Markdown body:
 
 ```markdown
 ---
 name: skill-name
-description: One-sentence description shown in the system prompt.
+description: One-sentence description shown in the skill registry.
 ---
 
 # Skill Title
@@ -38,23 +41,34 @@ description: One-sentence description shown in the system prompt.
 Full instructions the agent reads when it calls skill("skill-name").
 ```
 
+Rules:
+
+- Directory name should match the `name` field for flat skills.
+- Prefer lowercase kebab-case names unless the user intentionally wants a
+  one-level namespace such as `oad/debug`.
+- Keep `description:` short and trigger-oriented.
+- Never overwrite an existing skill without reading it first and confirming with
+  the user.
+
 ## How to install
 
 ### From a URL
 
 1. Fetch the raw content with `web_fetch`.
-2. Parse out the frontmatter `name` field — that becomes the directory name.
-3. Write the content to `{SKILLS_DIR}/{name}/SKILL.md`.
+2. If the response is HTML, ask for the raw URL and stop.
+3. Parse the frontmatter `name` field; that is the skill name.
+4. Write the content to the selected writable skill root.
+5. Read it back to verify the file landed correctly.
+6. Confirm the exact path and skill name.
 
 ### From scratch
 
-1. Ask the user what the skill should do if not already specified.
-2. Write a `SKILL.md` following the format above to `{SKILLS_DIR}/{name}/SKILL.md`.
-3. Create any supporting files (e.g. `reference.md`) in the same directory if useful.
+1. Ask what the skill should do only if the request does not already specify it.
+2. Write a `SKILL.md` following the format above to the selected writable skill
+   root.
+3. Add supporting files in the same directory only if they are useful.
+4. Read it back to verify the file landed correctly.
+5. Confirm the exact path and skill name.
 
-## Rules
-
-- Directory name must match the `name` field in frontmatter (lowercase, hyphens only).
-- Never overwrite an existing skill without confirming with the user first — read it first and show what will change.
-- After writing, confirm the path and name so the user can add it to an agent's `skills:` list.
-- A new skill can be loaded by exact name immediately. It appears in generated "Available skills" sections after the affected agent rebuilds on its next turn; if a cached skill catalog is stale, use the Skills API/UI path or restart as a fallback.
+A new skill can be loaded by exact name immediately. If a UI catalog looks stale,
+refresh the Skills page or restart as a fallback.

@@ -103,7 +103,6 @@ The lead's protocol shows two sections:
 |---------------|--------------|-----------------------------------------------|
 | `team_message`| lead, members| send a message to a specific recipient        |
 | `team_manage` | lead         | spawn/dismiss live roster instances           |
-| `team_configure` | lead      | grant/list/revoke member capabilities         |
 
 These are injected at `agent.run()` time by `AgentTeam.get_injected_tools`,
 so a lead always sees its live roster — no agent-cache bust required after
@@ -190,7 +189,7 @@ spawning a peer mid-turn.
 | blueprint definition + parsing       | `app/agent/loader.py`                                |
 | `MemberBlueprint`, spawn / dismiss   | `app/agent/mode/team/team.py`                        |
 | runtime blueprint rediscovery        | `app/services/team_manager.py:refresh_blueprints`    |
-| roster/configure tools               | `app/agent/mode/team/manage.py`                      |
+| roster tools                         | `app/agent/mode/team/manage.py`                      |
 | protocol prompt assembly             | `app/agent/mode/team/member.py`                      |
 | recipient resolution                 | `app/agent/mode/team/tools.py`                       |
 | `/team/agents` API surface           | `app/api/routes/team/chat.py`                        |

@@ -35,6 +35,7 @@ from app.agent.drift import detect_drift, stamp_agent_files
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.hooks.continuation import ContinuationHook
 from app.agent.hooks.dynamic_prompt import inject_current_date
+from app.agent.hooks.memory_context import default_memory_context_hook
 from app.agent.hooks.memory_flush import build_memory_flush_hook
 from app.agent.hooks.wiki_injection import default_wiki_injection_hook
 from app.agent.hooks.workspace_instructions import WorkspaceInstructionsHook
@@ -99,16 +100,13 @@ LEAD_COMMUNICATION_RULES = """\
   - Multiple concerns → spawn / message multiple members in parallel
 - **Roster management — `team_manage`.** Members are spawned on demand. Use the `team_manage` tool description and schema for spawn/restore/dismiss usage and available blueprint discovery. Spawn what you need, address returned handles via `team_message`, and **keep useful members alive across turns** — reusing a live instance preserves its warm context and is faster and cheaper than dismiss-then-respawn. Dismiss only to free resources or clear clutter when an instance clearly won't be needed again.
 - Coordination with members must go through the `team_message` tool. Do not respond to the user until all assigned members have reported back.
-- **Capability management — `team_configure`.** Spawned members start with their built-in profile plus additive user blueprint extras. If a live instance needs an additional skill, built-in tool, or MCP server, use `team_configure` to grant it before delegating, and revoke it once the work is done. These changes are session/instance-local only; they do not edit blueprint/root `.md` files and may be reset by respawn or config drift reload.
-  - Use `self-healing` or settings edits for persistent root/blueprint defaults. Use `team_configure` only for just-in-time live-member capabilities.
-  - **You are the translator.** Members describe their *need* in plain language ("I need to write files", "I need shadcn examples"); you map it to the exact registry name (`write`, `mcp` `shadcn`, etc.) and pass that to `team_configure`. Members don't know what tools exist — you do.
-  - **When a member asks for a capability, prefer `team_configure(add)` + re-delegate over doing the work yourself** — the member is closer to the task and keeps separation of concerns. Self-execute only as a last resort.
+- Member capabilities come from their blueprint/root configuration at spawn time. If a member lacks a required capability, use an appropriately configured blueprint or update durable settings rather than mutating a live member.
 - Always format your responses in **Markdown**. No emoji."""
 
 LEAD_PROTOCOL = """\
 ## Lead workflow
 1. Receive user request. **Assess scope first.** For small, quick requests, just handle them yourself — don't spin up members for trivia. For substantial work, plan delegation: break the request into pieces, match each to the right blueprint, and prefer reusing a live member over spawning a fresh one.
-2. **Before delegating, consult your skills.** If the user's request matches one of your declared skills (e.g. install/setup/configure/add a skill, tool, MCP, plugin, agent, or extension → `skill-installer`; brand or design work → relevant skill), call `skill(skill_name='<name>')` *before* spawning members. Skills carry canonical paths, file formats, and conventions members would otherwise guess wrong. Skipping this step is the #1 cause of members writing to the wrong location.
+2. **Before delegating, consult your skills.** If the user's request matches one of your declared skills (e.g. install/setup/configure/add a skill body → `skill-installer`; MCP server → `mcp-installer`; plugin → `plugin-installer`; agent config/model/tools → `self-healing`; brand or design work → relevant skill), call `skill(skill_name='<name>')` *before* spawning members. Skills carry canonical paths, file formats, and conventions members would otherwise guess wrong. Skipping this step is the #1 cause of members writing to the wrong location.
 3. When delegating:
    - For multi-step work, create a todo plan first. Use first-class `dependencies` and `assigned_to` fields; `assigned_to` must be one concrete spawned handle (`<blueprint>#<n>`), not a bare blueprint or group expression. Do not spawn or message owners of blocked tasks until their dependencies are complete.
    - Identify which blueprints cover the work using the routing guide above.
@@ -815,6 +813,7 @@ class TeamMemberBase(abc.ABC):
         hooks: list[BaseAgentHook] = [
             inject_current_date,
             default_wiki_injection_hook,
+            default_memory_context_hook,
             team_prompt_hook,
             team_inbox_hook,
             publisher_hook,

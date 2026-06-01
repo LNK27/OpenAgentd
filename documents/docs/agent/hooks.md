@@ -111,10 +111,10 @@ Queue items: `ChatCompletionChunk | ToolStartSignal | ToolEndSignal | RateLimitS
 
 Used by **team members** — the unified SSE event publishing hook for the in-memory stream store. Calls `stream_store.push_event()` directly; no intermediate queue.
 
-- `on_model_delta` → pushes `thinking` / `message` / `tool_call` / `usage` events per delta; accumulates turn-level token totals.
+- `on_model_delta` → pushes `thinking` / `message` / `tool_call` / per-call `usage` events; token values are provider-reported absolute counts for that model call.
 - `wrap_tool_call` → pushes `tool_start` (before), streams optional `tool_output_delta` chunks during execution, pushes `tool_end` (after).
 - `on_rate_limit` → pushes `rate_limit` event.
-- `after_agent` → pushes `usage` with `metadata.turn_total=True` (when `>1` model calls made), resets counters.
+- `after_agent` → pushes an authoritative aggregate `usage` event with `metadata.turn_total=True` when a turn made `>1` model calls, then resets counters. Frontend consumers use this aggregate to replace the current turn's live input/output/cache counts and avoid showing only the final call.
 
 `agent_done` is **not** emitted here — `after_agent` fires every time `agent.run()` exits, including on `<sleep>` mid-turn re-activations. The `agent_status: idle` event (emitted from `_run_activation`'s finally block) is the correct per-agent completion signal; `done` (team-wide) is emitted by `_try_emit_done()`.
 

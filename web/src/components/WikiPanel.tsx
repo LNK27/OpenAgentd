@@ -2,17 +2,17 @@
  * WikiPanel — file tree + markdown editor for the agent wiki.
  *
  * The wiki lives under ``{OPENAGENTD_WIKI_DIR}`` and follows the Karpathy
- * LLM-Wiki layout:
+ * Memory v2 layout:
  *
- *   USER.md      — stable user facts (always injected into the system prompt)
+ *   SCHEMA.md    — Dream maintainer rules
  *   INDEX.md     — dream-maintained table of contents (editable)
- *   LOG.md       — append-only dream activity log (read but don't edit)
- *   LINT.md      — most recent lint report (overwritten on each lint pass)
- *   topics/      — concept pages (abstract ideas, techniques)
- *   entities/    — concrete things (people, tools, orgs)
- *   sources/     — one summary per ingested source
- *   comparisons/ — X-vs-Y pages
- *   notes/       — agent notes (read-only in the UI; deletable)
+ *   LOG.md       — append-only Dream activity log
+ *   wiki/        — curated and source-compiled Memory v2 pages
+ *   imports/     — raw imported Memory v2 documents
+ *   notes/       — raw note entries (read-only in the UI; deletable)
+ *
+ * Legacy wiki folders (topics/entities/sources/comparisons) are still shown
+ * when present for compatibility.
  *
  * `WikiTree.system` is the logical bucket for root files (USER, INDEX, LOG,
  * LINT) — there is no `system/` directory on disk.
@@ -27,7 +27,7 @@
 
 import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Save, Trash2, FileText, Folder, Loader2, ArrowLeft } from 'lucide-react'
+import { X, Save, Trash2, FileText, Folder, Loader2, ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -48,6 +48,8 @@ interface WikiPanelProps {
 
 type SectionKey =
   | 'system'
+  | 'wiki'
+  | 'imports'
   | 'notes'
   | 'topics'
   | 'entities'
@@ -79,52 +81,53 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
     setSelectedPath(null)
   }
 
-  // Sections are rendered in this order.  Empty knowledge sections are
-  // hidden below — a freshly-installed wiki only shows System + Notes
-  // until dream populates topics/entities/sources/comparisons.
+  const rootFiles = tree?.system ?? []
   const rawSections: Section[] = [
     {
-      key: 'system',
-      label: 'Wiki',
-      hint: 'USER · INDEX · LOG · LINT (root files)',
-      files: tree?.system ?? [],
+      key: 'wiki',
+      label: 'wiki',
+      hint: 'Curated and source-compiled Memory v2 pages',
+      files: tree?.wiki ?? [],
+    },
+    {
+      key: 'imports',
+      label: 'imports',
+      hint: 'Raw imported Memory v2 documents',
+      files: tree?.imports ?? [],
     },
     {
       key: 'notes',
-      label: 'Notes',
-      hint: 'Unprocessed session notes — pending dream synthesis',
+      label: 'notes',
+      hint: 'Raw note entries — pending Dream synthesis',
       files: tree?.notes ?? [],
     },
     {
       key: 'topics',
-      label: 'Topics',
-      hint: 'Concept pages — abstract ideas, techniques',
+      label: 'topics',
+      hint: 'Legacy concept pages',
       files: tree?.topics ?? [],
     },
     {
       key: 'entities',
-      label: 'Entities',
-      hint: 'People, tools, organisations, products',
+      label: 'entities',
+      hint: 'Legacy people, tools, organisations, products',
       files: tree?.entities ?? [],
     },
     {
       key: 'sources',
-      label: 'Sources',
-      hint: 'One summary per ingested source',
+      label: 'sources',
+      hint: 'Legacy source summaries',
       files: tree?.sources ?? [],
     },
     {
       key: 'comparisons',
-      label: 'Comparisons',
-      hint: 'X-vs-Y pages',
+      label: 'comparisons',
+      hint: 'Legacy X-vs-Y pages',
       files: tree?.comparisons ?? [],
     },
   ]
-  // Always show ``system`` and ``notes`` even when empty (their existence is
-  // a UX cue).  Hide knowledge sections that haven't been populated yet to
-  // avoid four empty headers on a fresh install.
   const sections = rawSections.filter(
-    (s) => s.key === 'system' || s.key === 'notes' || s.files.length > 0,
+    (s) => s.key === 'wiki' || s.key === 'notes' || s.files.length > 0,
   )
 
   return (
@@ -185,6 +188,7 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
                     <TreeContent
                       isLoading={isLoading}
                       isError={isError}
+                      rootFiles={rootFiles}
                       sections={sections}
                       selectedPath={selectedPath}
                       onSelect={handleSelect}
@@ -210,6 +214,7 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
                   <TreeContent
                     isLoading={isLoading}
                     isError={isError}
+                    rootFiles={rootFiles}
                     sections={sections}
                     selectedPath={selectedPath}
                     onSelect={handleSelect}
@@ -240,12 +245,14 @@ export function WikiPanel({ open, onClose }: WikiPanelProps) {
 function TreeContent({
   isLoading,
   isError,
+  rootFiles,
   sections,
   selectedPath,
   onSelect,
 }: {
   isLoading: boolean
   isError: boolean
+  rootFiles: WikiFileInfo[]
   sections: Section[]
   selectedPath: string | null
   onSelect: (path: string) => void
@@ -261,7 +268,16 @@ function TreeContent({
     return <p className="px-2 py-4 text-xs text-(--color-error)">Failed to load wiki</p>
   }
   return (
-    <>
+    <div className="select-none py-1 font-mono text-xs">
+      {rootFiles.map((file) => (
+        <WikiFileRow
+          key={file.path}
+          file={file}
+          depth={0}
+          selectedPath={selectedPath}
+          onSelect={onSelect}
+        />
+      ))}
       {sections.map((section) => (
         <WikiSection
           key={section.key}
@@ -270,7 +286,7 @@ function TreeContent({
           onSelect={onSelect}
         />
       ))}
-    </>
+    </div>
   )
 }
 
@@ -283,48 +299,79 @@ function WikiSection({
   selectedPath: string | null
   onSelect: (path: string) => void
 }) {
+  const [isExpanded, setIsExpanded] = useState(section.key !== 'imports')
+  const childCount = section.files.length
+
   return (
-    <div className="mb-4">
-      <div className="mb-1 flex items-center gap-1.5 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-(--color-text-subtle)">
-        <Folder size={12} />
-        {section.label}
-      </div>
-      <p className="mb-1 px-2 text-[10px] text-(--color-text-subtle)">{section.hint}</p>
-      {section.files.length === 0 ? (
-        <p className="px-2 py-1 text-xs italic text-(--color-text-subtle)">empty</p>
-      ) : (
-        <ul className="space-y-0.5">
-          {section.files.map((file) => {
-            const name = file.path.split('/').pop() ?? file.path
-            const isActive = file.path === selectedPath
-            return (
-              <li key={file.path}>
-                <button
-                  onClick={() => onSelect(file.path)}
-                  className={cn(
-                    'group flex w-full items-start gap-1.5 rounded px-2 py-1.5 text-left text-xs transition-colors',
-                    isActive
-                      ? 'bg-(--bg-key) text-(--color-accent)'
-                      : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
-                  )}
-                  title={file.description || name}
-                >
-                  <FileText size={12} className="mt-0.5 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{name}</div>
-                    {file.description && (
-                      <div className="truncate text-[10px] text-(--color-text-subtle)">
-                        {file.description}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+    <div>
+      <button
+        type="button"
+        onClick={() => setIsExpanded((value) => !value)}
+        className="group flex h-7 w-full items-center gap-1.5 rounded px-1.5 text-left text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+        aria-expanded={isExpanded}
+        title={section.hint}
+      >
+        {isExpanded ? (
+          <ChevronDown size={13} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+        ) : (
+          <ChevronRight size={13} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+        )}
+        <Folder size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate font-medium">{section.label}</span>
+        {childCount > 0 && (
+          <span className="text-[10px] text-(--color-text-subtle)">{childCount}</span>
+        )}
+      </button>
+      {isExpanded && (
+        <div className="pb-1">
+          {section.files.length === 0 ? (
+            <p className="h-6 truncate py-1 pl-8 pr-2 text-xs italic text-(--color-text-subtle)">empty</p>
+          ) : (
+            section.files.map((file) => (
+              <WikiFileRow
+                key={file.path}
+                file={file}
+                depth={1}
+                selectedPath={selectedPath}
+                onSelect={onSelect}
+              />
+            ))
+          )}
+        </div>
       )}
     </div>
+  )
+}
+
+function WikiFileRow({
+  file,
+  depth,
+  selectedPath,
+  onSelect,
+}: {
+  file: WikiFileInfo
+  depth: number
+  selectedPath: string | null
+  onSelect: (path: string) => void
+}) {
+  const name = file.path.split('/').pop() ?? file.path
+  const isActive = file.path === selectedPath
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(file.path)}
+      className={cn(
+        'group flex h-7 w-full items-center gap-1.5 rounded px-1.5 text-left text-xs transition-colors',
+        isActive
+          ? 'bg-(--bg-key) text-(--color-accent)'
+          : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
+      )}
+      style={{ paddingLeft: `${depth * 16 + 6}px` }}
+      title={file.description || file.path}
+    >
+      <FileText size={13} className="shrink-0 text-(--color-text-muted) group-hover:text-(--color-text-2)" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">{name}</span>
+    </button>
   )
 }
 
@@ -348,10 +395,10 @@ function WikiEditor({
   // (instead of incorrectly falling back to the original file length).
   const [charCount, setCharCount] = useState<number | null>(null)
 
-  // notes/ are read-only (agent-written); everything else (USER.md, INDEX.md, topics/) is editable
-  const isReadOnly = path.startsWith('notes/')
-  // Root files cannot be deleted — backend enforces this too
-  const isDeletable = path !== 'USER.md' && path !== 'INDEX.md'
+  // Raw Memory v2 inputs are read-only in the editor; curated/source pages remain editable.
+  const isReadOnly = path.startsWith('notes/') || path.startsWith('imports/')
+  // Root files cannot be deleted — backend enforces this too.
+  const isDeletable = path !== 'USER.md' && path !== 'INDEX.md' && path !== 'SCHEMA.md'
 
   const getDraft = (): string => textareaRef.current?.value ?? file?.content ?? ''
 
@@ -487,10 +534,9 @@ function EmptyState() {
       <FileText size={24} className="text-(--color-text-subtle)" />
       <p className="text-sm text-(--color-text-2)">Select a file</p>
       <p className="max-w-xs text-xs text-(--color-text-subtle)">
-        <span className="font-medium">USER.md</span> is injected into every prompt.{' '}
+        <span className="font-medium">wiki/</span> contains curated Memory v2 pages.{' '}
         <span className="font-medium">INDEX.md</span> is the dream-maintained table of contents.{' '}
-        <span className="font-medium">topics/</span> are searched by the agent on demand.{' '}
-        <span className="font-medium">notes/</span> shows unprocessed notes — run <code className="font-mono">Dream</code> to synthesise them.
+        <span className="font-medium">notes/</span> and <span className="font-medium">imports/</span> are raw inputs for <code className="font-mono">Dream</code>.
       </p>
     </div>
   )

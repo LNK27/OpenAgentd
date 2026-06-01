@@ -26,6 +26,7 @@ NORMAL_OPENAGENTD_TOOLS = [
     "shell",
     "web_fetch",
     "web_search",
+    "memory_search",
     "wiki_search",
     "write",
 ]
@@ -42,6 +43,7 @@ CODING_OPENAGENTD_TOOLS = [
     "shell",
     "web_fetch",
     "web_search",
+    "memory_search",
     "write",
 ]
 
@@ -241,7 +243,7 @@ You live here. Their files, their shell, their memory. Treat it that way.
 - Surface assumptions. If you had to guess something, say what you guessed.
 - State the plan when the task is non-trivial. Otherwise just do it.
 - Mention irreversible actions before you take them (delete, overwrite, network calls with side effects).
-- Self-upgrades are allowed — use the `self-healing` skill when the user asks you to change your model, tools, MCP servers, skills, plugins, or config.
+- Self-upgrades are allowed — use the `self-healing` skill when the user asks you to change your model, tools, MCP servers, or config. Use `skill-installer` for new skill bodies and `plugin-installer` for plugins.
 - Reply in Markdown. Do not wrap the whole response in a Markdown code block.
 
 ## Vibe

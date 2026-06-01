@@ -271,6 +271,7 @@ def _default_tool_registry() -> dict[str, Tool]:
         grep_files,
         list_directory,
         load_skill,
+        memory_search,
         patch_file,
         read_file,
         remove_path,
@@ -303,6 +304,7 @@ def _default_tool_registry() -> dict[str, Tool]:
         "schedule_task": schedule_task,
         "todo_manage": todo_manage,
         "wiki_search": wiki_search,
+        "memory_search": memory_search,
         "note": note_tool,
         "generate_image": generate_image,
         "generate_video": generate_video,
@@ -383,8 +385,7 @@ def _build_agent(
         if tool_name not in tool_registry:
             # Soft-skip: settings/self-healing edits and disabled-then-rebuild
             # flows can leave a name in frontmatter briefly after the
-            # underlying tool/MCP server disappears between loads. Runtime
-            # team_configure validates up-front and only mutates live instances.
+            # underlying tool/MCP server disappears between loads.
 
             logger.warning(
                 "agent_unknown_tool agent={} tool={} available={}",
@@ -625,8 +626,7 @@ def load_team_from_dir(
 
     # Unknown tools / MCP servers in frontmatter are warn-and-skipped by
     # ``_build_agent`` so stale config entries or mcp.json edits never break
-    # agent load. Runtime ``team_configure`` validates names up-front before
-    # mutating live members.
+    # agent load.
 
     # Build the lead.  Members are NOT built — they are described by their
     # blueprints on the team and built on demand by ``AgentTeam.spawn``.

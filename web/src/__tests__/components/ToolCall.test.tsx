@@ -587,7 +587,7 @@ describe("ToolCall — team_message display", () => {
 })
 
 // ---------------------------------------------------------------------------
-// team_manage / team_configure display
+// team_manage display
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — team_manage display", () => {
@@ -629,43 +629,6 @@ describe("ToolCall — team_manage display", () => {
     expectPlainArg(getHeader("Dismissing executor#1"), "executor#1")
     await user.click(screen.getByRole("button"))
     expect(screen.queryByText("arguments")).toBeNull()
-  })
-})
-
-describe("ToolCall — team_configure display", () => {
-  it("shows capability mutation in the header", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({
-      member: "executor#1",
-      action: "add",
-      kind: "tool",
-      name: "write",
-    })
-    render(<ToolCall name="team_configure" args={args} done={false} />)
-
-    expect(getHeader("Granting tool: write to executor#1")).toBeTruthy()
-    await user.click(screen.getByRole("button"))
-    expect(screen.queryByText("arguments")).toBeNull()
-    expect(screen.queryByText(/member: executor#1/)).toBeNull()
-    expect(screen.queryByText(/capability: tool: write/)).toBeNull()
-    expect(screen.queryByText(/"member"/)).toBeNull()
-  })
-
-  it("renders capability lists as readable rows", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ member: "executor#1", action: "list" })
-    render(
-      <ToolCall
-        name="team_configure"
-        args={args}
-        done={true}
-        result={"Capabilities for 'executor#1' (from executor.md):\n- skills: []\n- tools:  ['write']\n- mcp:    []"}
-      />,
-    )
-
-    await user.click(screen.getByRole("button"))
-    expect(screen.getByText("Capabilities for 'executor#1' (from executor.md):")).toBeTruthy()
-    expect(screen.getByText(/tools:.*write/)).toBeTruthy()
   })
 })
 
