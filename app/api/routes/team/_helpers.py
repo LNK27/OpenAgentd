@@ -29,9 +29,10 @@ from app.services.agent_service import (
 
 # Server-internal attachment fields that must never leak to clients:
 # - ``converted_text``: extracted document body, sent to the LLM only.
-# - ``path``: absolute on-disk path, used for rehydration; clients fetch
+# - ``path`` / ``workspace_path``: absolute on-disk paths, used for rehydration;
+#   clients fetch
 #   bytes via ``GET /api/team/{sid}/uploads/{filename}`` instead.
-_INTERNAL_ATTACHMENT_FIELDS = frozenset({"converted_text", "path"})
+_INTERNAL_ATTACHMENT_FIELDS = frozenset({"converted_text", "path", "workspace_path"})
 
 
 def _message_response(m) -> MessageResponse:

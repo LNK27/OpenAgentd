@@ -267,6 +267,7 @@ async def _persist_attachment(
         # to an existing chat (the upload mints its own sid; the message
         # inherits the chat's).  Single source of truth.
         "path": str(dest),
+        "workspace_path": str(dest),
         "original_name": safe_original_name,
         "media_type": mime,
         "category": category,

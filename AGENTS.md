@@ -1,12 +1,12 @@
 # OpenAgentd — Agent Instructions
 
-The desktop cockpit for local AI agents — Tauri 2 desktop shell wrapping a FastAPI backend + React web UI. Apache 2.0, ships as `openagentd` (CLI + sidecar) on every platform. Canonical feature catalogue: [`documents/docs/features.md`](documents/docs/features.md) — check there before claiming the product does (or doesn't) something.
+The mobile-first cockpit for local AI agents — a Tauri 2 mobile + desktop shell wrapping a FastAPI backend + React web UI. Apache 2.0, ships as `openagentd` (CLI + sidecar) on every platform. Canonical feature catalogue: [`documents/docs/features.md`](documents/docs/features.md) — check there before claiming the product does (or doesn't) something.
 
 ## Tech stack
 
 - **Backend:** Python `>=3.14`, FastAPI, SQLModel, Pydantic v2, SQLite (WAL), SSE, loguru.
 - **Frontend:** React 19, TypeScript 5.9, Vite 7, Bun, Tailwind v4, Zustand + Immer, TanStack Query.
-- **Desktop:** Tauri v2 shell with a Python sidecar; Rust 2021 / minimum Rust 1.77.
+- **Mobile/Desktop:** Tauri v2 shell with a Python sidecar; Rust 2021 / minimum Rust 1.77.
 - **Agent config:** `.md` files with YAML frontmatter in `{OPENAGENTD_CONFIG_DIR}/agents/`.
 
 ## Layout
@@ -59,7 +59,7 @@ See [`manual/AGENTS.md`](manual/AGENTS.md) for the full script catalogue.
 ## Code style (summary)
 
 - **Python 3.14+** — `|` unions, `from __future__ import annotations`, strict type hints, Pydantic v2, absolute imports from `app`, loguru `logger.info("event key={}", val)`.
-- **TypeScript** — `strict: true`, functional components with explicit props, TanStack for server state, Zustand + Immer for client state, ESM only, mobile-first design.
+- **TypeScript** — `strict: true`, functional components with explicit props, TanStack for server state, Zustand + Immer for client state, ESM only, mobile-first design before desktop layouts; account for mobile safe areas/notches without wasting header space.
 - **General** — thin routes, logic in services/hooks, no unnecessary abstractions, always invoke the `guidelines` skill.
 
 ## Post-implementation checklist

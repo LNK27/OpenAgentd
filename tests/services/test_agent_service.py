@@ -251,6 +251,7 @@ async def test_validate_and_persist_text_file(tmp_path):
     # ``path`` is the absolute on-disk location persisted for rehydration —
     # see ``app/agent/multimodal.py`` ``build_parts_from_metas``.
     assert meta["path"] == str(saved)
+    assert meta["workspace_path"] == str(saved)
     assert Path(meta["path"]).is_file()
 
 

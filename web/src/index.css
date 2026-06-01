@@ -425,6 +425,10 @@ html[data-mobile-shell] [contenteditable="true"] {
   top: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
 }
 
+.mobile-safe-notch-top {
+  top: env(safe-area-inset-top, 0px);
+}
+
 .mobile-safe-overlay {
   padding-top: env(safe-area-inset-top, 0px);
   padding-right: env(safe-area-inset-right, 0px);

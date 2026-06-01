@@ -37,11 +37,12 @@ def build_parts_from_metas(
     - ``category == "image"`` or native-PDF doc without ``converted_text`` →
       slow path: read raw bytes from ``att["path"]``, base64-encode → ImageDataBlock.
 
-    Image attachments are preceded by a ``[Attached image saved at
-    uploads/<filename>]`` TextBlock so the model knows the workspace-relative
-    path it can pass to workspace-bound tools (``generate_image`` /
-    ``generate_video`` / shell). Without this hint the model only sees pixels
-    and tends to hallucinate paths like ``/mnt/data/0.png``.
+    Image attachments are preceded by a path-hint TextBlock so the model knows
+    both the exact absolute path it can pass to workspace-bound tools
+    (``generate_image`` / ``generate_video`` / shell) and the
+    workspace-relative path it should use when rendering markdown in chat.
+    Without this hint the model only sees pixels and tends to hallucinate paths
+    like ``/mnt/data/0.png``.
 
     Content blocks come first, user message text last (context → question order).
 
@@ -106,17 +107,20 @@ def build_parts_from_metas(
                 parts.append(TextBlock(text=f"[File not found: {original_name}]"))
                 continue
             # Path hint precedes the pixels so the model binds image →
-            # ``uploads/<filename>`` before it reaches for tool calls.
+            # absolute saved path before it reaches for tool calls, while
+            # preserving a workspace-relative path for markdown rendering.
             # Image-only by design — text/document use the fast path above
             # and inline their content directly.
             if category == "image":
                 stored_filename = att.get("filename")
-                if stored_filename:
-                    parts.append(
-                        TextBlock(
-                            text=f"[Attached image saved at uploads/{stored_filename}]"
-                        )
-                    )
+                markdown_path = (
+                    f"uploads/{stored_filename}" if stored_filename else None
+                )
+                hint = f"[Attached image saved at {path}"
+                if markdown_path:
+                    hint += f"; render in markdown as {markdown_path}"
+                hint += "]"
+                parts.append(TextBlock(text=hint))
             b64 = base64.b64encode(raw).decode("ascii")
             parts.append(
                 ImageDataBlock(data=b64, media_type=att.get("media_type", "image/jpeg"))

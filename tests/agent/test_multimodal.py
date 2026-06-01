@@ -115,7 +115,9 @@ def test_image_read_from_disk(tmp_path):
     # [path-hint TextBlock, ImageDataBlock, user-message TextBlock]
     assert len(parts) == 3
     assert isinstance(parts[0], TextBlock)
-    assert parts[0].text.startswith("[Attached image saved at uploads/")
+    assert parts[0].text == (
+        f"[Attached image saved at {img}; render in markdown as uploads/photo.jpg]"
+    )
     assert isinstance(parts[1], ImageDataBlock)
     assert parts[1].media_type == "image/jpeg"
 
@@ -135,10 +137,9 @@ def test_image_media_type_passed_through(tmp_path):
     assert parts[1].media_type == "image/png"
 
 
-def test_image_path_hint_uses_stored_filename(tmp_path):
-    """The path hint must reference the UUID-named ``filename`` field — that
-    is what's reachable on disk via ``uploads/<filename>``. ``original_name``
-    is the user's raw filename and is unsafe to expose to fs tools."""
+def test_image_path_hint_uses_absolute_path(tmp_path):
+    """The path hint must reference the absolute saved path agents can pass
+    directly to tools."""
     img = tmp_path / "abc123.png"
     img.write_bytes(b"\x89PNG\r\n\x1a\n")
     att = {
@@ -151,8 +152,10 @@ def test_image_path_hint_uses_stored_filename(tmp_path):
     parts = build_parts_from_metas("describe", [att])
     hint = parts[0]
     assert isinstance(hint, TextBlock)
-    assert hint.text == "[Attached image saved at uploads/abc123.png]"
-    # The raw user name must NOT leak into the workspace-relative path
+    assert hint.text == (
+        f"[Attached image saved at {img}; render in markdown as uploads/abc123.png]"
+    )
+    # The raw user name must NOT leak into the path hint.
     assert "My Photo" not in hint.text
 
 

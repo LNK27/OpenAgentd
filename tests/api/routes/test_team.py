@@ -12,6 +12,40 @@ from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
 from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
+from app.api.routes.team._helpers import _message_response
+from app.models.chat import SessionMessage
+
+
+def test_message_response_strips_internal_attachment_paths():
+    msg = SessionMessage(
+        session_id=uuid.uuid7(),
+        role="user",
+        content="see image",
+        extra={
+            "attachments": [
+                {
+                    "filename": "abc.png",
+                    "original_name": "photo.png",
+                    "category": "image",
+                    "url": "/api/team/sid/uploads/abc.png",
+                    "path": "/tmp/openagentd/sid/uploads/abc.png",
+                    "workspace_path": "/tmp/openagentd/sid/uploads/abc.png",
+                    "converted_text": "internal",
+                }
+            ]
+        },
+    )
+
+    resp = _message_response(msg)
+
+    assert resp.attachments == [
+        {
+            "filename": "abc.png",
+            "original_name": "photo.png",
+            "category": "image",
+            "url": "/api/team/sid/uploads/abc.png",
+        }
+    ]
 
 
 class MockTestProvider(LLMProviderBase):
