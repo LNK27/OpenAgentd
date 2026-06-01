@@ -58,3 +58,20 @@ Next candidates to evaluate honestly:
 2. Add source/page type hints so `wiki/user.md` generic preference pages do not answer unrelated domain-specific preference queries.
 3. Add a reranker or LLM judge for automatic injection only, with citations and strict abstention instructions.
 4. Keep failures in `failures.jsonl` as first-class debugging artifacts.
+
+## 2026-05-31 — Metadata-backed automatic injection reranker
+
+Implemented page metadata fields on deterministic Dream v2 compiled pages:
+
+- `memory_kind`
+- `scope`
+- `topics`
+
+`MemoryContextHook` now uses `topics` as a conservative automatic-injection reranker. Explicit `memory_search` remains broad and still exposes the lexical false positive; automatic injection uses topic overlap so generic preference/response-style user memory is not applied to unrelated Kubernetes scheduler questions.
+
+This is intentionally not a benchmark-specific scoring trick:
+
+- no query-specific thresholds were added;
+- explicit retrieval metrics are unchanged and can still fail on hard negatives;
+- metadata is visible in markdown frontmatter for debugging;
+- missing metadata falls back to the prior lexical policy rather than hiding results globally.

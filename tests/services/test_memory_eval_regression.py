@@ -59,6 +59,18 @@ async def _invoke_memory_context(query: str) -> str:
     return received[0]
 
 
+def _user_memory_page(body: str) -> str:
+    return (
+        "---\n"
+        "description: User preferences\n"
+        "memory_kind: profile\n"
+        "scope: user\n"
+        "topics: [preferences, response-style, personalization]\n"
+        "---\n\n"
+        f"# User\n\n{body}"
+    )
+
+
 @pytest.mark.asyncio
 async def test_memory_v2_honest_retrieval_eval_fixture(
     setup_db,
@@ -76,7 +88,9 @@ async def test_memory_v2_honest_retrieval_eval_fixture(
 
     write_memory_file(
         "wiki/user.md",
-        "# User\n\nHoang prefers direct fact-based answers and wants implicit personalization.\n",
+        _user_memory_page(
+            "Hoang prefers direct fact-based answers and wants implicit personalization.\n"
+        ),
     )
     session = ChatSession(agent_name="chat", title="memory eval")
     async with async_session_factory() as db:
@@ -150,7 +164,9 @@ async def test_memory_context_policy_abstains_on_known_negative(
 ) -> None:
     write_memory_file(
         "wiki/user.md",
-        "# User\n\nHoang prefers direct fact-based answers and wants implicit personalization.\n",
+        _user_memory_page(
+            "Hoang prefers direct fact-based answers and wants implicit personalization.\n"
+        ),
     )
 
     prompt = await _invoke_memory_context(
@@ -166,7 +182,9 @@ async def test_memory_context_policy_injects_relevant_preference(
 ) -> None:
     write_memory_file(
         "wiki/user.md",
-        "# User\n\nHoang prefers direct fact-based answers and wants implicit personalization.\n",
+        _user_memory_page(
+            "Hoang prefers direct fact-based answers and wants implicit personalization.\n"
+        ),
     )
 
     prompt = await _invoke_memory_context("How should you answer Hoang?")

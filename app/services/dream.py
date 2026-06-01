@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import yaml
 from loguru import logger
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.exc import IntegrityError
@@ -44,6 +45,47 @@ from app.services.wiki import (
     wiki_root,
 )
 from app.services.memory import WIKI_DIR, seed_memory, write_memory_file
+
+_MEMORY_TOPIC_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "assistant",
+    "by",
+    "content",
+    "dream",
+    "from",
+    "is",
+    "it",
+    "of",
+    "or",
+    "raw",
+    "source",
+    "the",
+    "to",
+    "user",
+    "with",
+}
+_MEMORY_TOPIC_ALIASES = {
+    "answer": "response-style",
+    "answers": "response-style",
+    "answering": "response-style",
+    "direct": "response-style",
+    "detailed": "response-style",
+    "fact": "response-style",
+    "facts": "response-style",
+    "respond": "response-style",
+    "response": "response-style",
+    "responses": "response-style",
+    "personalization": "personalization",
+    "personalisation": "personalization",
+    "preference": "preferences",
+    "preferences": "preferences",
+    "prefer": "preferences",
+    "preferred": "preferences",
+    "prefers": "preferences",
+}
 
 if TYPE_CHECKING:
     import contextvars
@@ -434,6 +476,33 @@ def _memory_page_slug(source_type: str, source_id: str) -> str:
     return slug[:120] or "source"
 
 
+def _memory_metadata(source: dict[str, str], source_text: str) -> dict[str, object]:
+    source_type = source["source_type"]
+    topics = _memory_topics(source_text)
+    return {
+        "memory_kind": {
+            "session": "conversation",
+            "note_entry": "note",
+            "import": "import",
+        }.get(source_type, "source"),
+        "scope": source_type,
+        "topics": topics,
+    }
+
+
+def _memory_topics(text: str) -> list[str]:
+    counts: dict[str, int] = {}
+    for raw in re.findall(r"[a-z0-9]+", text.lower()):
+        token = _MEMORY_TOPIC_ALIASES.get(raw, raw)
+        if token in _MEMORY_TOPIC_STOPWORDS or len(token) < 3:
+            continue
+        if raw in {"hoang", "openagentd", "kubernetes"}:
+            token = raw
+        counts[token] = counts.get(token, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return sorted(token for token, _count in ranked[:8])
+
+
 async def _memory_source_text(db: AsyncSession, source: dict[str, str]) -> str:
     source_type = source["source_type"]
     source_id = source["source_id"]
@@ -468,11 +537,14 @@ def _memory_page_content(source: dict[str, str], source_text: str) -> str:
     if len(body) > DEFAULT_MAX_PROMPT_CHARS:
         body = body[:DEFAULT_MAX_PROMPT_CHARS] + "\n\n[... source truncated ...]"
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    metadata = _memory_metadata(source, source_text)
+    metadata_yaml = yaml.safe_dump(metadata, sort_keys=False).strip()
     return (
         "---\n"
         f"description: Dream v2 compiled memory for {source_ref}\n"
         f"updated: {today}\n"
         "tags: [memory-v2, dream]\n"
+        f"{metadata_yaml}\n"
         "confidence: medium\n"
         "sources:\n"
         f"  - {source_ref}\n"

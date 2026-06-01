@@ -420,6 +420,10 @@ async def test_process_memory_sources_writes_compiled_wiki_page(
     content = wiki_files[0].read_text(encoding="utf-8")
     assert "Hoang prefers detailed fact-based answers" in content
     assert f"session:{session.id}" in content
+    assert "memory_kind: conversation" in content
+    assert "scope: session" in content
+    assert "response-style" in content
+    assert "preferences" in content
 
     async with async_session_factory() as db:
         row = (

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -9,6 +11,7 @@ from loguru import logger
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
 from app.services.memory import MemorySearchResult
+from app.services.memory import memory_root
 from app.services.memory import search_memory_files
 
 if TYPE_CHECKING:
@@ -58,6 +61,26 @@ _AUTO_MEMORY_ALIASES = {
     "want": "want",
     "wants": "want",
 }
+_AUTO_MEMORY_TOPIC_ALIASES = {
+    "answer": "response-style",
+    "answers": "response-style",
+    "answering": "response-style",
+    "direct": "response-style",
+    "fact": "response-style",
+    "facts": "response-style",
+    "respond": "response-style",
+    "response": "response-style",
+    "responses": "response-style",
+    "personalization": "personalization",
+    "personalisation": "personalization",
+    "prefer": "preferences",
+    "preferred": "preferences",
+    "preference": "preferences",
+    "preferences": "preferences",
+    "prefers": "preferences",
+}
+_AUTO_MEMORY_GENERIC_TOPICS = {"preferences"}
+_AUTO_MEMORY_DOMAIN_TERMS = {"kubernetes", "scheduler", "plugin"}
 
 
 class MemoryContextHook(BaseAgentHook):
@@ -128,12 +151,71 @@ class MemoryContextHook(BaseAgentHook):
                 continue
             if len(overlap) == 1 and len(query_only) >= 2:
                 continue
+            if not self._metadata_allows_injection(query, result):
+                continue
             filtered.append(result)
         return filtered
 
-    def _meaningful_tokens(self, text: str) -> set[str]:
-        import re
+    def _metadata_allows_injection(
+        self, query: str, result: MemorySearchResult
+    ) -> bool:
+        if not result.path:
+            return False
+        metadata = self._memory_metadata(result.path)
+        topics = metadata.get("topics")
+        if not isinstance(topics, set) or not topics:
+            return True
 
+        query_topics = self._query_topics(query)
+        topic_overlap = topics & query_topics
+        if topic_overlap - _AUTO_MEMORY_GENERIC_TOPICS:
+            return True
+        if "response-style" in topic_overlap:
+            return True
+        if query_topics & _AUTO_MEMORY_DOMAIN_TERMS:
+            return bool(topic_overlap & (query_topics - _AUTO_MEMORY_GENERIC_TOPICS))
+        return bool(topic_overlap)
+
+    def _memory_metadata(self, rel_path: str) -> dict[str, object]:
+        try:
+            raw = (memory_root() / rel_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return {}
+        if not raw.lstrip().startswith("---"):
+            return {}
+        match = raw.split("---", 2)
+        if len(match) < 3:
+            return {}
+        try:
+            import yaml
+
+            data = yaml.safe_load(match[1]) or {}
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        raw_topics = data.get("topics")
+        topics: set[str] = set()
+        if isinstance(raw_topics, list):
+            topics = {
+                str(topic).strip().lower() for topic in raw_topics if str(topic).strip()
+            }
+        return {
+            "memory_kind": str(data.get("memory_kind", "")).strip().lower(),
+            "scope": str(data.get("scope", "")).strip().lower(),
+            "topics": topics,
+        }
+
+    def _query_topics(self, text: str) -> set[str]:
+        topics: set[str] = set()
+        for raw in re.findall(r"[a-z0-9]+", text.lower()):
+            token = _AUTO_MEMORY_TOPIC_ALIASES.get(raw, raw)
+            if token in _AUTO_MEMORY_STOPWORDS:
+                continue
+            topics.add(token)
+        return topics
+
+    def _meaningful_tokens(self, text: str) -> set[str]:
         tokens: set[str] = set()
         for raw in re.findall(r"[a-z0-9]+", text.lower()):
             token = _AUTO_MEMORY_ALIASES.get(raw, raw)

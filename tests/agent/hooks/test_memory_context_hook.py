@@ -39,6 +39,19 @@ def _request(prompt: str = "Base.", user: str = "hi") -> ModelRequest:
     return ModelRequest(messages=(HumanMessage(content=user),), system_prompt=prompt)
 
 
+def _memory_page(body: str, *, topics: list[str] | None = None) -> str:
+    topics = topics or ["preferences", "response-style"]
+    return (
+        "---\n"
+        "description: Test memory\n"
+        "memory_kind: profile\n"
+        "scope: user\n"
+        f"topics: {topics}\n"
+        "---\n\n"
+        f"# Memory\n\n{body}"
+    )
+
+
 async def _invoke(hook: MemoryContextHook, req: ModelRequest) -> str:
     received: list[str] = []
 
@@ -62,7 +75,7 @@ async def test_unrelated_query_does_not_inject_incidental_user_memory(
     _memory_dir: Path,
 ):
     (_memory_dir / "wiki" / "user.md").write_text(
-        "# User\n\nHoang prefers direct fact-based answers.", encoding="utf-8"
+        _memory_page("Hoang prefers direct fact-based answers."), encoding="utf-8"
     )
 
     result = await _invoke(
@@ -77,7 +90,7 @@ async def test_domain_specific_preference_query_does_not_inject_generic_preferen
     _memory_dir: Path,
 ):
     (_memory_dir / "wiki" / "user.md").write_text(
-        "# User\n\nHoang prefers direct fact-based answers.", encoding="utf-8"
+        _memory_page("Hoang prefers direct fact-based answers."), encoding="utf-8"
     )
 
     result = await _invoke(
@@ -91,7 +104,7 @@ async def test_domain_specific_preference_query_does_not_inject_generic_preferen
 @pytest.mark.asyncio
 async def test_relevant_memory_is_injected(_memory_dir: Path):
     (_memory_dir / "wiki" / "user.md").write_text(
-        "# User\n\nHoang prefers direct fact-based answers.", encoding="utf-8"
+        _memory_page("Hoang prefers direct fact-based answers."), encoding="utf-8"
     )
 
     result = await _invoke(
@@ -101,6 +114,25 @@ async def test_relevant_memory_is_injected(_memory_dir: Path):
     assert "## Relevant memory" in result
     assert "source=wiki:user" in result
     assert "direct fact-based" in result
+
+
+@pytest.mark.asyncio
+async def test_metadata_topics_allow_matching_domain_memory(_memory_dir: Path):
+    (_memory_dir / "wiki" / "openagentd.md").write_text(
+        _memory_page(
+            "OpenAgentd Memory v2 should keep retrieval benchmarkable.",
+            topics=["openagentd", "memory", "retrieval"],
+        ),
+        encoding="utf-8",
+    )
+
+    result = await _invoke(
+        MemoryContextHook(),
+        _request(user="How should OpenAgentd memory retrieval work?"),
+    )
+
+    assert "## Relevant memory" in result
+    assert "source=wiki:openagentd" in result
 
 
 @pytest.mark.asyncio
@@ -118,7 +150,7 @@ async def test_memory_search_failure_does_not_block_model_call(monkeypatch):
 @pytest.mark.asyncio
 async def test_memory_context_skips_followup_tool_call_iterations(_memory_dir: Path):
     (_memory_dir / "wiki" / "user.md").write_text(
-        "# User\n\nHoang prefers direct fact-based answers.", encoding="utf-8"
+        _memory_page("Hoang prefers direct fact-based answers."), encoding="utf-8"
     )
     req = ModelRequest(
         messages=(

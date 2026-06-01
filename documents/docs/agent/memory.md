@@ -44,6 +44,24 @@ Memory v2 currently reuses `OPENAGENTD_WIKI_DIR` as the root while the implement
 
 `app/core/wiki_seed.py` seeds the Memory v2 root files and directories. For compatibility during migration it may still seed some legacy paths.
 
+Compiled `wiki/*.md` pages should use small YAML frontmatter that keeps retrieval debuggable without imposing a taxonomy:
+
+```yaml
+---
+description: Dream v2 compiled memory for session:<uuid>
+updated: 2026-05-31
+tags: [memory-v2, dream]
+memory_kind: conversation   # e.g. profile, conversation, note, import
+scope: session              # e.g. user, project, session, note_entry, import
+topics: [openagentd, memory, response-style]
+confidence: medium
+sources:
+  - session:<uuid>
+---
+```
+
+`memory_kind`, `scope`, and `topics` are hints for conservative automatic injection and debugging. They are not mandatory directories or ontology tables, and missing metadata falls back to lexical filtering.
+
 ---
 
 ## Raw sources and citations
@@ -104,6 +122,8 @@ The tool returns cited excerpts such as:
 
 `MemoryContextHook` also runs a conservative automatic lookup against the latest user message and injects a small cited `Relevant memory` block when there are matches. This is the first step toward implicit personalization: durable preferences can help the agent without the user repeating them every turn, while the injected context stays small, cited, and query-relevant.
 
+Automatic injection is stricter than explicit `memory_search`. It only searches compiled `wiki/*.md`, ignores identity-only matches such as “Hoang”, and uses frontmatter `topics` to avoid applying generic preference memory to unrelated domain questions. For example, a `wiki/user.md` page tagged `topics: [preferences, response-style]` can help “How should you answer Hoang?” but should not be injected for “What is Hoang's preferred Kubernetes scheduler plugin?” unless there is a Kubernetes-specific memory page.
+
 ---
 
 ## Dream processing state
@@ -129,6 +149,12 @@ Current helper functions in `app/services/dream.py` can hash/select pending sour
 - import files.
 
 Important transition note: the legacy `run_dream` loop still exists for compatibility and still writes the old taxonomy with `dream_log` / `dream_notes_log`. The explicit v2 maintainer `process_memory_sources()` / `run_memory_maintenance()` is the Memory v2 path: it compiles each pending source into a deterministic flat `wiki/*.md` page and upserts `memory_processed_sources`. This first v2 loop is deterministic source compilation, not LLM rewriting/synthesis yet.
+
+The deterministic compiler adds frontmatter metadata to each compiled page:
+
+- `memory_kind`: `conversation`, `note`, or `import` based on source type.
+- `scope`: the raw source type (`session`, `note_entry`, or `import`).
+- `topics`: a small deterministic token list used by automatic injection reranking and eval debugging.
 
 ---
 
