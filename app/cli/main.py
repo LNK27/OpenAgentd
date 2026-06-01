@@ -9,16 +9,19 @@ from __future__ import annotations
 import argparse
 
 from app.cli.commands.auth import cmd_auth
+from app.cli.commands.address import cmd_address
 from app.cli.commands.cleanup import cmd_cleanup
 from app.cli.commands.doctor import cmd_doctor
+from app.cli.commands.health import cmd_health
 from app.cli.commands.init import cmd_init
 from app.cli.commands.logs import cmd_logs
 from app.cli.commands.migrate import cmd_migrate
+from app.cli.commands.restart import cmd_restart
 from app.cli.commands.serve import _add_serve_subparser
 from app.cli.commands.start import cmd_start
 from app.cli.commands.status import cmd_status
 from app.cli.commands.stop import cmd_stop
-from app.cli.commands.update import cmd_update
+from app.cli.commands.upgrade import cmd_upgrade
 from app.cli.commands.version import cmd_version
 from app.core.version import VERSION
 
@@ -35,8 +38,12 @@ def build_parser() -> argparse.ArgumentParser:
             "  openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5\n"
             "  openagentd auth copilot   # authenticate with an OAuth provider\n"
             "  openagentd                # start in background\n"
+            "  openagentd start --lan    # expose the server to desktop/mobile on your LAN\n"
             "  openagentd stop           # stop background processes\n"
+            "  openagentd restart        # restart the background server\n"
             "  openagentd status         # check if running\n"
+            "  openagentd address        # print local and LAN server URLs\n"
+            "  openagentd health         # run server/mobile diagnostics\n"
             "  openagentd logs           # tail the server log\n"
             "  openagentd doctor         # check system health\n"
             "  openagentd cleanup        # dry-run generated artifact cleanup\n"
@@ -52,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="API port (default: 4082)",
+    )
+    parser.add_argument(
+        "--lan",
+        action="store_true",
+        help="Bind on all interfaces for mobile/LAN clients (sets --host 0.0.0.0)",
     )
     parser.set_defaults(func=cmd_start)
 
@@ -130,9 +142,24 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_stop
     )
 
+    # ── restart ───────────────────────────────────────────────────────────────
+    sub.add_parser("restart", help="Restart the background server").set_defaults(
+        func=cmd_restart
+    )
+
     # ── status ────────────────────────────────────────────────────────────────
     sub.add_parser("status", help="Show whether the server is running").set_defaults(
         func=cmd_status
+    )
+
+    # ── address ───────────────────────────────────────────────────────────────
+    sub.add_parser("address", help="Show local and LAN server URLs").set_defaults(
+        func=cmd_address
+    )
+
+    # ── health ────────────────────────────────────────────────────────────────
+    sub.add_parser("health", help="Run server and mobile diagnostics").set_defaults(
+        func=cmd_health
     )
 
     # ── logs ──────────────────────────────────────────────────────────────────
@@ -181,11 +208,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_cleanup.set_defaults(func=cmd_cleanup, dry_run=True)
 
-    # ── update / upgrade ──────────────────────────────────────────────────────
-    for _alias in ("update", "upgrade"):
-        sub.add_parser(
-            _alias, help="Upgrade openagentd to the latest version"
-        ).set_defaults(func=cmd_update)
+    # ── upgrade ───────────────────────────────────────────────────────────────
+    sub.add_parser(
+        "upgrade", help="Upgrade openagentd to the latest version"
+    ).set_defaults(func=cmd_upgrade)
 
     return parser
 

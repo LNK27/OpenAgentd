@@ -500,7 +500,7 @@ describe("_handleSSEEvent: usage", () => {
     expect(usage.cachedTokens).toBe(3);       // latest turn cache only
   });
 
-  it("uses backend turn_total usage as the authoritative multi-call turn total", () => {
+  it("stores backend turn_total usage without changing displayed current usage", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
       cached_tokens: 10, metadata: { agent: "lead" },
@@ -515,16 +515,20 @@ describe("_handleSSEEvent: usage", () => {
     });
 
     const usage = useTeamStore.getState().agentStreams["lead"].usage;
-    expect(usage.promptTokens).toBe(220);
-    expect(usage.completionTokens).toBe(50);
-    expect(usage.totalTokens).toBe(270);
-    expect(usage.cachedTokens).toBe(25);
+    expect(usage.promptTokens).toBe(120);
+    expect(usage.completionTokens).toBe(30);
+    expect(usage.totalTokens).toBe(150);
+    expect(usage.cachedTokens).toBe(15);
+    expect(usage.turnPromptTokens).toBe(220);
+    expect(usage.turnCompletionTokens).toBe(50);
+    expect(usage.turnTotalTokens).toBe(270);
+    expect(usage.turnCachedTokens).toBe(25);
   });
 
-  it("clears stale cache count when backend turn_total omits cached_tokens", () => {
+  it("clears stored turn cache count when backend turn_total omits cached_tokens", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
-      cached_tokens: 10, metadata: { agent: "lead" },
+      cached_tokens: 10, metadata: { agent: "lead", turn_total: true },
     });
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 120, completion_tokens: 30, total_tokens: 150,
@@ -532,7 +536,7 @@ describe("_handleSSEEvent: usage", () => {
     });
 
     const usage = useTeamStore.getState().agentStreams["lead"].usage;
-    expect(usage.cachedTokens).toBe(0);
+    expect(usage.turnCachedTokens).toBe(0);
   });
 
   it("ignores event with no agent field", () => {
@@ -634,17 +638,18 @@ describe("_handleSSEEvent: title_update", () => {
 describe("_handleSSEEvent: summarization", () => {
   it("summarization_start appends a compacting block to the agent's currentBlocks", () => {
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe("compaction");
-    expect(blocks[0].extra?.state).toBe("compacting");
+    const stream = useTeamStore.getState().agentStreams.lead;
+    expect(stream.currentBlocks).toHaveLength(0);
+    expect(stream.blocks).toHaveLength(1);
+    expect(stream.blocks[0].type).toBe("compaction");
+    expect(stream.blocks[0].extra?.state).toBe("compacting");
   });
 
   it("summarization_content streams text onto the trailing compacting block", () => {
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
     useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "Hello " });
     useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "world." });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
     expect(blocks[0].content).toBe("Hello world.");
     expect(blocks[0].extra?.state).toBe("compacting");
   });
@@ -656,7 +661,7 @@ describe("_handleSSEEvent: summarization", () => {
       agent: "lead",
       summary: "final summary",
     });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
     expect(blocks).toHaveLength(1);
     expect(blocks[0].extra?.state).toBe("compacted");
     expect(blocks[0].content).toBe("final summary");
@@ -669,7 +674,7 @@ describe("_handleSSEEvent: summarization", () => {
       summary: "",
       metadata: { error: true },
     });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
     expect(blocks[0].extra?.state).toBe("compacted");
     expect(blocks[0].extra?.error).toBe(true);
   });
@@ -679,20 +684,28 @@ describe("_handleSSEEvent: summarization", () => {
     useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "halfway" });
     // Reconnect replay re-emits start — must not append a fresh block.
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
     expect(blocks).toHaveLength(1);
     expect(blocks[0].content).toBe("halfway");
   });
 
-  it("compaction blocks flush to blocks on done so they persist across the turn", () => {
+  it("keeps active compaction before later streaming content", () => {
+    useTeamStore.setState({
+      agentStreams: {
+        lead: makeStream({
+          blocks: [{ id: "old", type: "text" as const, content: "before" }],
+          currentBlocks: [{ id: "live", type: "text" as const, content: "streaming" }],
+        }),
+      },
+      agentNames: ["lead"],
+      leadName: "lead",
+    });
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
-    useTeamStore.getState()._handleSSEEvent("summarization_end", { agent: "lead", summary: "done" });
-    useTeamStore.getState()._handleSSEEvent("done", {});
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "summary" });
     const stream = useTeamStore.getState().agentStreams.lead;
-    expect(stream.currentBlocks).toHaveLength(0);
-    expect(stream.blocks).toHaveLength(1);
-    expect(stream.blocks[0].type).toBe("compaction");
-    expect(stream.blocks[0].extra?.state).toBe("compacted");
+    expect(stream.blocks.map((block) => block.type)).toEqual(["text", "compaction"]);
+    expect(stream.currentBlocks.map((block) => block.id)).toEqual(["live"]);
+    expect(stream.blocks[1].content).toBe("summary");
   });
 
   it("ignores events with empty agent", () => {

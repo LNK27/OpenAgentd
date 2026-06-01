@@ -21,10 +21,34 @@ class TeamSessionResolveRequest(BaseModel):
     model: str | None = None
     thinking_level: str | None = None
     create: bool = False
+    worktree_from: str | None = None
+    worktree_name: str | None = None
+    worktree_branch: str | None = None
 
 
 class TeamSessionUpdateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
+
+
+class TeamWorkspaceVisibilityRequest(BaseModel):
+    workspace: str
+    hidden: bool
+
+
+class CodingWorkspaceTreeWorktree(BaseModel):
+    path: str
+    name: str
+    managed: bool = False
+
+
+class CodingWorkspaceTreeRepository(BaseModel):
+    path: str
+    name: str
+    worktrees: list[CodingWorkspaceTreeWorktree] = Field(default_factory=list)
+
+
+class CodingWorkspaceTreeResponse(BaseModel):
+    repositories: list[CodingWorkspaceTreeRepository]
 
 
 class SessionResponse(_ExcludeNoneModel):

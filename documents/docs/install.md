@@ -81,7 +81,7 @@ brew upgrade --cask openagentd
 For CLI users:
 
 ```sh
-openagentd update
+openagentd upgrade
 ```
 
 ## pipx
@@ -119,7 +119,17 @@ openagentd init   # pick provider + API key, install default agents
 openagentd        # http://localhost:4082
 ```
 
-This gives you the same local API and UI on `http://localhost:4082`. `openagentd init` seeds the default agents and config.
+This starts the local API server on `http://localhost:4082`. The desktop app can connect through **Backend connection**; the mobile app connects to the LAN URL printed by `openagentd start --lan`.
+
+Useful server commands:
+
+```bash
+openagentd start --lan   # bind 0.0.0.0 and print mobile/LAN URLs
+openagentd address       # show local and LAN URLs
+openagentd health        # check PID, port, API liveness/readiness, LAN mode
+openagentd restart       # restart the background server
+openagentd upgrade       # stop, upgrade, and restart if running
+```
 
 > **Note:** On first install or after a `brew reinstall`, you may see a warning about
 > `Failed changing dylib ID` for the `cryptography` package. This is a cosmetic Homebrew
@@ -167,7 +177,13 @@ Config is written to `~/.config/openagentd/` (XDG standard). The desktop app and
 openagentd
 ```
 
-The API and web UI start on a single port: http://localhost:4082. Database migrations run automatically.
+The API server starts on http://localhost:4082. Database migrations run automatically. For mobile or another desktop on your LAN, use:
+
+```bash
+openagentd start --lan
+openagentd address
+openagentd health
+```
 
 ### 3. First steps in the UI
 

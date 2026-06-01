@@ -2,7 +2,7 @@
 title: OpenAgentd Documentation
 description: On-machine AI assistant with FastAPI backend, React web UI, multi-agent teams, and streaming SSE support.
 status: stable
-updated: 2026-05-16
+updated: 2026-06-01
 ---
 
 # OpenAgentd
@@ -11,7 +11,7 @@ On-machine AI assistant. FastAPI backend, React web UI, runs locally.
 
 Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Copilot OAuth, Codex OAuth, xAI, DeepSeek, Bedrock, NVIDIA NIM, local proxies, Ollama), maintains persistent sessions, supports multimodal input, streams over SSE, and coordinates multi-agent teams.
 
-**Quick start.** [`install.md`](./install.md) → `openagentd init` → `openagentd`. Web UI at `http://localhost:4082`.
+**Quick start.** [`install.md`](./install.md) → `openagentd init` → `openagentd`. Use `openagentd start --lan` plus `openagentd address` for desktop/mobile clients on your network.
 
 ---
 
@@ -25,7 +25,7 @@ Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Cop
 | [Roadmap / issues](./roadmap.md) | Short planning note with links to GitHub issues for feature requests, future work, and known issues. |
 | [Install](./install.md) | Desktop app (macOS/Linux) first; CLI/uv/pipx/pip, source. First-run wizard. |
 | [Migration](../../MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs. |
-| [CLI reference](./cli.md) | Every `openagentd` subcommand (`init`, `auth`, `stop`, `doctor`, `upgrade`, …). |
+| [CLI reference](./cli.md) | Server lifecycle and diagnostics: `start --lan`, `restart`, `address`, `health`, `doctor`, `upgrade`, and more. |
 | [Configuration](./configuration.md) | Env vars, XDG paths, agent `.md` files, providers, tools, skills, sandbox, hooks. |
 | [Slash commands](./commands.md) | Reusable `/name` prompt templates; reuses your opencode command library. |
 | [Shell commands](./shell-commands.md) | Opencode-style `!command` sends that run directly through the shell tool. |

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.tool_id_resolver import ToolIdResolver
@@ -75,6 +75,7 @@ class StreamPublisherHook(BaseAgentHook):
         self._total_tool_use: int | None = None
         self._usage_count = 0
         self._used_models: set[str] = set()
+        self._current_model: str | None = None
 
     async def _push(self, event: AnyStreamEvent) -> None:
         """Fire-and-forget push to stream store. Never raises."""
@@ -112,12 +113,19 @@ class StreamPublisherHook(BaseAgentHook):
     async def on_model_delta(
         self, ctx: "RunContext", state: "AgentState", chunk: "ChatCompletionChunk"
     ) -> None:
+        metadata: dict[str, Any] = {}
+        model = (
+            chunk.model or self._current_model or state.metadata.get("effective_model")
+        )
+        if isinstance(model, str) and model:
+            metadata["model"] = model
         if chunk.usage:
             u = chunk.usage
             pt = u.prompt_tokens or 0
             ct = u.completion_tokens or 0
-            metadata: dict = {"agent": self._agent_name}
+            metadata = {"agent": self._agent_name, **metadata}
             if chunk.model:
+                self._current_model = chunk.model
                 self._used_models.add(chunk.model)
                 metadata["model"] = chunk.model
             await self._push(
@@ -152,11 +160,19 @@ class StreamPublisherHook(BaseAgentHook):
 
         if self._publish_reasoning and delta.reasoning_content:
             await self._push(
-                ThinkingEvent(agent=self._agent_name, text=delta.reasoning_content)
+                ThinkingEvent(
+                    agent=self._agent_name,
+                    text=delta.reasoning_content,
+                    metadata=metadata,
+                )
             )
 
         if delta.content:
-            await self._push(MessageEvent(agent=self._agent_name, text=delta.content))
+            await self._push(
+                MessageEvent(
+                    agent=self._agent_name, text=delta.content, metadata=metadata
+                )
+            )
 
         for tc in delta.tool_calls or []:
             fn_name = tc.function.name if tc.function and tc.function.name else ""
@@ -381,6 +397,7 @@ class StreamPublisherHook(BaseAgentHook):
         primary: str,
         fallback: str,
     ) -> None:
+        self._current_model = fallback
         await self._push(
             ProviderStatusEvent(
                 agent=self._agent_name,
@@ -418,3 +435,4 @@ class StreamPublisherHook(BaseAgentHook):
         self._total_tool_use = None
         self._usage_count = 0
         self._used_models = set()
+        self._current_model = None

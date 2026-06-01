@@ -25,14 +25,23 @@ from app.api.routes.team._helpers import (
 )
 from app.api.routes.agents import is_registered_model_id
 from app.api.schemas.sessions import (
+    CodingWorkspaceTreeRepository,
+    CodingWorkspaceTreeResponse,
+    CodingWorkspaceTreeWorktree,
     SessionDetailResponse,
     SessionPageResponse,
     SessionResponse,
     TeamSessionResolveRequest,
     TeamSessionResolveResponse,
     TeamSessionUpdateRequest,
+    TeamWorkspaceVisibilityRequest,
 )
 from app.api.schemas.team import TeamHistoryMember, TeamHistoryResponse
+from app.api.routes.team.worktrees import (
+    WorktreeCreateRequest,
+    create_coding_workspace_worktree,
+    find_managed_worktree_source,
+)
 from app.models.chat import ChatSession
 from app.services import (
     agent_service,
@@ -40,6 +49,11 @@ from app.services import (
     team_manager,
 )
 from app.services.agent_service import AttachmentError, RawAttachment
+from app.services.coding_workspace_service import (
+    hide_coding_workspace,
+    list_visible_coding_workspaces,
+    upsert_coding_workspace,
+)
 from app.services.chat_service import (
     BoundaryShift,
     cancel_queued_user_message,
@@ -629,7 +643,11 @@ async def list_team_sessions(
 
     try:
         sessions, next_cursor, has_more = await list_sessions_page(
-            db, before=before, limit=limit, mode=mode, workspace=workspace
+            db,
+            before=before,
+            limit=limit,
+            mode=mode,
+            workspace=workspace,
         )
     except ValueError:
         raise HTTPException(
@@ -659,20 +677,41 @@ async def resolve_team_session(
         raise HTTPException(
             status_code=422, detail="mode must be 'normal' or 'coding'."
         )
+    model = body.model.strip() if body.model else None
+    thinking_level = body.thinking_level.strip() if body.thinking_level else None
+    if model and not await is_registered_model_id(model):
+        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
+
     workspace = body.workspace
     if body.mode == "normal":
         workspace = None
+        if body.worktree_from or body.worktree_name or body.worktree_branch:
+            raise HTTPException(
+                status_code=422, detail="worktree options require mode='coding'."
+            )
+    elif body.worktree_from or body.worktree_name or body.worktree_branch:
+        if not body.worktree_from or not body.worktree_name:
+            raise HTTPException(
+                status_code=422,
+                detail="worktree_from and worktree_name are required for worktree sessions.",
+            )
+        created_worktree = await create_coding_workspace_worktree(
+            WorktreeCreateRequest(
+                source_workspace=body.worktree_from,
+                name=body.worktree_name,
+                branch=body.worktree_branch,
+            )
+        )
+        workspace = created_worktree.directory
+        # A worktree request always represents a new coding workspace/session,
+        # even if the caller omitted create=true.
+        body.create = True
     elif not workspace:
         raise HTTPException(
             status_code=422, detail="workspace is required when mode='coding'."
         )
     else:
         workspace = _validate_workspace_or_422(workspace)
-
-    model = body.model.strip() if body.model else None
-    thinking_level = body.thinking_level.strip() if body.thinking_level else None
-    if model and not await is_registered_model_id(model):
-        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
 
     async with db.begin():
         session = None
@@ -689,11 +728,83 @@ async def resolve_team_session(
                 thinking_level=thinking_level,
             )
             db.add(session)
-            await db.flush()
-            await db.refresh(session)
+        if body.mode == "coding" and workspace:
+            managed_source = find_managed_worktree_source(Path(workspace))
+            if managed_source:
+                await upsert_coding_workspace(
+                    db,
+                    path=managed_source,
+                    kind="repo",
+                    hidden=False,
+                )
+                await upsert_coding_workspace(
+                    db,
+                    path=workspace,
+                    kind="worktree",
+                    source_path=managed_source,
+                    managed=True,
+                    hidden=False,
+                )
+            else:
+                await upsert_coding_workspace(
+                    db, path=workspace, kind="repo", hidden=False
+                )
+        await db.flush()
+        await db.refresh(session)
 
     data = SessionResponse.model_validate(session).model_dump()
     return TeamSessionResolveResponse(**data, created=created)
+
+
+@router.patch("/workspace/visibility")
+async def update_coding_workspace_visibility(
+    body: TeamWorkspaceVisibilityRequest, db: DbSession
+) -> dict:
+    workspace = (
+        str(Path(body.workspace).expanduser().resolve())
+        if body.hidden
+        else _validate_workspace_or_422(body.workspace)
+    )
+    async with db.begin():
+        if body.hidden:
+            await hide_coding_workspace(db, workspace)
+        else:
+            await upsert_coding_workspace(db, path=workspace, kind="repo", hidden=False)
+    return {"workspace": workspace, "hidden": body.hidden}
+
+
+@router.get("/workspace/tree", response_model=CodingWorkspaceTreeResponse)
+async def list_coding_workspace_tree(db: DbSession) -> CodingWorkspaceTreeResponse:
+    rows = await list_visible_coding_workspaces(db)
+    repositories: dict[str, CodingWorkspaceTreeRepository] = {}
+    pending_worktrees = []
+    for row in rows:
+        if row.kind == "worktree":
+            pending_worktrees.append(row)
+            continue
+        repositories[row.path] = CodingWorkspaceTreeRepository(
+            path=row.path,
+            name=row.name or Path(row.path).name,
+            worktrees=[],
+        )
+    for row in pending_worktrees:
+        source = row.source_path
+        if not source:
+            continue
+        if source not in repositories:
+            repositories[source] = CodingWorkspaceTreeRepository(
+                path=source,
+                name=Path(source).name,
+                worktrees=[],
+            )
+        repositories[source].worktrees.append(
+            CodingWorkspaceTreeWorktree(
+                path=row.path,
+                name=row.name or Path(row.path).name,
+                managed=row.managed,
+            )
+        )
+    return CodingWorkspaceTreeResponse(repositories=list(repositories.values()))
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)

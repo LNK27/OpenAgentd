@@ -17,6 +17,9 @@ import type {
   TeamHistoryResponse,
   TeamAgentsResponse,
   WorkspaceValidationResponse,
+  WorktreeCreateResponse,
+  WorktreeInfo,
+  CodingWorkspaceTreeResponse,
   WorkspaceBrowseResponse,
   WorkspaceGitDiffResponse,
   WorkspaceStatusResponse,
@@ -179,6 +182,53 @@ export async function browseWorkspaces(path?: string | null): Promise<WorkspaceB
   return res.json()
 }
 
+export async function getCodingWorkspaceTree(): Promise<CodingWorkspaceTreeResponse> {
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/tree`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceTree')
+  return res.json()
+}
+
+export async function listWorktrees(sourceWorkspace: string): Promise<WorktreeInfo[]> {
+  const params = new URLSearchParams({ source_workspace: sourceWorkspace })
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees?${params}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.detail || `listWorktrees failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function removeWorktree(sourceWorkspace: string, directory: string): Promise<{ removed: boolean }> {
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_workspace: sourceWorkspace, directory }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'removeWorktree')
+  return res.json()
+}
+
+export async function createWorktree(options: {
+  sourceWorkspace: string
+  name?: string | null
+  branch?: string | null
+  detached?: boolean
+}): Promise<WorktreeCreateResponse> {
+  const body: Record<string, string | boolean | null> = {
+    source_workspace: options.sourceWorkspace,
+  }
+  if (options.name !== undefined) body.name = options.name
+  if (options.branch !== undefined) body.branch = options.branch
+  if (options.detached !== undefined) body.detached = options.detached
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'createWorktree')
+  return res.json()
+}
+
 export async function listCodingWorkspaceFiles(workspace: string): Promise<CodingWorkspaceFilesResponse> {
   const params = new URLSearchParams({ workspace })
   const res = await fetch(`${apiBaseUrl()}/team/workspace/files/list?${params}`)
@@ -225,6 +275,16 @@ export async function listTeamSessions(
   return res.json()
 }
 
+export async function setCodingWorkspaceVisibility(workspace: string, hidden: boolean): Promise<{ workspace: string; hidden: boolean; updated: number }> {
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/visibility`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspace, hidden }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'setCodingWorkspaceVisibility')
+  return res.json()
+}
+
 export async function getTeamSession(id: string): Promise<SessionDetailResponse> {
   const res = await fetch(`${apiBaseUrl()}/team/sessions/${id}`)
   if (!res.ok) throw new Error(`getTeamSession failed: ${res.status}`)
@@ -237,6 +297,9 @@ export async function resolveTeamSession(options: {
   model?: string | null
   thinkingLevel?: string | null
   create?: boolean
+  worktreeFrom?: string | null
+  worktreeName?: string | null
+  worktreeBranch?: string | null
 }): Promise<TeamSessionResolveResponse> {
   const body: Record<string, string | boolean | null> = {
     mode: options.mode ?? 'normal',
@@ -245,6 +308,9 @@ export async function resolveTeamSession(options: {
   if (options.model !== undefined) body.model = options.model
   if (options.thinkingLevel !== undefined) body.thinking_level = options.thinkingLevel
   if (options.create !== undefined) body.create = options.create
+  if (options.worktreeFrom !== undefined) body.worktree_from = options.worktreeFrom
+  if (options.worktreeName !== undefined) body.worktree_name = options.worktreeName
+  if (options.worktreeBranch !== undefined) body.worktree_branch = options.worktreeBranch
   const res = await fetch(`${apiBaseUrl()}/team/sessions/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

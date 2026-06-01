@@ -80,7 +80,13 @@ function markTurnStarted(draft: TeamStore, agent: string, startedAt = Date.now()
   if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = startedAt
 }
 
-function appendStreamingText(draft: TeamStore, agent: string, kind: BufferedTextKind, text: string) {
+function appendStreamingText(
+  draft: TeamStore,
+  agent: string,
+  kind: BufferedTextKind,
+  text: string,
+  model?: string | null,
+) {
   ensureAgent(draft, agent)
   const stream = draft.agentStreams[agent]
   if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = Date.now()
@@ -89,7 +95,10 @@ function appendStreamingText(draft: TeamStore, agent: string, kind: BufferedText
   } else {
     stream.currentBlocks = appendText(stream.currentBlocks, text)
     const last = stream.currentBlocks[stream.currentBlocks.length - 1]
-    if (last?.type === 'text' && !last.startedAt) last.startedAt = Date.now()
+    if (last?.type === 'text') {
+      if (!last.startedAt) last.startedAt = Date.now()
+      if (model) last.extra = { ...(last.extra ?? {}), model }
+    }
   }
   if (text) {
     stream._completionEstimated = (stream._completionEstimated ?? 0) + (text.length / 4)
@@ -118,8 +127,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'thinking': {
         const agent = d.agent as string
         const text = d.text as string
+        const meta = d.metadata as Record<string, unknown> | undefined
         set((draft) => {
-          appendStreamingText(draft, agent, 'thinking', text)
+          appendStreamingText(draft, agent, 'thinking', text, typeof meta?.model === 'string' ? meta.model : null)
         })
         break
       }
@@ -127,8 +137,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'message': {
         const agent = d.agent as string
         const text = d.text as string
+        const meta = d.metadata as Record<string, unknown> | undefined
         set((draft) => {
-          appendStreamingText(draft, agent, 'message', text)
+          appendStreamingText(draft, agent, 'message', text, typeof meta?.model === 'string' ? meta.model : null)
         })
         break
       }
@@ -283,6 +294,10 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             extra: d,
             timestamp: new Date(),
           })
+          if (status === 'fallback' && typeof d.fallback === 'string') {
+            const textBlock = [...draft.agentStreams[agent].currentBlocks].reverse().find((block) => block.type === 'text')
+            if (textBlock) textBlock.extra = { ...(textBlock.extra ?? {}), model: d.fallback }
+          }
         })
         break
       }
@@ -297,9 +312,17 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const u = stream.usage
           const promptTokens = (d.prompt_tokens as number) || 0
           const completionTokens = (d.completion_tokens as number) || 0
+          const cachedTokens = d.cached_tokens as number | undefined
+          if (meta?.turn_total) {
+            u.turnPromptTokens = promptTokens
+            u.turnCompletionTokens = completionTokens
+            u.turnTotalTokens = (d.total_tokens as number) || (promptTokens + completionTokens)
+            u.turnCachedTokens = cachedTokens ?? 0
+            return
+          }
           u.promptTokens     = promptTokens
           u.completionTokens = stream._completionBase + completionTokens
-          u.cachedTokens     = (d.cached_tokens as number) ?? (meta?.turn_total ? 0 : u.cachedTokens)
+          u.cachedTokens     = cachedTokens ?? u.cachedTokens
           u.totalTokens      = u.promptTokens + u.completionTokens
           stream._completionEstimated = completionTokens
         })
@@ -444,9 +467,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (!agent) break
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks = startCompaction(
-            draft.agentStreams[agent].currentBlocks,
-          )
+          const stream = draft.agentStreams[agent]
+          stream.blocks = startCompaction(stream.blocks)
         })
         break
       }
@@ -457,10 +479,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (!agent || !text) break
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks = appendCompactionContent(
-            draft.agentStreams[agent].currentBlocks,
-            text,
-          )
+          const stream = draft.agentStreams[agent]
+          stream.blocks = appendCompactionContent(stream.blocks, text)
         })
         break
       }
@@ -473,11 +493,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const error = Boolean(meta?.error)
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks = endCompaction(
-            draft.agentStreams[agent].currentBlocks,
-            summary,
-            error,
-          )
+          const stream = draft.agentStreams[agent]
+          stream.blocks = endCompaction(stream.blocks, summary, error)
         })
         break
       }

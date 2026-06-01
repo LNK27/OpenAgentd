@@ -328,13 +328,14 @@ describe("parseApiMessages", () => {
     expect(result[0].content).toBe("!git status");
   });
 
-  it("converts assistant message to role:assistant with text block and response duration", () => {
-    const msgs = [makeMsg({ role: "assistant", content: "my answer", extra: { duration_ms: 1234 } })];
+  it("converts assistant message to role:assistant with text block, model, and response duration", () => {
+    const msgs = [makeMsg({ role: "assistant", content: "my answer", extra: { duration_ms: 1234, model: "openai:gpt-5.1" } })];
     const result = parseApiMessages(msgs);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("assistant");
     const textBlock = result[0].blocks.find((b) => b.type === "text");
     expect(textBlock?.content).toBe("my answer");
+    expect(textBlock?.extra?.model).toBe("openai:gpt-5.1");
     expect(textBlock?.responseDurationMs).toBe(1234);
   });
 

@@ -441,12 +441,15 @@ describe("AgentView — AssistantFooter", () => {
   })
 
   describe("footer with mixed content", () => {
-    it("renders footer with both copy button and timestamp", () => {
+    it("renders footer with copy button, timestamp, model, and duration", () => {
       const date = new Date(2024, 0, 15, 14, 30, 0)
+      const response = makeTextBlock("b1", "Response", date)
+      response.extra = { model: "openrouter:anthropic/claude-sonnet-4.5" }
+      response.responseDurationMs = 1234
       const { container } = renderStream({
         blocks: [
           makeUserBlock("u1", "Question"),
-          makeTextBlock("b1", "Response", date),
+          response,
         ],
         currentBlocks: [],
         isWorking: false,
@@ -455,6 +458,8 @@ describe("AgentView — AssistantFooter", () => {
       expect(footer).toBeTruthy()
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
       expect(copyBtn).toBeTruthy()
+      expect(footer?.textContent).toContain("claude-sonnet-4.5")
+      expect(footer?.textContent).toContain("1.2s")
       const timeEl = footer?.querySelector("span")
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })

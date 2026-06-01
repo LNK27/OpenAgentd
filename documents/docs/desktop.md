@@ -42,6 +42,8 @@ no Python install, no `uv tool install`, no terminal.
 
 The Tauri shell normally runs the bundled sidecar, but can be pointed at an externally managed OpenAgentd server from the shared **Backend connection** UI: open Settings, click the sidebar health dot, or use the home-page backend status. Saved servers can be named, renamed, removed, and show live status indicators. **Check** probes `/api/health/live` and uses that server for the current WebView session without closing the dialog; **Save** persists the server/name for future use. Desktop builds also show **Builtin Desktop App server** to switch back to the built-in backend. `OPENAGENTD_DESKTOP_BASE_URL` and the legacy `OPENAGENTD_DEV_BACKEND_URL` are still accepted as startup defaults for development/automation.
 
+Coding workspaces are always selected on the machine running the backend. When the desktop app is using the bundled sidecar or a loopback backend (`localhost` / `127.0.0.1`), **Open folder…** can use the native desktop folder picker because the WebView and backend are on the same machine. When the desktop app is connected to a LAN/external backend such as `192.168.x.x` or `10.x.x.x`, **Open folder…** uses the web/server-local folder browser instead; the native picker would only select a folder on the client desktop, not on the backend host that will run file and shell tools.
+
 The Tauri shell:
 
 1. Locates the bundled CPython 3.14 inside the app bundle.

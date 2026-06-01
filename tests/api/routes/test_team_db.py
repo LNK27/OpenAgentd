@@ -7,6 +7,7 @@ These tests use the real in-memory DB to exercise the SQL queries.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,7 +16,7 @@ from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
 from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
-from app.models.chat import ChatSession, SessionMessage
+from app.models.chat import ChatSession, CodingWorkspace, SessionMessage
 
 
 class MockProvider(LLMProviderBase):
@@ -289,6 +290,187 @@ class TestResolveTeamSession:
         resp = client.post("/api/team/sessions/resolve", json={"mode": "coding"})
 
         assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_resolve_existing_worktree_session_keeps_registry_child(
+        self, app_with_team, tmp_path
+    ):
+        import app.core.db as _db
+
+        repo = tmp_path / "repo"
+        worktree = tmp_path / "worktrees" / "task-a"
+        repo.mkdir()
+        worktree.mkdir(parents=True)
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                db.add(CodingWorkspace(path=str(repo), kind="repo", name="repo"))
+                db.add(
+                    CodingWorkspace(
+                        path=str(worktree),
+                        kind="worktree",
+                        source_path=str(repo),
+                        name="task-a",
+                        managed=True,
+                    )
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.post(
+            "/api/team/sessions/resolve",
+            json={"mode": "coding", "workspace": str(worktree)},
+        )
+        assert resp.status_code == 200
+
+        tree = client.get("/api/team/workspace/tree")
+        assert tree.status_code == 200
+        assert tree.json()["repositories"] == [
+            {
+                "path": str(repo),
+                "name": "repo",
+                "worktrees": [
+                    {"path": str(worktree), "name": "task-a", "managed": True}
+                ],
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_workspace_tree_ignores_hidden_and_deleted_worktrees(
+        self, app_with_team, tmp_path
+    ):
+        import app.core.db as _db
+
+        repo = tmp_path / "repo"
+        hidden = tmp_path / "worktrees" / "hidden"
+        deleted = tmp_path / "worktrees" / "deleted"
+        repo.mkdir()
+        hidden.mkdir(parents=True)
+        deleted.mkdir(parents=True)
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                db.add(CodingWorkspace(path=str(repo), kind="repo", name="repo"))
+                db.add(
+                    CodingWorkspace(
+                        path=str(hidden),
+                        kind="worktree",
+                        source_path=str(repo),
+                        name="hidden",
+                        managed=True,
+                        hidden=True,
+                    )
+                )
+                db.add(
+                    CodingWorkspace(
+                        path=str(deleted),
+                        kind="worktree",
+                        source_path=str(repo),
+                        name="deleted",
+                        managed=True,
+                        deleted_at=datetime.now(timezone.utc),
+                    )
+                )
+
+        client = TestClient(app_with_team)
+        tree = client.get("/api/team/workspace/tree")
+        assert tree.status_code == 200
+        assert tree.json()["repositories"] == [
+            {"path": str(repo), "name": "repo", "worktrees": []}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_workspace_tree_keeps_visible_worktree_under_hidden_source(
+        self, app_with_team, tmp_path
+    ):
+        import app.core.db as _db
+
+        repo = tmp_path / "repo"
+        worktree = tmp_path / "worktrees" / "task-a"
+        repo.mkdir()
+        worktree.mkdir(parents=True)
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                db.add(
+                    CodingWorkspace(
+                        path=str(repo), kind="repo", name="repo", hidden=True
+                    )
+                )
+                db.add(
+                    CodingWorkspace(
+                        path=str(worktree),
+                        kind="worktree",
+                        source_path=str(repo),
+                        name="task-a",
+                        managed=True,
+                    )
+                )
+
+        client = TestClient(app_with_team)
+        tree = client.get("/api/team/workspace/tree")
+        assert tree.status_code == 200
+        assert tree.json()["repositories"] == [
+            {
+                "path": str(repo),
+                "name": "repo",
+                "worktrees": [
+                    {"path": str(worktree), "name": "task-a", "managed": True}
+                ],
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_workspace_visibility_hides_all_workspace_sessions(
+        self, app_with_team, tmp_path
+    ):
+        import app.core.db as _db
+
+        workspace = str(tmp_path.resolve())
+        first_id = uuid.uuid7()
+        second_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(
+                    db, first_id, mode="coding", workspace=workspace
+                )
+                await _create_team_session(
+                    db, second_id, mode="coding", workspace=workspace
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.patch(
+            "/api/team/workspace/visibility",
+            json={"workspace": workspace, "hidden": True},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"workspace": workspace, "hidden": True}
+
+        tree = client.get("/api/team/workspace/tree")
+        assert tree.status_code == 200
+        assert tree.json()["repositories"] == []
+
+    @pytest.mark.asyncio
+    async def test_workspace_visibility_can_hide_missing_workspace(
+        self, app_with_team, tmp_path
+    ):
+        import app.core.db as _db
+
+        workspace = str((tmp_path / "missing-worktree").resolve())
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(
+                    db, lead_id, mode="coding", workspace=workspace
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.patch(
+            "/api/team/workspace/visibility",
+            json={"workspace": workspace, "hidden": True},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"workspace": workspace, "hidden": True}
+
+        tree = client.get("/api/team/workspace/tree")
+        assert tree.status_code == 200
+        assert tree.json()["repositories"] == []
 
 
 # ---------------------------------------------------------------------------

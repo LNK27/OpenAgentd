@@ -18,12 +18,16 @@ openagentd is an on-machine AI assistant: FastAPI backend, React web UI, multi-a
 ```bash
 uv sync                              # install / sync dependencies
 
-openagentd                               # start server + web UI in the background
+openagentd                               # start the API server in the background
+openagentd start --lan                   # expose server to mobile/LAN clients
 openagentd stop                          # stop background processes
+openagentd restart                       # restart the background server
 openagentd status                        # check if running
+openagentd address                       # show local and LAN server URLs
+openagentd health                        # run server/mobile diagnostics
 openagentd logs                          # tail the server log (alias: openagentd logs -n 100)
 openagentd doctor                        # check system health
-openagentd update                        # update to the latest version (desktop app: OpenAgentd → Check for Updates…)
+openagentd upgrade                       # stop, upgrade, and restart if running (desktop app: OpenAgentd → Check for Updates…)
 openagentd --version                     # print version
 
 openagentd auth copilot                  # GitHub Copilot OAuth (browser PKCE)

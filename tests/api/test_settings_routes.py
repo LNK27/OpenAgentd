@@ -104,7 +104,7 @@ def test_put_sandbox_rejects_unknown_field(isolated_config: Path) -> None:
 #
 # The PyPI-backed self-update endpoints were removed when the desktop bundle
 # switched to ``tauri-plugin-updater`` and CLI users were pointed at
-# ``openagentd update`` directly. These tests guard against an accidental
+# ``openagentd upgrade`` directly. These tests guard against an accidental
 # revert that would re-expose the in-process restart shell script.
 
 
@@ -124,7 +124,7 @@ def test_update_endpoints_removed(method: str, path: str) -> None:
     response = client.request(method, path)
     assert response.status_code == 404, (
         f"{method} {path} should not exist; got {response.status_code}. "
-        "Desktop uses tauri-plugin-updater; CLI uses `openagentd update`."
+        "Desktop uses tauri-plugin-updater; CLI uses `openagentd upgrade`."
     )
 
 

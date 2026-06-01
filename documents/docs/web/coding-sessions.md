@@ -21,6 +21,7 @@ updated: 2026-05-27
 ## Sidebar session lists
 
 - Coding session lists are scoped per workspace. Expanded workspaces fetch `GET /api/team/sessions?mode=coding&workspace=...` with a page size of 5.
+- Workspace rows expose **Create worktree**. The backend creates git worktrees under `{OPENAGENTD_DATA_DIR}/worktrees/<repo>-<hash>/`, defaults branches to `openagentd/<name>`, saves the new worktree as a coding workspace, and opens a fresh session there. OpenAgentd-managed worktrees can be removed through the worktree API; arbitrary external worktrees are listed but not deleted by OpenAgentd.
 - `Load more` appears at the bottom of the expanded workspace list.
 - Session rows and workspace headers show running indicators from per-session `running` data, not from only the currently selected chat state.
 - Collapsed workspaces do not eagerly fetch their own pages; they show running sessions already present in the global session cache.

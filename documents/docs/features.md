@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.41.0 · June 1, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.41.0)
+**Latest release:** v1.42.0 · June 1, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.42.0)
 
 ---
 
@@ -101,6 +101,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Persistent timing on every reply + tool call** `[v1.21.0]` — reply durations
   measure full user-turn wall-clock time; tool durations measure execution time.
   Both stay visible while streaming and after reloading a session.
+- **Effective model on assistant replies** `[v1.42.0]` — assistant footers show
+  the model that produced the reply, including fallback transitions, next to the
+  copy and timing metadata.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Inline auto-attach: mentioned file body is sent on
   the first turn so the agent doesn't need a round-trip `read` call; folder
@@ -163,7 +166,6 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   instead of waiting for the current turn to finish `[v1.25.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
-  Assistant messages persist the model that actually generated each reply.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
@@ -193,7 +195,12 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 
 - **Open any local project folder** `[since v1.0]` — server-local paths only.
   Coding mode shows file tree + live git diff (including untracked files) in
-  the side drawer.
+  the side drawer. Desktop uses the native folder picker only for the bundled
+  sidecar or loopback backends; LAN/external backends use the web folder browser
+  so the selected path exists on the backend host.
+- **Git worktree sessions** `[v1.41.0]` — create an isolated git worktree from
+  an existing coding workspace, start a new coding session in that worktree,
+  list existing worktrees, and remove OpenAgentd-managed worktrees.
 - **Changed-file highlights in the workspace tree** `[v1.30.0]` — modified and
   untracked files are marked directly in the Files tab, parent folders show a
   changed-state indicator, and the tab badge reports the changed-file count.
@@ -454,6 +461,11 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-cockpit).
 - **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
   `brew install lthoangg/tap/openagentd`.
+- **CLI server control** `[v1.41.0]` — `restart`, `address`, `health`, and
+  `start --lan` make the CLI the control plane for desktop/mobile backends.
+- **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
+  server, delegates to the detected package manager, then restarts it when it
+  was running.
 - **Docker** *(deprecated, removed in v1.23.0)* — the `Dockerfile`,
   `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
   no longer maintained. Use the CLI install paths above; revisit if there

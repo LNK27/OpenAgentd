@@ -1,21 +1,22 @@
-"""``openagentd update`` / ``openagentd upgrade`` — self-upgrade.
+"""``openagentd upgrade`` — self-upgrade.
 
 Detection order (first match wins):
 1. Homebrew  — executable lives under a Cellar or opt path, or ``brew`` lists it.
 2. uv tool   — ``uv`` is on PATH and the tool is in uv's tool environment.
 3. pipx      — ``pipx`` is on PATH.
-4. pip       — fallback.
+4. pip       — fallback through the current Python interpreter.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from app.cli.commands.stop import cmd_stop
+from app.cli.pids import _find_pids
 from app.cli.ui import _bold, _cyan, _dim
 
 
@@ -75,24 +76,56 @@ def _is_pipx_managed() -> bool:
         return False
 
 
-def cmd_update(_args: argparse.Namespace) -> None:
-    """Update openagentd to the latest version."""
+def _upgrade_command() -> tuple[str, list[str]]:
     if _is_brew_managed():
-        print(f"  {_bold('Updating openagentd')} via {_cyan('brew')} ...")
-        print(f"  {_dim('brew upgrade openagentd')}")
-        os.execvp("brew", ["brew", "upgrade", "openagentd"])
+        return "brew", ["brew", "upgrade", "openagentd"]
+    if _is_uv_tool_managed():
+        return "uv tool", ["uv", "tool", "upgrade", "openagentd"]
+    if _is_pipx_managed():
+        return "pipx", ["pipx", "upgrade", "openagentd"]
+    return "pip", [sys.executable, "-m", "pip", "install", "--upgrade", "openagentd"]
 
-    elif _is_uv_tool_managed():
-        print(f"  {_bold('Updating openagentd')} via {_cyan('uv tool')} ...")
-        print(f"  {_dim('uv tool upgrade openagentd')}")
-        os.execvp("uv", ["uv", "tool", "upgrade", "openagentd"])
 
-    elif _is_pipx_managed():
-        print(f"  {_bold('Updating openagentd')} via {_cyan('pipx')} ...")
-        print(f"  {_dim('pipx upgrade openagentd')}")
-        os.execvp("pipx", ["pipx", "upgrade", "openagentd"])
+def _restart_command(args: argparse.Namespace) -> list[str]:
+    executable = shutil.which("openagentd") or "openagentd"
+    command = [executable]
+    if getattr(args, "lan", False):
+        command.append("--lan")
+    elif getattr(args, "host", None):
+        command.extend(["--host", args.host])
+    if getattr(args, "port", None) is not None:
+        command.extend(["--port", str(args.port)])
+    command.append("start")
+    return command
 
-    else:
-        print(f"  {_bold('Updating openagentd')} via {_cyan('pip')} ...")
-        print(f"  {_dim('pip install --upgrade openagentd')}")
-        os.execvp("pip", ["pip", "install", "--upgrade", "openagentd"])
+
+def _run(command: list[str]) -> int:
+    return subprocess.run(command).returncode
+
+
+def cmd_upgrade(args: argparse.Namespace) -> None:
+    """Upgrade openagentd to the latest version."""
+    was_running = bool(_find_pids())
+    if was_running:
+        print(f"  {_bold('Stopping openagentd')} before upgrade ...")
+        cmd_stop(args)
+
+    manager, command = _upgrade_command()
+    print(f"  {_bold('Upgrading openagentd')} via {_cyan(manager)} ...")
+    print(f"  {_dim(' '.join(command))}")
+    upgrade_code = _run(command)
+
+    restart_code = 0
+    if was_running:
+        restart = _restart_command(args)
+        if upgrade_code == 0:
+            print(f"  {_bold('Restarting openagentd')} ...")
+        else:
+            print(f"  {_bold('Restarting openagentd')} after failed upgrade ...")
+        print(f"  {_dim(' '.join(restart))}")
+        restart_code = _run(restart)
+
+    if upgrade_code != 0:
+        raise SystemExit(upgrade_code)
+    if restart_code != 0:
+        raise SystemExit(restart_code)
