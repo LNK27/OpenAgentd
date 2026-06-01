@@ -2,7 +2,7 @@
 title: Memory v2 / Dream Wiki
 description: Karpathy-style markdown memory system maintained by Dream with deterministic retrieval and benchmark hooks.
 status: experimental
-updated: 2026-05-31
+updated: 2026-06-01
 ---
 
 # Memory v2 / Dream Wiki
@@ -137,6 +137,8 @@ The tool returns cited excerpts such as:
 
 Automatic injection is stricter than explicit `memory_search`. It only searches compiled `wiki/*.md`, ignores identity-only matches such as “Hoang”, and uses frontmatter `topics` to avoid applying generic preference memory to unrelated domain questions. For example, a `wiki/user.md` page tagged `topics: [preferences, response-style]` can help “How should you answer Hoang?” but should not be injected for “What is Hoang's preferred Kubernetes scheduler plugin?” unless there is a Kubernetes-specific memory page.
 
+Release-readiness note: explicit retrieval and automatic injection are evaluated separately. Explicit `memory_search` is allowed to surface weak cited candidates for debugging; `MemoryContextHook` is the safer path that decides whether those candidates should enter the prompt automatically.
+
 ---
 
 ## Dream processing state
@@ -167,6 +169,8 @@ Important transition note: the legacy `run_dream` loop still exists for compatib
 2. Promote durable, cited statements into curated flat pages such as `wiki/user.md`, `wiki/openagentd.md`, and `wiki/memory-v2.md`.
 
 The curated pages are still simple markdown, not a mandatory taxonomy. Each fact line includes a raw source citation like `[session:<uuid>]`. Dream also records conservative ignored-source notes for opt-out, secret-like, or temporary-noise content without copying the sensitive text.
+
+Dream v2 deduplicates equivalent durable facts by canonical key, merges raw citations onto one fact line, and records changed/equivalent wording under `Conflicts / stale candidates` instead of silently duplicating or overwriting. It also filters source-page/frontmatter boilerplate so generated provenance metadata is not promoted back into curated memory.
 
 The deterministic compiler adds frontmatter metadata to source and curated pages:
 
@@ -210,6 +214,7 @@ uv run python -m manual.memory vector status
 uv run python -m manual.memory_bench longmemeval --mode raw --limit 20 --top-k 10 --data PATH
 uv run python -m manual.memory_bench longmemeval --mode wiki --limit 20 --top-k 10 --data PATH
 uv run python -m manual.memory_bench longmemeval --mode wiki-plus-raw --limit 20 --top-k 10 --data PATH
+uv run python -m manual.memory_bench longmemeval --mode injection --limit 20 --top-k 10 --data PATH
 uv run python -m manual.memory_bench longmemeval --mode wiki --top-k 5 --data PATH --debug-hits --write-candidates
 ```
 
@@ -219,6 +224,7 @@ For the synthetic Memory v2 regression benchmark, seed a matching local corpus a
 uv run python -m manual.memory_eval_fixture
 uv run python -m manual.memory_eval_fixture --run
 uv run python -m manual.memory_eval_fixture --run --debug-hits --write-candidates
+uv run python -m manual.memory_eval_fixture --mode injection --run --debug-hits --write-candidates
 OPENAGENTD_WIKI_DIR=/tmp/openagentd-memory-eval uv run python -m manual.memory_eval_fixture --run
 ```
 
@@ -241,7 +247,8 @@ Use `--debug-hits` to include matched tokens, missing meaningful tokens, page to
 Current metrics:
 
 - Positive/answerable rows: Recall@1, Recall@5, Recall@10, MRR@10, and failures.
-- Negative/abstention rows: abstention rate, false-positive rate, and failures.
+- Negative/abstention rows: abstention rate, candidate false-positive rate, final false-positive rate, and failures.
+- `--mode injection`: applies the same MemoryContextHook relevance filter used for automatic prompt injection and reports `injection_false_positive_rate` separately from candidate false positives.
 - Per-type breakdowns when rows include `type` or `question_type`.
 
 Rows are treated as negative/abstention cases when they set `negative: true`, `abstain: true`, `answerable: false`, `should_answer: false`, or have no answers. The harness accepts common query fields (`question`, `query`, `input`, `prompt`) and answer fields (`answer`, `answers`, `evidence`, `reference`).

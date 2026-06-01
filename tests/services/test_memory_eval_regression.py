@@ -23,7 +23,14 @@ from app.services.memory import (
     seed_memory,
     write_memory_file,
 )
-from manual.memory_bench import _coerce_items
+from manual.memory_bench import (
+    BenchItem,
+    RetrievalHit,
+    _coerce_items,
+    _empty_stats,
+    _finalize_stats,
+    _record_item,
+)
 
 
 @pytest.fixture
@@ -192,3 +199,30 @@ def test_eval_fixture_reads_full_file_text_for_scoring(memory_eval_dir: Path) ->
 
     result = search_memory_files("important answer", scope="compiled", limit=1)[0]
     assert "important answer" in read_memory_file(result.path or "").content
+
+
+def test_eval_metrics_split_candidate_and_injection_false_positives() -> None:
+    item = BenchItem(
+        id="negative",
+        query="What is Hoang's preferred Kubernetes scheduler plugin?",
+        answers=[],
+        question_type="abstention",
+        is_negative=True,
+    )
+    stats = _empty_stats()
+
+    passed = _record_item(
+        stats,
+        item=item,
+        hits=[],
+        candidate_hits=[
+            RetrievalHit("wiki:user", 1.0, "Hoang prefers direct answers.")
+        ],
+        rr=0.0,
+    )
+
+    metrics = _finalize_stats(stats, injection_mode=True)
+    assert passed is True
+    assert metrics["candidate_false_positive_rate"] == 1.0
+    assert metrics["false_positive_rate"] == 0.0
+    assert metrics["injection_false_positive_rate"] == 0.0

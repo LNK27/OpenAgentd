@@ -167,3 +167,52 @@ Next honest eval work:
 3. Add “answer present but buried” cases with long pages.
 4. Add multi-session durable preference QA.
 5. Add LoCoMo-style temporal/context questions.
+
+## 2026-06-01 — Injection-mode release-readiness eval
+
+Added `manual.memory_bench --mode injection`, which runs compiled-memory retrieval and then applies the same `MemoryContextHook` relevance filter used before automatic prompt injection. The harness now separates:
+
+- `candidate_false_positive_rate`: weak pre-filter candidates existed;
+- `false_positive_rate`: final hits for the selected mode;
+- `injection_false_positive_rate`: final automatic-injection false positives for `--mode injection`.
+
+Manual run:
+
+```bash
+uv run python -m manual.memory_eval_fixture --mode injection --run --debug-hits --write-candidates
+```
+
+Result on the synthetic fixture:
+
+```json
+{
+  "items": 32,
+  "positive_items": 21,
+  "negative_items": 11,
+  "recall@1": 0.9523809523809523,
+  "recall@5": 1.0,
+  "recall@10": 1.0,
+  "mrr@10": 0.9523809523809523,
+  "candidate_false_positive_rate": 1.0,
+  "injection_false_positive_rate": 0.45454545454545453,
+  "failures": 6
+}
+```
+
+Interpretation:
+
+- Candidate retrieval still surfaces at least one weak candidate for every negative row, which is acceptable for inspectable explicit search.
+- Automatic injection filters some but not all negative rows on this fixture; remaining injection failures are visible in `failures.jsonl` and should be treated as release notes / follow-up hardening rather than hidden.
+- The metric split is more release-useful than raw retrieval false positives because it distinguishes “candidate existed” from “memory would enter the prompt.”
+
+## 2026-06-01 — Dream synthesis release-hardening tests
+
+Added unit coverage and implementation hardening for deterministic Dream v2:
+
+- duplicate/equivalent durable facts merge into one curated fact line with multiple raw citations;
+- changed/equivalent wording is recorded under `Conflicts / stale candidates`;
+- note/import promotions preserve `[note:...]` and `[import:...]` citations;
+- secret/opt-out/noise content is not copied into curated facts;
+- source-page/frontmatter boilerplate is filtered before promotion.
+
+This improves release confidence for the markdown wiki maintainer without introducing an ontology, vector DB, or LLM summarizer.

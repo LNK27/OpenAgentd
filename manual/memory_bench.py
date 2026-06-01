@@ -14,6 +14,7 @@ Usage:
   uv run python -m manual.memory_bench longmemeval --mode raw --limit 20 --top-k 10 --data PATH
   uv run python -m manual.memory_bench longmemeval --mode wiki --limit 20 --top-k 10 --data PATH
   uv run python -m manual.memory_bench longmemeval --mode wiki-plus-raw --limit 20 --top-k 10 --data PATH
+  uv run python -m manual.memory_bench longmemeval --mode injection --limit 20 --top-k 10 --data PATH
 """
 
 from __future__ import annotations
@@ -25,10 +26,12 @@ import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from app.agent.hooks.memory_context import MEMORY_CONTEXT_TOP_K, MemoryContextHook
 from app.core.db import async_session_factory
 from app.services import memory
+from app.services.memory import MemorySearchResult
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_'-]*", re.IGNORECASE)
 
@@ -129,28 +132,30 @@ def _is_negative_row(row: dict[str, Any], answers: list[str]) -> bool:
     return not answers
 
 
-async def _retrieve(
+async def _search_results(
     query: str, *, mode: str, top_k: int, candidates: bool = False
-) -> list[RetrievalHit]:
+) -> list[MemorySearchResult]:
     """Run the same deterministic retrieval service used by `memory_search`."""
-    if mode == "wiki":
-        results = memory.search_memory_files(
+    if mode in {"wiki", "injection"}:
+        return memory.search_memory_files(
             query,
             limit=top_k,
             scope="compiled",
             abstain_weak=not candidates,
         )
-    else:
-        async with async_session_factory() as db:
-            if mode == "raw":
-                results = await memory.search_memory_messages(db, query, limit=top_k)
-            else:
-                results = await memory.memory_search(
-                    query,
-                    db=db,
-                    limit=top_k,
-                    abstain_weak=not candidates,
-                )
+
+    async with async_session_factory() as db:
+        if mode == "raw":
+            return await memory.search_memory_messages(db, query, limit=top_k)
+        return await memory.memory_search(
+            query,
+            db=db,
+            limit=top_k,
+            abstain_weak=not candidates,
+        )
+
+
+def _to_hits(results: list[MemorySearchResult]) -> list[RetrievalHit]:
     return [
         RetrievalHit(
             source=result.source_ref,
@@ -162,6 +167,19 @@ async def _retrieve(
         )
         for result in results
     ]
+
+
+async def _retrieve(
+    query: str, *, mode: str, top_k: int, candidates: bool = False
+) -> list[RetrievalHit]:
+    results = await _search_results(
+        query, mode=mode, top_k=top_k, candidates=candidates
+    )
+    if mode == "injection" and not candidates:
+        results = MemoryContextHook()._filter_relevant_results(query, results)[
+            :MEMORY_CONTEXT_TOP_K
+        ]
+    return _to_hits(results)
 
 
 def _contains_answer(hits: list[RetrievalHit], answers: list[str], *, k: int) -> bool:
@@ -198,6 +216,7 @@ def _empty_stats() -> dict[str, float | int]:
         "recall@10_hits": 0,
         "mrr@10_total": 0.0,
         "abstention_hits": 0,
+        "candidate_false_positives": 0,
         "false_positives": 0,
         "failures": 0,
     }
@@ -208,6 +227,7 @@ def _record_item(
     *,
     item: BenchItem,
     hits: list[RetrievalHit],
+    candidate_hits: list[RetrievalHit] | None,
     rr: float,
 ) -> bool:
     stats["items"] += 1
@@ -215,6 +235,7 @@ def _record_item(
         stats["negative_items"] += 1
         abstained = not hits
         stats["abstention_hits"] += int(abstained)
+        stats["candidate_false_positives"] += int(bool(candidate_hits))
         stats["false_positives"] += int(not abstained)
         stats["failures"] += int(not abstained)
         return abstained
@@ -228,10 +249,12 @@ def _record_item(
     return passed
 
 
-def _finalize_stats(stats: dict[str, float | int]) -> dict[str, float | int]:
+def _finalize_stats(
+    stats: dict[str, float | int], *, injection_mode: bool = False
+) -> dict[str, float | int]:
     positive = int(stats["positive_items"])
     negative = int(stats["negative_items"])
-    return {
+    finalized = {
         "items": stats["items"],
         "positive_items": positive,
         "negative_items": negative,
@@ -240,9 +263,15 @@ def _finalize_stats(stats: dict[str, float | int]) -> dict[str, float | int]:
         "recall@10": stats["recall@10_hits"] / positive if positive else 0.0,
         "mrr@10": stats["mrr@10_total"] / positive if positive else 0.0,
         "abstention_rate": stats["abstention_hits"] / negative if negative else 0.0,
+        "candidate_false_positive_rate": stats["candidate_false_positives"] / negative
+        if negative
+        else 0.0,
         "false_positive_rate": stats["false_positives"] / negative if negative else 0.0,
         "failures": stats["failures"],
     }
+    if injection_mode:
+        finalized["injection_false_positive_rate"] = finalized["false_positive_rate"]
+    return finalized
 
 
 async def cmd_longmemeval(
@@ -283,13 +312,13 @@ async def cmd_longmemeval(
             else None
         )
         for item in items:
-            hits = await _retrieve(item.query, mode=mode, top_k=top_k)
             candidates = (
                 await _retrieve(item.query, mode=mode, top_k=top_k, candidates=True)
-                if write_candidates
-                else []
+                if write_candidates or mode == "injection"
+                else None
             )
-            record = {
+            hits = await _retrieve(item.query, mode=mode, top_k=top_k)
+            record: dict[str, Any] = {
                 "id": item.id,
                 "query": item.query,
                 "answers": item.answers,
@@ -301,9 +330,13 @@ async def cmd_longmemeval(
                 for hit in record["hits"]:
                     hit.pop("diagnostics", None)
             rr = _reciprocal_rank(hits, item.answers)
-            passed = _record_item(overall, item=item, hits=hits, rr=rr)
+            passed = _record_item(
+                overall, item=item, hits=hits, candidate_hits=candidates, rr=rr
+            )
             type_stats = by_type.setdefault(item.question_type, _empty_stats())
-            _record_item(type_stats, item=item, hits=hits, rr=rr)
+            _record_item(
+                type_stats, item=item, hits=hits, candidate_hits=candidates, rr=rr
+            )
             record["reciprocal_rank@10"] = rr
             record["passed"] = passed
             results_f.write(json.dumps(record, sort_keys=True) + "\n")
@@ -315,11 +348,11 @@ async def cmd_longmemeval(
                     "query": item.query,
                     "type": item.question_type,
                     "negative": item.is_negative,
-                    "candidates": [asdict(h) for h in candidates],
+                    "candidates": [asdict(h) for h in candidates or []],
                     "kept_sources": [h.source for h in hits],
                     "dropped_sources": [
                         h.source
-                        for h in candidates
+                        for h in candidates or []
                         if h.source not in {r.source for r in hits}
                     ],
                 }
@@ -327,9 +360,11 @@ async def cmd_longmemeval(
         if candidates_f is not None:
             candidates_f.close()
 
-    metrics = _finalize_stats(overall)
+    metrics: dict[str, Any] = _finalize_stats(
+        overall, injection_mode=mode == "injection"
+    )
     metrics["by_type"] = {
-        question_type: _finalize_stats(stats)
+        question_type: _finalize_stats(stats, injection_mode=mode == "injection")
         for question_type, stats in sorted(by_type.items())
     }
     _write_json(run_dir / "metrics.json", metrics)
@@ -347,7 +382,16 @@ async def cmd_longmemeval(
             f"- Recall@10: {metrics['recall@10']:.3f}",
             f"- MRR@10: {metrics['mrr@10']:.3f}",
             f"- Abstention rate: {metrics['abstention_rate']:.3f}",
+            f"- Candidate false positive rate: {metrics['candidate_false_positive_rate']:.3f}",
             f"- False positive rate: {metrics['false_positive_rate']:.3f}",
+            *(
+                [
+                    "- Injection false positive rate: "
+                    f"{metrics['injection_false_positive_rate']:.3f}"
+                ]
+                if mode == "injection"
+                else []
+            ),
             f"- Failures: {metrics['failures']}",
             f"- Debug hits: `{debug_hits}`",
             f"- Candidate artifacts: `{write_candidates}`",
@@ -366,18 +410,20 @@ def _format_type_metrics(by_type: object) -> list[str]:
     if not isinstance(by_type, dict) or not by_type:
         return ["(none)"]
     lines = [
-        "| Type | Items | Positives | Negatives | Recall@10 | MRR@10 | Abstention | False positives | Failures |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Type | Items | Positives | Negatives | Recall@10 | MRR@10 | Abstention | Candidate FP | False positives | Failures |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for question_type, raw in by_type.items():
         if not isinstance(raw, dict):
             continue
+        typed = cast(dict[str, float | int], raw)
         lines.append(
             "| "
-            f"{question_type} | {raw['items']} | {raw['positive_items']} | "
-            f"{raw['negative_items']} | {raw['recall@10']:.3f} | "
-            f"{raw['mrr@10']:.3f} | {raw['abstention_rate']:.3f} | "
-            f"{raw['false_positive_rate']:.3f} | {raw['failures']} |"
+            f"{question_type} | {typed['items']} | {typed['positive_items']} | "
+            f"{typed['negative_items']} | {typed['recall@10']:.3f} | "
+            f"{typed['mrr@10']:.3f} | {typed['abstention_rate']:.3f} | "
+            f"{typed['candidate_false_positive_rate']:.3f} | "
+            f"{typed['false_positive_rate']:.3f} | {typed['failures']} |"
         )
     return lines
 
@@ -386,7 +432,9 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Memory retrieval benchmark harness")
     sub = p.add_subparsers(dest="cmd", required=True)
     lm = sub.add_parser("longmemeval", help="Run LongMemEval-style retrieval skeleton")
-    lm.add_argument("--mode", choices=("raw", "wiki", "wiki-plus-raw"), required=True)
+    lm.add_argument(
+        "--mode", choices=("raw", "wiki", "wiki-plus-raw", "injection"), required=True
+    )
     lm.add_argument("--limit", type=int, default=None)
     lm.add_argument("--top-k", type=int, default=10)
     lm.add_argument(

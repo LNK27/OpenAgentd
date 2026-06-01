@@ -352,7 +352,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--mode",
-        choices=("wiki", "raw", "wiki-plus-raw"),
+        choices=("wiki", "raw", "wiki-plus-raw", "injection"),
         default="wiki",
         help="Benchmark retrieval mode when --run is set",
     )
