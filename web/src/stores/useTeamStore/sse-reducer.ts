@@ -312,9 +312,17 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const u = stream.usage
           const promptTokens = (d.prompt_tokens as number) || 0
           const completionTokens = (d.completion_tokens as number) || 0
+          const cachedTokens = d.cached_tokens as number | undefined
+          if (meta?.turn_total) {
+            u.turnPromptTokens = promptTokens
+            u.turnCompletionTokens = completionTokens
+            u.turnTotalTokens = (d.total_tokens as number) || (promptTokens + completionTokens)
+            u.turnCachedTokens = cachedTokens ?? 0
+            return
+          }
           u.promptTokens     = promptTokens
           u.completionTokens = stream._completionBase + completionTokens
-          u.cachedTokens     = (d.cached_tokens as number) ?? (meta?.turn_total ? 0 : u.cachedTokens)
+          u.cachedTokens     = cachedTokens ?? u.cachedTokens
           u.totalTokens      = u.promptTokens + u.completionTokens
           stream._completionEstimated = completionTokens
         })

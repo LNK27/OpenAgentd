@@ -280,6 +280,10 @@ export interface AgentUsage {
   completionTokens: number
   totalTokens: number
   cachedTokens: number
+  turnPromptTokens?: number
+  turnCompletionTokens?: number
+  turnTotalTokens?: number
+  turnCachedTokens?: number
 }
 
 // ── Wiki ─────────────────────────────────────────────────────────────────────

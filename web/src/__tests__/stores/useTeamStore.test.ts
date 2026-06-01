@@ -500,7 +500,7 @@ describe("_handleSSEEvent: usage", () => {
     expect(usage.cachedTokens).toBe(3);       // latest turn cache only
   });
 
-  it("uses backend turn_total usage as the authoritative multi-call turn total", () => {
+  it("stores backend turn_total usage without changing displayed current usage", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
       cached_tokens: 10, metadata: { agent: "lead" },
@@ -515,16 +515,20 @@ describe("_handleSSEEvent: usage", () => {
     });
 
     const usage = useTeamStore.getState().agentStreams["lead"].usage;
-    expect(usage.promptTokens).toBe(220);
-    expect(usage.completionTokens).toBe(50);
-    expect(usage.totalTokens).toBe(270);
-    expect(usage.cachedTokens).toBe(25);
+    expect(usage.promptTokens).toBe(120);
+    expect(usage.completionTokens).toBe(30);
+    expect(usage.totalTokens).toBe(150);
+    expect(usage.cachedTokens).toBe(15);
+    expect(usage.turnPromptTokens).toBe(220);
+    expect(usage.turnCompletionTokens).toBe(50);
+    expect(usage.turnTotalTokens).toBe(270);
+    expect(usage.turnCachedTokens).toBe(25);
   });
 
-  it("clears stale cache count when backend turn_total omits cached_tokens", () => {
+  it("clears stored turn cache count when backend turn_total omits cached_tokens", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
-      cached_tokens: 10, metadata: { agent: "lead" },
+      cached_tokens: 10, metadata: { agent: "lead", turn_total: true },
     });
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 120, completion_tokens: 30, total_tokens: 150,
@@ -532,7 +536,7 @@ describe("_handleSSEEvent: usage", () => {
     });
 
     const usage = useTeamStore.getState().agentStreams["lead"].usage;
-    expect(usage.cachedTokens).toBe(0);
+    expect(usage.turnCachedTokens).toBe(0);
   });
 
   it("ignores event with no agent field", () => {
