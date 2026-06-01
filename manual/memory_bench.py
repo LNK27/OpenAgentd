@@ -32,6 +32,7 @@ from app.agent.hooks.memory_context import MEMORY_CONTEXT_TOP_K, MemoryContextHo
 from app.core.db import async_session_factory
 from app.services import memory
 from app.services.memory import MemorySearchResult
+from app.services.memory import search_memory_facts
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_'-]*", re.IGNORECASE)
 
@@ -136,7 +137,14 @@ async def _search_results(
     query: str, *, mode: str, top_k: int, candidates: bool = False
 ) -> list[MemorySearchResult]:
     """Run the same deterministic retrieval service used by `memory_search`."""
-    if mode in {"wiki", "injection"}:
+    if mode == "injection":
+        return search_memory_facts(
+            query,
+            limit=top_k,
+            abstain_weak=not candidates,
+            include_stale=candidates,
+        )
+    if mode == "wiki":
         return memory.search_memory_files(
             query,
             limit=top_k,

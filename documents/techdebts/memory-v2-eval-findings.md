@@ -258,3 +258,44 @@ Interpretation:
 - Candidate false positives remain `1.0`; broad explicit retrieval is still intentionally inspectable rather than hidden.
 - Positive injection recall dropped; that is an honest safety/recall trade-off, not a benchmark win. The remaining positive misses are mostly precise factual QA (`Python 3.14`, `Tailwind v4`, `Dream`, canonical raw sources, eval styles, breaking changes, and the new citation/stale/temporal rows) that explicit retrieval can still surface but automatic injection now avoids unless there is stronger query-specific overlap.
 - Next hardening should recover safe positive injection recall with better page metadata or a cited answerability judge, not by adding fixture-specific exceptions.
+
+## 2026-06-01 — Fact-level injection contract
+
+Added a plain markdown fact contract for automatic injection:
+
+- Dream writes active curated memory as cited bullets under `## Facts` with stable `fact_id=...` markers.
+- Changed/equivalent facts stay under `## Conflicts / stale candidates`.
+- `extract_memory_facts()` and `search_memory_facts()` retrieve cited bullets rather than whole pages.
+- `MemoryContextHook` now injects fact-level active bullets and excludes stale/conflict candidates.
+- Explicit whole-page `memory_search` remains available for broader debugging.
+
+Manual run:
+
+```bash
+uv run python -m manual.memory_eval_fixture --mode injection --run --debug-hits --write-candidates
+```
+
+Result:
+
+```json
+{
+  "items": 34,
+  "positive_items": 24,
+  "negative_items": 10,
+  "recall@1": 0.625,
+  "recall@5": 0.625,
+  "recall@10": 0.625,
+  "mrr@10": 0.625,
+  "candidate_false_positive_rate": 1.0,
+  "false_positive_rate": 0.0,
+  "injection_false_positive_rate": 0.0,
+  "failures": 9
+}
+```
+
+Interpretation:
+
+- Fact-level injection keeps stale/conflict content out of prompts and preserves the conservative false-positive posture.
+- Recall did not improve yet; the current missing positives remain visible. This is expected because the change switched the injection unit from pages to cited facts rather than adding benchmark-tuned aliases or thresholds.
+- The fixture changed one previous “negative” row about mandatory `USER.md` taxonomy into covered unit behavior: a supported negated fact is answerable, not an abstention case.
+- Next work should add final-answer support/citation grading and improve fact answerability generally, without user-specific or fixture-specific scoring hacks.

@@ -32,7 +32,7 @@ def _user_memory_page(body: str) -> str:
         "scope: user\n"
         "topics: [preferences, response-style, personalization]\n"
         "---\n\n"
-        f"# User\n\n{body}"
+        f"# User\n\n## Facts\n\n{body}"
     )
 
 
@@ -52,7 +52,7 @@ def _memory_page(
         f"topics: {topics}\n"
         "confidence: medium\n"
         "---\n\n"
-        f"# {title}\n\n{body}"
+        f"# {title}\n\n## Facts\n\n{body}"
     )
 
 
@@ -62,15 +62,17 @@ def seed_eval_corpus() -> None:
     write_memory_file(
         "wiki/user.md",
         _user_memory_page(
-            "Hoang prefers direct fact-based answers and wants implicit personalization.\n"
+            "- Hoang prefers direct fact-based answers and wants implicit personalization. "
+            "[session:00000000-0000-0000-0000-000000000001]\n"
         ),
     )
     write_memory_file(
         "wiki/session-local.md",
         _memory_page(
             "session:local",
-            "OpenAgentd Memory v2 should help through implicit personalization "
-            "without repeated reminders.",
+            "- OpenAgentd Memory v2 should help through implicit personalization "
+            "without repeated reminders. "
+            "[session:00000000-0000-0000-0000-000000000002]",
             memory_kind="conversation",
             scope="session",
             topics=["openagentd", "memory", "personalization"],
@@ -80,10 +82,13 @@ def seed_eval_corpus() -> None:
         "wiki/project-openagentd.md",
         _memory_page(
             "OpenAgentd project context",
-            "OpenAgentd is Hoang's main project. It is a Tauri 2 desktop shell "
-            "wrapping a FastAPI backend and React web UI. Python 3.14, React 19, "
-            "Vite 7, Bun, Tailwind v4, SQLite WAL, and SQLModel are important "
-            "stack choices.",
+            "- OpenAgentd is Hoang's main project. "
+            "[session:00000000-0000-0000-0000-000000000003]\n"
+            "- OpenAgentd is a Tauri 2 desktop shell wrapping a FastAPI backend "
+            "and React web UI. [session:00000000-0000-0000-0000-000000000003]\n"
+            "- Python 3.14, React 19, Vite 7, Bun, Tailwind v4, SQLite WAL, "
+            "and SQLModel are important OpenAgentd stack choices. "
+            "[session:00000000-0000-0000-0000-000000000003]",
             memory_kind="project_context",
             scope="project",
             topics=["openagentd", "project", "stack", "fastapi", "react"],
@@ -93,10 +98,15 @@ def seed_eval_corpus() -> None:
         "wiki/memory-v2.md",
         _memory_page(
             "Memory v2 design",
-            "Memory v2 keeps a simple Karpathy-style markdown wiki. Dream is the "
-            "maintainer. DB messages remain canonical raw sources. The system "
-            "uses deterministic token-overlap retrieval first, with honest "
-            "LongMemEval and LoCoMo-style evals instead of benchmark tricks.",
+            "- Memory v2 keeps a simple Karpathy-style markdown wiki. "
+            "[session:00000000-0000-0000-0000-000000000004]\n"
+            "- Dream is the Memory v2 maintainer. "
+            "[session:00000000-0000-0000-0000-000000000004]\n"
+            "- DB messages remain canonical raw sources for chat memory. "
+            "[session:00000000-0000-0000-0000-000000000004]\n"
+            "- Memory v2 uses deterministic token-overlap retrieval first, with "
+            "honest LongMemEval and LoCoMo-style evals instead of benchmark tricks. "
+            "[session:00000000-0000-0000-0000-000000000004]",
             memory_kind="memory_system",
             scope="project",
             topics=["memory", "dream", "retrieval", "evals", "karpathy"],
@@ -106,14 +116,22 @@ def seed_eval_corpus() -> None:
         "wiki/decisions.md",
         _memory_page(
             "Memory v2 decisions",
-            "Breaking changes are allowed for Memory v2. Migration revision "
-            "00000009 must follow 00000008 and must not duplicate 00000005. "
-            "Turbovec is only a future candidate semantic backend, not the "
-            "default MVP. Source citations should stay attached to promoted "
-            "facts, for example [session:11111111-1111-1111-1111-111111111111]. "
-            "A stale candidate once said USER.md was mandatory, but the current "
-            "decision is that Memory v2 has no mandatory root USER.md taxonomy. "
-            "A later session changed the maintainer name from WikiBot to Dream.",
+            "- Breaking changes are allowed for Memory v2. "
+            "[session:00000000-0000-0000-0000-000000000005]\n"
+            "- Migration revision 00000009 must follow 00000008 and must not "
+            "duplicate 00000005. [session:00000000-0000-0000-0000-000000000005]\n"
+            "- Turbovec is only a future candidate semantic backend, not the "
+            "default MVP. [session:00000000-0000-0000-0000-000000000005]\n"
+            "- Source citations should stay attached to promoted facts, for "
+            "example [session:11111111-1111-1111-1111-111111111111]. "
+            "[session:00000000-0000-0000-0000-000000000005]\n"
+            "- The current decision is that Memory v2 has no mandatory root USER.md "
+            "taxonomy. [session:00000000-0000-0000-0000-000000000005]\n"
+            "- A later session changed the maintainer name from WikiBot to Dream. "
+            "[session:00000000-0000-0000-0000-000000000006]\n\n"
+            "## Conflicts / stale candidates\n\n"
+            "- A stale candidate once said USER.md was mandatory. "
+            "[session:00000000-0000-0000-0000-000000000000]",
             memory_kind="decision",
             scope="project",
             topics=[
@@ -333,12 +351,6 @@ def fixture_rows() -> list[dict[str, Any]]:
             "id": "raw-copy-negative",
             "type": "negative_abstention",
             "question": "Where are raw session markdown copies required under raw/sessions?",
-            "negative": True,
-        },
-        {
-            "id": "mandatory-user-md-negative",
-            "type": "negative_abstention",
-            "question": "What mandatory root USER.md taxonomy does Memory v2 require?",
             "negative": True,
         },
     ]

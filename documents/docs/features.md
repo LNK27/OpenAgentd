@@ -256,13 +256,13 @@ OpenAgentd carries durable, editable memory across sessions. Deeper doc:
   standard repo- and folder-scoped agent context files.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).
-- **Memory v2 / Dream v2 wiki** `[v1.40.0]` *(beta)* — experimental
-  Karpathy-style markdown memory with `SCHEMA.md`, `INDEX.md`, `LOG.md`,
-  `notes/`, `imports/`, and `wiki/`; deterministic Dream maintenance compiles
-  canonical DB sessions, notes, and imports into cited wiki pages; explicit
-  `memory_search`, conservative automatic relevant-memory injection, a
-  VSCode-like memory tree UI, and manual LongMemEval-style retrieval/injection
-  evals expose quality and false-positive failures. See [`agent/memory.md`](./agent/memory.md).
+- **Memory v2 / Dream v2 wiki** `[v1.40.0]` — Karpathy-style markdown memory
+  with `SCHEMA.md`, `INDEX.md`, `LOG.md`, `notes/`, `imports/`, and `wiki/`;
+  deterministic Dream maintenance compiles canonical DB sessions, notes, and
+  imports into cited active fact bullets; explicit `memory_search`, conservative
+  automatic relevant-memory injection, a VSCode-like memory tree UI, and manual
+  LongMemEval-style retrieval/injection evals expose quality and false-positive
+  failures. See [`agent/memory.md`](./agent/memory.md).
 
 ---
 
