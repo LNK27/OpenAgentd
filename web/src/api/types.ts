@@ -58,6 +58,17 @@ export interface WorkspaceValidationResponse {
   workspace: string
 }
 
+export interface WorktreeInfo {
+  name: string
+  directory: string
+  branch?: string | null
+  managed: boolean
+}
+
+export interface WorktreeCreateResponse extends WorktreeInfo {
+  source_workspace: string
+}
+
 export interface WorkspaceBrowseResponse {
   path: string
   parent: string | null

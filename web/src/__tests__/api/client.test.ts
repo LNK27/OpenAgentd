@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cancelQueuedTeamMessage, postTeamChat, resolveApiUrl, resolveTeamSession, updateTeamSessionTitle, workspaceMediaUrl } from '@/api/client'
+import { cancelQueuedTeamMessage, createWorktree, postTeamChat, resolveApiUrl, resolveTeamSession, updateTeamSessionTitle, workspaceMediaUrl } from '@/api/client'
 
 const originalFetch = globalThis.fetch
 
@@ -153,6 +153,39 @@ describe('postTeamChat', () => {
   })
 })
 
+describe('createWorktree', () => {
+  it('posts source workspace and optional branch data as JSON', async () => {
+    let url = ''
+    let init: RequestInit | undefined
+    globalThis.fetch = mock((input, requestInit) => {
+      url = String(input)
+      init = requestInit as RequestInit | undefined
+      return Promise.resolve(new Response(JSON.stringify({
+        name: 'feature-login',
+        directory: '/data/worktrees/repo/feature-login',
+        branch: 'openagentd/feature-login',
+        source_workspace: '/repo/app',
+      })))
+    }) as typeof fetch
+
+    const result = await createWorktree({
+      sourceWorkspace: '/repo/app',
+      name: 'feature-login',
+      branch: 'openagentd/feature-login',
+    })
+
+    expect(url).toBe('/api/team/workspace/worktrees')
+    expect(init?.method).toBe('POST')
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(JSON.parse(init?.body as string)).toEqual({
+      source_workspace: '/repo/app',
+      name: 'feature-login',
+      branch: 'openagentd/feature-login',
+    })
+    expect(result.directory).toBe('/data/worktrees/repo/feature-login')
+  })
+})
+
 describe('resolveTeamSession', () => {
   it('posts mode, workspace, and model settings as JSON', async () => {
     let url = ''
@@ -180,6 +213,9 @@ describe('resolveTeamSession', () => {
       model: 'openai:gpt-5.5',
       thinkingLevel: 'high',
       create: true,
+      worktreeFrom: '/repo/main',
+      worktreeName: 'task-a',
+      worktreeBranch: 'openagentd/task-a',
     })
 
     expect(url).toBe('/api/team/sessions/resolve')
@@ -191,6 +227,9 @@ describe('resolveTeamSession', () => {
       model: 'openai:gpt-5.5',
       thinking_level: 'high',
       create: true,
+      worktree_from: '/repo/main',
+      worktree_name: 'task-a',
+      worktree_branch: 'openagentd/task-a',
     })
     expect(result.created).toBe(true)
     expect(result.id).toBe('sid')
