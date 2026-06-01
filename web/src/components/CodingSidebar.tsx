@@ -1117,17 +1117,17 @@ export function CodingSidebar({
         open={worktreeTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeTarget(null) }}
       >
-        <DialogContent showCloseButton={false} className="flex max-h-[min(88dvh,680px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-2xl p-0 sm:max-h-[min(88vh,720px)] sm:w-[calc(100vw-2rem)] sm:max-w-2xl">
+        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,600px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(680px,calc(100vw-2rem))] sm:max-w-none">
           <form onSubmit={submitWorktree} className="flex h-full min-h-0 flex-col">
-            <DialogHeader className="shrink-0 border-b border-(--color-border) bg-(--bg-card) px-3 py-3 sm:bg-linear-to-br sm:from-(--bg-key) sm:to-(--bg-page) sm:px-5 sm:py-4">
+            <DialogHeader className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-4 py-3 sm:px-5">
               <div className="flex items-start gap-2.5 sm:gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-(--color-border) bg-(--bg-page) text-(--color-accent) shadow-sm sm:h-10 sm:w-10 sm:rounded-2xl">
-                  <GitBranch size={15} aria-hidden="true" className="sm:size-[18px]" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-key) text-(--color-accent)">
+                  <GitBranch size={15} aria-hidden="true" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <DialogTitle className="text-base leading-5">Create worktree</DialogTitle>
-                  <DialogDescription className="mt-0.5 text-xs leading-4 sm:mt-1 sm:text-sm sm:leading-5">
-                    Start a new coding session in an isolated checkout from {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
+                  <DialogTitle className="text-sm font-semibold leading-5 text-(--color-text)">Create worktree</DialogTitle>
+                  <DialogDescription className="mt-0.5 text-xs leading-4 text-(--color-text-muted)">
+                    Isolated checkout from {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
                   </DialogDescription>
                 </div>
                 <button
@@ -1140,57 +1140,57 @@ export function CodingSidebar({
                 </button>
               </div>
             </DialogHeader>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:space-y-4 sm:px-5 sm:py-4">
-              <div className="rounded-xl border border-(--color-border) bg-(--bg-page) px-3 py-2 sm:rounded-xl">
-                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle) sm:text-[11px]">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:px-5">
+              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
                   <Folder size={12} aria-hidden="true" />
                   Source workspace
                 </div>
-                <p className="truncate font-mono text-[11px] text-(--color-text-muted) sm:text-xs" title={worktreeTarget ?? undefined}>
+                <p className="truncate font-mono text-[11px] text-(--color-text-muted)" title={worktreeTarget ?? undefined}>
                   {worktreeTarget}
                 </p>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="block space-y-1 text-xs font-medium text-(--color-text-2) sm:space-y-1.5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Worktree name</span>
                   <input
                     value={worktreeName}
                     onChange={(e) => setWorktreeName(e.target.value)}
                     placeholder="feature-login"
-                    className="h-9 w-full min-w-0 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 sm:h-10"
+                    className="h-9 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
                     maxLength={80}
                     autoFocus
                   />
-                  <p className="hidden text-[11px] font-normal text-(--color-text-subtle) sm:block">Blank uses “session”.</p>
+                  <p className="text-[11px] font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
                 </label>
-                <label className="block space-y-1 text-xs font-medium text-(--color-text-2) sm:space-y-1.5">
+                <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Branch</span>
                   <input
                     value={worktreeBranch}
                     onChange={(e) => setWorktreeBranch(e.target.value)}
                     placeholder="openagentd/feature-login"
-                    className="h-9 w-full min-w-0 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 sm:h-10"
+                    className="h-9 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
                     maxLength={255}
                   />
-                  <p className="hidden text-[11px] font-normal text-(--color-text-subtle) sm:block">Blank defaults to openagentd/name.</p>
+                  <p className="text-[11px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
                 </label>
               </div>
-              <div className="grid gap-3 sm:grid-cols-[1fr_1.1fr]">
-                <div className="hidden gap-2 rounded-xl border border-(--color-border) bg-(--bg-key)/35 px-3 py-2 text-[11px] leading-4 text-(--color-text-muted) sm:flex sm:text-xs sm:leading-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="hidden gap-2 rounded-md border border-(--color-border) bg-(--bg-key)/30 px-3 py-2 text-[11px] leading-4 text-(--color-text-muted) sm:flex">
                   <CircleHelp size={13} className="mt-0.5 shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
-                  <p>Worktrees are stored in OpenAgentd data, outside the source repo. Uncommitted source changes are not copied.</p>
+                  <p>Stored in OpenAgentd data, outside the source repo. Uncommitted source changes are not copied.</p>
                 </div>
-                <div className="rounded-xl border border-(--color-border) bg-(--bg-page) px-3 py-2 text-xs text-(--color-text-muted)">
+                <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-xs text-(--color-text-muted)">
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
                     <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-subtle)">{worktreeOptions.length}</span>
                   </div>
                   {worktreeOptions.length === 0 ? (
-                    <p className="py-2 text-(--color-text-subtle)">No worktrees yet.</p>
+                    <p className="py-1 text-(--color-text-subtle)">No worktrees yet.</p>
                   ) : (
                     <ul className="max-h-44 space-y-1 overflow-y-auto pr-1">
                       {worktreeOptions.map((item) => (
-                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-(--bg-key)" title={item.directory}>
+                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-(--bg-key)" title={item.directory}>
                           <GitBranch size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-(--color-text-2)">{item.name}</p>
@@ -1216,11 +1216,11 @@ export function CodingSidebar({
                   )}
                 </div>
               </div>
-              {error && <p className="rounded-lg border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">{error}</p>}
+              {error && <p className="rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">{error}</p>}
             </div>
-            <DialogFooter className="shrink-0 flex-col gap-2 border-t border-(--color-border) bg-(--bg-card) p-3 sm:flex-row sm:bg-(--bg-key)/25 sm:px-5">
-              <Button type="button" variant="outline" onClick={() => setWorktreeTarget(null)} className="h-10 w-full sm:w-auto">Cancel</Button>
-              <Button type="submit" disabled={worktreeLoading} className="h-10 w-full sm:w-auto">
+            <DialogFooter className="shrink-0 flex-row justify-end gap-2 border-t border-(--color-border) bg-(--bg-page) px-4 pb-5 pt-3 sm:pl-5 sm:pr-6 sm:pb-6">
+              <Button type="button" variant="outline" onClick={() => setWorktreeTarget(null)} className="h-9 w-auto px-4">Cancel</Button>
+              <Button type="submit" disabled={worktreeLoading} className="h-9 w-auto px-4">
                 {worktreeLoading ? 'Creating…' : 'Create and open'}
               </Button>
             </DialogFooter>
