@@ -1,7 +1,7 @@
 ---
 title: Memory v2 Evaluation Findings
 status: active
-updated: 2026-05-31
+updated: 2026-06-01
 ---
 
 # Memory v2 Evaluation Findings
@@ -120,3 +120,50 @@ Interpretation:
 - Explicit lexical retrieval still cannot abstain: every negative row returns at least one hit.
 - Frequent false-positive pattern: broad pages containing `Hoang`, `OpenAgentd`, `Memory v2`, or generic preference words match unrelated unanswerable questions.
 - Automatic `MemoryContextHook` remains stricter than explicit retrieval; explicit benchmark failures are kept visible for future reranking/abstention work.
+
+## 2026-06-01 — Answerability filter v1
+
+Added a conservative answerability filter after file candidate diagnostics:
+
+- Score file candidates with normalized meaningful query tokens instead of generic words like `what`, `which`, `should`, `the`, and `for`.
+- Keep candidate diagnostics visible by running the benchmark with `--write-candidates`; dropped candidates are recorded in `candidates.jsonl`.
+- Drop strict hits that only match one weak token when answer-bearing query terms like `choose`, `default`, `mandatory`, `prefer`, or `require` are missing from the candidate.
+- Down-rank non-user pages when a query explicitly asks about the user, while still preserving candidate visibility.
+
+Manual run:
+
+```bash
+uv run python -m manual.memory_eval_fixture --run --debug-hits --write-candidates
+```
+
+Result:
+
+```json
+{
+  "items": 32,
+  "positive_items": 21,
+  "negative_items": 11,
+  "recall@1": 0.9523809523809523,
+  "recall@5": 1.0,
+  "recall@10": 1.0,
+  "mrr@10": 0.9523809523809523,
+  "abstention_rate": 0.45454545454545453,
+  "false_positive_rate": 0.5454545454545454,
+  "failures": 7
+}
+```
+
+Interpretation:
+
+- Positive top-rank quality improved because stopword-only matches no longer outrank substantive hits.
+- False-positive rate improved from `0.636` in the prior reranked run to `0.545`, but explicit retrieval still over-answers broad unanswerable questions.
+- Known remaining failures include `memory-goal` as a recall miss and negatives involving scheduler plugin, cloud region, vector database default, ontology database, raw session copies, and mandatory `USER.md` taxonomy.
+- This remains intentionally imperfect; failures stay in `failures.jsonl` for debugging rather than being hidden with benchmark-specific thresholds.
+
+Next honest eval work:
+
+1. Add stale/conflicting fact cases.
+2. Add source citation correctness checks.
+3. Add “answer present but buried” cases with long pages.
+4. Add multi-session durable preference QA.
+5. Add LoCoMo-style temporal/context questions.

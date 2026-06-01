@@ -62,16 +62,22 @@ _SEARCH_STOPWORDS = {
     "an",
     "and",
     "are",
+    "be",
+    "did",
+    "do",
     "does",
     "for",
     "how",
+    "in",
     "is",
     "of",
     "s",
+    "should",
     "the",
     "to",
     "what",
     "which",
+    "with",
 }
 _TOPIC_ALIASES = {
     "answer": "response-style",
@@ -92,6 +98,7 @@ _TOPIC_ALIASES = {
 _DOMAIN_PREFERENCE_RE = re.compile(
     r"\b(prefer|prefers|preferred|preference|favorite)\b", re.IGNORECASE
 )
+_USER_MEMORY_QUERY_RE = re.compile(r"\b(hoang|user)\b", re.IGNORECASE)
 
 
 def memory_root() -> Path:
@@ -300,6 +307,7 @@ def _diagnose_file_result(
     is_domain_preference = bool(_DOMAIN_PREFERENCE_RE.search(query)) and bool(
         meaningful - topic_set
     )
+    needs_user_evidence = bool(_USER_MEMORY_QUERY_RE.search(query))
     return {
         "base_score": base_score,
         "matched_tokens": matched_tokens,
@@ -310,6 +318,7 @@ def _diagnose_file_result(
         "topics": sorted(topic_set),
         "topic_overlap": topic_overlap,
         "is_domain_preference_query": is_domain_preference,
+        "needs_user_evidence": needs_user_evidence,
     }
 
 
@@ -324,6 +333,14 @@ def _reranked_file_score(score: float, diagnostics: dict[str, object]) -> float:
         reranked *= 1.15
     if diagnostics.get("is_domain_preference_query") and isinstance(topics, list):
         reranked *= 0.2 if not topic_overlap else 0.6
+    if (
+        diagnostics.get("scope") == "user"
+        and isinstance(topics, list)
+        and "preferences" in topics
+    ):
+        reranked *= 1.25
+    if diagnostics.get("needs_user_evidence") and diagnostics.get("scope") != "user":
+        reranked *= 0.25
     diagnostics["rerank_multiplier"] = reranked / score if score else 0.0
     return reranked
 
@@ -346,6 +363,46 @@ def should_abstain_file_result(diagnostics: dict[str, object]) -> bool:
     return not non_generic_overlap
 
 
+def _candidate_has_answer_evidence(diagnostics: dict[str, object]) -> bool:
+    """Return whether a hit has enough lexical evidence to answer a query.
+
+    This is a conservative post-retrieval filter, not a benchmark policy.  A
+    page that only matches generic project/topic tokens is still kept when it
+    also matches an asking verb such as `prefer`, `choose`, or `require`; broad
+    pages that miss those answer-bearing tokens are dropped but remain visible
+    in benchmark candidate artifacts when abstention is disabled.
+    """
+    matched = diagnostics.get("matched_meaningful_tokens")
+    missing = diagnostics.get("missing_meaningful_tokens")
+    if not isinstance(matched, list) or not isinstance(missing, list):
+        return True
+    matched_set = {str(token) for token in matched}
+    missing_set = {str(token) for token in missing}
+    if len(matched_set) >= 2 or not missing_set:
+        return True
+    answer_terms = {
+        "answer",
+        "call",
+        "called",
+        "choose",
+        "default",
+        "favorite",
+        "mandatory",
+        "prefer",
+        "preferences",
+        "preferred",
+        "require",
+        "required",
+    }
+    if not diagnostics.get("topics") and not missing_set & answer_terms:
+        return True
+    if missing_set & answer_terms:
+        return False
+    if len(matched_set) == 1 and missing_set:
+        return False
+    return True
+
+
 def _score(query_tokens: set[str], text: str) -> float:
     if not query_tokens:
         return 0.0
@@ -358,6 +415,12 @@ def _score(query_tokens: set[str], text: str) -> float:
         return 0.0
     coverage = sum(1 for token in query_tokens if counts[token] > 0) / len(query_tokens)
     return (overlap * coverage) / math.log(len(tokens) + 10)
+
+
+def _scoring_tokens(query: str) -> set[str]:
+    """Return normalized non-stopword tokens used for memory scoring."""
+    meaningful = _meaningful_query_tokens(query)
+    return meaningful or set(_tokens(query))
 
 
 def _excerpt(text: str, query_tokens: set[str], limit: int = 500) -> str:
@@ -398,7 +461,7 @@ def search_memory_files(
 ) -> list[MemorySearchResult]:
     """Search memory markdown files deterministically by token overlap."""
     limit = max(1, limit)
-    query_tokens = set(_tokens(query))
+    query_tokens = _scoring_tokens(query)
     root = memory_root()
     candidates: list[tuple[str, Path]] = []
 
@@ -431,7 +494,10 @@ def search_memory_files(
         if score <= 0:
             continue
         diagnostics = _diagnose_file_result(query, query_tokens, rel_path, text, score)
-        if abstain_weak and should_abstain_file_result(diagnostics):
+        if abstain_weak and (
+            should_abstain_file_result(diagnostics)
+            or not _candidate_has_answer_evidence(diagnostics)
+        ):
             continue
         final_score = _reranked_file_score(score, diagnostics) if rerank else score
         results.append(

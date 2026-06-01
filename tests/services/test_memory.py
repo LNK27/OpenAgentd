@@ -140,6 +140,36 @@ def test_search_memory_files_abstains_on_weak_domain_preference(
     assert candidates[0].diagnostics["topic_overlap"] == ["preferences"]
 
 
+def test_search_memory_files_uses_answerability_filter(
+    memory_dir: Path,
+) -> None:
+    seed_memory()
+    write_memory_file(
+        "wiki/user.md",
+        "---\n"
+        "description: User preferences\n"
+        "memory_kind: profile\n"
+        "scope: user\n"
+        "topics: [preferences, response-style]\n"
+        "---\n\n"
+        "# User\n\nHoang prefers direct fact-based answers.",
+    )
+
+    strict = search_memory_files(
+        "Which LLM provider did Hoang choose for Dream synthesis?",
+        scope="compiled",
+    )
+    candidates = search_memory_files(
+        "Which LLM provider did Hoang choose for Dream synthesis?",
+        scope="compiled",
+        abstain_weak=False,
+    )
+
+    assert strict == []
+    assert candidates[0].source_ref == "wiki:user"
+    assert "choose" in candidates[0].diagnostics["missing_meaningful_tokens"]
+
+
 def test_read_write_memory_file_round_trip(memory_dir: Path) -> None:
     seed_memory()
 
