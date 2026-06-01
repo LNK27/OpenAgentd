@@ -12,6 +12,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+import app.core.db as db_module
+from app.services.coding_workspace_service import (
+    mark_coding_workspace_deleted,
+    upsert_coding_workspace,
+)
 from app.services import team_manager
 
 router = APIRouter()
@@ -187,6 +192,29 @@ def _entry_for_directory(source: Path, directory: Path) -> dict[str, str] | None
     return None
 
 
+def find_managed_worktree_source(directory: Path) -> str | None:
+    resolved = directory.expanduser().resolve()
+    data_root = (Path(settings.OPENAGENTD_DATA_DIR) / "worktrees").resolve()
+    if data_root not in resolved.parents:
+        return None
+    result = _run_git(resolved, "rev-parse", "--show-toplevel")
+    if result.returncode != 0 or Path(result.stdout.strip()).resolve() != resolved:
+        return None
+    common_dir = _run_git(
+        resolved, "rev-parse", "--path-format=absolute", "--git-common-dir"
+    )
+    if common_dir.returncode != 0:
+        return None
+    common_path = Path(common_dir.stdout.strip()).resolve()
+    source = common_path.parent if common_path.name == ".git" else common_path
+    if source == resolved:
+        return None
+    expected_root = _worktree_root(source)
+    if expected_root not in resolved.parents:
+        return None
+    return str(source)
+
+
 @router.get("/workspace/worktrees", response_model=list[WorktreeInfo])
 async def list_coding_workspace_worktrees(source_workspace: str) -> list[WorktreeInfo]:
     try:
@@ -248,6 +276,9 @@ async def remove_coding_workspace_worktree(
     branch = entry.get("branch")
     if branch:
         _run_git(source, "branch", "-D", branch)
+    async with db_module.async_session_factory() as db:
+        async with db.begin():
+            await mark_coding_workspace_deleted(db, str(directory))
     return {"removed": True}
 
 
@@ -290,6 +321,21 @@ async def create_coding_workspace_worktree(
             or "Failed to populate worktree."
         )
         raise HTTPException(status_code=500, detail=detail)
+
+    async with db_module.async_session_factory() as db:
+        async with db.begin():
+            await upsert_coding_workspace(
+                db, path=str(source), kind="repo", hidden=False
+            )
+            await upsert_coding_workspace(
+                db,
+                path=info.directory,
+                kind="worktree",
+                source_path=str(source),
+                name=info.name,
+                managed=True,
+                hidden=False,
+            )
 
     return WorktreeCreateResponse(
         name=info.name,

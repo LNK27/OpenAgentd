@@ -19,6 +19,7 @@ import type {
   WorkspaceValidationResponse,
   WorktreeCreateResponse,
   WorktreeInfo,
+  CodingWorkspaceTreeResponse,
   WorkspaceBrowseResponse,
   WorkspaceGitDiffResponse,
   WorkspaceStatusResponse,
@@ -181,6 +182,12 @@ export async function browseWorkspaces(path?: string | null): Promise<WorkspaceB
   return res.json()
 }
 
+export async function getCodingWorkspaceTree(): Promise<CodingWorkspaceTreeResponse> {
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/tree`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceTree')
+  return res.json()
+}
+
 export async function listWorktrees(sourceWorkspace: string): Promise<WorktreeInfo[]> {
   const params = new URLSearchParams({ source_workspace: sourceWorkspace })
   const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees?${params}`)
@@ -265,6 +272,16 @@ export async function listTeamSessions(
   if (filters?.workspace) params.set('workspace', filters.workspace)
   const res = await fetch(`${apiBaseUrl()}/team/sessions?${params}`)
   if (!res.ok) throw new Error(`listTeamSessions failed: ${res.status}`)
+  return res.json()
+}
+
+export async function setCodingWorkspaceVisibility(workspace: string, hidden: boolean): Promise<{ workspace: string; hidden: boolean; updated: number }> {
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/visibility`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspace, hidden }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'setCodingWorkspaceVisibility')
   return res.json()
 }
 

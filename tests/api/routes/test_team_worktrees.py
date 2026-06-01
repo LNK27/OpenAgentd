@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 import pytest
 
+from app.api.routes.team.worktrees import find_managed_worktree_source
+
 
 @pytest.fixture
 def app_without_team():
@@ -65,6 +67,26 @@ def test_create_worktree_returns_directory_and_branch(
     assert (
         tmp_path / "data" / "worktrees" / root / "feature-login" / "README.md"
     ).read_text(encoding="utf-8") == "hello\n"
+
+
+def test_find_managed_worktree_source_detects_openagentd_worktree(
+    app_without_team, tmp_path, monkeypatch
+):
+    repo = _repo(tmp_path)
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(
+        "app.api.routes.team.worktrees.settings.OPENAGENTD_DATA_DIR",
+        str(data_dir),
+    )
+    client = TestClient(app_without_team)
+    created = client.post(
+        "/api/team/workspace/worktrees",
+        json={"source_workspace": str(repo), "name": "Task"},
+    ).json()
+
+    assert find_managed_worktree_source(Path(created["directory"])) == str(
+        repo.resolve()
+    )
 
 
 def test_list_worktrees_excludes_primary(app_without_team, tmp_path, monkeypatch):
@@ -147,6 +169,50 @@ def test_remove_managed_worktree(app_without_team, tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert resp.json() == {"removed": True}
     assert not Path(created["directory"]).exists()
+
+
+def test_remove_managed_worktree_deletes_registry_entry(
+    app_without_team, tmp_path, monkeypatch
+):
+    from app.core.db import async_session_factory
+    from app.models.chat import ChatSession
+
+    repo = _repo(tmp_path)
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(
+        "app.api.routes.team.worktrees.settings.OPENAGENTD_DATA_DIR",
+        str(data_dir),
+    )
+    client = TestClient(app_without_team)
+    created = client.post(
+        "/api/team/workspace/worktrees",
+        json={"source_workspace": str(repo), "name": "remove-session"},
+    ).json()
+
+    async def create_session() -> None:
+        async with async_session_factory() as db:
+            async with db.begin():
+                db.add(ChatSession(mode="coding", workspace=created["directory"]))
+
+    import asyncio
+
+    asyncio.run(create_session())
+
+    resp = client.request(
+        "DELETE",
+        "/api/team/workspace/worktrees",
+        json={"source_workspace": str(repo), "directory": created["directory"]},
+    )
+
+    assert resp.status_code == 200
+    tree = client.get("/api/team/workspace/tree")
+    assert tree.status_code == 200
+    repositories = tree.json()["repositories"]
+    assert all(
+        worktree["path"] != created["directory"]
+        for repository in repositories
+        for worktree in repository["worktrees"]
+    )
 
 
 def test_remove_rejects_unmanaged_worktree(app_without_team, tmp_path):

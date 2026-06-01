@@ -116,6 +116,41 @@ class ChatSession(SQLModel, table=True):
     )
 
 
+class CodingWorkspace(SQLModel, table=True):
+    __tablename__: str = "coding_workspaces"  # type: ignore[reportIncompatibleVariableOverride]
+    __table_args__ = (
+        sa.UniqueConstraint("path", name="uq_coding_workspaces_path"),
+        sa.Index("ix_coding_workspaces_source_path", "source_path"),
+    )
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True)
+    path: str = Field(sa_column=Column(sa.String(), nullable=False))
+    kind: str = Field(
+        default="repo",
+        max_length=20,
+        sa_column=Column(sa.String(20), nullable=False, server_default="repo"),
+    )
+    source_path: str | None = Field(default=None)
+    name: str | None = Field(default=None, max_length=255)
+    managed: bool = Field(
+        default=False,
+        sa_column=Column(sa.Boolean, nullable=False, server_default=sa.false()),
+    )
+    hidden: bool = Field(
+        default=False,
+        sa_column=Column(sa.Boolean, nullable=False, server_default=sa.false()),
+    )
+    deleted_at: datetime | None = Field(default=None, sa_column=Column(TZDateTime()))
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(TZDateTime(), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(TZDateTime(), nullable=False, onupdate=_utcnow),
+    )
+
+
 class SessionMessage(SQLModel, table=True):
     __tablename__: str = "session_messages"  # type: ignore[reportIncompatibleVariableOverride]
     __table_args__ = (

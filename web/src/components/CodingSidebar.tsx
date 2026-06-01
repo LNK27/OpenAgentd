@@ -41,16 +41,13 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { queryKeys } from '@/queries'
 import { useCodingWorkspaceSessionsQuery, useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
-import { browseWorkspaces, listWorktrees, removeWorktree, resolveTeamSession, validateWorkspace } from '@/api/client'
+import { browseWorkspaces, getCodingWorkspaceTree, listWorktrees, removeWorktree, resolveTeamSession, setCodingWorkspaceVisibility, validateWorkspace } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { formatRelativeDate } from '@/utils/format'
 import {
-  loadCodingWorkspaceEntries,
-  loadCodingWorkspaces,
-  removeCodingWorkspace,
-  saveCodingWorkspace,
   saveLastCodingWorkspace,
   workspaceLabel,
 } from '@/utils/workspace'
@@ -65,10 +62,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import type { SessionResponse, WorktreeInfo } from '@/api/types'
+import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 
 const sessionGroupKey = (path: string) => `sessions:${path}`
+
+function isTransientLoadError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase()
+  return message.includes('load failed') || message.includes('failed to fetch') || message.includes('networkerror') || message.includes('network request failed')
+}
+
+function worktreeNameSlug(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/g, '') || 'session'
+}
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -218,32 +224,13 @@ export function CodingSidebar({
     (session) => session.mode === 'coding' && session.workspace,
   )
 
-  // Saved workspaces (localStorage) come first, sorted by creation time;
-  // workspaces that only exist via session history are appended.
-  const [workspaces, setWorkspaces] = useState<string[]>(() => loadCodingWorkspaces())
-  const savedEntries = loadCodingWorkspaceEntries()
-  const savedWorkspaceCreatedAt = new Map(
-    savedEntries.map((entry) => [entry.path, Date.parse(entry.createdAt)]),
-  )
-  const savedWorkspaceTime = (path: string) => {
-    const value = savedWorkspaceCreatedAt.get(path) ?? Number.MAX_SAFE_INTEGER
-    return Number.isNaN(value) ? Number.MAX_SAFE_INTEGER : value
-  }
-  const savedWorkspaces = [...workspaces].sort((a, b) => savedWorkspaceTime(a) - savedWorkspaceTime(b))
-  const sessionWorkspaces = Array.from(
-    codingSessions.reduce((items, session) => {
-      const path = session.workspace
-      if (!path || savedWorkspaces.includes(path)) return items
-      const createdAt = session.created_at ? Date.parse(session.created_at) : Number.MAX_SAFE_INTEGER
-      const current = items.get(path)
-      items.set(path, Math.min(current ?? Number.MAX_SAFE_INTEGER, Number.isNaN(createdAt) ? Number.MAX_SAFE_INTEGER : createdAt))
-      return items
-    }, new Map<string, number>()),
-  )
-    .sort(([, a], [, b]) => a - b)
-    .map(([path]) => path)
-  const visibleWorkspaces = [...savedWorkspaces, ...sessionWorkspaces]
+  const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>([])
+  const visibleWorkspaces = (workspaceTree ?? []).map((repo) => repo.path)
   const activeWorkspace = workspace ?? null
+  const worktreeSourceByDirectory = new Map<string, string>()
+  for (const repo of workspaceTree) {
+    for (const item of repo.worktrees) worktreeSourceByDirectory.set(item.path, repo.path)
+  }
 
   // ``expandedWorkspaces`` is local UI state — it auto-tracks the active
   // workspace but the user can also expand/collapse any other workspace
@@ -305,6 +292,7 @@ export function CodingSidebar({
   const [worktreeOptions, setWorktreeOptions] = useState<WorktreeInfo[]>([])
   const [worktreeRemoving, setWorktreeRemoving] = useState<string | null>(null)
   const [worktreesBySource, setWorktreesBySource] = useState<Record<string, WorktreeInfo[]>>({})
+  const [removedWorktreePaths, setRemovedWorktreePaths] = useState<Set<string>>(() => new Set())
 
   const loadBrowser = useCallback(async (path?: string | null) => {
     setLoading(true)
@@ -359,15 +347,21 @@ export function CodingSidebar({
     }
   }, [isTauri, isTauriMobile, openWebWorkspaceDialog])
 
+  const refreshWorkspaceTree = useCallback(async () => {
+    const tree = await getCodingWorkspaceTree()
+    setWorkspaceTree(tree.repositories)
+  }, [])
+
   useEffect(() => {
-    const handler = () => setWorkspaces(loadCodingWorkspaces())
+    void refreshWorkspaceTree()
+    const handler = () => { void refreshWorkspaceTree() }
     window.addEventListener('coding-workspaces-changed', handler)
     window.addEventListener('storage', handler)
     return () => {
       window.removeEventListener('coding-workspaces-changed', handler)
       window.removeEventListener('storage', handler)
     }
-  }, [])
+  }, [refreshWorkspaceTree])
 
   useEffect(() => {
     if (openWorkspaceDialogKey > 0) void openWorkspaceDialog()
@@ -395,7 +389,6 @@ export function CodingSidebar({
     }
     saveLastCodingWorkspace(path)
     setPendingWorkspace(path)
-    setWorkspaces(loadCodingWorkspaces())
     try {
       state.beginResolvedSession(null, {
         mode: 'coding',
@@ -421,6 +414,7 @@ export function CodingSidebar({
         prependSession(queryClient, session)
         prependWorkspaceSession(queryClient, path, session)
       }
+      await refreshWorkspaceTree()
       navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
     } catch (err) {
       setPendingWorkspace(null)
@@ -436,7 +430,10 @@ export function CodingSidebar({
   const confirmRemoveWorkspace = () => {
     const path = removeWorkspaceTarget
     if (!path) return
-    removeCodingWorkspace(path)
+    void setCodingWorkspaceVisibility(path, true).then(() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+      void refreshWorkspaceTree()
+    }).catch(() => undefined)
     setExpandedWorkspaces((current) => {
       const key = sessionGroupKey(path)
       if (!current.has(path) && !current.has(key)) return current
@@ -446,7 +443,7 @@ export function CodingSidebar({
       return next
     })
     if (path === activeWorkspace) {
-      navigate({ to: '/coding' })
+      navigate({ to: '/coding', replace: true })
     }
     setRemoveWorkspaceTarget(null)
   }
@@ -477,15 +474,30 @@ export function CodingSidebar({
 
   const handleRemoveWorktree = async (item: WorktreeInfo) => {
     if (!item.managed) return
-    setWorktreeRemoving(item.directory)
+    const directory = item.directory
+    setWorktreeRemoving(directory)
     setError(null)
     try {
-      const source = worktreeSourceByDirectory.get(item.directory) ?? worktreeTarget
+      const source = worktreeSourceByDirectory.get(directory) ?? worktreeTarget
       if (!source) return
-      await removeWorktree(source, item.directory)
-      removeCodingWorkspace(item.directory)
-      setWorkspaces(loadCodingWorkspaces())
+      await removeWorktree(source, directory)
+      setRemovedWorktreePaths((current) => new Set(current).add(directory))
+      setExpandedWorkspaces((current) => {
+        const key = sessionGroupKey(directory)
+        if (!current.has(directory) && !current.has(key)) return current
+        const next = new Set(current)
+        next.delete(directory)
+        next.delete(key)
+        return next
+      })
+      setWorktreesBySource((current) => {
+        const next = { ...current }
+        delete next[directory]
+        next[source] = (next[source] ?? []).filter((worktree) => worktree.directory !== directory)
+        return next
+      })
       await loadWorktreesForTarget(source)
+      await refreshWorkspaceTree()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to remove worktree')
     } finally {
@@ -511,9 +523,7 @@ export function CodingSidebar({
       const path = session.workspace
       if (!path) throw new Error('Worktree session did not return a workspace')
       setWorktreeTarget(null)
-      saveCodingWorkspace(worktreeTarget)
       saveLastCodingWorkspace(path)
-      setWorkspaces(loadCodingWorkspaces())
       const nextState = useTeamStore.getState()
       nextState.beginResolvedSession(session.id, {
         mode: 'coding',
@@ -524,27 +534,34 @@ export function CodingSidebar({
       })
       prependSession(queryClient, session)
       prependWorkspaceSession(queryClient, path, session)
+      await refreshWorkspaceTree()
       navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
       onMobileClose?.()
     } catch (err) {
+      if (isTransientLoadError(err) && worktreeTarget) {
+        const source = worktreeTarget
+        const expectedName = worktreeNameSlug(worktreeName || 'session')
+        const items = await loadWorktreesForTarget(source)
+        const created = items.find((item) => item.name === expectedName)
+        if (created) {
+          setWorktreeTarget(null)
+          saveLastCodingWorkspace(created.directory)
+          setError(null)
+          await refreshWorkspaceTree()
+          navigate({ to: '/coding' })
+          onMobileClose?.()
+          return
+        }
+      }
       setError(err instanceof Error ? err.message : 'Unable to create worktree')
     } finally {
       setWorktreeLoading(false)
     }
   }
 
-  const savedWorkspaceSet = new Set(savedWorkspaces)
-  const worktreeSourceByDirectory = new Map<string, string>()
-  for (const [source, items] of Object.entries(worktreesBySource)) {
-    for (const item of items) {
-      if (item.directory === source) continue
-      if (!item.managed && savedWorkspaceSet.has(item.directory)) continue
-      if (!worktreeSourceByDirectory.has(item.directory)) worktreeSourceByDirectory.set(item.directory, source)
-    }
-  }
-  const sourceWorkspaces = visibleWorkspaces.filter((path) => !worktreeSourceByDirectory.has(path))
+  const deletedWorktreeSet = removedWorktreePaths
+  const sourceWorkspaces = visibleWorkspaces.filter((path) => !deletedWorktreeSet.has(path))
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
-  const visibleWorkspaceKey = visibleWorkspaces.join('\u0000')
 
   useEffect(() => {
     if (!activeWorkspace || !activeWorktreeSource) return
@@ -555,27 +572,6 @@ export function CodingSidebar({
       return next
     })
   }, [activeWorkspace, activeWorktreeSource])
-
-  useEffect(() => {
-    if (!visibleWorkspaceKey) return
-    let cancelled = false
-    const load = async () => {
-      const paths = visibleWorkspaceKey ? visibleWorkspaceKey.split('\u0000') : []
-      const results = await Promise.all(
-        paths.map(async (path) => [path, await listWorktrees(path).catch(() => [])] as const),
-      )
-      if (cancelled) return
-      setWorktreesBySource((current) => {
-        const next: Record<string, WorktreeInfo[]> = {}
-        for (const [path, items] of results) {
-          next[path] = items.length === 0 && (current[path]?.length ?? 0) > 0 ? current[path] : items
-        }
-        return next
-      })
-    }
-    void load()
-    return () => { cancelled = true }
-  }, [visibleWorkspaceKey])
 
   const openSelectedFolder = async () => {
     if (!browserPath) return
@@ -725,10 +721,8 @@ export function CodingSidebar({
           const sourceRunningSessions = sourceSessions.filter((s) => s.running === true)
           const sourceHasRunningSession = sourceRunningSessions.length > 0
           const sourceSessionGroupExpanded = expandedWorkspaces.has(sessionGroupKey(path))
-          const treeWorktrees = worktreesBySource[path] ?? []
-          const savedNestedWorktrees = treeWorktrees.filter((item) => savedWorkspaceSet.has(item.directory))
-          const externalNestedWorktrees = treeWorktrees.filter((item) => !savedWorkspaceSet.has(item.directory))
-          const nestedWorktrees = [...savedNestedWorktrees, ...externalNestedWorktrees]
+          const repository = workspaceTree.find((repo) => repo.path === path)
+          const nestedWorktrees = (repository?.worktrees ?? []).filter((item) => !deletedWorktreeSet.has(item.path))
 
           return (
             <div key={path} className="relative">
@@ -771,6 +765,15 @@ export function CodingSidebar({
                 >
                   <GitBranch size={11} aria-hidden="true" />
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setRemoveWorkspaceTarget(path)}
+                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  aria-label={`Hide repository ${workspaceLabel(path)} from sidebar`}
+                  title="Hide repository from sidebar"
+                >
+                  <Trash2 size={11} aria-hidden="true" />
+                </button>
               </div>
 
               {(sourceIsExpanded || sourceHasRunningSession) && (
@@ -811,29 +814,30 @@ export function CodingSidebar({
                     </div>
                   )}
                   {nestedWorktrees.map((item) => {
-                    const isActive = item.directory === activeWorkspace
-                    const isExpanded = expandedWorkspaces.has(item.directory)
-                    const isPending = pendingWorkspace === item.directory
-                    const itemSessions = codingSessions.filter((s) => s.workspace === item.directory)
+                    const directory = item.path
+                    const worktreeInfo: WorktreeInfo = { name: item.name, directory, managed: item.managed }
+                    const isActive = directory === activeWorkspace
+                    const isExpanded = expandedWorkspaces.has(directory)
+                    const isPending = pendingWorkspace === directory
+                    const itemSessions = codingSessions.filter((s) => s.workspace === directory)
                     const runningSessions = itemSessions.filter((s) => s.running === true)
                     const hasRunningSession = runningSessions.length > 0
-                    const isSaved = savedWorkspaceSet.has(item.directory)
                     return (
-                      <div key={item.directory}>
+                      <div key={directory}>
                         <div className="group flex min-h-7 items-center pr-2" style={{ paddingLeft: 20 }}>
                           <LongPressButton
                             enabled={mobileLongPressActions}
-                            onLongPress={() => setMobileWorkspaceActions({ path: item.directory, kind: 'worktree', source: path, worktree: item })}
+                            onLongPress={() => setMobileWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo })}
                             type="button"
-                            onClick={() => toggleWorkspaceExpanded(item.directory)}
+                            onClick={() => toggleWorkspaceExpanded(directory)}
                             className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key) ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
                             aria-expanded={isExpanded}
                             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
-                            title={item.directory}
+                            title={directory}
                           >
                             <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
                             <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
-                            {!isSaved && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[9px] text-(--color-text-subtle)">external</span>}
+                            {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[9px] text-(--color-text-subtle)">external</span>}
                             {(isPending || hasRunningSession) && (
                               <span aria-label={hasRunningSession ? 'Worktree has running session' : undefined}>
                                 <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
@@ -842,7 +846,7 @@ export function CodingSidebar({
                           </LongPressButton>
                           <button
                             type="button"
-                            onClick={() => { void selectWorkspace(item.directory, { create: true }) }}
+                            onClick={() => { void selectWorkspace(directory, { create: true }) }}
                             className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                             aria-label={`New session in worktree ${item.name}`}
                             title={`New session in worktree ${item.name}`}
@@ -852,24 +856,19 @@ export function CodingSidebar({
                           {item.managed ? (
                             <button
                               type="button"
-                              onClick={() => { void handleRemoveWorktree(item) }}
-                              disabled={worktreeRemoving === item.directory}
+                              onClick={() => { void handleRemoveWorktree(worktreeInfo) }}
+                              disabled={worktreeRemoving === directory}
                               className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                               aria-label={`Remove worktree ${item.name}`}
                               title="Remove managed worktree"
                             >
-                              {worktreeRemoving === item.directory ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : <Trash2 size={11} aria-hidden="true" />}
+                              {worktreeRemoving === directory ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : <Trash2 size={11} aria-hidden="true" />}
                             </button>
                           ) : null}
                         </div>
-                        {item.branch && isExpanded && (
-                          <p className="truncate py-0.5 pr-3 font-mono text-[10px] text-(--color-text-subtle)" style={{ paddingLeft: 44 }} title={item.branch}>
-                            {item.branch}
-                          </p>
-                        )}
                         {(isExpanded || hasRunningSession) && (
                           <WorkspaceSessionList
-                            path={item.directory}
+                            path={directory}
                             currentSessionId={currentSessionId}
                             runningSessions={runningSessions}
                             collapsed={!isExpanded}

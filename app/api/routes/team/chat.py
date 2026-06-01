@@ -25,17 +25,22 @@ from app.api.routes.team._helpers import (
 )
 from app.api.routes.agents import is_registered_model_id
 from app.api.schemas.sessions import (
+    CodingWorkspaceTreeRepository,
+    CodingWorkspaceTreeResponse,
+    CodingWorkspaceTreeWorktree,
     SessionDetailResponse,
     SessionPageResponse,
     SessionResponse,
     TeamSessionResolveRequest,
     TeamSessionResolveResponse,
     TeamSessionUpdateRequest,
+    TeamWorkspaceVisibilityRequest,
 )
 from app.api.schemas.team import TeamHistoryMember, TeamHistoryResponse
 from app.api.routes.team.worktrees import (
     WorktreeCreateRequest,
     create_coding_workspace_worktree,
+    find_managed_worktree_source,
 )
 from app.models.chat import ChatSession
 from app.services import (
@@ -44,6 +49,11 @@ from app.services import (
     team_manager,
 )
 from app.services.agent_service import AttachmentError, RawAttachment
+from app.services.coding_workspace_service import (
+    hide_coding_workspace,
+    list_visible_coding_workspaces,
+    upsert_coding_workspace,
+)
 from app.services.chat_service import (
     BoundaryShift,
     cancel_queued_user_message,
@@ -633,7 +643,11 @@ async def list_team_sessions(
 
     try:
         sessions, next_cursor, has_more = await list_sessions_page(
-            db, before=before, limit=limit, mode=mode, workspace=workspace
+            db,
+            before=before,
+            limit=limit,
+            mode=mode,
+            workspace=workspace,
         )
     except ValueError:
         raise HTTPException(
@@ -714,11 +728,83 @@ async def resolve_team_session(
                 thinking_level=thinking_level,
             )
             db.add(session)
-            await db.flush()
-            await db.refresh(session)
+        if body.mode == "coding" and workspace:
+            managed_source = find_managed_worktree_source(Path(workspace))
+            if managed_source:
+                await upsert_coding_workspace(
+                    db,
+                    path=managed_source,
+                    kind="repo",
+                    hidden=False,
+                )
+                await upsert_coding_workspace(
+                    db,
+                    path=workspace,
+                    kind="worktree",
+                    source_path=managed_source,
+                    managed=True,
+                    hidden=False,
+                )
+            else:
+                await upsert_coding_workspace(
+                    db, path=workspace, kind="repo", hidden=False
+                )
+        await db.flush()
+        await db.refresh(session)
 
     data = SessionResponse.model_validate(session).model_dump()
     return TeamSessionResolveResponse(**data, created=created)
+
+
+@router.patch("/workspace/visibility")
+async def update_coding_workspace_visibility(
+    body: TeamWorkspaceVisibilityRequest, db: DbSession
+) -> dict:
+    workspace = (
+        str(Path(body.workspace).expanduser().resolve())
+        if body.hidden
+        else _validate_workspace_or_422(body.workspace)
+    )
+    async with db.begin():
+        if body.hidden:
+            await hide_coding_workspace(db, workspace)
+        else:
+            await upsert_coding_workspace(db, path=workspace, kind="repo", hidden=False)
+    return {"workspace": workspace, "hidden": body.hidden}
+
+
+@router.get("/workspace/tree", response_model=CodingWorkspaceTreeResponse)
+async def list_coding_workspace_tree(db: DbSession) -> CodingWorkspaceTreeResponse:
+    rows = await list_visible_coding_workspaces(db)
+    repositories: dict[str, CodingWorkspaceTreeRepository] = {}
+    pending_worktrees = []
+    for row in rows:
+        if row.kind == "worktree":
+            pending_worktrees.append(row)
+            continue
+        repositories[row.path] = CodingWorkspaceTreeRepository(
+            path=row.path,
+            name=row.name or Path(row.path).name,
+            worktrees=[],
+        )
+    for row in pending_worktrees:
+        source = row.source_path
+        if not source:
+            continue
+        if source not in repositories:
+            repositories[source] = CodingWorkspaceTreeRepository(
+                path=source,
+                name=Path(source).name,
+                worktrees=[],
+            )
+        repositories[source].worktrees.append(
+            CodingWorkspaceTreeWorktree(
+                path=row.path,
+                name=row.name or Path(row.path).name,
+                managed=row.managed,
+            )
+        )
+    return CodingWorkspaceTreeResponse(repositories=list(repositories.values()))
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)

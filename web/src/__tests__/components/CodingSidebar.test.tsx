@@ -37,6 +37,13 @@ let workspaceSessionsData: TestSession[] = []
 let workspaceHasNextPage = false
 let workspaceIsFetchingNextPage = false
 const fetchWorkspaceNextPage = mock(() => {})
+const workspaceTreeResponse = () => ({
+  repositories: Array.from(new Set(sessionsData.filter((session) => session.mode === 'coding' && session.workspace).map((session) => session.workspace as string))).map((path) => ({
+    path,
+    name: path.split('/').pop() || path,
+    worktrees: [],
+  })),
+})
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
@@ -185,6 +192,9 @@ describe('CodingSidebar workspace trust flow', () => {
       if (url.startsWith('/api/team/workspace/worktrees')) {
         return new Response(JSON.stringify([]))
       }
+      if (url.startsWith('/api/team/workspace/tree')) {
+        return new Response(JSON.stringify(workspaceTreeResponse()))
+      }
       if (url === '/api/team/sessions/resolve') {
         return new Response(JSON.stringify({
           id: 'resolved-session',
@@ -264,6 +274,9 @@ describe('CodingSidebar workspace trust flow', () => {
       }
       if (url.startsWith('/api/team/workspace/worktrees')) {
         return new Response(JSON.stringify([]))
+      }
+      if (url.startsWith('/api/team/workspace/tree')) {
+        return new Response(JSON.stringify(workspaceTreeResponse()))
       }
       if (url === '/api/team/sessions/resolve') {
         resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
@@ -460,6 +473,38 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Session running')).toBeTruthy()
   })
 
+  it('hides a main repository from the sidebar without deleting it', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Main session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    localStorage.setItem('oa-coding-workspaces', JSON.stringify([{ id: 'main', path: '/repo/project', createdAt: '2026-05-01T00:00:00Z' }]))
+
+    await renderCodingSidebarForSessions('session-1')
+
+    expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
+    await user.click(screen.getByLabelText('Hide repository project from sidebar'))
+    expect(screen.getByText('Remove workspace from sidebar')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /^remove from sidebar$/i }))
+
+    expect(screen.queryByLabelText('Collapse repository project')).toBeNull()
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/team/workspace/visibility', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ workspace: '/repo/project', hidden: true }),
+    }))
+    expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/team/workspace/worktrees', expect.objectContaining({ method: 'DELETE' }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
+  })
+
   it('does not create a new session when the current coding session is empty and idle', async () => {
     const user = userEvent.setup()
     sessionsData = [
@@ -557,20 +602,10 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
-      if (url.startsWith('/api/team/workspace/worktrees')) {
-        const parsed = new URL(url, 'http://localhost')
-        const source = parsed.searchParams.get('source_workspace')
-        return new Response(JSON.stringify(source === '/repo/project'
-          ? [
-              {
-                name: 'task-a',
-                directory: '/data/worktrees/project/task-a',
-                branch: 'openagentd/task-a',
-                managed: true,
-              },
-            ]
-          : []))
+      if (url.startsWith('/api/team/workspace/tree')) {
+        return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
+      if (url.startsWith('/api/team/workspace/worktrees')) return new Response(JSON.stringify([]))
       return new Response(null, { status: 404 })
     }) as typeof fetch
 
@@ -609,16 +644,10 @@ describe('CodingSidebar workspace trust flow', () => {
     let resolveBody: unknown
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
-      if (url.startsWith('/api/team/workspace/worktrees')) {
-        return new Response(JSON.stringify([
-          {
-            name: 'task-a',
-            directory: '/data/worktrees/project/task-a',
-            branch: 'openagentd/task-a',
-            managed: true,
-          },
-        ]))
+      if (url.startsWith('/api/team/workspace/tree')) {
+        return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
+      if (url.startsWith('/api/team/workspace/worktrees')) return new Response(JSON.stringify([]))
       if (url === '/api/team/sessions/resolve') {
         resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
         return new Response(JSON.stringify({
@@ -671,6 +700,52 @@ describe('CodingSidebar workspace trust flow', () => {
     })
   })
 
+  it('removes deleted managed worktrees without promoting stale inverse relationships', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Worktree session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/data/worktrees/project/task-a',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    globalThis.fetch = mock(async (input: unknown, init: unknown) => {
+      const url = String(input)
+      if (url.startsWith('/api/team/workspace/tree')) {
+        return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
+      }
+      if (url.startsWith('/api/team/workspace/worktrees')) {
+        if ((init as RequestInit | undefined)?.method === 'DELETE') return new Response(JSON.stringify({ removed: true }))
+        return new Response(JSON.stringify([]))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+
+    localStorage.setItem('oa-coding-workspaces', JSON.stringify([
+      { id: 'main', path: '/repo/project', createdAt: '2026-05-01T00:00:00Z' },
+      { id: 'worktree', path: '/data/worktrees/project/task-a', createdAt: '2026-05-02T00:00:00Z' },
+    ]))
+
+    await renderCodingSidebarWithProps({
+      currentSessionId: 'session-1',
+      workspace: '/repo/project',
+    })
+
+    await waitFor(() => expect(screen.getByText('Worktrees')).toBeTruthy())
+    await user.click(screen.getByLabelText('Remove worktree task-a'))
+
+    await waitFor(() => expect(screen.queryByText('task-a')).toBeNull())
+    expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
+    expect(screen.queryByLabelText('Collapse repository task-a')).toBeNull()
+    expect(screen.queryByLabelText('Expand repository task-a')).toBeNull()
+    expect(screen.queryByLabelText('Expand worktree project')).toBeNull()
+  })
+
   it('keeps the source repository visible when the active session is a worktree', async () => {
     sessionsData = [
       {
@@ -686,16 +761,10 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
-      if (url.startsWith('/api/team/workspace/worktrees')) {
-        return new Response(JSON.stringify([
-          {
-            name: 'task-a',
-            directory: '/data/worktrees/project/task-a',
-            branch: 'openagentd/task-a',
-            managed: true,
-          },
-        ]))
+      if (url.startsWith('/api/team/workspace/tree')) {
+        return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
+      if (url.startsWith('/api/team/workspace/worktrees')) return new Response(JSON.stringify([]))
       return new Response(null, { status: 404 })
     }) as typeof fetch
 

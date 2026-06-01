@@ -30,6 +30,27 @@ class TeamSessionUpdateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
 
 
+class TeamWorkspaceVisibilityRequest(BaseModel):
+    workspace: str
+    hidden: bool
+
+
+class CodingWorkspaceTreeWorktree(BaseModel):
+    path: str
+    name: str
+    managed: bool = False
+
+
+class CodingWorkspaceTreeRepository(BaseModel):
+    path: str
+    name: str
+    worktrees: list[CodingWorkspaceTreeWorktree] = Field(default_factory=list)
+
+
+class CodingWorkspaceTreeResponse(BaseModel):
+    repositories: list[CodingWorkspaceTreeRepository]
+
+
 class SessionResponse(_ExcludeNoneModel):
     id: UUID
     title: str | None = None

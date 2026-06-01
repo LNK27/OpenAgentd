@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cancelQueuedTeamMessage, createWorktree, postTeamChat, resolveApiUrl, resolveTeamSession, updateTeamSessionTitle, workspaceMediaUrl } from '@/api/client'
+import { cancelQueuedTeamMessage, createWorktree, listTeamSessions, postTeamChat, resolveApiUrl, resolveTeamSession, setCodingWorkspaceVisibility, updateTeamSessionTitle, workspaceMediaUrl } from '@/api/client'
 
 const originalFetch = globalThis.fetch
 
@@ -242,6 +242,26 @@ describe('resolveTeamSession', () => {
     ))) as typeof fetch
 
     await expect(resolveTeamSession({ mode: 'coding' })).rejects.toThrow("workspace is required when mode='coding'.")
+  })
+})
+
+describe('setCodingWorkspaceVisibility', () => {
+  it('patches workspace visibility as JSON', async () => {
+    let url = ''
+    let init: RequestInit | undefined
+    globalThis.fetch = mock((input, requestInit) => {
+      url = String(input)
+      init = requestInit as RequestInit | undefined
+      return Promise.resolve(new Response(JSON.stringify({ workspace: '/repo/app', hidden: true, updated: 2 })))
+    }) as typeof fetch
+
+    const result = await setCodingWorkspaceVisibility('/repo/app', true)
+
+    expect(url).toBe('/api/team/workspace/visibility')
+    expect(init?.method).toBe('PATCH')
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(JSON.parse(init?.body as string)).toEqual({ workspace: '/repo/app', hidden: true })
+    expect(result.updated).toBe(2)
   })
 })
 

@@ -69,6 +69,22 @@ export interface WorktreeCreateResponse extends WorktreeInfo {
   source_workspace: string
 }
 
+export interface CodingWorkspaceTreeWorktree {
+  path: string
+  name: string
+  managed: boolean
+}
+
+export interface CodingWorkspaceTreeRepository {
+  path: string
+  name: string
+  worktrees: CodingWorkspaceTreeWorktree[]
+}
+
+export interface CodingWorkspaceTreeResponse {
+  repositories: CodingWorkspaceTreeRepository[]
+}
+
 export interface WorkspaceBrowseResponse {
   path: string
   parent: string | null
@@ -145,6 +161,7 @@ export interface SessionResponse {
   scheduled_task_name?: string | null
   mode?: string
   workspace?: string | null
+  workspace_hidden?: boolean
   model?: string | null
   thinking_level?: string | null
   running?: boolean
