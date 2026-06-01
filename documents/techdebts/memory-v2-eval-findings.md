@@ -48,6 +48,9 @@ Interpretation:
 - Positive retrieval is usable on this tiny smoke but not enough to claim quality.
 - Negative/abstention behavior is currently weak.
 - We need a real abstention/reranking policy, not benchmark-specific score hacks.
+- `tests/services/test_memory_eval_regression.py` now keeps this fixture executable:
+  explicit retrieval is expected to expose the false positive, while
+  `MemoryContextHook` is expected to abstain for the same negative query.
 
 Next candidates to evaluate honestly:
 
