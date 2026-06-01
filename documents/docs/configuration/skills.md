@@ -66,25 +66,19 @@ The full instructions the agent reads when it calls `skill("my-skill")`.
 - The frontmatter is **not** returned to the agent — only the body below.
 - The skill is identified by the frontmatter `name`. If absent, the directory stem is used (`my-skill` or `parent/sub`).
 
-## Registering a skill on an agent
+## Using a skill from an agent
 
-Add the name to `skills:` in the agent's `.md` frontmatter:
+Skills are discovered from the roots above and exposed through the `skill` tool's
+available-skills catalog. Installing a skill into one of those roots is normally
+enough.
+
+The `skills:` frontmatter field still exists for explicit agent metadata and
+file-drift tracking, but it is additive and not the normal install path:
 
 ```yaml
 skills:
   - my-skill
   - oad/debug
-```
-
-At startup the loader reads each listed skill's `name` + `description` and appends them to the system prompt as:
-
-```
-## Available skills
-
-- **my-skill**: One-sentence description.
-
-Call `skill` with the skill name to load its full instructions.
-Call each skill at most once; if it is already visible in the conversation, reuse the loaded instructions.
 ```
 
 The `skill` tool itself is **always injected** into every agent — do not list it in `tools:`.
@@ -95,7 +89,7 @@ OpenAgentd ships these read-only operational skills inside the app package. They
 
 | Name | Purpose |
 |------|---------|
-| `self-healing` | Update the agent's own config on request — swap model, tune temperature/thinking, add tools/skills, change image-gen provider. |
+| `self-healing` | Update agent/runtime config on request — swap model, tune temperature/thinking, add tools/MCP, change image-gen provider. |
 | `skill-installer` | Install new skills from a URL or write one from scratch. |
 | `mcp-installer` | Install / update / remove / restart MCP servers in `mcp.json`. |
 | `plugin-installer` | Install a user plugin from a URL into `{OPENAGENTD_CONFIG_DIR}/plugins/`. |

@@ -276,7 +276,7 @@ Builtin operational skills:
 
 | Skill | Purpose |
 |---|---|
-| `self-healing` | Agent edits its own config (model, tools, skills) |
+| `self-healing` | Agent edits its own config (model, tools, MCP, image/video settings) |
 | `mcp-installer` | Install new MCP servers from the UI or by description |
 | `skill-installer` | Install new skills from a URL or from scratch |
 | `plugin-installer` | Install agent plugins |

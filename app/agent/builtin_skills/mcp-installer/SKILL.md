@@ -21,7 +21,8 @@ python3 "$SCRIPT" <command> [options]
 ```
 
 The script talks to the daemon at `http://localhost:4082/api/mcp` by default.
-Pass `--base <url>` to override.
+Pass `--base <url>` to override. MCP server config is global in
+`{OPENAGENTD_CONFIG_DIR}/mcp.json`.
 
 ## Commands
 

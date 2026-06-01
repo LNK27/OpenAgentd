@@ -61,6 +61,8 @@ Files prefixed with `_` are skipped. Roles are `lead` (team orchestrator),
 
 ## Install from URL
 
+Plugin installs are global in `{OPENAGENTD_CONFIG_DIR}/plugins/`.
+
 1. **`web_fetch`** the URL as-is. If the response is HTML (GitHub `blob`
    URL), ask for the raw URL and stop.
 2. **Validate** the body contains `async def plugin(` or `class Plugin(`.

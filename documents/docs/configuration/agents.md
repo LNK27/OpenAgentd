@@ -38,9 +38,9 @@ tools:
   - read
   - ls
   - shell
-skills:
-  - self-healing
-  - skill-installer
+# skills: is optional explicit metadata; skill discovery does not require it.
+# skills:
+#   - my-skill
 # fallback_model: copilot:gpt-5-mini
 ---
 
@@ -61,7 +61,7 @@ All from `AgentConfig` in `app/agent/loader.py`. Field types match the Pydantic 
 | `model` | Yes | `str` | `provider:model` string (see [`providers.md`](./providers.md)). |
 | `tools` | No | `list[str]` | Extra built-in tool names (see [`tools.md`](./tools.md)). For first-party profiles, this list is additive on top of code-owned defaults. |
 | `mcp` | No | `list[str]` | Extra MCP server names from `mcp.json`; the agent gets every tool that server exposes. For first-party profiles, this list is additive. |
-| `skills` | No | `list[str]` | Extra skill names to advertise in the system prompt (see [`skills.md`](./skills.md)). For first-party profiles, this list is additive. |
+| `skills` | No | `list[str]` | Optional explicit skill metadata/drift hooks (see [`skills.md`](./skills.md)). Normal skill discovery does not require this field. For first-party profiles, this list is additive. |
 | `temperature` | No | `float` | Sampling temperature. |
 | `thinking_level` | No | `"low"\|"medium"\|"high"` | Extended-reasoning effort. See [`providers.md`](./providers.md#thinking-thinking_level). |
 | `fallback_model` | No | `str` | `provider:model` used after primary retry exhaustion, or immediately for quota-style 429s. |

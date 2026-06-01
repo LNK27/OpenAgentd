@@ -175,7 +175,7 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   workspace-aware sessions; the coding explorer focuses on inspecting the current
   codebase before implementation.
 - **Built-in first-party agent profiles** `[v1.23.0]` — the default `openagentd`
-  lead and shipped member blueprints keep their core prompts, tools, skills, and
+  lead and shipped member blueprints keep their core prompts, tools, and
   descriptions versioned in code for normal and coding modes; seed/user `.md`
   files remain lightweight extension points for model knobs, extra capabilities,
   and extra prompt text. Seed install also removes obsolete untouched first-party
@@ -378,7 +378,7 @@ Four orthogonal ways to add capability. Deeper docs:
   namespace level is supported and displayed in the composer as colon syntax
   (`/git:commit`) `[v1.27.x]`.
 - **Self-healing skill** `[v1.14.0]` — agent edits its own `.md` config (model,
-  tools, skills, MCP) and the runtime picks up the change at end-of-turn.
+  tools, MCP) and the runtime picks up the change at end-of-turn.
 
 ---
 
