@@ -528,6 +528,118 @@ async def test_process_memory_sources_curated_pages_are_idempotent(
 
 
 @pytest.mark.asyncio
+async def test_process_memory_sources_duplicate_equivalent_facts_do_not_duplicate(
+    setup_db, _wiki_dir: Path
+):
+    from app.core.db import async_session_factory
+
+    first_session = ChatSession(agent_name="test-agent")
+    second_session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(first_session)
+        db.add(second_session)
+        await db.flush()
+        db.add(
+            SessionMessage(
+                session_id=first_session.id,
+                role="user",
+                content="Hoang prefers direct answers.",
+            )
+        )
+        db.add(
+            SessionMessage(
+                session_id=second_session.id,
+                role="user",
+                content="Hoang prefers direct responses.",
+            )
+        )
+        await db.commit()
+
+    async with async_session_factory() as db:
+        result = await process_memory_sources(db)
+
+    assert result == {"processed": 2, "failed": 0, "remaining": 0}
+    user_page = (_wiki_dir / "wiki" / "user.md").read_text(encoding="utf-8")
+    fact_lines = [
+        line for line in user_page.splitlines() if line.startswith("- Hoang prefers")
+    ]
+    assert len(fact_lines) == 1
+    assert "Hoang prefers direct answers" in fact_lines[0]
+    assert f"[session:{first_session.id}]" in fact_lines[0]
+    assert f"[session:{second_session.id}]" in fact_lines[0]
+    facts_section = user_page.split("## Conflicts / stale candidates", 1)[0]
+    assert "Hoang prefers direct responses. [session:" not in facts_section
+    assert (
+        "Possible duplicate or changed fact: Hoang prefers direct responses"
+        in user_page
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_memory_sources_cites_notes_and_imports(
+    setup_db, _wiki_dir: Path
+):
+    from app.core.db import async_session_factory
+
+    note_file = _wiki_dir / "notes" / "2026-06-01.md"
+    note_file.write_text(
+        "# 09:00 UTC\nHoang prefers release reports with command results.\n",
+        encoding="utf-8",
+    )
+    imports_dir = _wiki_dir / "imports"
+    imports_dir.mkdir()
+    (imports_dir / "project.md").write_text(
+        "OpenAgentd uses deterministic Dream v2 memory.", encoding="utf-8"
+    )
+
+    async with async_session_factory() as db:
+        result = await process_memory_sources(db)
+
+    assert result == {"processed": 2, "failed": 0, "remaining": 0}
+    user_page = (_wiki_dir / "wiki" / "user.md").read_text(encoding="utf-8")
+    project_page = (_wiki_dir / "wiki" / "memory-v2.md").read_text(encoding="utf-8")
+    assert "Hoang prefers release reports with command results" in user_page
+    assert "[note:2026-06-01.md#09-00-utc" in user_page
+    assert "OpenAgentd uses deterministic Dream v2 memory" in project_page
+    assert "[import:project]" in project_page
+
+
+@pytest.mark.asyncio
+async def test_process_memory_sources_skips_secret_opt_out_and_noise(
+    setup_db, _wiki_dir: Path
+):
+    from app.core.db import async_session_factory
+
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(
+            SessionMessage(
+                session_id=session.id,
+                role="user",
+                content=(
+                    "Hoang prefers direct answers. "
+                    "Do not remember that Hoang prefers using API key sk-test. "
+                    "The secret password token is abc123."
+                ),
+            )
+        )
+        await db.commit()
+
+    async with async_session_factory() as db:
+        result = await process_memory_sources(db)
+
+    assert result == {"processed": 1, "failed": 0, "remaining": 0}
+    user_page = (_wiki_dir / "wiki" / "user.md").read_text(encoding="utf-8")
+    assert "Hoang prefers direct answers" in user_page
+    assert "API key sk-test" not in user_page
+    assert "secret password token is abc123" not in user_page
+    assert "Skipped possible noise, opt-out, or sensitive content" in user_page
+    assert f"[session:{session.id}]" in user_page
+
+
+@pytest.mark.asyncio
 async def test_process_memory_sources_upserts_changed_hash(setup_db, _wiki_dir: Path):
     from app.core.db import async_session_factory
 

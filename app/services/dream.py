@@ -118,6 +118,11 @@ _DURABLE_RE = re.compile(
     r"\b(prefers?|wants?|uses?|main project|memory v2|dream|openagentd|karpathy|longmemeval|locomo|turbovec|migration)\b",
     re.IGNORECASE,
 )
+_BOILERPLATE_RE = re.compile(
+    r"\b(source_type|source_id|content_hash|compiled by dream|raw source|confidence=|sources?:|updated:)\b",
+    re.IGNORECASE,
+)
+_CITATION_RE = re.compile(r"\[(session:[^\]]+|note:[^\]]+|import:[^\]]+)\]")
 
 if TYPE_CHECKING:
     import contextvars
@@ -701,9 +706,11 @@ def _statement_lines(text: str) -> list[str]:
         stripped = raw.strip().strip("-* ")
         if not stripped or stripped.startswith(("#", "Source-", "Agent:", "Date:")):
             continue
+        if _BOILERPLATE_RE.search(stripped):
+            continue
         for part in re.split(r"(?<=[.!?])\s+", stripped):
             sentence = " ".join(part.split()).strip()
-            if 12 <= len(sentence) <= 260:
+            if 12 <= len(sentence) <= 260 and not _BOILERPLATE_RE.search(sentence):
                 lines.append(sentence.rstrip("."))
     return lines
 
@@ -739,12 +746,39 @@ def _curated_page_for_statement(statement: str) -> str | None:
 
 
 def _canonical_fact_key(statement: str) -> str:
+    statement = _CITATION_RE.sub(" ", statement)
+    statement = re.sub(r"\bconfidence=\w+\b", " ", statement, flags=re.IGNORECASE)
+    statement = re.sub(
+        r"\b(Hoang|the user) (now )?(prefers?|wants?|uses?)\b",
+        r"user \3",
+        statement,
+        flags=re.IGNORECASE,
+    )
+    statement = re.sub(
+        r"\b(OpenAgentd|Memory v2) (now )?(uses?|is|has|requires?)\b",
+        r"\1 \3",
+        statement,
+        flags=re.IGNORECASE,
+    )
     words = [
         _MEMORY_TOPIC_ALIASES.get(token, token)
         for token in re.findall(r"[a-z0-9]+", statement.lower())
         if token not in _MEMORY_TOPIC_STOPWORDS
     ]
-    return " ".join(words[:12])
+    if any(word in words for word in ("preferences", "wants", "want")):
+        words = [word for word in words if word not in {"now"}]
+        return " ".join(words[:4])
+    return " ".join(words[:8])
+
+
+def _merged_fact_line(existing_line: str, source_ref: str) -> str:
+    refs = set(_CITATION_RE.findall(existing_line))
+    if source_ref in refs:
+        return existing_line
+    refs.add(source_ref)
+    merged_refs = " ".join(f"[{ref}]" for ref in sorted(refs))
+    base = _CITATION_RE.sub("", existing_line).replace(" confidence=medium", "")
+    return f"{' '.join(base.split())} {merged_refs} confidence=medium"
 
 
 def _fact_line(statement: str, source_ref: str) -> str:
@@ -775,7 +809,9 @@ def _apply_curated_synthesis(
     seen_keys: dict[str, tuple[str, str]] = {}
     for slug, sections in sections_by_slug.items():
         for line in sections["facts"]:
-            seen_keys[_canonical_fact_key(line)] = (slug, line)
+            key = _canonical_fact_key(line)
+            if key:
+                seen_keys[key] = (slug, line)
 
     changed_pages: list[str] = []
     promoted = 0
@@ -791,11 +827,26 @@ def _apply_curated_synthesis(
         if not _DURABLE_RE.search(statement):
             continue
         key = _canonical_fact_key(statement)
+        if not key:
+            continue
         existing = seen_keys.get(key)
         line = _fact_line(statement, source_ref)
         if existing is not None:
             existing_slug, existing_line = existing
-            if line != existing_line:
+            merged_line = _merged_fact_line(existing_line, source_ref)
+            if line == existing_line or merged_line != existing_line:
+                sections_by_slug[existing_slug]["facts"].discard(existing_line)
+                sections_by_slug[existing_slug]["facts"].add(merged_line)
+                seen_keys[key] = (existing_slug, merged_line)
+                if line != existing_line:
+                    conflict = (
+                        f"- Possible duplicate or changed fact: {statement} "
+                        f"source=[{source_ref}] "
+                        f"conflicts_with={merged_line}"
+                    )
+                    sections_by_slug[existing_slug]["conflicts"].add(conflict)
+                promoted += int(merged_line != existing_line)
+            else:
                 conflict = (
                     f"- Possible duplicate or changed fact: {line.removeprefix('- ')} "
                     f"conflicts_with={existing_line}"

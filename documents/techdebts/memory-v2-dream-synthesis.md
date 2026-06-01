@@ -27,10 +27,11 @@ This remains a simple Karpathy-style markdown wiki. The curated pages are conven
 - Synthesis is deterministic and lexical; it is not a general LLM summarizer yet.
 - Fact grouping is intentionally conservative and supports only broad durable categories.
 - Conflict handling surfaces possible duplicates/staleness but does not resolve truth automatically.
-- Evals still need stale/conflicting-fact and citation-correctness cases.
+- Conflict handling surfaces possible duplicates/staleness but does not resolve truth automatically.
+- Release-hardening tests now cover duplicate fact merging, raw citations, opt-out/secret skipping, and basic conflict recording.
 
 ## Next useful work
 
-- Add answerability filtering after retrieval while keeping negative failures visible.
 - Add manual eval rows for source citation correctness, stale facts, and multi-session durable preferences.
+- Add LoCoMo-style temporal/context questions before calling Memory v2 stable.
 - Consider optional LLM-assisted synthesis after deterministic behavior is stable and benchmarked.
