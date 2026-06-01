@@ -3,6 +3,7 @@ import type React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { setApiBaseUrl } from '@/api/base-url'
 import { loadLastCodingWorkspace } from '@/utils/workspace'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { createDefaultAgentStream } from '@/stores/useTeamStore/defaults'
@@ -19,6 +20,13 @@ let isTauri = true
 let platformOs = 'macos'
 let isMobile = false
 let validateError: Error | null = null
+let appBackendStatus: { base_url: string; sidecar_running: boolean; external: boolean; supports_bundled: boolean; servers: unknown[] } | null = {
+  base_url: 'http://127.0.0.1:4082',
+  sidecar_running: true,
+  external: false,
+  supports_bundled: true,
+  servers: [],
+}
 const deleteSessionMutate = mock(() => {})
 const updateSessionTitleMutate = mock(() => {})
 type TestSession = {
@@ -80,6 +88,10 @@ mock.module('framer-motion', () => ({
 
 mock.module('@tauri-apps/plugin-dialog', () => ({
   open: dialogOpen,
+}))
+
+mock.module('@/lib/app-backend', () => ({
+  getAppBackendStatus: mock(async () => appBackendStatus),
 }))
 
 const Icon = () => null
@@ -170,6 +182,14 @@ describe('CodingSidebar workspace trust flow', () => {
     isTauri = true
     platformOs = 'macos'
     isMobile = false
+    setApiBaseUrl('')
+    appBackendStatus = {
+      base_url: 'http://127.0.0.1:4082',
+      sidecar_running: true,
+      external: false,
+      supports_bundled: true,
+      servers: [],
+    }
     useTeamStore.setState({ isTeamWorking: false, sessionId: null })
     navigate.mockClear()
     dialogOpen.mockReset()
@@ -180,22 +200,22 @@ describe('CodingSidebar workspace trust flow', () => {
     validateError = null
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
-      if (url.startsWith('/api/team/workspace/browse')) {
+      if (url.includes('/api/team/workspace/browse')) {
         return new Response(JSON.stringify(browseResponse))
       }
-      if (url.startsWith('/api/team/workspace/validate')) {
+      if (url.includes('/api/team/workspace/validate')) {
         if (validateError) {
           return new Response(JSON.stringify({ detail: validateError.message }), { status: 422 })
         }
         return new Response(JSON.stringify({ workspace: '/repo/project' }))
       }
-      if (url.startsWith('/api/team/workspace/worktrees')) {
+      if (url.includes('/api/team/workspace/worktrees')) {
         return new Response(JSON.stringify([]))
       }
-      if (url.startsWith('/api/team/workspace/tree')) {
+      if (url.includes('/api/team/workspace/tree')) {
         return new Response(JSON.stringify(workspaceTreeResponse()))
       }
-      if (url === '/api/team/sessions/resolve') {
+      if (url.endsWith('/api/team/sessions/resolve')) {
         return new Response(JSON.stringify({
           id: 'resolved-session',
           title: null,
@@ -266,19 +286,19 @@ describe('CodingSidebar workspace trust flow', () => {
     let resolveBody: unknown
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
-      if (url.startsWith('/api/team/workspace/browse')) {
+      if (url.includes('/api/team/workspace/browse')) {
         return new Response(JSON.stringify(browseResponse))
       }
-      if (url.startsWith('/api/team/workspace/validate')) {
+      if (url.includes('/api/team/workspace/validate')) {
         return new Response(JSON.stringify({ workspace: '/repo/project' }))
       }
-      if (url.startsWith('/api/team/workspace/worktrees')) {
+      if (url.includes('/api/team/workspace/worktrees')) {
         return new Response(JSON.stringify([]))
       }
-      if (url.startsWith('/api/team/workspace/tree')) {
+      if (url.includes('/api/team/workspace/tree')) {
         return new Response(JSON.stringify(workspaceTreeResponse()))
       }
-      if (url === '/api/team/sessions/resolve') {
+      if (url.endsWith('/api/team/sessions/resolve')) {
         resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
         return new Response(JSON.stringify({
           id: 'resolved-session',
@@ -394,6 +414,28 @@ describe('CodingSidebar workspace trust flow', () => {
   it('keeps the server-local browser fallback outside desktop', async () => {
     const user = userEvent.setup()
     isTauri = false
+
+    await renderCodingSidebar()
+
+    expect(dialogOpen).not.toHaveBeenCalled()
+    expect(await screen.findByText('/repo/project')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /open this folder/i }))
+
+    expect(screen.getByText('Trust this workspace?')).toBeTruthy()
+    expect(dialogOpen).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('uses the server-local browser when the desktop app is connected to a remote backend', async () => {
+    const user = userEvent.setup()
+    appBackendStatus = {
+      base_url: 'http://192.168.1.20:4082',
+      sidecar_running: false,
+      external: true,
+      supports_bundled: true,
+      servers: [],
+    }
 
     await renderCodingSidebar()
 
@@ -602,7 +644,7 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
-      if (url.startsWith('/api/team/workspace/tree')) {
+      if (url.includes('/api/team/workspace/tree')) {
         return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
       if (url.startsWith('/api/team/workspace/worktrees')) return new Response(JSON.stringify([]))
@@ -644,11 +686,11 @@ describe('CodingSidebar workspace trust flow', () => {
     let resolveBody: unknown
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
-      if (url.startsWith('/api/team/workspace/tree')) {
+      if (url.includes('/api/team/workspace/tree')) {
         return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
       if (url.startsWith('/api/team/workspace/worktrees')) return new Response(JSON.stringify([]))
-      if (url === '/api/team/sessions/resolve') {
+      if (url.endsWith('/api/team/sessions/resolve')) {
         resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
         return new Response(JSON.stringify({
           id: 'resolved-worktree-session',
@@ -716,10 +758,10 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
-      if (url.startsWith('/api/team/workspace/tree')) {
+      if (url.includes('/api/team/workspace/tree')) {
         return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
-      if (url.startsWith('/api/team/workspace/worktrees')) {
+      if (url.includes('/api/team/workspace/worktrees')) {
         if ((init as RequestInit | undefined)?.method === 'DELETE') return new Response(JSON.stringify({ removed: true }))
         return new Response(JSON.stringify([]))
       }
@@ -761,7 +803,7 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
-      if (url.startsWith('/api/team/workspace/tree')) {
+      if (url.includes('/api/team/workspace/tree')) {
         return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
       if (url.startsWith('/api/team/workspace/worktrees')) return new Response(JSON.stringify([]))

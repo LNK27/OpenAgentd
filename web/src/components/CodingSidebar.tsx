@@ -43,7 +43,9 @@ import {
 } from 'lucide-react'
 import { queryKeys } from '@/queries'
 import { useCodingWorkspaceSessionsQuery, useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
+import { apiBaseUrl } from '@/api/base-url'
 import { browseWorkspaces, getCodingWorkspaceTree, listWorktrees, removeWorktree, resolveTeamSession, setCodingWorkspaceVisibility, validateWorkspace } from '@/api/client'
+import { getAppBackendStatus } from '@/lib/app-backend'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { formatRelativeDate } from '@/utils/format'
@@ -74,6 +76,15 @@ function isTransientLoadError(err: unknown): boolean {
 
 function worktreeNameSlug(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/g, '') || 'session'
+}
+
+function isLocalBackendUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase()
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]'
+  } catch {
+    return false
+  }
 }
 
 interface CodingSidebarProps {
@@ -206,6 +217,7 @@ export function CodingSidebar({
 }: CodingSidebarProps) {
   const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
+  const [nativeFolderPickerEnabled, setNativeFolderPickerEnabled] = useState(isTauri)
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
@@ -326,6 +338,18 @@ export function CodingSidebar({
       return
     }
 
+    const backendBaseUrl = apiBaseUrl().replace(/\/api\/?$/, '')
+    const backend = await getAppBackendStatus()
+    const activeBackendBaseUrl = backend?.base_url ?? backendBaseUrl
+    const isAbsoluteBackendUrl = /^https?:\/\//i.test(activeBackendBaseUrl)
+    if ((backend?.external || (!backend && isAbsoluteBackendUrl)) && !isLocalBackendUrl(activeBackendBaseUrl)) {
+      setNativeFolderPickerEnabled(false)
+      openWebWorkspaceDialog()
+      return
+    }
+    setNativeFolderPickerEnabled(true)
+
+    setDialogOpen(true)
     setLoading(true)
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
@@ -340,7 +364,6 @@ export function CodingSidebar({
       setTrustWorkspace(result.workspace)
       setDialogOpen(true)
     } catch (err) {
-      setDialogOpen(true)
       setError(err instanceof Error ? err.message : 'Unable to open workspace')
     } finally {
       setLoading(false)
@@ -966,7 +989,7 @@ export function CodingSidebar({
                 <Button type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
               </DialogFooter>
             </>
-          ) : isTauri && !isTauriMobile ? (
+          ) : nativeFolderPickerEnabled && !isTauriMobile ? (
             <>
               <DialogHeader>
                 <DialogTitle>Open workspace</DialogTitle>

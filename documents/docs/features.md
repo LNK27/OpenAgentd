@@ -194,7 +194,9 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 
 - **Open any local project folder** `[since v1.0]` — server-local paths only.
   Coding mode shows file tree + live git diff (including untracked files) in
-  the side drawer.
+  the side drawer. Desktop uses the native folder picker only for the bundled
+  sidecar or loopback backends; LAN/external backends use the web folder browser
+  so the selected path exists on the backend host.
 - **Git worktree sessions** `[v1.41.0]` — create an isolated git worktree from
   an existing coding workspace, start a new coding session in that worktree,
   list existing worktrees, and remove OpenAgentd-managed worktrees.
