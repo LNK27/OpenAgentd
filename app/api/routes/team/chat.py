@@ -33,6 +33,10 @@ from app.api.schemas.sessions import (
     TeamSessionUpdateRequest,
 )
 from app.api.schemas.team import TeamHistoryMember, TeamHistoryResponse
+from app.api.routes.team.worktrees import (
+    WorktreeCreateRequest,
+    create_coding_workspace_worktree,
+)
 from app.models.chat import ChatSession
 from app.services import (
     agent_service,
@@ -659,20 +663,41 @@ async def resolve_team_session(
         raise HTTPException(
             status_code=422, detail="mode must be 'normal' or 'coding'."
         )
+    model = body.model.strip() if body.model else None
+    thinking_level = body.thinking_level.strip() if body.thinking_level else None
+    if model and not await is_registered_model_id(model):
+        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
+
     workspace = body.workspace
     if body.mode == "normal":
         workspace = None
+        if body.worktree_from or body.worktree_name or body.worktree_branch:
+            raise HTTPException(
+                status_code=422, detail="worktree options require mode='coding'."
+            )
+    elif body.worktree_from or body.worktree_name or body.worktree_branch:
+        if not body.worktree_from or not body.worktree_name:
+            raise HTTPException(
+                status_code=422,
+                detail="worktree_from and worktree_name are required for worktree sessions.",
+            )
+        created_worktree = await create_coding_workspace_worktree(
+            WorktreeCreateRequest(
+                source_workspace=body.worktree_from,
+                name=body.worktree_name,
+                branch=body.worktree_branch,
+            )
+        )
+        workspace = created_worktree.directory
+        # A worktree request always represents a new coding workspace/session,
+        # even if the caller omitted create=true.
+        body.create = True
     elif not workspace:
         raise HTTPException(
             status_code=422, detail="workspace is required when mode='coding'."
         )
     else:
         workspace = _validate_workspace_or_422(workspace)
-
-    model = body.model.strip() if body.model else None
-    thinking_level = body.thinking_level.strip() if body.thinking_level else None
-    if model and not await is_registered_model_id(model):
-        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
 
     async with db.begin():
         session = None

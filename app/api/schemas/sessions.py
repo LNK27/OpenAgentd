@@ -21,6 +21,9 @@ class TeamSessionResolveRequest(BaseModel):
     model: str | None = None
     thinking_level: str | None = None
     create: bool = False
+    worktree_from: str | None = None
+    worktree_name: str | None = None
+    worktree_branch: str | None = None
 
 
 class TeamSessionUpdateRequest(BaseModel):

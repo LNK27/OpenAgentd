@@ -194,6 +194,9 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 - **Open any local project folder** `[since v1.0]` — server-local paths only.
   Coding mode shows file tree + live git diff (including untracked files) in
   the side drawer.
+- **Git worktree sessions** `[v1.41.0]` — create an isolated git worktree from
+  an existing coding workspace, start a new coding session in that worktree,
+  list existing worktrees, and remove OpenAgentd-managed worktrees.
 - **Changed-file highlights in the workspace tree** `[v1.30.0]` — modified and
   untracked files are marked directly in the Files tab, parent folders show a
   changed-state indicator, and the tab badge reports the changed-file count.
