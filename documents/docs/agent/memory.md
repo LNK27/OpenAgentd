@@ -161,9 +161,14 @@ Current helper functions in `app/services/dream.py` can hash/select pending sour
 - timestamp-headed note entries;
 - import files.
 
-Important transition note: the legacy `run_dream` loop still exists for compatibility and still writes the old taxonomy with `dream_log` / `dream_notes_log`. The explicit v2 maintainer `process_memory_sources()` / `run_memory_maintenance()` is the Memory v2 path: it compiles each pending source into a deterministic flat `wiki/*.md` page and upserts `memory_processed_sources`. This first v2 loop is deterministic source compilation, not LLM rewriting/synthesis yet.
+Important transition note: the legacy `run_dream` loop still exists for compatibility and still writes the old taxonomy with `dream_log` / `dream_notes_log`. The explicit v2 maintainer `process_memory_sources()` / `run_memory_maintenance()` is the Memory v2 path. It now does two deterministic steps per pending source:
 
-The deterministic compiler adds frontmatter metadata to each compiled page:
+1. Keep one source-compiled provenance page such as `wiki/session-<uuid>.md`, `wiki/note-entry-<slug>.md`, or `wiki/import-<slug>.md`.
+2. Promote durable, cited statements into curated flat pages such as `wiki/user.md`, `wiki/openagentd.md`, and `wiki/memory-v2.md`.
+
+The curated pages are still simple markdown, not a mandatory taxonomy. Each fact line includes a raw source citation like `[session:<uuid>]`. Dream also records conservative ignored-source notes for opt-out, secret-like, or temporary-noise content without copying the sensitive text.
+
+The deterministic compiler adds frontmatter metadata to source and curated pages:
 
 - `memory_kind`: `conversation`, `note`, or `import` based on source type.
 - `scope`: the raw source type (`session`, `note_entry`, or `import`).
@@ -193,7 +198,7 @@ uv run python -m manual.memory index
 uv run python -m manual.memory vector status
 ```
 
-`manual.memory maintain --limit` calls `process_memory_sources(db, limit=...)`, which consumes pending Memory v2 sources, writes deterministic compiled pages under `wiki/`, and records status in `memory_processed_sources`.
+`manual.memory maintain --limit` calls `process_memory_sources(db, limit=...)`, which consumes pending Memory v2 sources, writes deterministic source pages under `wiki/`, updates curated durable pages when eligible facts are found, refreshes `INDEX.md`, and records status plus changed pages in `memory_processed_sources`.
 
 ---
 

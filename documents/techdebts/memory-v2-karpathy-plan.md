@@ -1,7 +1,7 @@
 ---
 title: Memory v2 — Karpathy-style Dream Wiki Plan
-status: planned
-updated: 2026-05-31
+status: active
+updated: 2026-06-01
 ---
 
 # Memory v2 — Karpathy-style Dream Wiki Plan
@@ -116,6 +116,8 @@ Rules:
 ## Dream maintainer contract
 
 Keep the term **Dream** externally and internally as the user-facing concept. Dream v2 is the wiki maintainer.
+
+Current implementation note: `process_memory_sources()` is deterministic. It keeps raw-source compiled pages for provenance and promotes simple durable statements into curated flat pages (`wiki/user.md`, `wiki/openagentd.md`, `wiki/memory-v2.md`) with inline source citations. This is intentionally conservative and not full LLM synthesis yet.
 
 Dream input:
 
