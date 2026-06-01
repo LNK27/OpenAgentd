@@ -171,6 +171,83 @@ def test_remove_managed_worktree(app_without_team, tmp_path, monkeypatch):
     assert not Path(created["directory"]).exists()
 
 
+def test_remove_managed_worktree_keeps_user_branch(
+    app_without_team, tmp_path, monkeypatch
+):
+    repo = _repo(tmp_path)
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(
+        "app.api.routes.team.worktrees.settings.OPENAGENTD_DATA_DIR",
+        str(data_dir),
+    )
+    client = TestClient(app_without_team)
+    created = client.post(
+        "/api/team/workspace/worktrees",
+        json={
+            "source_workspace": str(repo),
+            "name": "remove-user-branch",
+            "branch": "user/remove-branch",
+        },
+    ).json()
+
+    resp = client.request(
+        "DELETE",
+        "/api/team/workspace/worktrees",
+        json={"source_workspace": str(repo), "directory": created["directory"]},
+    )
+
+    assert resp.status_code == 200
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/heads/user/remove-branch",
+        ],
+        check=True,
+    )
+
+
+def test_remove_managed_worktree_deletes_openagentd_branch(
+    app_without_team, tmp_path, monkeypatch
+):
+    repo = _repo(tmp_path)
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(
+        "app.api.routes.team.worktrees.settings.OPENAGENTD_DATA_DIR",
+        str(data_dir),
+    )
+    client = TestClient(app_without_team)
+    created = client.post(
+        "/api/team/workspace/worktrees",
+        json={"source_workspace": str(repo), "name": "remove-branch"},
+    ).json()
+
+    resp = client.request(
+        "DELETE",
+        "/api/team/workspace/worktrees",
+        json={"source_workspace": str(repo), "directory": created["directory"]},
+    )
+
+    assert resp.status_code == 200
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/heads/openagentd/remove-branch",
+        ],
+        check=False,
+    )
+    assert result.returncode != 0
+
+
 def test_remove_managed_worktree_deletes_registry_entry(
     app_without_team, tmp_path, monkeypatch
 ):
@@ -213,6 +290,85 @@ def test_remove_managed_worktree_deletes_registry_entry(
         for repository in repositories
         for worktree in repository["worktrees"]
     )
+
+
+def test_remove_missing_managed_worktree_cleans_registry(
+    app_without_team, tmp_path, monkeypatch
+):
+    from app.core.db import async_session_factory
+    from app.models.chat import CodingWorkspace
+
+    repo = _repo(tmp_path)
+    data_dir = tmp_path / "data"
+    directory = (
+        data_dir
+        / "worktrees"
+        / f"repo-{hashlib.sha1(str(repo.resolve()).encode('utf-8')).hexdigest()[:10]}"
+        / "missing"
+    )
+    monkeypatch.setattr(
+        "app.api.routes.team.worktrees.settings.OPENAGENTD_DATA_DIR",
+        str(data_dir),
+    )
+
+    async def create_registry_row() -> None:
+        async with async_session_factory() as db:
+            async with db.begin():
+                db.add(
+                    CodingWorkspace(
+                        path=str(repo.resolve()),
+                        kind="repo",
+                        name="repo",
+                    )
+                )
+                db.add(
+                    CodingWorkspace(
+                        path=str(directory),
+                        kind="worktree",
+                        source_path=str(repo.resolve()),
+                        name="missing",
+                        managed=True,
+                    )
+                )
+
+    import asyncio
+
+    asyncio.run(create_registry_row())
+    client = TestClient(app_without_team)
+    resp = client.request(
+        "DELETE",
+        "/api/team/workspace/worktrees",
+        json={"source_workspace": str(repo), "directory": str(directory)},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"removed": True}
+    tree = client.get("/api/team/workspace/tree")
+    assert tree.status_code == 200
+    assert tree.json()["repositories"] == [
+        {"path": str(repo.resolve()), "name": "repo", "worktrees": []}
+    ]
+
+
+def test_find_managed_worktree_source_does_not_create_root(
+    app_without_team, tmp_path, monkeypatch
+):
+    repo = _repo(tmp_path)
+    data_dir = tmp_path / "data"
+    unmanaged = tmp_path / "unmanaged"
+    root = (
+        data_dir
+        / "worktrees"
+        / f"repo-{hashlib.sha1(str(repo.resolve()).encode('utf-8')).hexdigest()[:10]}"
+    )
+    monkeypatch.setattr(
+        "app.api.routes.team.worktrees.settings.OPENAGENTD_DATA_DIR",
+        str(data_dir),
+    )
+    _git(repo, "worktree", "add", "-b", "unmanaged-no-root", str(unmanaged))
+
+    assert find_managed_worktree_source(unmanaged) is None
+    assert not root.exists()
 
 
 def test_find_managed_worktree_source_rejects_external_worktree(

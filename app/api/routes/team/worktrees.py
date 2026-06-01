@@ -112,10 +112,11 @@ def _validate_branch(
     return branch
 
 
-def _worktree_root(source: Path) -> Path:
+def _worktree_root(source: Path, *, create: bool = True) -> Path:
     key = hashlib.sha1(str(source).encode("utf-8")).hexdigest()[:10]
     root = Path(settings.OPENAGENTD_DATA_DIR) / "worktrees" / f"{source.name}-{key}"
-    root.mkdir(parents=True, exist_ok=True)
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
     return root.resolve()
 
 
@@ -175,8 +176,8 @@ def _list_worktree_entries(source: Path) -> list[dict[str, str]]:
     return _parse_worktree_list(result.stdout)
 
 
-def _managed_root(source: Path) -> Path:
-    return _worktree_root(source)
+def _managed_root(source: Path, *, create: bool = True) -> Path:
+    return _worktree_root(source, create=create)
 
 
 def _canonical(path: str | Path) -> str:
@@ -209,7 +210,7 @@ def find_managed_worktree_source(directory: Path) -> str | None:
     source = common_path.parent if common_path.name == ".git" else common_path
     if source == resolved:
         return None
-    expected_root = _worktree_root(source)
+    expected_root = _worktree_root(source, create=False)
     if expected_root not in resolved.parents:
         return None
     return str(source)
@@ -262,7 +263,10 @@ async def remove_coding_workspace_worktree(
         )
     entry = _entry_for_directory(source, directory)
     if entry is None:
-        raise HTTPException(status_code=404, detail="Worktree not found.")
+        async with db_module.async_session_factory() as db:
+            async with db.begin():
+                await mark_coding_workspace_deleted(db, str(directory))
+        return {"removed": True}
 
     removed = _run_git(source, "worktree", "remove", "--force", str(directory))
     if removed.returncode != 0:
@@ -274,7 +278,7 @@ async def remove_coding_workspace_worktree(
         raise HTTPException(status_code=500, detail=detail)
 
     branch = entry.get("branch")
-    if branch:
+    if branch and branch.startswith("openagentd/"):
         _run_git(source, "branch", "-D", branch)
     async with db_module.async_session_factory() as db:
         async with db.begin():
