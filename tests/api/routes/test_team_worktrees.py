@@ -215,6 +215,21 @@ def test_remove_managed_worktree_deletes_registry_entry(
     )
 
 
+def test_find_managed_worktree_source_rejects_external_worktree(
+    app_without_team, tmp_path, monkeypatch
+):
+    repo = _repo(tmp_path)
+    data_dir = tmp_path / "data"
+    unmanaged = tmp_path / "unmanaged"
+    monkeypatch.setattr(
+        "app.api.routes.team.worktrees.settings.OPENAGENTD_DATA_DIR",
+        str(data_dir),
+    )
+    _git(repo, "worktree", "add", "-b", "unmanaged-detect", str(unmanaged))
+
+    assert find_managed_worktree_source(unmanaged) is None
+
+
 def test_remove_rejects_unmanaged_worktree(app_without_team, tmp_path):
     repo = _repo(tmp_path)
     unmanaged = tmp_path / "unmanaged"
