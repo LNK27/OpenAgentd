@@ -32,6 +32,16 @@ class DreamSettings(BaseModel):
         return self
 
 
+class MemoryVectorSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = False
+    backend: str = "disabled"
+    embedding_model: str | None = None
+    dim: int | None = None
+    index_path: str | None = None
+
+
 class RuntimeSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -39,6 +49,7 @@ class RuntimeSettings(BaseModel):
         default_factory=TitleGenerationSettings
     )
     dream: DreamSettings = Field(default_factory=DreamSettings)
+    memory_vector: MemoryVectorSettings = Field(default_factory=MemoryVectorSettings)
 
 
 def runtime_settings_path() -> Path:

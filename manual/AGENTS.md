@@ -114,6 +114,7 @@ uv run python -m manual.mention_attachments
 | `memory.py search QUERY` | Search Memory v2 markdown files; optionally include raw DB messages | `--raw`, `--limit N` |
 | `memory.py maintain` | Run the deterministic Dream v2 maintainer directly; compiles pending sources into flat `wiki/*.md` pages and records `memory_processed_sources` | `--limit N` |
 | `memory.py index` | Print Memory v2 `INDEX.md` or placeholder | — |
+| `memory.py vector status` | Show optional Memory v2 vector backend status (`disabled` by default; `turbovec` currently reports planned/unavailable) | — |
 | `memory_eval_fixture.py` | Seed a synthetic Memory v2 corpus + 32-row JSONL fixture for manual benchmark runs; optionally run the benchmark immediately | `--data PATH`, `--run`, `--mode`, `--top-k`, `--debug-hits`, `--write-candidates` |
 | `memory_bench.py longmemeval` | Run local LongMemEval-style deterministic retrieval harness with negative/abstention and per-type metrics; no dataset download | `--mode raw|wiki|wiki-plus-raw`, `--data PATH`, `--limit N`, `--top-k N`, `--debug-hits`, `--write-candidates` |
 | `wiki.py tree` | Show full wiki tree (system, knowledge dirs, notes) | `--unprocessed` |
@@ -152,6 +153,7 @@ uv run python -m manual.memory tree
 uv run python -m manual.memory search "what does Hoang prefer?"
 uv run python -m manual.memory search "memory schema" --raw --limit 5
 uv run python -m manual.memory index
+uv run python -m manual.memory vector status
 
 # Compile pending Memory v2 sources into flat wiki pages
 uv run python -m manual.memory maintain --limit 1

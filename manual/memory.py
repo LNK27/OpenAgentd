@@ -77,6 +77,17 @@ def cmd_index() -> None:
     )
 
 
+async def cmd_vector_status() -> None:
+    from app.services.memory_vector import get_memory_vector_backend
+
+    backend = get_memory_vector_backend()
+    print(f"backend: {backend.name}")
+    print(f"enabled: {backend.enabled}")
+    reason = getattr(backend, "reason", None)
+    if reason:
+        print(f"reason: {reason}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description="Manual memory v2 commands",
@@ -100,6 +111,9 @@ def main() -> None:
         help=("Maximum pending memory sources to compile into flat wiki pages."),
     )
     sub.add_parser("index", help="Print INDEX.md or index placeholder")
+    vector_p = sub.add_parser("vector", help="Inspect optional vector backend")
+    vector_sub = vector_p.add_subparsers(dest="vector_cmd", required=True)
+    vector_sub.add_parser("status", help="Show configured vector backend status")
 
     args = p.parse_args()
     if args.cmd == "tree":
@@ -110,6 +124,8 @@ def main() -> None:
         sys.exit(asyncio.run(cmd_maintain(args.limit)))
     elif args.cmd == "index":
         cmd_index()
+    elif args.cmd == "vector" and args.vector_cmd == "status":
+        asyncio.run(cmd_vector_status())
 
 
 if __name__ == "__main__":

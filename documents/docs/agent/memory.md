@@ -94,6 +94,19 @@ DB messages are **not** duplicated into `raw/sessions/YYYY-MM-DD/<session-id>.md
 
 Search starts with deterministic token overlap for repeatable tests and benchmarks. Embeddings/vector search are intentionally not part of the MVP.
 
+`app/services/memory_vector.py` defines the optional semantic backend seam for future vector search. The default backend is explicitly `disabled`, so Memory v2 still works without embeddings, native dependencies, or a vector database. Runtime settings accept:
+
+```yaml
+memory_vector:
+  enabled: false
+  backend: disabled  # future: turbovec
+  embedding_model: null
+  dim: null
+  index_path: null
+```
+
+Selecting `backend: turbovec` is recognized as experimental intent but currently reports unavailable; it does not import `turbovec` or change retrieval behavior yet.
+
 ---
 
 ## `memory_search` tool
@@ -175,6 +188,9 @@ uv run python -m manual.memory maintain --limit 1
 
 # Print INDEX.md
 uv run python -m manual.memory index
+
+# Inspect optional semantic vector backend status
+uv run python -m manual.memory vector status
 ```
 
 `manual.memory maintain --limit` calls `process_memory_sources(db, limit=...)`, which consumes pending Memory v2 sources, writes deterministic compiled pages under `wiki/`, and records status in `memory_processed_sources`.
