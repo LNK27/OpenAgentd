@@ -772,15 +772,6 @@ export function CodingSidebar({
                 </LongPressButton>
                 <button
                   type="button"
-                  onClick={() => { void selectWorkspace(path, { create: true }) }}
-                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                  aria-label={`New session in main workspace ${workspaceLabel(path)}`}
-                  title={`New session in main workspace ${workspaceLabel(path)}`}
-                >
-                  <Plus size={11} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
                   onClick={() => { void openWorktreeDialog(path) }}
                   className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                   aria-label={`Create worktree from ${workspaceLabel(path)}`}
@@ -816,6 +807,15 @@ export function CodingSidebar({
                       <span className="min-w-0 flex-1 truncate font-mono">main workspace</span>
                       {sourceHasRunningSession && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-accent)" aria-label="Workspace has running session" />}
                     </LongPressButton>
+                    <button
+                      type="button"
+                      onClick={() => { void selectWorkspace(path, { create: true }) }}
+                      className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                      aria-label={`New session in main workspace ${workspaceLabel(path)}`}
+                      title={`New session in main workspace ${workspaceLabel(path)}`}
+                    >
+                      <Plus size={11} aria-hidden="true" />
+                    </button>
                   </div>
                   {(sourceSessionGroupExpanded || sourceHasRunningSession) && (
                     <WorkspaceSessionList
