@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.41.0 · June 1, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.41.0)
+**Latest release:** v1.42.0 · June 1, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.42.0)
 
 ---
 
@@ -101,6 +101,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Persistent timing on every reply + tool call** `[v1.21.0]` — reply durations
   measure full user-turn wall-clock time; tool durations measure execution time.
   Both stay visible while streaming and after reloading a session.
+- **Effective model on assistant replies** `[v1.42.0]` — assistant footers show
+  the model that produced the reply, including fallback transitions, next to the
+  copy and timing metadata.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Inline auto-attach: mentioned file body is sent on
   the first turn so the agent doesn't need a round-trip `read` call; folder
@@ -163,8 +166,6 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   instead of waiting for the current turn to finish `[v1.25.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
-  Assistant messages persist the model that actually generated each reply; the
-  assistant footer shows that effective model next to copy/time metadata `[v1.42.0]`.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.

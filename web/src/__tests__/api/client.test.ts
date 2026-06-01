@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cancelQueuedTeamMessage, createWorktree, listTeamSessions, postTeamChat, resolveApiUrl, resolveTeamSession, setCodingWorkspaceVisibility, updateTeamSessionTitle, workspaceMediaUrl } from '@/api/client'
+import { cancelQueuedTeamMessage, createWorktree, postTeamChat, resolveApiUrl, resolveTeamSession, setCodingWorkspaceVisibility, updateTeamSessionTitle, workspaceMediaUrl } from '@/api/client'
 
 const originalFetch = globalThis.fetch
 

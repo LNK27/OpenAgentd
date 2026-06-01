@@ -50,6 +50,7 @@ A short list of the most important shipped capabilities. The canonical, version-
 **Persistent memory you can edit.** Karpathy-style wiki: `USER.md` is injected into every prompt, session notes feed the dream agent, and durable knowledge is organized into sources, topics, entities, and comparisons. Browse and edit it from the Wiki panel.
 
 **Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config, or override the lead model/thinking level per session from Session Settings.
+Assistant replies show the effective model that generated them, so fallback or per-session overrides stay visible in history.
 
 **Local-first operations.** Voice input uses your browser or OS speech recognizer without backend audio transcription, scheduled tasks run on cron/interval/one-shot timers, todos update a live board, and the telemetry dashboard stays local with no third-party SaaS.
 
@@ -172,7 +173,7 @@ Switch models with a single line in your agent's `.md` config file. Every provid
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional `CLIPROXY_BASE_URL`) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
-Set a `fallback_model` in your agent config for automatic failover on rate limits or 5xx errors. In the cockpit, Session Settings can override the lead agent's model and thinking level for the current chat; history keeps the model used for each user turn.
+Set a `fallback_model` in your agent config for automatic failover on rate limits or 5xx errors. In the cockpit, Session Settings can override the lead agent's model and thinking level for the current chat; history keeps the model used for each user turn, and assistant reply footers show the effective model that produced the response.
 
 ---
 
