@@ -23,12 +23,7 @@ from app.services.memory import (
     seed_memory,
     write_memory_file,
 )
-from manual.memory_bench import (
-    _coerce_items,
-    _contains_answer,
-    _reciprocal_rank,
-    _retrieve,
-)
+from manual.memory_bench import _coerce_items
 
 
 @pytest.fixture
@@ -72,18 +67,12 @@ def _user_memory_page(body: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_memory_v2_honest_retrieval_eval_fixture(
+async def test_memory_v2_retrieval_fixture_parsing_and_known_false_positive(
     setup_db,
     memory_eval_dir: Path,
     tmp_path: Path,
 ) -> None:
-    """Run a small local eval and assert current honest behavior.
-
-    Current baseline:
-    - positive preference/project questions are retrievable;
-    - explicit lexical retrieval still false-positives on one domain-specific
-      negative preference question. This is recorded, not hidden.
-    """
+    """Unit-level correctness check; full benchmarks live in manual/."""
     from app.core.db import async_session_factory
 
     write_memory_file(
@@ -139,23 +128,21 @@ async def test_memory_v2_honest_retrieval_eval_fixture(
     )
 
     items = _coerce_items(data_path, limit=None)
-    records: list[tuple[str, bool, bool, list[str]]] = []
-    for item in items:
-        hits = await _retrieve(item.query, mode="wiki", top_k=5)
-        if item.is_negative:
-            passed = not hits
-        else:
-            passed = _reciprocal_rank(hits, item.answers) > 0
-            assert _contains_answer(hits, item.answers, k=5)
-        records.append(
-            (item.id, item.is_negative, passed, [hit.source for hit in hits])
-        )
+    positive_hits = search_memory_files(
+        "How should the assistant respond to Hoang?", scope="compiled"
+    )
+    negative_hits = search_memory_files(
+        "What is Hoang's preferred Kubernetes scheduler plugin?", scope="compiled"
+    )
 
-    assert records[0][2] is True
-    assert records[1][2] is True
-    assert records[2][1] is True
-    assert records[2][2] is False
-    assert "wiki:user" in records[2][3]
+    assert [item.id for item in items] == [
+        "pref-style",
+        "memory-goal",
+        "scheduler-negative",
+    ]
+    assert items[-1].is_negative is True
+    assert any("direct fact-based answers" in hit.excerpt for hit in positive_hits)
+    assert any(hit.source_ref == "wiki:user" for hit in negative_hits)
 
 
 @pytest.mark.asyncio

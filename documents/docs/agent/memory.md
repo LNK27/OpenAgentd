@@ -191,6 +191,16 @@ uv run python -m manual.memory_bench longmemeval --mode wiki --limit 20 --top-k 
 uv run python -m manual.memory_bench longmemeval --mode wiki-plus-raw --limit 20 --top-k 10 --data PATH
 ```
 
+For the synthetic Memory v2 regression benchmark, seed a matching local corpus and JSONL fixture from `manual/`:
+
+```bash
+uv run python -m manual.memory_eval_fixture
+uv run python -m manual.memory_eval_fixture --run
+OPENAGENTD_WIKI_DIR=/tmp/openagentd-memory-eval uv run python -m manual.memory_eval_fixture --run
+```
+
+This benchmark is intentionally manual, not a unit test. Unit tests cover parser/search/policy correctness; manual runs record quality metrics and failures.
+
 Outputs are written under:
 
 ```text

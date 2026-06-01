@@ -114,6 +114,7 @@ uv run python -m manual.mention_attachments
 | `memory.py search QUERY` | Search Memory v2 markdown files; optionally include raw DB messages | `--raw`, `--limit N` |
 | `memory.py maintain` | Run the deterministic Dream v2 maintainer directly; compiles pending sources into flat `wiki/*.md` pages and records `memory_processed_sources` | `--limit N` |
 | `memory.py index` | Print Memory v2 `INDEX.md` or placeholder | — |
+| `memory_eval_fixture.py` | Seed a synthetic Memory v2 corpus + 32-row JSONL fixture for manual benchmark runs; optionally run the benchmark immediately | `--data PATH`, `--run`, `--mode`, `--top-k` |
 | `memory_bench.py longmemeval` | Run local LongMemEval-style deterministic retrieval harness with negative/abstention and per-type metrics; no dataset download | `--mode raw|wiki|wiki-plus-raw`, `--data PATH`, `--limit N`, `--top-k N` |
 | `wiki.py tree` | Show full wiki tree (system, knowledge dirs, notes) | `--unprocessed` |
 | `wiki.py read PATH` | Print a wiki file's contents | — |
@@ -160,6 +161,11 @@ uv run python -m manual.memory maintain --limit 1
 uv run python -m manual.memory_bench longmemeval --mode raw --limit 20 --top-k 10 --data PATH
 uv run python -m manual.memory_bench longmemeval --mode wiki --limit 20 --top-k 10 --data PATH
 uv run python -m manual.memory_bench longmemeval --mode wiki-plus-raw --limit 20 --top-k 10 --data PATH
+
+# Seed and run the synthetic Memory v2 benchmark fixture (writes into the configured OPENAGENTD_WIKI_DIR)
+uv run python -m manual.memory_eval_fixture
+uv run python -m manual.memory_eval_fixture --run
+OPENAGENTD_WIKI_DIR=/tmp/openagentd-memory-eval uv run python -m manual.memory_eval_fixture --run
 
 # Show wiki tree (all files)
 uv run python -m manual.wiki tree

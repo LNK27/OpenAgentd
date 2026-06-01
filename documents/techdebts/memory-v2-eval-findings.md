@@ -75,3 +75,48 @@ This is intentionally not a benchmark-specific scoring trick:
 - explicit retrieval metrics are unchanged and can still fail on hard negatives;
 - metadata is visible in markdown frontmatter for debugging;
 - missing metadata falls back to the prior lexical policy rather than hiding results globally.
+
+## 2026-06-01 — Expanded local retrieval fixture
+
+Moved the expanded benchmark out of unit tests and into `manual.memory_eval_fixture`, which seeds a synthetic corpus and writes 32 LongMemEval-style rows:
+
+- 21 positive rows covering `preference`, `response_style`, `project_context`, `memory_system`, and `decision`.
+- 11 negative rows covering `negative_abstention` and `domain_specific_preference`.
+- Corpus: five compiled wiki pages (`wiki/user.md`, a session page, project context, Memory v2 design, and Memory v2 decisions).
+- Retrieval mode: `wiki`, top-k 5.
+
+Honest deterministic retrieval result from `manual.memory_bench` against the same fixture shape:
+
+```json
+{
+  "items": 32,
+  "positive_items": 21,
+  "negative_items": 11,
+  "recall@1": 0.8571428571428571,
+  "recall@5": 1.0,
+  "recall@10": 1.0,
+  "mrr@10": 0.9206349206349206,
+  "abstention_rate": 0.0,
+  "false_positive_rate": 1.0,
+  "failures": 11
+}
+```
+
+Per-type summary:
+
+| Type | Items | Positive | Negative | Recall@1 | Recall@5 | MRR@10 | Abstention | False positives | Failures |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| decision | 5 | 5 | 0 | 1.000 | 1.000 | 1.000 | 0.000 | 0.000 | 0 |
+| memory_system | 5 | 5 | 0 | 0.800 | 1.000 | 0.900 | 0.000 | 0.000 | 0 |
+| preference | 3 | 3 | 0 | 0.667 | 1.000 | 0.778 | 0.000 | 0.000 | 0 |
+| project_context | 6 | 6 | 0 | 1.000 | 1.000 | 1.000 | 0.000 | 0.000 | 0 |
+| response_style | 2 | 2 | 0 | 0.500 | 1.000 | 0.750 | 0.000 | 0.000 | 0 |
+| domain_specific_preference | 2 | 0 | 2 | 0.000 | 0.000 | 0.000 | 0.000 | 1.000 | 2 |
+| negative_abstention | 9 | 0 | 9 | 0.000 | 0.000 | 0.000 | 0.000 | 1.000 | 9 |
+
+Interpretation:
+
+- Positive retrieval is decent on this small synthetic corpus.
+- Explicit lexical retrieval still cannot abstain: every negative row returns at least one hit.
+- Frequent false-positive pattern: broad pages containing `Hoang`, `OpenAgentd`, `Memory v2`, or generic preference words match unrelated unanswerable questions.
+- Automatic `MemoryContextHook` remains stricter than explicit retrieval; explicit benchmark failures are kept visible for future reranking/abstention work.
