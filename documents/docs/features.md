@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.39.0 · May 31, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.39.0)
+**Latest release:** v1.41.0 · June 1, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.41.0)
 
 ---
 
@@ -76,7 +76,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   Cockpit, Coding, Command Palette, Wiki, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
   tray dropdown for status, quick navigation, reload, settings, and quit.
-- **Multiple desktop windows** `[v1.40.0]` — open additional cockpit windows from
+- **Multiple desktop windows** `[v1.41.0]` — open additional cockpit windows from
   File → New Window, the tray menu, or `Cmd/Ctrl+N`; all windows share the same
   sidecar/backend session and desktop auth token.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
@@ -256,7 +256,7 @@ OpenAgentd carries durable, editable memory across sessions. Deeper doc:
   standard repo- and folder-scoped agent context files.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).
-- **Memory v2 / Dream v2 wiki** `[v1.40.0]` — Karpathy-style markdown memory
+- **Memory v2 / Dream v2 wiki** `[v1.41.0]` — Karpathy-style markdown memory
   with `SCHEMA.md`, `INDEX.md`, `LOG.md`, `notes/`, `imports/`, and `wiki/`;
   deterministic Dream maintenance compiles canonical DB sessions, notes, and
   imports into cited active fact bullets; explicit `memory_search`, conservative
