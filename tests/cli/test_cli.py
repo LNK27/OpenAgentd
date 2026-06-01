@@ -18,11 +18,12 @@ from __future__ import annotations
 import os
 import signal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 import app.cli as cli
+from app.cli.net import ServerAddresses
 from app.cli import (
     _config_dir,
     _data_dir,
@@ -33,7 +34,10 @@ from app.cli import (
     _state_dir,
     _write_pids,
     build_parser,
+    cmd_address,
+    cmd_health,
     cmd_logs,
+    cmd_restart,
     cmd_status,
     cmd_stop,
     cmd_version,
@@ -174,13 +178,29 @@ class TestBuildParser:
         assert args.host == "0.0.0.0"
         assert args.port == 9000
 
+    def test_lan_flag(self):
+        args = build_parser().parse_args(["--lan", "start"])
+        assert args.lan is True
+
     def test_stop_subcommand(self):
         args = build_parser().parse_args(["stop"])
         assert args.func is cli.cmd_stop
 
+    def test_restart_subcommand(self):
+        args = build_parser().parse_args(["restart"])
+        assert args.func is cli.cmd_restart
+
     def test_status_subcommand(self):
         args = build_parser().parse_args(["status"])
         assert args.func is cli.cmd_status
+
+    def test_address_subcommand(self):
+        args = build_parser().parse_args(["address"])
+        assert args.func is cli.cmd_address
+
+    def test_health_subcommand(self):
+        args = build_parser().parse_args(["health"])
+        assert args.func is cli.cmd_health
 
     def test_logs_subcommand_defaults(self):
         args = build_parser().parse_args(["logs"])
@@ -198,6 +218,17 @@ class TestBuildParser:
     def test_doctor_subcommand(self):
         args = build_parser().parse_args(["doctor"])
         assert args.func is cli.cmd_doctor
+
+    def test_cleanup_subcommand_defaults(self):
+        args = build_parser().parse_args(["cleanup"])
+        assert args.func is cli.cmd_cleanup
+        assert args.older_than_days == 14
+        assert args.dry_run is True
+        assert args.limit == 50
+
+    def test_cleanup_subcommand_apply(self):
+        args = build_parser().parse_args(["cleanup", "--apply"])
+        assert args.dry_run is False
 
     def test_migrate_openclaw_subcommand(self):
         args = build_parser().parse_args(
@@ -217,9 +248,13 @@ class TestBuildParser:
         assert args.from_dir is None
         assert args.model == "openai:gpt-5.5"
 
-    def test_update_subcommand(self):
-        args = build_parser().parse_args(["update"])
-        assert args.func is cli.cmd_update
+    def test_upgrade_subcommand(self):
+        args = build_parser().parse_args(["upgrade"])
+        assert args.func is cli.cmd_upgrade
+
+    def test_update_subcommand_removed(self):
+        with pytest.raises(SystemExit):
+            build_parser().parse_args(["update"])
 
 
 # ---------------------------------------------------------------------------
@@ -246,11 +281,20 @@ class TestCmdStatus:
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
         own = os.getpid()
         _write_pids([own])
+        monkeypatch.setattr(
+            "app.cli.commands.status.server_addresses",
+            lambda **_kwargs: ServerAddresses(
+                local="http://127.0.0.1:4082", lan=["http://192.168.1.2:4082"]
+            ),
+        )
 
         args = build_parser().parse_args(["status"])
         cmd_status(args)
         out = capsys.readouterr().out
         assert str(own) in out
+        assert "OpenAgentd server" in out
+        assert "http://127.0.0.1:4082" in out
+        assert "http://192.168.1.2:4082" in out
 
     def test_not_running_shows_stopped(self, capsys, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
@@ -259,6 +303,7 @@ class TestCmdStatus:
         cmd_status(args)
         out = capsys.readouterr().out
         assert "stopped" in out
+        assert "openagentd start --lan" in out
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +378,234 @@ class TestCmdStop:
             cmd_stop(args)
 
         assert (own, signal.SIGKILL) in killed
+
+
+# ---------------------------------------------------------------------------
+# cmd_restart
+# ---------------------------------------------------------------------------
+
+
+class TestCmdRestart:
+    def test_restart_stops_when_running_then_starts(self, monkeypatch):
+        import app.cli.commands.restart as restart_mod
+
+        args = build_parser().parse_args(["restart"])
+        calls: list[str] = []
+
+        monkeypatch.setattr(restart_mod, "_find_pids", lambda: [1234])
+        monkeypatch.setattr(restart_mod, "cmd_stop", lambda _args: calls.append("stop"))
+        monkeypatch.setattr(
+            restart_mod, "cmd_start", lambda _args: calls.append("start")
+        )
+
+        cmd_restart(args)
+
+        assert calls == ["stop", "start"]
+
+    def test_restart_starts_when_not_running(self, monkeypatch, capsys):
+        import app.cli.commands.restart as restart_mod
+
+        args = build_parser().parse_args(["restart"])
+        calls: list[str] = []
+
+        monkeypatch.setattr(restart_mod, "_find_pids", lambda: [])
+        monkeypatch.setattr(restart_mod, "cmd_stop", lambda _args: calls.append("stop"))
+        monkeypatch.setattr(
+            restart_mod, "cmd_start", lambda _args: calls.append("start")
+        )
+
+        cmd_restart(args)
+
+        assert calls == ["start"]
+        assert "starting fresh" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# cmd_upgrade
+# ---------------------------------------------------------------------------
+
+
+class TestCmdUpgrade:
+    def test_upgrade_runs_package_manager_without_restart(self, monkeypatch):
+        from app.cli.commands import upgrade as upgrade_mod
+
+        args = build_parser().parse_args(["upgrade"])
+        run_calls: list[list[str]] = []
+
+        monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [])
+        monkeypatch.setattr(
+            upgrade_mod,
+            "_upgrade_command",
+            lambda: ("uv tool", ["uv", "tool", "upgrade", "openagentd"]),
+        )
+        monkeypatch.setattr(
+            upgrade_mod, "_run", lambda command: run_calls.append(command) or 0
+        )
+
+        upgrade_mod.cmd_upgrade(args)
+
+        assert run_calls == [["uv", "tool", "upgrade", "openagentd"]]
+
+    def test_upgrade_stops_and_restarts_when_running(self, monkeypatch):
+        from app.cli.commands import upgrade as upgrade_mod
+
+        args = build_parser().parse_args(
+            ["--host", "0.0.0.0", "--port", "9000", "upgrade"]
+        )
+        stop = Mock()
+        run_calls: list[list[str]] = []
+
+        monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [1234])
+        monkeypatch.setattr(upgrade_mod, "cmd_stop", stop)
+        monkeypatch.setattr(
+            upgrade_mod,
+            "_upgrade_command",
+            lambda: ("pipx", ["pipx", "upgrade", "openagentd"]),
+        )
+        monkeypatch.setattr(
+            upgrade_mod.shutil, "which", lambda _name: "/usr/local/bin/openagentd"
+        )
+        monkeypatch.setattr(
+            upgrade_mod, "_run", lambda command: run_calls.append(command) or 0
+        )
+
+        upgrade_mod.cmd_upgrade(args)
+
+        stop.assert_called_once_with(args)
+        assert run_calls == [
+            ["pipx", "upgrade", "openagentd"],
+            [
+                "/usr/local/bin/openagentd",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "9000",
+                "start",
+            ],
+        ]
+
+    def test_upgrade_restart_preserves_lan_flag(self, monkeypatch):
+        from app.cli.commands import upgrade as upgrade_mod
+
+        args = build_parser().parse_args(["--lan", "upgrade"])
+        run_calls: list[list[str]] = []
+
+        monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [1234])
+        monkeypatch.setattr(upgrade_mod, "cmd_stop", Mock())
+        monkeypatch.setattr(
+            upgrade_mod,
+            "_upgrade_command",
+            lambda: ("pipx", ["pipx", "upgrade", "openagentd"]),
+        )
+        monkeypatch.setattr(upgrade_mod.shutil, "which", lambda _name: "openagentd")
+        monkeypatch.setattr(
+            upgrade_mod, "_run", lambda command: run_calls.append(command) or 0
+        )
+
+        upgrade_mod.cmd_upgrade(args)
+
+        assert run_calls[-1] == ["openagentd", "--lan", "start"]
+
+    def test_upgrade_exits_with_upgrade_failure_after_restart(self, monkeypatch):
+        from app.cli.commands import upgrade as upgrade_mod
+
+        args = build_parser().parse_args(["upgrade"])
+        run_results = iter([7, 0])
+
+        monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [1234])
+        monkeypatch.setattr(upgrade_mod, "cmd_stop", Mock())
+        monkeypatch.setattr(
+            upgrade_mod,
+            "_upgrade_command",
+            lambda: ("pipx", ["pipx", "upgrade", "openagentd"]),
+        )
+        monkeypatch.setattr(upgrade_mod, "_run", lambda _command: next(run_results))
+
+        with pytest.raises(SystemExit) as exc:
+            upgrade_mod.cmd_upgrade(args)
+
+        assert exc.value.code == 7
+
+
+# ---------------------------------------------------------------------------
+# cmd_address
+# ---------------------------------------------------------------------------
+
+
+class TestCmdAddress:
+    def test_address_prints_local_and_lan_urls(self, monkeypatch, capsys):
+        monkeypatch.setattr("app.cli.commands.address._find_pids", lambda: [1234])
+        monkeypatch.setattr(
+            "app.cli.commands.address.server_addresses",
+            lambda **_kwargs: ServerAddresses(
+                local="http://127.0.0.1:4082", lan=["http://192.168.1.2:4082"]
+            ),
+        )
+
+        args = build_parser().parse_args(["address"])
+        cmd_address(args)
+
+        out = capsys.readouterr().out
+        assert "OpenAgentd addresses" in out
+        assert "running" in out
+        assert "http://127.0.0.1:4082" in out
+        assert "http://192.168.1.2:4082" in out
+
+
+# ---------------------------------------------------------------------------
+# cmd_health
+# ---------------------------------------------------------------------------
+
+
+class TestCmdHealth:
+    def test_health_passes_for_reachable_ready_server(self, monkeypatch, capsys):
+        monkeypatch.setattr("app.cli.commands.health._find_pids", lambda: [1234])
+        monkeypatch.setattr("app.cli.commands.health._pid_alive", lambda _pid: True)
+        monkeypatch.setattr(
+            "app.cli.commands.health.is_port_reachable", lambda **_kwargs: True
+        )
+        monkeypatch.setattr(
+            "app.cli.commands.health.server_addresses",
+            lambda **_kwargs: ServerAddresses(
+                local="http://127.0.0.1:4082", lan=["http://192.168.1.2:4082"]
+            ),
+        )
+
+        def fake_fetch(url: str, *, timeout: float = 2.0):
+            assert timeout == 2.0
+            if url.endswith("/live"):
+                return 200, {"version": "1.2.3"}
+            return 200, {"status": "ok"}
+
+        monkeypatch.setattr("app.cli.commands.health._fetch_json", fake_fetch)
+
+        args = build_parser().parse_args(["--lan", "health"])
+        cmd_health(args)
+
+        out = capsys.readouterr().out
+        assert "OpenAgentd server health" in out
+        assert "Process" in out
+        assert "API ready" in out
+        assert "healthy" in out
+
+    def test_health_exits_when_server_down(self, monkeypatch):
+        monkeypatch.setattr("app.cli.commands.health._find_pids", lambda: [])
+        monkeypatch.setattr(
+            "app.cli.commands.health.is_port_reachable", lambda **_kwargs: False
+        )
+        monkeypatch.setattr(
+            "app.cli.commands.health.server_addresses",
+            lambda **_kwargs: ServerAddresses(local="http://127.0.0.1:4082", lan=[]),
+        )
+        monkeypatch.setattr(
+            "app.cli.commands.health._fetch_json", lambda *_args: (0, None)
+        )
+
+        args = build_parser().parse_args(["health"])
+        with pytest.raises(SystemExit) as exc:
+            cmd_health(args)
+
+        assert exc.value.code == 1
 
 
 # ---------------------------------------------------------------------------

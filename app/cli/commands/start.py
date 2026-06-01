@@ -7,6 +7,7 @@ import os
 import subprocess
 
 from app.cli.firstrun import ensure_initialised
+from app.cli.net import server_addresses
 from app.cli.paths import _ROOT, _server_log
 from app.cli.pids import _find_pids, _write_pids
 from app.cli.server import _server_cmd
@@ -23,6 +24,8 @@ def _resolve_port(port: int | None) -> int:
 
 def cmd_start(args: argparse.Namespace) -> None:
     args.port = _resolve_port(args.port)
+    if getattr(args, "lan", False):
+        args.host = "0.0.0.0"
 
     # Bail early if a server is already running — no point prompting the
     # user for init questions only to refuse to start. ``_find_pids`` only
@@ -54,5 +57,9 @@ def cmd_start(args: argparse.Namespace) -> None:
 
     _write_pids([server.pid])
     print(f"  {_dim('Logs:')}  {srv_log}")
+    addresses = server_addresses(host=args.host, port=args.port)
+    if addresses.lan:
+        print(f"  {_dim('LAN:')}   {_bold(addresses.lan[0])}")
+        print(f"  {_dim('Mobile:')} use the LAN address in the mobile app")
     print(f"  {_dim('Stop:')}  {_bold('openagentd stop')}")
     print()

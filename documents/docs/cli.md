@@ -6,6 +6,7 @@ The `openagentd` binary is the single entry point for running, managing, and ins
 
 ```bash
 openagentd                            # start in the background
+openagentd start --lan                # bind on all interfaces for mobile/LAN clients
 ```
 
 **Flags**
@@ -14,8 +15,9 @@ openagentd                            # start in the background
 |---|---|---|
 | `--host` | `127.0.0.1` | Bind address |
 | `--port` | `4082` | API port |
+| `--lan` | off | Bind `0.0.0.0` and print LAN/mobile addresses |
 
-The server runs as a detached background process and exposes the API on port 4082 by default. It does not serve the React Web UI; use the desktop app for the packaged UI or `make dev` from source for Vite + API development. Logs go to `~/.local/state/openagentd/logs/app/app.log`. The server auto-migrates the database on startup.
+The server runs as a detached background process and exposes the API on port 4082 by default. It does not serve the React Web UI; use the desktop app for the packaged UI or `make dev` from source for Vite + API development. Logs go to `~/.local/state/openagentd/logs/app/app.log`. The server auto-migrates the database on startup. For mobile clients on the same network, use `openagentd start --lan`.
 
 If openagentd hasn't been initialised yet, `openagentd` automatically runs `openagentd init` before starting the server.
 
@@ -73,13 +75,46 @@ Sends `SIGTERM` to the background server process. Waits up to 5 seconds for a cl
 
 ---
 
+## restart
+
+```bash
+openagentd restart
+openagentd restart --lan
+```
+
+Stops the background server when it is running, then starts it again. Use `--lan` to restart in mobile/LAN mode.
+
+---
+
 ## status
 
 ```bash
 openagentd status
 ```
 
-Reports whether a background server is running, the PIDs, and the log file path.
+Reports whether a background server is running, the PIDs, local/LAN addresses, and the log file path.
+
+---
+
+## address
+
+```bash
+openagentd address
+openagentd address --lan
+```
+
+Prints the local server URL and detected LAN URLs for desktop/mobile pairing.
+
+---
+
+## health
+
+```bash
+openagentd health
+openagentd health --lan
+```
+
+Runs server-focused diagnostics for desktop/mobile clients: PID state, port reachability, `/api/health/live`, `/api/health/ready`, and LAN binding guidance. Exits non-zero when required server checks fail.
 
 ---
 
@@ -116,14 +151,13 @@ Warnings (degraded but bootable) don't affect the exit code. Run this first when
 
 ---
 
-## update / upgrade
+## upgrade
 
 ```bash
-openagentd upgrade   # preferred
-openagentd update    # alias
+openagentd upgrade
 ```
 
-Upgrades openagentd to the latest published version. Detects how openagentd was installed and delegates to the right package manager:
+Stops the background server if it is running, upgrades openagentd to the latest published version, then restarts the server. Detects how openagentd was installed and delegates to the right package manager:
 
 | Install method | Command run |
 |---|---|

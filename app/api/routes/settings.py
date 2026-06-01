@@ -4,7 +4,7 @@ Exposes the user-editable sandbox deny-list and the provider catalog.
 
 Application updates are deliberately not served here. Desktop bundle users
 trigger updates from the native menu bar (``tauri-plugin-updater``); CLI
-users run ``openagentd update`` (see ``app/cli/commands/update.py``).
+users run ``openagentd upgrade`` (see ``app/cli/commands/upgrade.py``).
 """
 
 from __future__ import annotations

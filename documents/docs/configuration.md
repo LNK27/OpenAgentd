@@ -25,7 +25,7 @@ Everything you need to customise OpenAgentd. The detailed reference is split acr
 
 ```bash
 openagentd init        # interactive wizard — picks provider, seeds config
-openagentd             # start backend + web UI in the background
+openagentd             # start the API server in the background
 openagentd doctor      # health checks
 ```
 
@@ -56,18 +56,22 @@ DB persistence is handled by **`SQLiteCheckpointer`** (passed to `agent.run()`),
 ## Running
 
 ```bash
-openagentd                   # start server + web UI in the background
+openagentd                   # start the API server in the background
+openagentd start --lan       # expose the server to mobile/LAN clients
 openagentd stop              # stop background processes
+openagentd restart           # restart the background server
 openagentd status            # check if running
+openagentd address           # show local and LAN server URLs
+openagentd health            # run server/mobile diagnostics
 openagentd logs              # tail the server log
 openagentd doctor            # check system health
-openagentd upgrade           # update to the latest version
+openagentd upgrade           # stop, upgrade, and restart if running
 ```
 
-Migrations run automatically on startup. Desktop bundle users update via **OpenAgentd → Check for Updates…** in the menu bar; CLI/server users run `openagentd update`.
+Migrations run automatically on startup. Desktop bundle users update via **OpenAgentd → Check for Updates…** in the menu bar; CLI/server users run `openagentd upgrade`.
 
 For frontend + backend development with hot-reload, use `make dev` from a source checkout — uvicorn (`:8000` with `--reload`) + Vite (`:5173`) together.
 
 - API: `http://localhost:4082/api`
 - Interactive docs: `http://localhost:4082/docs`
-- Web UI: `http://localhost:4082`
+- Desktop/mobile clients: use `openagentd address` to find the local or LAN URL

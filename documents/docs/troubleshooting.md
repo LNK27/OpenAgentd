@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common install and runtime issues. Run `openagentd doctor` first — it surfaces most of these automatically.
+Common install and runtime issues. Run `openagentd doctor` for install checks, or `openagentd health` for backend/mobile connectivity checks.
 
 ## Desktop app (most users)
 
@@ -70,6 +70,18 @@ Bun is only needed for development. Production installs (`pip install`) don't re
 
 The FastAPI server is API-only and does not serve the React app. Use the desktop app for the packaged UI, or use `make dev` from a source checkout — it starts uvicorn (:8000) and the Vite dev server (:5173) together with hot-reload.
 
+## Mobile app cannot connect to the server
+
+Start the backend in LAN mode and copy the LAN URL into the mobile app:
+
+```bash
+openagentd start --lan
+openagentd address
+openagentd health
+```
+
+If `health` reports local-only binding, restart with `openagentd restart --lan`. Also make sure your phone and computer are on the same network and that the OS firewall allows inbound connections to port 4082.
+
 ## `GOOGLE_API_KEY not set` or similar provider errors
 
 Copy `.env.example` to the correct location (see [Configuration](configuration.md)) and add your API key. At least one LLM provider key is required.
@@ -80,7 +92,7 @@ The Gemini API rejects JSON Schema fields it doesn't recognise (`discriminator`,
 
 ## SQLite `database is locked` errors
 
-Usually means two server instances are running. Run `openagentd stop`, then `openagentd`.
+Usually means two server instances are running. Run `openagentd restart`, or `openagentd restart --lan` if mobile clients need access.
 
 ## MCP stdio server fails with `ExceptionGroup` or `FileNotFoundError`
 

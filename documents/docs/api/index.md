@@ -233,7 +233,7 @@ exempt regardless of pattern matches.
 Application updates have no HTTP surface: desktop bundle users use the
 Tauri updater from **OpenAgentd → Check for Updates…** or
 **Settings → About → Updates**, and CLI/server users run
-`openagentd update` in the shell that launched the process.
+`openagentd upgrade` in the shell that launched the process.
 
 ## Permission endpoints
 

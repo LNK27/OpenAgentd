@@ -454,6 +454,11 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-cockpit).
 - **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
   `brew install lthoangg/tap/openagentd`.
+- **CLI server control** `[v1.41.0]` — `restart`, `address`, `health`, and
+  `start --lan` make the CLI the control plane for desktop/mobile backends.
+- **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
+  server, delegates to the detected package manager, then restarts it when it
+  was running.
 - **Docker** *(deprecated, removed in v1.23.0)* — the `Dockerfile`,
   `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
   no longer maintained. Use the CLI install paths above; revisit if there

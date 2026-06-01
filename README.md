@@ -105,6 +105,14 @@ openagentd init   # pick provider + API key, install default agents
 openagentd        # API server on http://localhost:4082
 ```
 
+For phones or another desktop on the same network:
+
+```bash
+openagentd start --lan   # bind 0.0.0.0 and print the LAN/mobile URL
+openagentd address       # show local + LAN URLs again later
+openagentd health        # verify the backend is reachable and ready
+```
+
 ![Installing openagentd with uv tool install](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/openagentd-install.gif)
 
 Other install options (pip, pipx, from source) — see [`documents/docs/install.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md).
@@ -112,11 +120,16 @@ Other install options (pip, pipx, from source) — see [`documents/docs/install.
 Useful maintenance commands:
 
 ```bash
+openagentd start --lan          # expose backend to desktop/mobile on your LAN
+openagentd restart              # restart the background server
+openagentd address              # show local and LAN server URLs
+openagentd health               # run server/mobile diagnostics
+openagentd status               # show PID, URLs, and log path
 openagentd logs                 # tail the local server log
 openagentd doctor               # check install health
 openagentd cleanup              # dry-run cleanup for generated artifacts older than 14 days
 openagentd cleanup --apply      # delete the listed generated artifacts
-openagentd update               # update to the latest version
+openagentd upgrade              # stop, upgrade, and restart if running
 ```
 
 Generated artifacts are session-scoped under `.openagentd/sessions/{session_id}/` inside the active workspace. Todos live in `.todos.json`; bulky tool output lives under `.tool_results/`, including shell spills at `.tool_results/shell/`. Normal session workspaces are removed when the session is deleted. Coding sessions keep the project directory but remove that session's `.openagentd/sessions/{session_id}/` metadata.
