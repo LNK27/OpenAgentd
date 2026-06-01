@@ -444,9 +444,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (!agent) break
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks = startCompaction(
-            draft.agentStreams[agent].currentBlocks,
-          )
+          const stream = draft.agentStreams[agent]
+          stream.blocks = startCompaction(stream.blocks)
         })
         break
       }
@@ -457,10 +456,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (!agent || !text) break
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks = appendCompactionContent(
-            draft.agentStreams[agent].currentBlocks,
-            text,
-          )
+          const stream = draft.agentStreams[agent]
+          stream.blocks = appendCompactionContent(stream.blocks, text)
         })
         break
       }
@@ -473,11 +470,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const error = Boolean(meta?.error)
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks = endCompaction(
-            draft.agentStreams[agent].currentBlocks,
-            summary,
-            error,
-          )
+          const stream = draft.agentStreams[agent]
+          stream.blocks = endCompaction(stream.blocks, summary, error)
         })
         break
       }

@@ -634,17 +634,18 @@ describe("_handleSSEEvent: title_update", () => {
 describe("_handleSSEEvent: summarization", () => {
   it("summarization_start appends a compacting block to the agent's currentBlocks", () => {
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe("compaction");
-    expect(blocks[0].extra?.state).toBe("compacting");
+    const stream = useTeamStore.getState().agentStreams.lead;
+    expect(stream.currentBlocks).toHaveLength(0);
+    expect(stream.blocks).toHaveLength(1);
+    expect(stream.blocks[0].type).toBe("compaction");
+    expect(stream.blocks[0].extra?.state).toBe("compacting");
   });
 
   it("summarization_content streams text onto the trailing compacting block", () => {
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
     useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "Hello " });
     useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "world." });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
     expect(blocks[0].content).toBe("Hello world.");
     expect(blocks[0].extra?.state).toBe("compacting");
   });
@@ -656,7 +657,7 @@ describe("_handleSSEEvent: summarization", () => {
       agent: "lead",
       summary: "final summary",
     });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
     expect(blocks).toHaveLength(1);
     expect(blocks[0].extra?.state).toBe("compacted");
     expect(blocks[0].content).toBe("final summary");
@@ -669,7 +670,7 @@ describe("_handleSSEEvent: summarization", () => {
       summary: "",
       metadata: { error: true },
     });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
     expect(blocks[0].extra?.state).toBe("compacted");
     expect(blocks[0].extra?.error).toBe(true);
   });
@@ -679,20 +680,28 @@ describe("_handleSSEEvent: summarization", () => {
     useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "halfway" });
     // Reconnect replay re-emits start — must not append a fresh block.
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
-    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks;
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
     expect(blocks).toHaveLength(1);
     expect(blocks[0].content).toBe("halfway");
   });
 
-  it("compaction blocks flush to blocks on done so they persist across the turn", () => {
+  it("keeps active compaction before later streaming content", () => {
+    useTeamStore.setState({
+      agentStreams: {
+        lead: makeStream({
+          blocks: [{ id: "old", type: "text" as const, content: "before" }],
+          currentBlocks: [{ id: "live", type: "text" as const, content: "streaming" }],
+        }),
+      },
+      agentNames: ["lead"],
+      leadName: "lead",
+    });
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
-    useTeamStore.getState()._handleSSEEvent("summarization_end", { agent: "lead", summary: "done" });
-    useTeamStore.getState()._handleSSEEvent("done", {});
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "summary" });
     const stream = useTeamStore.getState().agentStreams.lead;
-    expect(stream.currentBlocks).toHaveLength(0);
-    expect(stream.blocks).toHaveLength(1);
-    expect(stream.blocks[0].type).toBe("compaction");
-    expect(stream.blocks[0].extra?.state).toBe("compacted");
+    expect(stream.blocks.map((block) => block.type)).toEqual(["text", "compaction"]);
+    expect(stream.currentBlocks.map((block) => block.id)).toEqual(["live"]);
+    expect(stream.blocks[1].content).toBe("summary");
   });
 
   it("ignores events with empty agent", () => {
