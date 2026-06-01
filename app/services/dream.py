@@ -123,6 +123,7 @@ _BOILERPLATE_RE = re.compile(
     re.IGNORECASE,
 )
 _CITATION_RE = re.compile(r"\[(session:[^\]]+|note:[^\]]+|import:[^\]]+)\]")
+_FACT_ID_RE = re.compile(r"\bfact_id=([a-z0-9-]+)\b")
 
 if TYPE_CHECKING:
     import contextvars
@@ -540,6 +541,11 @@ def _memory_topics(text: str) -> list[str]:
     return sorted(token for token, _count in ranked[:8])
 
 
+def _fact_id(statement: str) -> str:
+    digest = hashlib.sha256(_canonical_fact_key(statement).encode("utf-8")).hexdigest()
+    return digest[:12]
+
+
 async def _memory_source_text(db: AsyncSession, source: dict[str, str]) -> str:
     source_type = source["source_type"]
     source_id = source["source_id"]
@@ -679,7 +685,7 @@ def _write_curated_page(slug: str, sections: dict[str, set[str]]) -> bool:
         "",
         f"# {spec['title']}",
         "",
-        "Curated by Dream from durable Memory v2 source pages. Every fact must cite raw source refs.",
+        "Curated by Dream from durable Memory v2 source pages. Active facts are cited bullets with stable `fact_id=...` markers.",
         "",
         "## Facts",
         "",
@@ -748,6 +754,7 @@ def _curated_page_for_statement(statement: str) -> str | None:
 def _canonical_fact_key(statement: str) -> str:
     statement = _CITATION_RE.sub(" ", statement)
     statement = re.sub(r"\bconfidence=\w+\b", " ", statement, flags=re.IGNORECASE)
+    statement = _FACT_ID_RE.sub(" ", statement)
     statement = re.sub(
         r"\b(Hoang|the user) (now )?(prefers?|wants?|uses?)\b",
         r"user \3",
@@ -777,13 +784,18 @@ def _merged_fact_line(existing_line: str, source_ref: str) -> str:
         return existing_line
     refs.add(source_ref)
     merged_refs = " ".join(f"[{ref}]" for ref in sorted(refs))
+    fact_id_match = _FACT_ID_RE.search(existing_line)
+    fact_id = fact_id_match.group(1) if fact_id_match else _fact_id(existing_line)
     base = _CITATION_RE.sub("", existing_line).replace(" confidence=medium", "")
-    return f"{' '.join(base.split())} {merged_refs} confidence=medium"
+    base = _FACT_ID_RE.sub("", base)
+    return f"{' '.join(base.split())} {merged_refs} confidence=medium fact_id={fact_id}"
 
 
 def _fact_line(statement: str, source_ref: str) -> str:
     statement = statement.rstrip(".")
-    return f"- {statement}. [{source_ref}] confidence=medium"
+    return (
+        f"- {statement}. [{source_ref}] confidence=medium fact_id={_fact_id(statement)}"
+    )
 
 
 def _ignored_line(statement: str, source_ref: str) -> str:

@@ -12,7 +12,7 @@ from app.agent.hooks.base import BaseAgentHook
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
 from app.services.memory import MemorySearchResult
 from app.services.memory import memory_root
-from app.services.memory import search_memory_files
+from app.services.memory import search_memory_facts
 
 if TYPE_CHECKING:
     from app.agent.schemas.chat import AssistantMessage
@@ -152,10 +152,9 @@ class MemoryContextHook(BaseAgentHook):
             return await handler(request)
 
         try:
-            results = search_memory_files(
+            results = search_memory_facts(
                 query,
                 limit=MEMORY_CONTEXT_TOP_K,
-                scope="compiled",
             )
         except Exception as exc:
             logger.warning("memory_context_search_failed error={}", exc)
@@ -168,7 +167,7 @@ class MemoryContextHook(BaseAgentHook):
         lines = [
             "## Relevant memory",
             "",
-            "Small, cited snippets that may help personalize this answer. Use only if relevant; do not overfit.",
+            "Cited active memory facts that may help personalize this answer. Use only if relevant; do not overfit.",
         ]
         for result in results:
             location = f" path={result.path}" if result.path else ""
@@ -227,6 +226,8 @@ class MemoryContextHook(BaseAgentHook):
         self, query: str, result: MemorySearchResult
     ) -> bool:
         if not result.path:
+            return False
+        if result.diagnostics.get("fact_section") not in {None, "active"}:
             return False
         metadata = self._memory_metadata(result.path)
         topics = metadata.get("topics")
@@ -289,6 +290,7 @@ class MemoryContextHook(BaseAgentHook):
         return topics
 
     def _meaningful_tokens(self, text: str, *, query: bool = False) -> set[str]:
+        text = re.sub(r"\[[^\]]+:[^\]]+\]", " ", text)
         tokens: set[str] = set()
         for raw in re.findall(r"[a-z0-9]+", text.lower()):
             alias = _AUTO_MEMORY_QUERY_ALIASES if query else _AUTO_MEMORY_TEXT_ALIASES

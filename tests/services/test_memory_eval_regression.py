@@ -69,7 +69,7 @@ def _user_memory_page(body: str) -> str:
         "scope: user\n"
         "topics: [preferences, response-style, personalization]\n"
         "---\n\n"
-        f"# User\n\n{body}"
+        f"# User\n\n## Facts\n\n{body}"
     )
 
 
@@ -85,7 +85,7 @@ async def test_memory_v2_retrieval_fixture_parsing_and_known_false_positive(
     write_memory_file(
         "wiki/user.md",
         _user_memory_page(
-            "Hoang prefers direct fact-based answers and wants implicit personalization.\n"
+            "- Hoang prefers direct fact-based answers and wants implicit personalization. [session:test]\n"
         ),
     )
     session = ChatSession(agent_name="chat", title="memory eval")
@@ -161,7 +161,7 @@ async def test_memory_context_policy_abstains_on_known_negative(
     write_memory_file(
         "wiki/user.md",
         _user_memory_page(
-            "Hoang prefers direct fact-based answers and wants implicit personalization.\n"
+            "- Hoang prefers direct fact-based answers and wants implicit personalization. [session:test]\n"
         ),
     )
 
@@ -179,7 +179,7 @@ async def test_memory_context_policy_injects_relevant_preference(
     write_memory_file(
         "wiki/user.md",
         _user_memory_page(
-            "Hoang prefers direct fact-based answers and wants implicit personalization.\n"
+            "- Hoang prefers direct fact-based answers and wants implicit personalization. [session:test]\n"
         ),
     )
 

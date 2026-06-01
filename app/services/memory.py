@@ -57,6 +57,16 @@ class MemorySearchResult:
     diagnostics: dict[str, object] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class MemoryFact:
+    source_ref: str
+    path: str
+    section: str
+    text: str
+    citations: tuple[str, ...]
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
 _SEARCH_STOPWORDS = {
     "a",
     "an",
@@ -105,6 +115,13 @@ _DOMAIN_PREFERENCE_RE = re.compile(
     r"\b(prefer|prefers|preferred|preference|favorite)\b", re.IGNORECASE
 )
 _USER_MEMORY_QUERY_RE = re.compile(r"\b(hoang|user)\b", re.IGNORECASE)
+_CITATION_RE = re.compile(r"\[([^\]]+:[^\]]+)\]")
+_FACT_SECTIONS = {
+    "## Facts": "active",
+    "## Active facts": "active",
+    "## Current facts": "active",
+    "## Conflicts / stale candidates": "stale",
+}
 
 
 def memory_root() -> Path:
@@ -294,6 +311,54 @@ def _frontmatter_metadata(text: str) -> dict[str, object]:
     }
 
 
+def _strip_frontmatter(text: str) -> str:
+    if not text.lstrip().startswith("---"):
+        return text
+    match = re.match(r"^\s*---\r?\n.*?\r?\n---\r?\n?", text, re.DOTALL)
+    return text[match.end() :] if match else text
+
+
+def _clean_fact_text(line: str) -> str:
+    text = line.strip().removeprefix("- ").strip()
+    text = re.sub(r"\bconfidence=\w+\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bfact_id=[a-z0-9-]+\b", " ", text, flags=re.IGNORECASE)
+    return " ".join(text.split())
+
+
+def extract_memory_facts(rel_path: str, text: str) -> list[MemoryFact]:
+    """Extract cited fact bullets from a compiled wiki page.
+
+    The contract is intentionally plain markdown: cited list items under a
+    `## Facts`-style section are active facts; cited list items under
+    `## Conflicts / stale candidates` are stale candidates. Other sections are
+    provenance/debug content and are not automatic-injection facts.
+    """
+    metadata = _frontmatter_metadata(text)
+    current_section: str | None = None
+    facts: list[MemoryFact] = []
+    for raw_line in _strip_frontmatter(text).splitlines():
+        stripped = raw_line.strip()
+        if stripped.startswith("## "):
+            current_section = _FACT_SECTIONS.get(stripped)
+            continue
+        if current_section is None or not stripped.startswith("- "):
+            continue
+        citations = tuple(sorted(set(_CITATION_RE.findall(stripped))))
+        if not citations:
+            continue
+        facts.append(
+            MemoryFact(
+                source_ref=f"{_source_ref_for_file(rel_path)}#fact-{len(facts) + 1}",
+                path=rel_path,
+                section=current_section,
+                text=_clean_fact_text(stripped),
+                citations=citations,
+                metadata=metadata,
+            )
+        )
+    return facts
+
+
 def _diagnose_file_result(
     query: str,
     query_tokens: set[str],
@@ -326,6 +391,35 @@ def _diagnose_file_result(
         "topic_overlap": topic_overlap,
         "is_domain_preference_query": is_domain_preference,
         "needs_user_evidence": needs_user_evidence,
+    }
+
+
+def _diagnose_fact_result(
+    query: str,
+    query_tokens: set[str],
+    fact: MemoryFact,
+    base_score: float,
+) -> dict[str, object]:
+    text_tokens = set(_tokens(f"{fact.path}\n{fact.text}"))
+    meaningful = _meaningful_query_tokens(query)
+    meaningful_text_tokens = _meaningful_query_tokens(f"{fact.path}\n{fact.text}")
+    topics = fact.metadata.get("topics")
+    topic_set = topics if isinstance(topics, set) else set()
+    topic_overlap = sorted(meaningful & topic_set)
+    return {
+        "base_score": base_score,
+        "matched_tokens": sorted(query_tokens & text_tokens),
+        "missing_meaningful_tokens": sorted(meaningful - meaningful_text_tokens),
+        "matched_meaningful_tokens": sorted(meaningful & meaningful_text_tokens),
+        "memory_kind": fact.metadata.get("memory_kind", ""),
+        "scope": fact.metadata.get("scope", ""),
+        "topics": sorted(topic_set),
+        "topic_overlap": topic_overlap,
+        "is_domain_preference_query": bool(_DOMAIN_PREFERENCE_RE.search(query))
+        and bool(meaningful - topic_set),
+        "needs_user_evidence": bool(_USER_MEMORY_QUERY_RE.search(query)),
+        "fact_section": fact.section,
+        "citations": list(fact.citations),
     }
 
 
@@ -517,6 +611,62 @@ def search_memory_files(
                 diagnostics=diagnostics,
             )
         )
+    return sorted(results, key=lambda r: (-r.score, r.source_ref))[:limit]
+
+
+def search_memory_facts(
+    query: str,
+    *,
+    limit: int = 8,
+    include_stale: bool = False,
+    rerank: bool = True,
+    abstain_weak: bool = True,
+) -> list[MemorySearchResult]:
+    """Search cited fact bullets from compiled `wiki/*.md` pages."""
+    limit = max(1, limit)
+    query_tokens = _scoring_tokens(query)
+    wiki_dir = memory_root() / WIKI_DIR
+    if not wiki_dir.is_dir():
+        return []
+
+    results: list[MemorySearchResult] = []
+    for path in sorted(wiki_dir.iterdir()):
+        if not path.is_file() or path.suffix != ".md":
+            continue
+        rel_path = f"{WIKI_DIR}/{path.name}"
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for fact in extract_memory_facts(rel_path, text):
+            if fact.section != "active" and not include_stale:
+                continue
+            score = _score(query_tokens, f"{fact.path}\n{fact.text}")
+            if score <= 0:
+                continue
+            diagnostics = _diagnose_fact_result(query, query_tokens, fact, score)
+            if abstain_weak and (
+                should_abstain_file_result(diagnostics)
+                or not _candidate_has_answer_evidence(diagnostics)
+            ):
+                continue
+            final_score = _reranked_file_score(score, diagnostics) if rerank else score
+            if fact.section != "active":
+                final_score *= 0.25
+                multiplier = diagnostics.get("rerank_multiplier")
+                diagnostics["rerank_multiplier"] = (
+                    multiplier * 0.25 if isinstance(multiplier, float) else 0.25
+                )
+            results.append(
+                MemorySearchResult(
+                    source_ref=fact.source_ref,
+                    path=fact.path,
+                    title=f"{fact.path} {fact.section} fact",
+                    excerpt=fact.text,
+                    score=final_score,
+                    diagnostics=diagnostics,
+                )
+            )
     return sorted(results, key=lambda r: (-r.score, r.source_ref))[:limit]
 
 

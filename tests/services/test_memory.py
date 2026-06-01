@@ -9,10 +9,12 @@ from app.services.memory import (
     IMPORTS_DIR,
     SCHEMA_FILE,
     WIKI_DIR,
+    extract_memory_facts,
     list_memory_tree,
     memory_root,
     memory_search,
     read_memory_file,
+    search_memory_facts,
     search_memory_files,
     search_memory_messages,
     seed_memory,
@@ -83,6 +85,96 @@ def test_search_memory_files_returns_cited_ranked_results(memory_dir: Path) -> N
     assert results[0].source_ref == "wiki:user"
     assert results[0].path == "wiki/user.md"
     assert "Hoang prefers" in results[0].excerpt
+
+
+def test_extract_memory_facts_reads_active_and_stale_cited_bullets() -> None:
+    text = (
+        "---\nmemory_kind: profile\nscope: user\ntopics: [preferences]\n---\n\n"
+        "# User\n\n"
+        "## Facts\n\n"
+        "- Hoang prefers direct answers. [session:abc] confidence=medium fact_id=abc123\n\n"
+        "## Conflicts / stale candidates\n\n"
+        "- Hoang used to prefer terse answers. [session:old]\n\n"
+        "## Ignored source notes\n\n"
+        "- Skipped possible noise. [session:skip]\n"
+    )
+
+    facts = extract_memory_facts("wiki/user.md", text)
+
+    assert [(fact.section, fact.citations) for fact in facts] == [
+        ("active", ("session:abc",)),
+        ("stale", ("session:old",)),
+    ]
+    assert facts[0].text == "Hoang prefers direct answers. [session:abc]"
+
+
+def test_search_memory_facts_returns_active_cited_fact_not_whole_page(
+    memory_dir: Path,
+) -> None:
+    seed_memory()
+    write_memory_file(
+        "wiki/user.md",
+        "---\n"
+        "description: User preferences\n"
+        "memory_kind: profile\n"
+        "scope: user\n"
+        "topics: [preferences, response-style]\n"
+        "---\n\n"
+        "# User\n\n"
+        "## Facts\n\n"
+        "- Hoang prefers direct fact-based answers. [session:new]\n\n"
+        "## Conflicts / stale candidates\n\n"
+        "- Hoang prefers verbose answers. [session:old]\n",
+    )
+
+    results = search_memory_facts("How should you answer Hoang?", limit=3)
+
+    assert [result.source_ref for result in results] == ["wiki:user#fact-1"]
+    assert (
+        results[0].excerpt == "Hoang prefers direct fact-based answers. [session:new]"
+    )
+    assert results[0].diagnostics["fact_section"] == "active"
+
+
+def test_search_memory_facts_can_expose_stale_candidates_for_debug(
+    memory_dir: Path,
+) -> None:
+    seed_memory()
+    write_memory_file(
+        "wiki/user.md",
+        "# User\n\n"
+        "## Facts\n\n"
+        "- Hoang prefers direct answers. [session:new]\n\n"
+        "## Conflicts / stale candidates\n\n"
+        "- Hoang prefers terse answers. [session:old]\n",
+    )
+
+    strict = search_memory_facts("terse answers", limit=3)
+    debug = search_memory_facts("terse answers", limit=3, include_stale=True)
+
+    assert all(result.diagnostics["fact_section"] == "active" for result in strict)
+    assert any(result.diagnostics["fact_section"] == "stale" for result in debug)
+
+
+def test_search_memory_facts_returns_negated_active_fact_when_supported(
+    memory_dir: Path,
+) -> None:
+    seed_memory()
+    write_memory_file(
+        "wiki/decisions.md",
+        "# Decisions\n\n"
+        "## Facts\n\n"
+        "- Memory v2 has no mandatory root USER.md taxonomy. [session:new]\n\n"
+        "## Conflicts / stale candidates\n\n"
+        "- USER.md was mandatory. [session:old]\n",
+    )
+
+    results = search_memory_facts(
+        "What mandatory root USER.md taxonomy does Memory v2 require?", limit=3
+    )
+
+    assert [result.source_ref for result in results] == ["wiki:decisions#fact-1"]
+    assert "no mandatory root USER.md taxonomy" in results[0].excerpt
 
 
 def test_search_memory_files_normalizes_non_positive_limits(memory_dir: Path) -> None:
