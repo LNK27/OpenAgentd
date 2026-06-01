@@ -54,6 +54,44 @@ class MemorySearchResult:
     title: str
     excerpt: str
     score: float
+    diagnostics: dict[str, object] = field(default_factory=dict)
+
+
+_SEARCH_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "does",
+    "for",
+    "how",
+    "is",
+    "of",
+    "s",
+    "the",
+    "to",
+    "what",
+    "which",
+}
+_TOPIC_ALIASES = {
+    "answer": "response-style",
+    "answers": "response-style",
+    "answering": "response-style",
+    "direct": "response-style",
+    "respond": "response-style",
+    "response": "response-style",
+    "responses": "response-style",
+    "personalization": "personalization",
+    "personalisation": "personalization",
+    "prefer": "preferences",
+    "preferred": "preferences",
+    "preference": "preferences",
+    "preferences": "preferences",
+    "prefers": "preferences",
+}
+_DOMAIN_PREFERENCE_RE = re.compile(
+    r"\b(prefer|prefers|preferred|preference|favorite)\b", re.IGNORECASE
+)
 
 
 def memory_root() -> Path:
@@ -208,6 +246,106 @@ def _tokens(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
+def _meaningful_query_tokens(query: str) -> set[str]:
+    return {
+        _TOPIC_ALIASES.get(token, token)
+        for token in _tokens(query)
+        if token not in _SEARCH_STOPWORDS
+    }
+
+
+def _frontmatter_metadata(text: str) -> dict[str, object]:
+    if not text.lstrip().startswith("---"):
+        return {}
+    match = re.match(r"^\s*---\r?\n(.*?)\r?\n---", text, re.DOTALL)
+    if not match:
+        return {}
+    try:
+        import yaml
+
+        data = yaml.safe_load(match.group(1)) or {}
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    topics: set[str] = set()
+    raw_topics = data.get("topics")
+    if isinstance(raw_topics, list):
+        topics = {
+            str(topic).strip().lower() for topic in raw_topics if str(topic).strip()
+        }
+    return {
+        "memory_kind": str(data.get("memory_kind", "")).strip().lower(),
+        "scope": str(data.get("scope", "")).strip().lower(),
+        "topics": topics,
+    }
+
+
+def _diagnose_file_result(
+    query: str,
+    query_tokens: set[str],
+    rel_path: str,
+    text: str,
+    base_score: float,
+) -> dict[str, object]:
+    text_tokens = set(_tokens(f"{rel_path}\n{text}"))
+    meaningful = _meaningful_query_tokens(query)
+    metadata = _frontmatter_metadata(text)
+    topics = metadata.get("topics")
+    topic_set = topics if isinstance(topics, set) else set()
+    matched_tokens = sorted(query_tokens & text_tokens)
+    meaningful_matched = sorted(meaningful & text_tokens)
+    meaningful_missing = sorted(meaningful - text_tokens)
+    topic_overlap = sorted(meaningful & topic_set)
+    is_domain_preference = bool(_DOMAIN_PREFERENCE_RE.search(query)) and bool(
+        meaningful - topic_set
+    )
+    return {
+        "base_score": base_score,
+        "matched_tokens": matched_tokens,
+        "missing_meaningful_tokens": meaningful_missing,
+        "matched_meaningful_tokens": meaningful_matched,
+        "memory_kind": metadata.get("memory_kind", ""),
+        "scope": metadata.get("scope", ""),
+        "topics": sorted(topic_set),
+        "topic_overlap": topic_overlap,
+        "is_domain_preference_query": is_domain_preference,
+    }
+
+
+def _reranked_file_score(score: float, diagnostics: dict[str, object]) -> float:
+    reranked = score
+    topic_overlap = diagnostics.get("topic_overlap")
+    matched_meaningful = diagnostics.get("matched_meaningful_tokens")
+    topics = diagnostics.get("topics")
+    if isinstance(topic_overlap, list) and topic_overlap:
+        reranked *= 1.35
+    if isinstance(matched_meaningful, list) and len(matched_meaningful) >= 2:
+        reranked *= 1.15
+    if diagnostics.get("is_domain_preference_query") and isinstance(topics, list):
+        reranked *= 0.2 if not topic_overlap else 0.6
+    diagnostics["rerank_multiplier"] = reranked / score if score else 0.0
+    return reranked
+
+
+def should_abstain_file_result(diagnostics: dict[str, object]) -> bool:
+    """Return whether a file hit is too weak for explicit answer retrieval.
+
+    The rule is intentionally general and debuggable: domain-specific
+    preference questions need at least one non-generic meaningful token match
+    against page topics. Candidate hits are still visible when callers request
+    candidate diagnostics from the benchmark harness.
+    """
+    if not diagnostics.get("is_domain_preference_query"):
+        return False
+    topics = diagnostics.get("topics")
+    topic_overlap = diagnostics.get("topic_overlap")
+    if not isinstance(topics, list) or not isinstance(topic_overlap, list):
+        return False
+    non_generic_overlap = set(topic_overlap) - {"preferences"}
+    return not non_generic_overlap
+
+
 def _score(query_tokens: set[str], text: str) -> float:
     if not query_tokens:
         return 0.0
@@ -251,7 +389,12 @@ def _source_ref_for_file(rel_path: str) -> str:
 
 
 def search_memory_files(
-    query: str, *, limit: int = 8, scope: str = "all"
+    query: str,
+    *,
+    limit: int = 8,
+    scope: str = "all",
+    rerank: bool = True,
+    abstain_weak: bool = True,
 ) -> list[MemorySearchResult]:
     """Search memory markdown files deterministically by token overlap."""
     limit = max(1, limit)
@@ -287,13 +430,18 @@ def search_memory_files(
         score = _score(query_tokens, f"{rel_path}\n{text}")
         if score <= 0:
             continue
+        diagnostics = _diagnose_file_result(query, query_tokens, rel_path, text, score)
+        if abstain_weak and should_abstain_file_result(diagnostics):
+            continue
+        final_score = _reranked_file_score(score, diagnostics) if rerank else score
         results.append(
             MemorySearchResult(
                 source_ref=_source_ref_for_file(rel_path),
                 path=rel_path,
                 title=rel_path,
                 excerpt=_excerpt(text, query_tokens),
-                score=score,
+                score=final_score,
+                diagnostics=diagnostics,
             )
         )
     return sorted(results, key=lambda r: (-r.score, r.source_ref))[:limit]
@@ -337,11 +485,18 @@ async def search_memory_messages(
 
 
 async def memory_search(
-    query: str, *, db: AsyncSession | None = None, limit: int = 8
+    query: str,
+    *,
+    db: AsyncSession | None = None,
+    limit: int = 8,
+    rerank: bool = True,
+    abstain_weak: bool = True,
 ) -> list[MemorySearchResult]:
     """Search wiki, raw files, and optionally DB messages."""
     limit = max(1, limit)
-    results = search_memory_files(query, limit=limit)
+    results = search_memory_files(
+        query, limit=limit, rerank=rerank, abstain_weak=abstain_weak
+    )
     if db is not None:
         results.extend(await search_memory_messages(db, query, limit=limit))
     return sorted(results, key=lambda r: (-r.score, r.source_ref))[:limit]

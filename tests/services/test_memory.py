@@ -109,6 +109,37 @@ def test_search_memory_files_compiled_scope_excludes_raw_notes(
     assert results == []
 
 
+def test_search_memory_files_abstains_on_weak_domain_preference(
+    memory_dir: Path,
+) -> None:
+    seed_memory()
+    write_memory_file(
+        "wiki/user.md",
+        "---\n"
+        "description: User preferences\n"
+        "memory_kind: profile\n"
+        "scope: user\n"
+        "topics: [preferences, response-style]\n"
+        "---\n\n"
+        "# User\n\nHoang prefers direct fact-based answers.",
+    )
+
+    strict = search_memory_files(
+        "What is Hoang's preferred Kubernetes scheduler plugin?",
+        scope="compiled",
+    )
+    candidates = search_memory_files(
+        "What is Hoang's preferred Kubernetes scheduler plugin?",
+        scope="compiled",
+        abstain_weak=False,
+    )
+
+    assert strict == []
+    assert candidates[0].source_ref == "wiki:user"
+    assert candidates[0].diagnostics["is_domain_preference_query"] is True
+    assert candidates[0].diagnostics["topic_overlap"] == ["preferences"]
+
+
 def test_read_write_memory_file_round_trip(memory_dir: Path) -> None:
     seed_memory()
 

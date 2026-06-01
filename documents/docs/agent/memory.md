@@ -189,6 +189,7 @@ uv run python -m manual.memory index
 uv run python -m manual.memory_bench longmemeval --mode raw --limit 20 --top-k 10 --data PATH
 uv run python -m manual.memory_bench longmemeval --mode wiki --limit 20 --top-k 10 --data PATH
 uv run python -m manual.memory_bench longmemeval --mode wiki-plus-raw --limit 20 --top-k 10 --data PATH
+uv run python -m manual.memory_bench longmemeval --mode wiki --top-k 5 --data PATH --debug-hits --write-candidates
 ```
 
 For the synthetic Memory v2 regression benchmark, seed a matching local corpus and JSONL fixture from `manual/`:
@@ -196,6 +197,7 @@ For the synthetic Memory v2 regression benchmark, seed a matching local corpus a
 ```bash
 uv run python -m manual.memory_eval_fixture
 uv run python -m manual.memory_eval_fixture --run
+uv run python -m manual.memory_eval_fixture --run --debug-hits --write-candidates
 OPENAGENTD_WIKI_DIR=/tmp/openagentd-memory-eval uv run python -m manual.memory_eval_fixture --run
 ```
 
@@ -209,8 +211,11 @@ Outputs are written under:
   results.jsonl
   metrics.json
   failures.jsonl
+  candidates.jsonl  # when --write-candidates is set
   report.md
 ```
+
+Use `--debug-hits` to include matched tokens, missing meaningful tokens, page topics, topic overlap, and rerank multipliers on each result. Use `--write-candidates` to write pre-abstention candidates plus dropped/kept source lists for failure analysis.
 
 Current metrics:
 

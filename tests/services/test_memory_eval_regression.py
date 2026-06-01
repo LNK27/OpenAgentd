@@ -132,7 +132,9 @@ async def test_memory_v2_retrieval_fixture_parsing_and_known_false_positive(
         "How should the assistant respond to Hoang?", scope="compiled"
     )
     negative_hits = search_memory_files(
-        "What is Hoang's preferred Kubernetes scheduler plugin?", scope="compiled"
+        "What is Hoang's preferred Kubernetes scheduler plugin?",
+        scope="compiled",
+        abstain_weak=False,
     )
 
     assert [item.id for item in items] == [

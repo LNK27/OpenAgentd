@@ -333,6 +333,8 @@ async def _run(args: argparse.Namespace) -> None:
             limit=args.limit,
             top_k=args.top_k,
             data=args.data,
+            debug_hits=args.debug_hits,
+            write_candidates=args.write_candidates,
         )
     else:
         print(
@@ -356,6 +358,8 @@ def main() -> None:
     )
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--debug-hits", action="store_true")
+    parser.add_argument("--write-candidates", action="store_true")
     args = parser.parse_args()
     asyncio.run(_run(args))
 

@@ -44,7 +44,6 @@ _AUTO_MEMORY_STOPWORDS = {
     "what",
     "you",
 }
-_AUTO_MEMORY_IDENTITY_TOKENS = {"hoang", "user"}
 _AUTO_MEMORY_ALIASES = {
     "answer": "answer",
     "answers": "answer",
@@ -220,8 +219,6 @@ class MemoryContextHook(BaseAgentHook):
         for raw in re.findall(r"[a-z0-9]+", text.lower()):
             token = _AUTO_MEMORY_ALIASES.get(raw, raw)
             if token in _AUTO_MEMORY_STOPWORDS:
-                continue
-            if token in _AUTO_MEMORY_IDENTITY_TOKENS:
                 continue
             tokens.add(token)
         return tokens

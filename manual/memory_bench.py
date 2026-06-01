@@ -47,6 +47,7 @@ class RetrievalHit:
     source: str
     score: float
     text: str
+    diagnostics: dict[str, Any] | None = None
 
 
 def _tokens(text: str) -> set[str]:
@@ -128,16 +129,28 @@ def _is_negative_row(row: dict[str, Any], answers: list[str]) -> bool:
     return not answers
 
 
-async def _retrieve(query: str, *, mode: str, top_k: int) -> list[RetrievalHit]:
+async def _retrieve(
+    query: str, *, mode: str, top_k: int, candidates: bool = False
+) -> list[RetrievalHit]:
     """Run the same deterministic retrieval service used by `memory_search`."""
     if mode == "wiki":
-        results = memory.search_memory_files(query, limit=top_k, scope="compiled")
+        results = memory.search_memory_files(
+            query,
+            limit=top_k,
+            scope="compiled",
+            abstain_weak=not candidates,
+        )
     else:
         async with async_session_factory() as db:
             if mode == "raw":
                 results = await memory.search_memory_messages(db, query, limit=top_k)
             else:
-                results = await memory.memory_search(query, db=db, limit=top_k)
+                results = await memory.memory_search(
+                    query,
+                    db=db,
+                    limit=top_k,
+                    abstain_weak=not candidates,
+                )
     return [
         RetrievalHit(
             source=result.source_ref,
@@ -145,6 +158,7 @@ async def _retrieve(query: str, *, mode: str, top_k: int) -> list[RetrievalHit]:
             text=result.excerpt
             if result.path is None
             else memory.read_memory_file(result.path).content,
+            diagnostics=result.diagnostics or None,
         )
         for result in results
     ]
@@ -232,7 +246,13 @@ def _finalize_stats(stats: dict[str, float | int]) -> dict[str, float | int]:
 
 
 async def cmd_longmemeval(
-    *, mode: str, limit: int | None, top_k: int, data: Path
+    *,
+    mode: str,
+    limit: int | None,
+    top_k: int,
+    data: Path,
+    debug_hits: bool = False,
+    write_candidates: bool = False,
 ) -> None:
     run_dir = Path(".openagentd/evals/runs") / datetime.now(timezone.utc).strftime(
         "%Y%m%dT%H%M%S%fZ"
@@ -245,6 +265,8 @@ async def cmd_longmemeval(
         "limit": limit,
         "top_k": top_k,
         "data": str(data),
+        "debug_hits": debug_hits,
+        "write_candidates": write_candidates,
     }
     _write_json(run_dir / "config.json", config)
 
@@ -255,8 +277,18 @@ async def cmd_longmemeval(
         (run_dir / "results.jsonl").open("w", encoding="utf-8") as results_f,
         (run_dir / "failures.jsonl").open("w", encoding="utf-8") as failures_f,
     ):
+        candidates_f = (
+            (run_dir / "candidates.jsonl").open("w", encoding="utf-8")
+            if write_candidates
+            else None
+        )
         for item in items:
             hits = await _retrieve(item.query, mode=mode, top_k=top_k)
+            candidates = (
+                await _retrieve(item.query, mode=mode, top_k=top_k, candidates=True)
+                if write_candidates
+                else []
+            )
             record = {
                 "id": item.id,
                 "query": item.query,
@@ -265,6 +297,9 @@ async def cmd_longmemeval(
                 "negative": item.is_negative,
                 "hits": [asdict(h) for h in hits],
             }
+            if not debug_hits:
+                for hit in record["hits"]:
+                    hit.pop("diagnostics", None)
             rr = _reciprocal_rank(hits, item.answers)
             passed = _record_item(overall, item=item, hits=hits, rr=rr)
             type_stats = by_type.setdefault(item.question_type, _empty_stats())
@@ -274,6 +309,23 @@ async def cmd_longmemeval(
             results_f.write(json.dumps(record, sort_keys=True) + "\n")
             if not passed:
                 failures_f.write(json.dumps(record, sort_keys=True) + "\n")
+            if candidates_f is not None:
+                candidate_record = {
+                    "id": item.id,
+                    "query": item.query,
+                    "type": item.question_type,
+                    "negative": item.is_negative,
+                    "candidates": [asdict(h) for h in candidates],
+                    "kept_sources": [h.source for h in hits],
+                    "dropped_sources": [
+                        h.source
+                        for h in candidates
+                        if h.source not in {r.source for r in hits}
+                    ],
+                }
+                candidates_f.write(json.dumps(candidate_record, sort_keys=True) + "\n")
+        if candidates_f is not None:
+            candidates_f.close()
 
     metrics = _finalize_stats(overall)
     metrics["by_type"] = {
@@ -297,6 +349,8 @@ async def cmd_longmemeval(
             f"- Abstention rate: {metrics['abstention_rate']:.3f}",
             f"- False positive rate: {metrics['false_positive_rate']:.3f}",
             f"- Failures: {metrics['failures']}",
+            f"- Debug hits: `{debug_hits}`",
+            f"- Candidate artifacts: `{write_candidates}`",
             "",
             "## Per-type metrics",
             "",
@@ -336,6 +390,16 @@ def main() -> None:
     lm.add_argument("--limit", type=int, default=None)
     lm.add_argument("--top-k", type=int, default=10)
     lm.add_argument(
+        "--debug-hits",
+        action="store_true",
+        help="Include retrieval diagnostics on each kept hit",
+    )
+    lm.add_argument(
+        "--write-candidates",
+        action="store_true",
+        help="Write candidates.jsonl with pre-abstention candidates and dropped sources",
+    )
+    lm.add_argument(
         "--data",
         type=Path,
         required=True,
@@ -346,7 +410,12 @@ def main() -> None:
     if args.cmd == "longmemeval":
         asyncio.run(
             cmd_longmemeval(
-                mode=args.mode, limit=args.limit, top_k=args.top_k, data=args.data
+                mode=args.mode,
+                limit=args.limit,
+                top_k=args.top_k,
+                data=args.data,
+                debug_hits=args.debug_hits,
+                write_candidates=args.write_candidates,
             )
         )
 
