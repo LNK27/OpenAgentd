@@ -163,7 +163,8 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   instead of waiting for the current turn to finish `[v1.25.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
-  Assistant messages persist the model that actually generated each reply.
+  Assistant messages persist the model that actually generated each reply; the
+  assistant footer shows that effective model next to copy/time metadata `[v1.42.0]`.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.

@@ -31,6 +31,11 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`
 }
 
+function shortModelName(modelId: string | null | undefined): string | null {
+  if (!modelId) return null
+  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
+}
+
 export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   // Me lastTurnText walks back to the previous user block; pass the turn directly
@@ -41,9 +46,14 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
     .reverse()
     .find((b) => typeof b.responseDurationMs === 'number')
     ?.responseDurationMs
+  const modelId = [...turnBlocks]
+    .reverse()
+    .map((b) => b.extra?.model)
+    .find((model): model is string => typeof model === 'string')
+  const modelName = shortModelName(modelId)
   const canContinue = Boolean(onContinue && (textContent || turnBlocks.some((b) => b.type === 'tool')))
 
-  if (!textContent && !timestamp && !canContinue && responseDurationMs === undefined) return null
+  if (!textContent && !timestamp && !canContinue && responseDurationMs === undefined && !modelName) return null
 
   const handleCopy = async () => {
     try {
@@ -81,6 +91,11 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
         </button>
       )}
       {timestamp && <span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>}
+      {modelName && (
+        <span className="font-mono text-(--color-text-subtle) text-xs" title={modelId ?? undefined}>
+          {modelName}
+        </span>
+      )}
       {responseDurationMs !== undefined && (
         <span className="font-mono text-(--color-text-subtle) text-xs" title="Response duration">
           {formatDuration(responseDurationMs)}
