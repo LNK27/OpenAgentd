@@ -416,8 +416,9 @@ async def test_process_memory_sources_writes_compiled_wiki_page(
 
     assert result == {"processed": 1, "failed": 0, "remaining": 0}
     wiki_files = sorted((_wiki_dir / "wiki").glob("*.md"))
-    assert len(wiki_files) == 1
-    content = wiki_files[0].read_text(encoding="utf-8")
+    assert len(wiki_files) == 2
+    source_page = next(path for path in wiki_files if path.name.startswith("session-"))
+    content = source_page.read_text(encoding="utf-8")
     assert "Hoang prefers detailed fact-based answers" in content
     assert f"session:{session.id}" in content
     assert "memory_kind: conversation" in content
@@ -435,7 +436,95 @@ async def test_process_memory_sources_writes_compiled_wiki_page(
             )
         ).one()
     assert row.status == "processed"
-    assert json.loads(row.pages_changed or "[]") == [f"wiki/{wiki_files[0].name}"]
+    assert json.loads(row.pages_changed or "[]") == [
+        f"wiki/{source_page.name}",
+        "wiki/user.md",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_process_memory_sources_writes_curated_durable_pages(
+    setup_db, _wiki_dir: Path
+):
+    from app.core.db import async_session_factory
+
+    session = ChatSession(agent_name="test-agent", title="Memory plan")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(
+            SessionMessage(
+                session_id=session.id,
+                role="user",
+                content=(
+                    "Hoang prefers direct answers. "
+                    "OpenAgentd uses FastAPI and React. "
+                    "Memory v2 uses a Karpathy-style markdown wiki. "
+                    "Do not remember this secret token abc123."
+                ),
+            )
+        )
+        await db.commit()
+
+    async with async_session_factory() as db:
+        result = await process_memory_sources(db)
+
+    assert result["processed"] == 1
+    user_page = (_wiki_dir / "wiki" / "user.md").read_text(encoding="utf-8")
+    project_page = (_wiki_dir / "wiki" / "openagentd.md").read_text(encoding="utf-8")
+    memory_page = (_wiki_dir / "wiki" / "memory-v2.md").read_text(encoding="utf-8")
+    assert "Hoang prefers direct answers" in user_page
+    assert f"[session:{session.id}]" in user_page
+    assert "Do not remember this secret token" not in user_page
+    assert "Skipped possible noise, opt-out, or sensitive content" in user_page
+    assert "OpenAgentd uses FastAPI and React" in project_page
+    assert f"[session:{session.id}]" in project_page
+    assert "Memory v2 uses a Karpathy-style markdown wiki" in memory_page
+    assert f"[session:{session.id}]" in memory_page
+
+    async with async_session_factory() as db:
+        row = (
+            await db.exec(
+                select(MemoryProcessedSource).where(
+                    MemoryProcessedSource.source_type == "session",
+                    MemoryProcessedSource.source_id == str(session.id),
+                )
+            )
+        ).one()
+    assert "wiki/user.md" in json.loads(row.pages_changed or "[]")
+    assert "wiki/openagentd.md" in json.loads(row.pages_changed or "[]")
+    assert "wiki/memory-v2.md" in json.loads(row.pages_changed or "[]")
+
+
+@pytest.mark.asyncio
+async def test_process_memory_sources_curated_pages_are_idempotent(
+    setup_db, _wiki_dir: Path
+):
+    from app.core.db import async_session_factory
+
+    session = ChatSession(agent_name="test-agent")
+    async with async_session_factory() as db:
+        db.add(session)
+        await db.flush()
+        db.add(
+            SessionMessage(
+                session_id=session.id,
+                role="user",
+                content="Hoang wants concise answers.",
+            )
+        )
+        await db.commit()
+
+    async with async_session_factory() as db:
+        first = await process_memory_sources(db)
+    user_page = (_wiki_dir / "wiki" / "user.md").read_text(encoding="utf-8")
+    assert first["processed"] == 1
+    assert user_page.count("Hoang wants concise answers") == 1
+
+    async with async_session_factory() as db:
+        second = await process_memory_sources(db)
+    assert second == {"processed": 0, "failed": 0, "remaining": 0}
+    assert (_wiki_dir / "wiki" / "user.md").read_text(encoding="utf-8") == user_page
 
 
 @pytest.mark.asyncio
