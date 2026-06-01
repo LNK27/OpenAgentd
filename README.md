@@ -43,7 +43,7 @@ A short list of the most important shipped capabilities. The canonical, version-
 
 **Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view, resume interrupted work with `/continue`, or switch to a single unified view.
 
-**Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/coder`, `coding/explorer`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works. Type `!` in the composer to switch into shell-command mode and run commands directly without asking the model first.
+**Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/coder`, `coding/explorer`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works. Create git worktrees from the repository tree to start isolated coding sessions, then remove OpenAgentd-managed worktrees from the UI when they are no longer needed. Type `!` in the composer to switch into shell-command mode and run commands directly without asking the model first.
 
 ![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
@@ -65,6 +65,7 @@ Coding agents (Claude Code, Codex CLI, Cursor, Windsurf, Aider, opencode) all ru
 | **Multi-agent**            | Lead + workers, split-pane live view        | Sub-agents (sequential)     | —                     | —                         |
 | **Watch live**             | Tool inspector + diffs + per-call timing    | Terminal text               | Terminal text         | Inline in editor          |
 | **Direct shell from input**| `!command` shell mode + structured history  | CLI shell escapes           | CLI shell escapes     | Terminal/editor tasks     |
+| **Git worktree sessions**  | Managed worktrees as repo children in UI    | Manual git setup            | Manual git setup      | IDE/git extension flow    |
 | **`/undo` across chat**    | Restores workspace files from any prior turn| —                           | —                     | Editor undo only          |
 | **Providers**              | 15 — bring your own keys                    | Anthropic only              | OpenAI only           | A few, subscription       |
 | **License / cost**         | Apache 2.0, your keys                       | Proprietary + sub           | Proprietary + sub     | $20/mo+ subscription      |
