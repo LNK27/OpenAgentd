@@ -51,6 +51,8 @@ ENTITIES_DIR = "entities"  # wiki/entities/{slug}.md (people, tools, orgs)
 SOURCES_DIR = "sources"  # wiki/sources/{slug}.md (one summary per source)
 COMPARISONS_DIR = "comparisons"  # wiki/comparisons/{slug}.md (X vs Y)
 NOTES_DIR = "notes"  # wiki/notes/{date}.md
+MEMORY_WIKI_DIR = "wiki"  # wiki/wiki/{slug}.md (Memory v2 curated/source pages)
+IMPORTS_DIR = "imports"  # wiki/imports/{slug}.md (Memory v2 raw imports)
 
 #: Root-level files dream may write to.  USER.md and INDEX.md are protected
 #: against deletion; LOG.md and LINT.md are not (the dream agent overwrites
@@ -61,6 +63,7 @@ _ROOT_FILES: frozenset[str] = frozenset({USER_FILE, INDEX_FILE, LOG_FILE, LINT_F
 #: separate — it's the *input* side (agent/user log) and not part of the
 #: knowledge graph the dream agent maintains.
 _KNOWLEDGE_DIRS: tuple[str, ...] = (
+    MEMORY_WIKI_DIR,
     TOPICS_DIR,
     ENTITIES_DIR,
     SOURCES_DIR,
@@ -68,7 +71,7 @@ _KNOWLEDGE_DIRS: tuple[str, ...] = (
 )
 
 #: Every subdirectory that may appear as the first path component.
-_VALID_SUBDIRS: frozenset[str] = frozenset((*_KNOWLEDGE_DIRS, NOTES_DIR))
+_VALID_SUBDIRS: frozenset[str] = frozenset((*_KNOWLEDGE_DIRS, IMPORTS_DIR, NOTES_DIR))
 
 #: Default content for USER.md on first seed.
 DEFAULT_USER_FILE = """\
@@ -114,6 +117,8 @@ class WikiTree:
 
     system: list[WikiFileInfo] = field(default_factory=list)
     notes: list[WikiFileInfo] = field(default_factory=list)
+    imports: list[WikiFileInfo] = field(default_factory=list)
+    wiki: list[WikiFileInfo] = field(default_factory=list)
     topics: list[WikiFileInfo] = field(default_factory=list)
     entities: list[WikiFileInfo] = field(default_factory=list)
     sources: list[WikiFileInfo] = field(default_factory=list)
@@ -345,8 +350,9 @@ def list_tree(*, unprocessed_notes: set[str] | None = None) -> WikiTree:
       A :class:`WikiTree` with the full knowledge-graph view:
 
       - ``system`` — root files (``USER.md``, ``INDEX.md``, ``LOG.md``, ``LINT.md``)
-      - ``topics`` / ``entities`` / ``sources`` / ``comparisons`` — knowledge pages
-      - ``notes`` — agent log entries, optionally filtered to unprocessed
+      - ``wiki`` — Memory v2 curated/source-compiled pages
+      - ``topics`` / ``entities`` / ``sources`` / ``comparisons`` — legacy knowledge pages
+      - ``imports`` / ``notes`` — raw memory inputs, optionally filtered to unprocessed
     """
     root = wiki_root()
     system: list[WikiFileInfo] = []
@@ -371,10 +377,12 @@ def list_tree(*, unprocessed_notes: set[str] | None = None) -> WikiTree:
 
     return WikiTree(
         system=system,
+        wiki=_list_subdir(MEMORY_WIKI_DIR),
         topics=_list_subdir(TOPICS_DIR),
         entities=_list_subdir(ENTITIES_DIR),
         sources=_list_subdir(SOURCES_DIR),
         comparisons=_list_subdir(COMPARISONS_DIR),
+        imports=_list_subdir(IMPORTS_DIR),
         notes=notes,
     )
 
