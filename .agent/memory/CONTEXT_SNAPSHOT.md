@@ -1,6 +1,7 @@
 # OpenAgentd Second Brain Context Snapshot
 
-Last updated: 2026-05-30
+Last updated: 2026-06-02
+
 
 ## Purpose
 
@@ -226,6 +227,9 @@ Known local state before this snapshot:
   - `uv run ruff check app/services/hermes_approval.py app/agent/tools/builtin tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_pending_tools.py tests/agent/tools/test_hermes_propose_tool.py tests/agent/test_loader.py`
   - `uv run ruff format --check app/services/hermes_approval.py app/agent/tools/builtin tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_pending_tools.py tests/agent/tools/test_hermes_propose_tool.py tests/agent/test_loader.py`
   - `uv run ty check app/services/hermes_approval.py app/agent/tools/builtin/hermes_propose.py app/agent/tools/builtin/hermes_pending.py app/agent/loader.py`
+- Hermes approval/review queue v1 is accepted and closed after independent review:
+  - Claude Opus 4.6 verdict: `Ship`; no P0/P1 blockers. Non-blocking items tracked: queue lock held during disk I/O, duplicate state/writer helper logic, preview exposing vault-write-equivalent fields under `preview`, and missing approval-specific `VaultIndexUpdateError` rollback test.
+  - Gemini 3.5 Flash regression/checklist verdict: `Accepted`; no P0/P1 blockers. Gemini confirmed scope boundaries, no direct Hermes-to-vault write path, lead-only injection/member exclusion, queue limit eviction, terminal state handling, no-overwrite approval, and writer attribution.
 - Git worktree already had unrelated added files: `run.ps1` and `web/package-lock.json`. Do not revert them without user approval.
 
 ## Next Implementation Steps
