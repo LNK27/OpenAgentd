@@ -249,6 +249,7 @@ Known local state before this snapshot:
   - `uv run ruff check app/services/hermes.py tests/services/test_hermes.py`
   - `uv run ruff format --check app/services/hermes.py tests/services/test_hermes.py`
   - `uv run ty check app/services/hermes.py`
+- Gemini 3.5 Flash final regression/checklist verdict for Hermes query/recall v1: `Accepted (Ship)`; no P0/P1 blockers. Gemini verified read-only boundary, `/v1/query` service contract, minimal output fields, forbidden write-control rejection, NaN/Infinity score clamping, lead-only injection, and no regression to `hermes_propose`, approval queue, loader registry, or `vault_write`. Remaining P2: forbidden-field query items hard-fail the whole result instead of soft-skipping bad items; accepted as v2 UX tech debt.
 - Git worktree already had unrelated added files: `run.ps1` and `web/package-lock.json`. Do not revert them without user approval.
 
 ## Next Implementation Steps
