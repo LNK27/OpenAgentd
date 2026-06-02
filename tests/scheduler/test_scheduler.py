@@ -306,6 +306,38 @@ class TestStart:
 
         assert not mock_dispatch["dispatch"].called
 
+    async def test_overdue_cron_task_fires_and_restarts_timer(
+        self, scheduler, db_factory, mock_dispatch
+    ):
+        task = _make_task(
+            name="daily-vnt",
+            schedule_type="cron",
+            every_seconds=None,
+            cron_expression="0 14 * * *",
+        )
+        task.timezone = "Asia/Ho_Chi_Minh"
+        task.next_fire_at = datetime.now(_UTC) - timedelta(minutes=1)
+        await _persist(db_factory, task)
+
+        await scheduler.start()
+        for _ in range(20):
+            await asyncio.sleep(0.01)
+            if mock_dispatch["dispatch"].called:
+                break
+
+        async with db_factory() as session:
+            row = await session.get(ScheduledTask, task.id)
+
+        assert mock_dispatch["dispatch"].called
+        assert row is not None
+        assert row.run_count == 1
+        assert row.status == "pending"
+        assert row.next_fire_at is not None
+        assert row.next_fire_at > datetime.now(_UTC)
+        assert task.id in scheduler._tasks
+
+        await scheduler.stop()
+
 
 # ---------------------------------------------------------------------------
 # stop() — cancels all timers

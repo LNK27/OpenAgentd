@@ -126,6 +126,10 @@ class TaskScheduler:
 
         now = datetime.now(_utc)
         for task in tasks:
+            if task.next_fire_at is not None and task.next_fire_at <= now:
+                asyncio.create_task(self._fire_overdue_and_restart(task))
+                continue
+
             # One-shot "at" tasks whose fire time is in the past and haven't
             # run yet should fire immediately on startup.
             if (
@@ -139,6 +143,16 @@ class TaskScheduler:
                 self._start_timer(task)
 
         logger.info("scheduler_started tasks={}", len(tasks))
+
+    async def _fire_overdue_and_restart(self, task: ScheduledTask) -> None:
+        """Fire a persisted overdue task, then restart recurring timers."""
+        await self._fire_task(task)
+
+        async with self._db() as session:
+            fresh = await session.get(ScheduledTask, task.id)
+
+        if fresh is not None and fresh.enabled and fresh.schedule_type != "at":
+            self._start_timer(fresh)
 
     async def has_enabled_tasks(self) -> bool:
         """Return whether the DB has any enabled scheduled tasks."""

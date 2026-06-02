@@ -2,9 +2,9 @@
 
 Usage:
   uv run python -m manual.scheduler list
-  uv run python -m manual.scheduler create --agent <name> --type every --every 60 --prompt "Say hello"
-  uv run python -m manual.scheduler create --agent <name> --type cron --cron "*/5 * * * *" --prompt "Ping"
-  uv run python -m manual.scheduler create --agent <name> --type at --at "2099-01-01T00:00:00Z" --prompt "Future"
+  uv run python -m manual.scheduler create --type every --every 60 --prompt "Say hello"
+  uv run python -m manual.scheduler create --type cron --cron "*/5 * * * *" --prompt "Ping"
+  uv run python -m manual.scheduler create --type at --at "2099-01-01T00:00:00Z" --prompt "Future"
   uv run python -m manual.scheduler trigger <TASK_ID>
   uv run python -m manual.scheduler pause   <TASK_ID>
   uv run python -m manual.scheduler resume  <TASK_ID>
@@ -15,7 +15,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import time
 
 import httpx
@@ -49,18 +48,22 @@ def _print_task(task: dict, *, indent: str = "") -> None:
     err = task.get("last_error") or ""
     print(
         f"{indent}[{task['status']:9}] {task['name']!r:30}"
-        f"  agent={task['agent']}"
+        f"  mode={task['mode']}"
         f"  type={task['schedule_type']}"
         f"  runs={task['run_count']}"
         f"  next={nf}"
     )
     if task.get("cron_expression"):
-        print(f"{indent}           cron={task['cron_expression']}  tz={task['timezone']}")
+        print(
+            f"{indent}           cron={task['cron_expression']}  tz={task['timezone']}"
+        )
     elif task.get("every_seconds"):
         print(f"{indent}           every={task['every_seconds']}s")
     elif task.get("at_datetime"):
         print(f"{indent}           at={task['at_datetime']}")
     print(f"{indent}           prompt={task['prompt'][:80]!r}")
+    if task.get("workspace"):
+        print(f"{indent}           workspace={task['workspace']}")
     print(f"{indent}           last_run={lr}")
     if err:
         print(f"{indent}           error={err}")
@@ -84,11 +87,13 @@ def cmd_list(base: str) -> None:
 def cmd_create(base: str, args: argparse.Namespace) -> dict:
     body: dict = {
         "name": args.name,
-        "agent": args.agent,
+        "mode": args.mode,
         "schedule_type": args.type,
         "prompt": args.prompt,
         "timezone": args.timezone,
     }
+    if args.workspace:
+        body["workspace"] = args.workspace
     if args.type == "at":
         body["at_datetime"] = args.at
     elif args.type == "every":
@@ -134,7 +139,7 @@ def cmd_demo(base: str, args: argparse.Namespace) -> None:
     print(f"--- demo: creating task '{name}' ---")
     body = {
         "name": name,
-        "agent": args.agent,
+        "mode": args.mode,
         "schedule_type": "every",
         "every_seconds": 999,
         "prompt": "This is a scheduler demo. Reply with just: SCHEDULER_OK",
@@ -170,15 +175,24 @@ def main() -> None:
     sub.add_parser("list", help="List all scheduled tasks")
 
     cr = sub.add_parser("create", help="Create a scheduled task")
-    cr.add_argument("--name", default=None, help="Task name (auto-generated if omitted)")
-    cr.add_argument("--agent", required=True, help="Agent name")
-    cr.add_argument("--type", choices=["at", "every", "cron"], required=True, dest="type")
+    cr.add_argument(
+        "--name", default=None, help="Task name (auto-generated if omitted)"
+    )
+    cr.add_argument("--mode", choices=["normal", "coding"], default="normal")
+    cr.add_argument("--workspace", default=None, help="Required when --mode=coding")
+    cr.add_argument(
+        "--type", choices=["at", "every", "cron"], required=True, dest="type"
+    )
     cr.add_argument("--at", default=None, help="ISO-8601 datetime for 'at' type")
-    cr.add_argument("--every", default=None, help="Interval in seconds for 'every' type")
+    cr.add_argument(
+        "--every", default=None, help="Interval in seconds for 'every' type"
+    )
     cr.add_argument("--cron", default=None, help="5-field cron expression")
     cr.add_argument("--timezone", default="UTC")
     cr.add_argument("--prompt", required=True, help="Prompt to send to the agent")
-    cr.add_argument("--session", default=None, help="session_id (omit=new, 'auto'=persistent)")
+    cr.add_argument(
+        "--session", default=None, help="session_id (omit=new, 'auto'=persistent)"
+    )
 
     tr = sub.add_parser("trigger", help="Fire a task immediately")
     tr.add_argument("task_id")
@@ -192,8 +206,11 @@ def main() -> None:
     de = sub.add_parser("delete", help="Delete a task")
     de.add_argument("task_id")
 
-    dm = sub.add_parser("demo", help="End-to-end demo: create + trigger + list + delete")
-    dm.add_argument("--agent", required=True, help="Agent name for the demo task")
+    dm = sub.add_parser(
+        "demo", help="End-to-end demo: create + trigger + list + delete"
+    )
+    dm.add_argument("--mode", choices=["normal", "coding"], default="normal")
+    dm.add_argument("--workspace", default=None, help="Required when --mode=coding")
 
     args = p.parse_args()
     base = args.base.rstrip("/")
@@ -201,6 +218,7 @@ def main() -> None:
     # auto-generate name for create
     if args.cmd == "create" and args.name is None:
         import uuid
+
         args.name = f"task-{uuid.uuid4().hex[:6]}"
 
     try:
