@@ -5,6 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
+from opentelemetry.trace.status import StatusCode
 
 from app.agent.tools.builtin.vault_read import vault_read
 from app.services import vault_gatekeeper
@@ -33,6 +39,25 @@ async def test_vault_read_returns_raw_note(_vault_dir: Path) -> None:
     result = await vault_read.arun(folder="20-topics", slug="raw-note")
 
     assert result == raw
+
+
+@pytest.mark.asyncio
+async def test_vault_read_records_read_observability(_vault_dir: Path) -> None:
+    raw = "---\ntitle: Raw Note\n---\nBody.\n"
+    (_vault_dir / "20-topics" / "raw-note.md").write_text(raw, encoding="utf-8")
+    tracer, exporter = _tracer_with_exporter()
+
+    with tracer.start_as_current_span("execute_tool vault_read"):
+        result = await vault_read.arun(folder="20-topics", slug="raw-note")
+
+    assert result == raw
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.UNSET
+    assert span.attributes["openagentd.second_brain.tool"] == "vault_read"
+    assert span.attributes["openagentd.second_brain.outcome"] == "read"
+    assert span.attributes["vault.path"] == "20-topics/raw-note.md"
+    assert span.attributes["vault.result_length"] == len(raw)
+    assert span.attributes["vault.truncated"] is False
 
 
 @pytest.mark.asyncio
@@ -70,10 +95,34 @@ async def test_vault_read_malformed_frontmatter_falls_back_with_truncation(
     assert result.startswith("[Warning: Note has malformed frontmatter.")
     assert "[truncated at 1000 characters]" in result
     assert len(result) > 1000
+    tracer, exporter = _tracer_with_exporter()
+    with tracer.start_as_current_span("execute_tool vault_read"):
+        await vault_read.arun(
+            folder="20-topics",
+            slug="broken",
+            include_frontmatter=False,
+            max_chars=1000,
+        )
+    span = exporter.get_finished_spans()[0]
+    assert span.attributes["openagentd.second_brain.outcome"] == "malformed_frontmatter"
+    assert span.attributes["vault.truncated"] is True
 
 
 @pytest.mark.asyncio
 async def test_vault_read_missing_note_message() -> None:
-    result = await vault_read.arun(folder="20-topics", slug="missing")
+    tracer, exporter = _tracer_with_exporter()
+
+    with tracer.start_as_current_span("execute_tool vault_read"):
+        result = await vault_read.arun(folder="20-topics", slug="missing")
 
     assert result == "Note not found at vault/20-topics/missing.md"
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.attributes["openagentd.second_brain.outcome"] == "not_found"
+
+
+def _tracer_with_exporter():
+    provider = TracerProvider()
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return provider.get_tracer("test"), exporter

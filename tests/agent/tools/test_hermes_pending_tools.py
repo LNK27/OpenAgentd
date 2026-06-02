@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
+from opentelemetry.trace.status import StatusCode
 
 from app.agent.tools.builtin.hermes_pending import (
     hermes_pending_approve,
@@ -65,6 +71,23 @@ async def test_hermes_pending_list_formats_pending_entries() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hermes_pending_list_records_observability() -> None:
+    queue = hermes_approval.get_hermes_approval_queue()
+    await queue.enqueue("session-a", [_intent("one")])
+    tracer, exporter = _tracer_with_exporter()
+
+    with tracer.start_as_current_span("execute_tool hermes_pending_list"):
+        result = await hermes_pending_list.arun(_injected={"_state": _state()})
+
+    assert "20-topics/one.md" in result
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.UNSET
+    assert span.attributes["openagentd.second_brain.tool"] == "hermes_pending_list"
+    assert span.attributes["openagentd.second_brain.outcome"] == "listed"
+    assert span.attributes["hermes.pending_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_hermes_pending_approve_writes_note_successfully(
     _vault_dir: Path,
 ) -> None:
@@ -84,6 +107,27 @@ async def test_hermes_pending_approve_writes_note_successfully(
 
 
 @pytest.mark.asyncio
+async def test_hermes_pending_approve_records_observability(
+    _vault_dir: Path,
+) -> None:
+    queue = hermes_approval.get_hermes_approval_queue()
+    enqueued = await queue.enqueue("session-a", [_intent("approved")])
+    tracer, exporter = _tracer_with_exporter()
+
+    with tracer.start_as_current_span("execute_tool hermes_pending_approve"):
+        result = await hermes_pending_approve.arun(
+            pending_id=enqueued.entries[0].pending_id,
+            _injected={"_state": _state(agent_name="approver")},
+        )
+
+    assert "written to 20-topics/approved.md" in result
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.UNSET
+    assert span.attributes["openagentd.second_brain.outcome"] == "approved"
+    assert span.attributes["vault.path"] == "20-topics/approved.md"
+
+
+@pytest.mark.asyncio
 async def test_hermes_pending_reject_marks_rejected() -> None:
     queue = hermes_approval.get_hermes_approval_queue()
     enqueued = await queue.enqueue("session-a", [_intent("reject-me")])
@@ -100,12 +144,37 @@ async def test_hermes_pending_reject_marks_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hermes_pending_reject_records_observability() -> None:
+    queue = hermes_approval.get_hermes_approval_queue()
+    enqueued = await queue.enqueue("session-a", [_intent("reject-me")])
+    tracer, exporter = _tracer_with_exporter()
+
+    with tracer.start_as_current_span("execute_tool hermes_pending_reject"):
+        result = await hermes_pending_reject.arun(
+            pending_id=enqueued.entries[0].pending_id,
+            reason="not useful",
+            _injected={"_state": _state()},
+        )
+
+    assert result == "Hermes pending intent rejected: reject-me"
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.UNSET
+    assert span.attributes["openagentd.second_brain.outcome"] == "rejected"
+    assert span.attributes["vault.path"] == "20-topics/reject-me.md"
+
+
+@pytest.mark.asyncio
 async def test_pending_tools_require_session_id() -> None:
     state = MockState(metadata={})
+    tracer, exporter = _tracer_with_exporter()
 
-    result = await hermes_pending_list.arun(_injected={"_state": state})
+    with tracer.start_as_current_span("execute_tool hermes_pending_list"):
+        result = await hermes_pending_list.arun(_injected={"_state": state})
 
     assert result == "Hermes approval queue requires a session_id."
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.attributes["openagentd.second_brain.outcome"] == "missing_session"
 
 
 @pytest.mark.asyncio
@@ -125,3 +194,10 @@ async def test_hermes_pending_approve_returns_specific_write_error(
         result
         == "Hermes approval failed: Note already exists at vault/20-topics/existing.md"
     )
+
+
+def _tracer_with_exporter():
+    provider = TracerProvider()
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return provider.get_tracer("test"), exporter

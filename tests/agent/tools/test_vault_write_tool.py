@@ -8,6 +8,12 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
+from opentelemetry.trace.status import StatusCode
 
 from app.agent.tools.builtin.vault_write import VALID_VAULT_FOLDERS, vault_write
 from app.services.vault_gatekeeper import (
@@ -80,6 +86,31 @@ async def test_vault_write_success_uses_injected_agent_name(
 
 
 @pytest.mark.asyncio
+async def test_vault_write_records_success_observability(_vault_dir: Path) -> None:
+    tracer, exporter = _tracer_with_exporter()
+
+    with tracer.start_as_current_span("execute_tool vault_write"):
+        result = await vault_write.arun(
+            folder="20-topics",
+            slug="agent-memory",
+            title="Agent Memory",
+            note_type="topic",
+            body="Persistent memory.",
+            tags=["memory", "agent"],
+        )
+
+    assert result == "Vault note written to 20-topics/agent-memory.md"
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.UNSET
+    assert span.attributes["openagentd.second_brain.tool"] == "vault_write"
+    assert span.attributes["openagentd.second_brain.outcome"] == "written"
+    assert span.attributes["vault.folder"] == "20-topics"
+    assert span.attributes["vault.path"] == "20-topics/agent-memory.md"
+    assert span.attributes["vault.body_length"] == len("Persistent memory.")
+    assert span.attributes["vault.tags_count"] == 2
+
+
+@pytest.mark.asyncio
 async def test_vault_write_falls_back_to_unknown_writer(_vault_dir: Path) -> None:
     result = await vault_write.arun(
         folder="20-topics",
@@ -102,9 +133,14 @@ async def test_vault_write_duplicate_path_message() -> None:
         "Vault note already exists: 20-topics/existing.md"
     )
 
-    with patch(
-        "app.agent.tools.builtin.vault_write.get_vault_gatekeeper",
-        return_value=mock_gatekeeper,
+    tracer, exporter = _tracer_with_exporter()
+
+    with (
+        patch(
+            "app.agent.tools.builtin.vault_write.get_vault_gatekeeper",
+            return_value=mock_gatekeeper,
+        ),
+        tracer.start_as_current_span("execute_tool vault_write"),
     ):
         result = await vault_write.arun(
             folder="20-topics",
@@ -115,6 +151,10 @@ async def test_vault_write_duplicate_path_message() -> None:
         )
 
     assert result == "Note already exists at vault/20-topics/existing.md"
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.attributes["openagentd.second_brain.outcome"] == "duplicate"
+    assert span.attributes["vault.path"] == "20-topics/existing.md"
 
 
 @pytest.mark.asyncio
@@ -221,3 +261,10 @@ async def test_vault_write_passes_note_id_without_using_it_for_routing() -> None
     assert call is not None
     assert call.args[0].slug == "agent-memory"
     assert call.args[0].note_id == "external-id"
+
+
+def _tracer_with_exporter():
+    provider = TracerProvider()
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return provider.get_tracer("test"), exporter

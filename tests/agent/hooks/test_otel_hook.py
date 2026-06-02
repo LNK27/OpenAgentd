@@ -15,6 +15,8 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
+from opentelemetry import trace
+from opentelemetry.trace import Status
 from opentelemetry.trace.status import StatusCode
 
 from app.agent.hooks import otel as otel_module
@@ -302,6 +304,35 @@ class TestWrapToolCall:
         ][0]
         assert tool.status.status_code == StatusCode.ERROR
         assert tool.attributes["error.type"] == "ValueError"
+
+    async def test_handler_marked_semantic_error_is_not_overwritten(
+        self, span_exporter
+    ):
+        hook = OpenTelemetryHook(agent_name="bot", model_id="openai:gpt-4o")
+        ctx = make_ctx()
+        state = make_state()
+        tool_call = ToolCall(
+            id="t_2",
+            function=FunctionCall(name="vault_write", arguments="{}"),
+        )
+
+        async def handler(_ctx, _state, _tc):
+            span = trace.get_current_span()
+            span.set_attribute("openagentd.second_brain.outcome", "duplicate")
+            span.set_status(Status(StatusCode.ERROR, "duplicate"))
+            return "Note already exists"
+
+        result = await hook.wrap_tool_call(ctx, state, tool_call, handler)
+
+        assert result == "Note already exists"
+        tool = [
+            s
+            for s in span_exporter.get_finished_spans()
+            if s.name == "execute_tool vault_write"
+        ][0]
+        assert tool.status.status_code == StatusCode.ERROR
+        assert tool.status.description == "duplicate"
+        assert tool.attributes["openagentd.second_brain.outcome"] == "duplicate"
 
 
 # ---------------------------------------------------------------------------

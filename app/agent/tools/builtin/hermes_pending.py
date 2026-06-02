@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Mapping
 from typing import Annotated, Any
 
 from pydantic import Field
 
+from app.agent.tools.builtin._observability import (
+    SECOND_BRAIN_ERROR,
+    SECOND_BRAIN_OK,
+    record_second_brain_tool_observation,
+)
 from app.agent.tools.registry import InjectedArg, Tool
 from app.services.hermes_approval import (
     HermesApprovalAlreadyProcessedError,
@@ -25,8 +32,13 @@ async def _hermes_pending_list(
     _state: Annotated[Any, InjectedArg()] = None,
 ) -> str:
     """List Hermes proposal entries for the current session."""
+    start = time.perf_counter()
+    attrs = {"hermes.include_non_pending": include_non_pending}
     session_id = _session_id_from_state(_state)
     if session_id is None:
+        _record(
+            "hermes_pending_list", "missing_session", SECOND_BRAIN_ERROR, start, attrs
+        )
         return "Hermes approval queue requires a session_id."
 
     entries = await get_hermes_approval_queue().list_pending(
@@ -34,8 +46,22 @@ async def _hermes_pending_list(
         include_non_pending=include_non_pending,
     )
     if not entries:
+        _record(
+            "hermes_pending_list",
+            "empty",
+            SECOND_BRAIN_OK,
+            start,
+            {**attrs, "hermes.pending_count": 0},
+        )
         return "No Hermes pending intents for this session."
 
+    _record(
+        "hermes_pending_list",
+        "listed",
+        SECOND_BRAIN_OK,
+        start,
+        {**attrs, "hermes.pending_count": len(entries)},
+    )
     parts = ["Hermes pending intents:"]
     for entry in entries:
         parts.append(_format_entry(entry))
@@ -50,8 +76,17 @@ async def _hermes_pending_approve(
     _state: Annotated[Any, InjectedArg()] = None,
 ) -> str:
     """Approve one Hermes pending intent and write it to the vault."""
+    start = time.perf_counter()
+    attrs: dict[str, object] = {}
     session_id = _session_id_from_state(_state)
     if session_id is None:
+        _record(
+            "hermes_pending_approve",
+            "missing_session",
+            SECOND_BRAIN_ERROR,
+            start,
+            attrs,
+        )
         return "Hermes approval queue requires a session_id."
 
     try:
@@ -61,14 +96,39 @@ async def _hermes_pending_approve(
             approver=_writer_from_state(_state),
         )
     except HermesApprovalNotFoundError as exc:
+        _record("hermes_pending_approve", "not_found", SECOND_BRAIN_ERROR, start, attrs)
         return f"Hermes pending intent not found: {exc}"
     except HermesApprovalAlreadyProcessedError as exc:
+        _record(
+            "hermes_pending_approve",
+            "already_processed",
+            SECOND_BRAIN_ERROR,
+            start,
+            attrs,
+        )
         return f"Hermes pending intent already processed: {exc}"
     except HermesApprovalWriteError as exc:
+        _record(
+            "hermes_pending_approve", "write_error", SECOND_BRAIN_ERROR, start, attrs
+        )
         return f"Hermes approval failed: {exc}"
     except HermesApprovalError as exc:
+        _record(
+            "hermes_pending_approve",
+            "approval_error",
+            SECOND_BRAIN_ERROR,
+            start,
+            attrs,
+        )
         return f"Hermes approval error: {exc}"
 
+    _record(
+        "hermes_pending_approve",
+        "approved",
+        SECOND_BRAIN_OK,
+        start,
+        {"vault.path": result.path},
+    )
     return f"Hermes pending intent approved and written to {result.path}"
 
 
@@ -84,8 +144,17 @@ async def _hermes_pending_reject(
     _state: Annotated[Any, InjectedArg()] = None,
 ) -> str:
     """Reject one Hermes pending intent without writing to the vault."""
+    start = time.perf_counter()
+    attrs: dict[str, object] = {}
     session_id = _session_id_from_state(_state)
     if session_id is None:
+        _record(
+            "hermes_pending_reject",
+            "missing_session",
+            SECOND_BRAIN_ERROR,
+            start,
+            attrs,
+        )
         return "Hermes approval queue requires a session_id."
 
     try:
@@ -95,12 +164,34 @@ async def _hermes_pending_reject(
             reason=reason,
         )
     except HermesApprovalNotFoundError as exc:
+        _record("hermes_pending_reject", "not_found", SECOND_BRAIN_ERROR, start, attrs)
         return f"Hermes pending intent not found: {exc}"
     except HermesApprovalAlreadyProcessedError as exc:
+        _record(
+            "hermes_pending_reject",
+            "already_processed",
+            SECOND_BRAIN_ERROR,
+            start,
+            attrs,
+        )
         return f"Hermes pending intent already processed: {exc}"
     except HermesApprovalError as exc:
+        _record(
+            "hermes_pending_reject",
+            "approval_error",
+            SECOND_BRAIN_ERROR,
+            start,
+            attrs,
+        )
         return f"Hermes approval error: {exc}"
 
+    _record(
+        "hermes_pending_reject",
+        "rejected",
+        SECOND_BRAIN_OK,
+        start,
+        {"vault.path": f"{entry.intent.folder}/{entry.intent.slug}.md"},
+    )
     return f"Hermes pending intent rejected: {entry.intent.slug}"
 
 
@@ -140,6 +231,22 @@ def _writer_from_state(state: Any) -> str:
     if not isinstance(agent_name, str) or not agent_name.strip():
         return "agent:unknown"
     return f"agent:{agent_name.strip()}"
+
+
+def _record(
+    tool: str,
+    outcome: str,
+    status: str,
+    start: float,
+    attributes: Mapping[str, object],
+) -> None:
+    record_second_brain_tool_observation(
+        tool=tool,
+        outcome=outcome,
+        status=status,
+        duration_seconds=time.perf_counter() - start,
+        attributes=attributes,
+    )
 
 
 hermes_pending_list = Tool(

@@ -250,7 +250,22 @@ Known local state before this snapshot:
   - `uv run ruff format --check app/services/hermes.py tests/services/test_hermes.py`
   - `uv run ty check app/services/hermes.py`
 - Gemini 3.5 Flash final regression/checklist verdict for Hermes query/recall v1: `Accepted (Ship)`; no P0/P1 blockers. Gemini verified read-only boundary, `/v1/query` service contract, minimal output fields, forbidden write-control rejection, NaN/Infinity score clamping, lead-only injection, and no regression to `hermes_propose`, approval queue, loader registry, or `vault_write`. Remaining P2: forbidden-field query items hard-fail the whole result instead of soft-skipping bad items; accepted as v2 UX tech debt.
-- Git worktree already had unrelated added files: `run.ps1` and `web/package-lock.json`. Do not revert them without user approval.
+- Second Brain Read/Write Tool Observability v1 is now implemented and verified:
+  - `app/agent/tools/builtin/_observability.py` adds a shared helper for builtin Second Brain tool spans and Prometheus metrics. It annotates the active `execute_tool ...` span with `openagentd.second_brain.tool`, `openagentd.second_brain.outcome`, and low-risk attrs, and marks caught semantic tool errors as span `ERROR`.
+  - `app/core/metrics.py` now exposes `openagentd_second_brain_tool_calls_total{tool,status}` and `openagentd_second_brain_tool_duration_seconds{tool,status}` using low-cardinality `tool,status` labels and HTTP-style latency buckets.
+  - `app/agent/hooks/otel.py` now preserves a tool span already marked `ERROR` by the tool helper instead of unconditionally overwriting it with `OK` after a string return.
+  - Instrumented tools: `vault_write`, `vault_search`, `vault_read`, `hermes_propose`, `hermes_query`, `hermes_pending_list`, `hermes_pending_approve`, and `hermes_pending_reject`.
+  - Telemetry records only paths/folders, lengths, counts, limits, booleans, outcomes, and status. It does not record note body, query text, Hermes context text, note title, reject reason, or pending ids.
+  - No API/UI/dashboard/persistence/alerting was added. Hermes/vault write boundaries are unchanged.
+- Verification for Second Brain Read/Write Tool Observability v1 passed:
+  - `uv run pytest tests/agent/hooks/test_otel_hook.py tests/core/test_metrics.py --no-cov -q` (`28 passed`)
+  - `uv run pytest tests/agent/tools/test_vault_write_tool.py tests/agent/tools/test_vault_search_tool.py tests/agent/tools/test_vault_read_tool.py --no-cov -q` (`19 passed`)
+  - `uv run pytest tests/agent/tools/test_hermes_propose_tool.py tests/agent/tools/test_hermes_query_tool.py tests/agent/tools/test_hermes_pending_tools.py --no-cov -q` (`21 passed`)
+  - `uv run pytest tests/services/test_observability_service.py tests/api/routes/test_observability_route.py tests/agent/test_loader.py --no-cov -q` (`91 passed`)
+  - `uv run ruff check app/agent/tools/builtin app/agent/hooks/otel.py app/core/metrics.py tests/agent/tools tests/agent/hooks/test_otel_hook.py tests/core/test_metrics.py`
+  - `uv run ruff format --check app/agent/tools/builtin app/agent/hooks/otel.py app/core/metrics.py tests/agent/tools tests/agent/hooks/test_otel_hook.py tests/core/test_metrics.py`
+  - Targeted `uv run ty check app/agent/tools/builtin/_observability.py app/agent/tools/builtin/vault_write.py app/agent/tools/builtin/vault_search.py app/agent/tools/builtin/vault_read.py app/agent/tools/builtin/hermes_propose.py app/agent/tools/builtin/hermes_query.py app/agent/tools/builtin/hermes_pending.py app/agent/hooks/otel.py app/core/metrics.py`
+  - Broad `uv run ty check app/agent/tools/builtin app/agent/hooks/otel.py app/core/metrics.py` still fails only on pre-existing Windows/POSIX diagnostics in `app/agent/tools/builtin/shell.py` (`signal.SIGKILL`, `os.killpg`, `os.getpgid`), not on this observability patch.
 
 ## Next Implementation Steps
 
@@ -262,7 +277,8 @@ Known local state before this snapshot:
 6. ~~Integrate Hermes connector as a sidecar API adapter producing write-intents only~~ — **DONE** (2026-05-29). Lead agents can request Hermes write-intent proposals through `hermes_propose`; Hermes cannot write directly to the vault.
 7. ~~Implement Hermes approval/review queue v1~~ â€” **DONE** (2026-05-30). Lead agents can review, approve, or reject Hermes pending intents before queue-mediated vault writes; `vault_write` remains available for non-Hermes notes.
 8. ~~Implement Hermes query/recall v1~~ — **DONE** (2026-06-02). Lead agents can ask Hermes for read-only recall/query results without vault writes, approval queue side effects, or skill drafting.
-9. Decide the next Phase 2/3 step: likely Hermes skill drafting, `vault_update`, or observability.
+9. ~~Implement Second Brain Read/Write Tool Observability v1~~ - **DONE** (2026-06-02). Vault/Hermes read/write tools now annotate active tool spans and emit low-cardinality Prometheus metrics without changing tool schemas or write boundaries.
+10. Decide the next Phase 2/3 step: likely MCP/runtime observability, `vault_update`, or Hermes skill drafting.
 
 ## Update Protocol
 

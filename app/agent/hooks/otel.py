@@ -327,7 +327,10 @@ class OpenTelemetryHook(BaseAgentHook):
 
             elapsed = time.monotonic() - t0
             span.set_attribute("tool.result.length", len(result))
-            span.set_status(StatusCode.OK)
+            span_status = getattr(span, "status", None)
+            span_status_code = getattr(span_status, "status_code", None)
+            if span_status_code != StatusCode.ERROR:
+                span.set_status(StatusCode.OK)
 
             self._tool_duration.record(
                 elapsed,

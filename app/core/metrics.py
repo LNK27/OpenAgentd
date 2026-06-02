@@ -107,6 +107,37 @@ SPANS_WRITTEN = Counter(
 )
 
 
+# ── Second Brain tool metrics ────────────────────────────────────────────────
+
+SECOND_BRAIN_TOOL_CALLS = Counter(
+    "openagentd_second_brain_tool_calls_total",
+    "Second Brain builtin tool calls grouped by tool and semantic status.",
+    labelnames=("tool", "status"),
+    registry=REGISTRY,
+)
+
+SECOND_BRAIN_TOOL_DURATION = Histogram(
+    "openagentd_second_brain_tool_duration_seconds",
+    "Second Brain builtin tool duration in seconds grouped by tool and status.",
+    labelnames=("tool", "status"),
+    buckets=(
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        10.0,
+        30.0,
+    ),
+    registry=REGISTRY,
+)
+
+
 # ── Middleware ────────────────────────────────────────────────────────────────
 
 

@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
+from opentelemetry.trace.status import StatusCode
 
 from app.agent.tools.builtin.hermes_propose import hermes_propose
 from app.services import hermes_approval
@@ -111,10 +117,67 @@ async def test_hermes_propose_enqueues_valid_intents_and_formats_output() -> Non
 
 
 @pytest.mark.asyncio
+async def test_hermes_propose_records_observability() -> None:
+    proposal = HermesProposal(
+        valid_intents=[
+            HermesIntentProposal(
+                folder="20-topics",
+                slug="agent-memory",
+                title="Agent Memory",
+                note_type="topic",
+                body="Body",
+            )
+        ],
+        invalid_intents=[
+            HermesIntentProposal(
+                folder="",
+                slug="",
+                title="",
+                note_type="",
+                body="",
+                invalid_reason="bad",
+            )
+        ],
+    )
+    tracer, exporter = _tracer_with_exporter()
+
+    with (
+        patch(
+            "app.agent.tools.builtin.hermes_propose.propose_write_intents",
+            new=AsyncMock(return_value=proposal),
+        ),
+        tracer.start_as_current_span("execute_tool hermes_propose"),
+    ):
+        result = await hermes_propose.arun(
+            task="Draft memory",
+            context="Context",
+            max_intents=2,
+            _injected={"_state": MockState(metadata={"session_id": "session-a"})},
+        )
+
+    assert '"pending_id":' in result
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.UNSET
+    assert span.attributes["openagentd.second_brain.tool"] == "hermes_propose"
+    assert span.attributes["openagentd.second_brain.outcome"] == "enqueued"
+    assert span.attributes["hermes.max_intents"] == 2
+    assert span.attributes["hermes.context_length"] == len("Context")
+    assert span.attributes["hermes.valid_count"] == 1
+    assert span.attributes["hermes.invalid_count"] == 1
+    assert span.attributes["hermes.pending_count"] == 1
+    assert span.attributes["hermes.evicted_count"] == 0
+
+
+@pytest.mark.asyncio
 async def test_hermes_propose_maps_unavailable_error() -> None:
-    with patch(
-        "app.agent.tools.builtin.hermes_propose.propose_write_intents",
-        new=AsyncMock(side_effect=HermesUnavailableError("Hermes is disabled.")),
+    tracer, exporter = _tracer_with_exporter()
+
+    with (
+        patch(
+            "app.agent.tools.builtin.hermes_propose.propose_write_intents",
+            new=AsyncMock(side_effect=HermesUnavailableError("Hermes is disabled.")),
+        ),
+        tracer.start_as_current_span("execute_tool hermes_propose"),
     ):
         result = await hermes_propose.arun(
             task="Draft memory",
@@ -122,6 +185,9 @@ async def test_hermes_propose_maps_unavailable_error() -> None:
         )
 
     assert result == "Hermes connector unavailable: Hermes is disabled."
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.attributes["openagentd.second_brain.outcome"] == "unavailable"
 
 
 @pytest.mark.asyncio
@@ -144,15 +210,22 @@ async def test_hermes_propose_does_not_call_vault_write() -> None:
 @pytest.mark.asyncio
 async def test_hermes_propose_requires_session_id_before_calling_hermes() -> None:
     mock_propose = AsyncMock(return_value=HermesProposal(summary="No writes."))
+    tracer, exporter = _tracer_with_exporter()
 
-    with patch(
-        "app.agent.tools.builtin.hermes_propose.propose_write_intents",
-        new=mock_propose,
+    with (
+        patch(
+            "app.agent.tools.builtin.hermes_propose.propose_write_intents",
+            new=mock_propose,
+        ),
+        tracer.start_as_current_span("execute_tool hermes_propose"),
     ):
         result = await hermes_propose.arun(task="Draft memory")
 
     assert result == "Hermes approval queue requires a session_id."
     mock_propose.assert_not_called()
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.attributes["openagentd.second_brain.outcome"] == "missing_session"
 
 
 @pytest.mark.asyncio
@@ -231,3 +304,10 @@ async def test_hermes_propose_reports_evicted_count(
         )
 
     assert '"evicted_count": 1' in result
+
+
+def _tracer_with_exporter():
+    provider = TracerProvider()
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return provider.get_tracer("test"), exporter

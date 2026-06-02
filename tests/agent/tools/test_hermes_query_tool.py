@@ -5,6 +5,12 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
+from opentelemetry.trace.status import StatusCode
 
 from app.agent.tools.builtin.hermes_query import hermes_query
 from app.services.hermes import (
@@ -69,6 +75,38 @@ async def test_hermes_query_formats_structured_output() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hermes_query_records_observability() -> None:
+    result_payload = HermesQueryResult(
+        answer="Answer.",
+        items=[HermesQueryItem(path="20-topics/a.md", title="A")],
+    )
+    tracer, exporter = _tracer_with_exporter()
+
+    with (
+        patch(
+            "app.agent.tools.builtin.hermes_query.query_recall",
+            new=AsyncMock(return_value=result_payload),
+        ),
+        tracer.start_as_current_span("execute_tool hermes_query"),
+    ):
+        result = await hermes_query.arun(
+            query="Question",
+            context="Context",
+            max_results=3,
+        )
+
+    assert '"answer": "Answer."' in result
+    span = exporter.get_finished_spans()[0]
+    assert span.status.status_code == StatusCode.UNSET
+    assert span.attributes["openagentd.second_brain.tool"] == "hermes_query"
+    assert span.attributes["openagentd.second_brain.outcome"] == "answered"
+    assert span.attributes["hermes.query_length"] == len("Question")
+    assert span.attributes["hermes.context_length"] == len("Context")
+    assert span.attributes["hermes.max_results"] == 3
+    assert span.attributes["hermes.result_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_hermes_query_maps_errors() -> None:
     cases = [
         (HermesUnavailableError("disabled"), "Hermes connector unavailable: disabled"),
@@ -81,13 +119,19 @@ async def test_hermes_query_maps_errors() -> None:
     ]
 
     for error, expected in cases:
-        with patch(
-            "app.agent.tools.builtin.hermes_query.query_recall",
-            new=AsyncMock(side_effect=error),
+        tracer, exporter = _tracer_with_exporter()
+        with (
+            patch(
+                "app.agent.tools.builtin.hermes_query.query_recall",
+                new=AsyncMock(side_effect=error),
+            ),
+            tracer.start_as_current_span("execute_tool hermes_query"),
         ):
             result = await hermes_query.arun(query="Question")
 
         assert result == expected
+        span = exporter.get_finished_spans()[0]
+        assert span.status.status_code == StatusCode.ERROR
 
 
 @pytest.mark.asyncio
@@ -104,3 +148,10 @@ async def test_hermes_query_does_not_call_vault_write_or_approval_queue() -> Non
 
     mock_write.assert_not_called()
     mock_queue.assert_not_called()
+
+
+def _tracer_with_exporter():
+    provider = TracerProvider()
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return provider.get_tracer("test"), exporter

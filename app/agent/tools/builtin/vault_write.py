@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Mapping
 from typing import Annotated, Any
 
 from pydantic import Field
 
+from app.agent.tools.builtin._observability import (
+    SECOND_BRAIN_ERROR,
+    SECOND_BRAIN_OK,
+    record_second_brain_tool_observation,
+)
 from app.agent.tools.registry import InjectedArg, Tool
 from app.services.vault_gatekeeper import (
     VAULT_FOLDERS,
@@ -83,8 +90,16 @@ async def _vault_write(
     second-brain vault. This tool does not expose raw filesystem writes and
     must not be used to edit index files directly.
     """
+    start = time.perf_counter()
+    attrs = {
+        "vault.folder": folder,
+        "vault.path": f"{folder}/{slug}.md",
+        "vault.body_length": len(body),
+        "vault.tags_count": len(tags),
+    }
     if folder not in VALID_VAULT_FOLDERS:
         allowed = ", ".join(VALID_VAULT_FOLDERS)
+        _record("invalid_folder", SECOND_BRAIN_ERROR, start, attrs)
         return f"Invalid folder: '{folder}'. Must be one of: {allowed}"
 
     try:
@@ -105,23 +120,44 @@ async def _vault_write(
             )
         )
     except VaultDuplicateError:
+        _record("duplicate", SECOND_BRAIN_ERROR, start, attrs)
         return f"Note already exists at vault/{folder}/{slug}.md"
     except VaultIndexUpdateError as exc:
         if exc.rollback_succeeded:
+            _record("index_rollback", SECOND_BRAIN_ERROR, start, attrs)
             return "Note created but index update failed; note was rolled back. Retry."
+        _record("index_inconsistent", SECOND_BRAIN_ERROR, start, attrs)
         return (
             "CRITICAL: Note written but index inconsistent. "
             f"Manual fix needed at {exc.path}."
         )
     except VaultPathError as exc:
         message = str(exc)
+        _record("invalid_path", SECOND_BRAIN_ERROR, start, attrs)
         if "reserved Windows filename" in message:
             return f"Invalid slug: '{slug}' is reserved on Windows"
         return message
     except VaultWriteError:
+        _record("write_error", SECOND_BRAIN_ERROR, start, attrs)
         return f"Failed to write vault note at vault/{folder}/{slug}.md"
 
+    _record("written", SECOND_BRAIN_OK, start, {**attrs, "vault.path": result.path})
     return f"Vault note written to {result.path}"
+
+
+def _record(
+    outcome: str,
+    status: str,
+    start: float,
+    attributes: Mapping[str, object],
+) -> None:
+    record_second_brain_tool_observation(
+        tool="vault_write",
+        outcome=outcome,
+        status=status,
+        duration_seconds=time.perf_counter() - start,
+        attributes=attributes,
+    )
 
 
 vault_write = Tool(
