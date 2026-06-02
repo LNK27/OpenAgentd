@@ -273,6 +273,7 @@ def _default_tool_registry() -> dict[str, Tool]:
         hermes_pending_list,
         hermes_pending_reject,
         hermes_propose,
+        hermes_query,
         list_directory,
         load_skill,
         memory_search,
@@ -310,6 +311,7 @@ def _default_tool_registry() -> dict[str, Tool]:
         "skill": load_skill,
         "schedule_task": schedule_task,
         "todo_manage": todo_manage,
+        "hermes_query": hermes_query,
         "hermes_propose": hermes_propose,
         "hermes_pending_list": hermes_pending_list,
         "hermes_pending_approve": hermes_pending_approve,
@@ -386,6 +388,9 @@ def _build_agent(
         from app.agent.tools.builtin.hermes_propose import (
             hermes_propose as _hermes_propose_tool,
         )
+        from app.agent.tools.builtin.hermes_query import (
+            hermes_query as _hermes_query_tool,
+        )
         from app.agent.tools.builtin.hermes_pending import (
             hermes_pending_approve as _hermes_pending_approve_tool,
             hermes_pending_list as _hermes_pending_list_tool,
@@ -400,6 +405,7 @@ def _build_agent(
 
         _todo_manage = tool_registry.get("todo_manage", todo_manage)
         _schedule_task = tool_registry.get("schedule_task", _schedule_task_tool)
+        _hermes_query = tool_registry.get("hermes_query", _hermes_query_tool)
         _hermes_propose = tool_registry.get("hermes_propose", _hermes_propose_tool)
         _hermes_pending_list = tool_registry.get(
             "hermes_pending_list", _hermes_pending_list_tool
@@ -417,6 +423,7 @@ def _build_agent(
         tools += [
             _todo_manage,
             _schedule_task,
+            _hermes_query,
             _hermes_propose,
             _hermes_pending_list,
             _hermes_pending_approve,
@@ -435,6 +442,7 @@ def _build_agent(
             "skill",
             "todo_manage",
             "schedule_task",
+            "hermes_query",
             "hermes_propose",
             "hermes_pending_list",
             "hermes_pending_approve",

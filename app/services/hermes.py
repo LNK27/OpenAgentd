@@ -17,9 +17,18 @@ from app.core.config import settings
 from app.services.vault_gatekeeper import VaultPathError, validate_vault_note_path
 
 _MAX_INTENTS = 20
+_MAX_RESULTS = 20
 _DEFAULT_MAX_CONTEXT_CHARS = 8000
 _DEFAULT_MAX_BODY_CHARS_PER_INTENT = 4000
 _FORBIDDEN_INTENT_FIELDS = {"writer", "overwrite", "last_summarized_at"}
+_FORBIDDEN_QUERY_ITEM_FIELDS = {
+    "writer",
+    "overwrite",
+    "last_summarized_at",
+    "vault_write_params",
+    "write_intents",
+    "pending_id",
+}
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
@@ -51,6 +60,15 @@ class HermesProposalRequest:
     context: str = ""
     target_folder: str | None = None
     max_intents: int = 5
+
+
+@dataclass(frozen=True)
+class HermesQueryRequest:
+    """Read-only recall/query request sent to the Hermes sidecar."""
+
+    query: str
+    context: str = ""
+    max_results: int = 5
 
 
 @dataclass(frozen=True)
@@ -103,6 +121,27 @@ class HermesProposal:
     model_info: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class HermesQueryItem:
+    """One read-only recall result returned by Hermes."""
+
+    title: str = ""
+    path: str = ""
+    excerpt: str = ""
+    score: float = 0.0
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class HermesQueryResult:
+    """Normalized read-only recall result from Hermes."""
+
+    answer: str = ""
+    items: list[HermesQueryItem] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    model_info: dict[str, Any] = field(default_factory=dict)
+
+
 class HermesClient(Protocol):
     """Protocol for swappable Hermes sidecar clients."""
 
@@ -114,6 +153,9 @@ class HermesClient(Protocol):
         request: HermesProposalRequest,
     ) -> dict[str, Any]:
         """Return the raw Hermes proposal payload."""
+
+    async def query_recall(self, request: HermesQueryRequest) -> dict[str, Any]:
+        """Return the raw Hermes read-only query payload."""
 
 
 class HttpHermesClient:
@@ -149,6 +191,22 @@ class HttpHermesClient:
                 "context": request.context,
                 "target_folder": request.target_folder,
                 "max_intents": request.max_intents,
+            },
+        )
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise HermesSchemaError("Hermes response must be a JSON object.")
+        return payload
+
+    async def query_recall(self, request: HermesQueryRequest) -> dict[str, Any]:
+        """Request read-only recall/query results from Hermes."""
+        response = await self._request(
+            "POST",
+            "/v1/query",
+            json={
+                "query": request.query,
+                "context": request.context,
+                "max_results": request.max_results,
             },
         )
         payload = response.json()
@@ -206,6 +264,23 @@ async def propose_write_intents(
     )
 
 
+async def query_recall(
+    request: HermesQueryRequest,
+    *,
+    client: HermesClient | None = None,
+    max_context_chars: int | None = None,
+) -> HermesQueryResult:
+    """Call Hermes for read-only recall/query results."""
+    hermes_client = client or _client_from_settings()
+    prepared = _prepare_query_request(
+        request,
+        max_context_chars=max_context_chars,
+    )
+    await hermes_client.health()
+    payload = await hermes_client.query_recall(prepared)
+    return normalize_hermes_query_response(payload)
+
+
 def normalize_hermes_response(
     payload: dict[str, Any],
     *,
@@ -255,6 +330,34 @@ def normalize_hermes_response(
     )
 
 
+def normalize_hermes_query_response(payload: dict[str, Any]) -> HermesQueryResult:
+    """Validate and normalize a raw Hermes read-only query payload."""
+    if not isinstance(payload, dict):
+        raise HermesSchemaError("Hermes response must be a JSON object.")
+    answer = _optional_string(payload.get("answer"), field_name="answer")
+    raw_warnings = payload.get("warnings", [])
+    if raw_warnings is None:
+        raw_warnings = []
+    if not isinstance(raw_warnings, list):
+        raise HermesSchemaError("Hermes response warnings must be a list.")
+    warnings = [str(item) for item in raw_warnings if str(item).strip()]
+    raw_model_info = payload.get("model_info", {})
+    model_info = raw_model_info if isinstance(raw_model_info, dict) else {}
+    raw_items = payload.get("items", [])
+    if raw_items is None:
+        raw_items = []
+    if not isinstance(raw_items, list):
+        raise HermesSchemaError("Hermes response items must be a list.")
+
+    items = [_normalize_query_item(raw) for raw in raw_items]
+    return HermesQueryResult(
+        answer=answer,
+        items=items,
+        warnings=_dedupe(warnings),
+        model_info=model_info,
+    )
+
+
 def _client_from_settings() -> HttpHermesClient:
     if not settings.OPENAGENTD_HERMES_ENABLED:
         raise HermesUnavailableError("Hermes connector is disabled.")
@@ -286,6 +389,24 @@ def _prepare_request(
             )
         ],
         max_intents=_clamp_int(request.max_intents, minimum=1, maximum=_MAX_INTENTS),
+    )
+
+
+def _prepare_query_request(
+    request: HermesQueryRequest,
+    *,
+    max_context_chars: int | None,
+) -> HermesQueryRequest:
+    return replace(
+        request,
+        query=request.query.strip(),
+        context=request.context[
+            : _positive_int(
+                max_context_chars,
+                fallback=settings.OPENAGENTD_HERMES_MAX_CONTEXT_CHARS,
+            )
+        ],
+        max_results=_clamp_int(request.max_results, minimum=1, maximum=_MAX_RESULTS),
     )
 
 
@@ -349,6 +470,23 @@ def _normalize_intent(raw: Any, *, body_limit: int) -> HermesIntentProposal:
     return intent
 
 
+def _normalize_query_item(raw: Any) -> HermesQueryItem:
+    if not isinstance(raw, dict):
+        raise HermesSchemaError("Hermes query item must be an object.")
+    forbidden = sorted(_FORBIDDEN_QUERY_ITEM_FIELDS.intersection(raw))
+    if forbidden:
+        raise HermesSchemaError(
+            f"Hermes query item contains forbidden field: {', '.join(forbidden)}"
+        )
+    return HermesQueryItem(
+        title=_optional_string(raw.get("title"), field_name="title"),
+        path=_optional_string(raw.get("path"), field_name="path"),
+        excerpt=_optional_string(raw.get("excerpt"), field_name="excerpt"),
+        score=_optional_float(raw.get("score")),
+        tags=_string_list(raw.get("tags")),
+    )
+
+
 def _invalid_stub(
     reason: str, *, raw: dict[str, Any] | None = None
 ) -> HermesIntentProposal:
@@ -397,6 +535,14 @@ def _string_list(value: Any) -> list[str]:
     else:
         return []
     return _dedupe([item.strip() for item in values if item.strip()])
+
+
+def _optional_float(value: Any) -> float:
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    return 0.0
 
 
 def _dedupe(values: list[str]) -> list[str]:

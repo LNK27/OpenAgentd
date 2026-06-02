@@ -188,6 +188,7 @@ def test_default_tool_registry_keys():
         "skill",
         "todo_manage",
         "memory_search",
+        "hermes_query",
         "hermes_propose",
         "hermes_pending_list",
         "hermes_pending_approve",
@@ -1333,6 +1334,8 @@ def test_note_tool_auto_injected_into_lead():
     assert agent._tools["note"].name == "note"
     assert "hermes_propose" in agent._tools
     assert agent._tools["hermes_propose"].name == "hermes_propose"
+    assert "hermes_query" in agent._tools
+    assert agent._tools["hermes_query"].name == "hermes_query"
     assert "hermes_pending_list" in agent._tools
     assert "hermes_pending_approve" in agent._tools
     assert "hermes_pending_reject" in agent._tools
@@ -1350,6 +1353,7 @@ def test_note_tool_not_injected_into_member():
     cfg = AgentConfig(name="worker", role="member", system_prompt="Member agent")
     agent = _build_agent(cfg, {}, factory)
     assert "note" not in agent._tools
+    assert "hermes_query" not in agent._tools
     assert "hermes_propose" not in agent._tools
     assert "hermes_pending_list" not in agent._tools
     assert "hermes_pending_approve" not in agent._tools
@@ -1368,6 +1372,7 @@ def test_note_in_frontmatter_tools_silently_skipped_for_lead():
         system_prompt="Lead",
         tools=[
             "note",
+            "hermes_query",
             "hermes_propose",
             "hermes_pending_list",
             "hermes_pending_approve",
@@ -1382,6 +1387,8 @@ def test_note_in_frontmatter_tools_silently_skipped_for_lead():
     assert list(agent._tools.keys()).count("note") == 1
     assert "hermes_propose" in agent._tools
     assert list(agent._tools.keys()).count("hermes_propose") == 1
+    assert "hermes_query" in agent._tools
+    assert list(agent._tools.keys()).count("hermes_query") == 1
     assert "hermes_pending_list" in agent._tools
     assert list(agent._tools.keys()).count("hermes_pending_list") == 1
     assert "hermes_pending_approve" in agent._tools
@@ -1405,6 +1412,7 @@ def test_note_in_frontmatter_tools_silently_skipped_for_member():
         system_prompt="Member",
         tools=[
             "note",
+            "hermes_query",
             "hermes_propose",
             "hermes_pending_list",
             "hermes_pending_approve",
@@ -1416,6 +1424,7 @@ def test_note_in_frontmatter_tools_silently_skipped_for_member():
     )
     agent = _build_agent(cfg, {}, factory)
     assert "note" not in agent._tools
+    assert "hermes_query" not in agent._tools
     assert "hermes_propose" not in agent._tools
     assert "hermes_pending_list" not in agent._tools
     assert "hermes_pending_approve" not in agent._tools
@@ -1464,6 +1473,8 @@ def test_note_tools_injected_into_lead_only_integration(tmp_path):
 
     assert "note" in lead_tool_names
     assert "note" not in worker_tool_names
+    assert "hermes_query" in lead_tool_names
+    assert "hermes_query" not in worker_tool_names
     assert "hermes_propose" in lead_tool_names
     assert "hermes_propose" not in worker_tool_names
     assert "hermes_pending_list" in lead_tool_names
@@ -1488,6 +1499,7 @@ def test_note_and_todo_both_injected_into_lead():
     assert "note" in agent._tools
     assert "todo_manage" in agent._tools
     assert "schedule_task" in agent._tools
+    assert "hermes_query" in agent._tools
     assert "hermes_propose" in agent._tools
     assert "hermes_pending_list" in agent._tools
     assert "hermes_pending_approve" in agent._tools
@@ -1507,6 +1519,7 @@ def test_note_deduped_with_other_injected_tools():
         tools=[
             "note",
             "todo_manage",
+            "hermes_query",
             "hermes_propose",
             "hermes_pending_list",
             "hermes_pending_approve",
@@ -1519,6 +1532,7 @@ def test_note_deduped_with_other_injected_tools():
     agent = _build_agent(cfg, {}, factory)
     assert list(agent._tools.keys()).count("note") == 1
     assert list(agent._tools.keys()).count("todo_manage") == 1
+    assert list(agent._tools.keys()).count("hermes_query") == 1
     assert list(agent._tools.keys()).count("hermes_propose") == 1
     assert list(agent._tools.keys()).count("hermes_pending_list") == 1
     assert list(agent._tools.keys()).count("hermes_pending_approve") == 1

@@ -12,11 +12,14 @@ from app.services import vault_gatekeeper
 from app.services.hermes import (
     HermesConnectionError,
     HermesProposalRequest,
+    HermesQueryRequest,
     HermesSchemaError,
     HermesTimeoutError,
     HermesUnavailableError,
     HttpHermesClient,
+    normalize_hermes_query_response,
     normalize_hermes_response,
+    query_recall,
     propose_write_intents,
 )
 from app.services.vault_gatekeeper import VAULT_FOLDERS
@@ -41,6 +44,7 @@ class StubHermesClient:
         self.payload = payload
         self.health_checked = False
         self.seen_request: HermesProposalRequest | None = None
+        self.seen_query_request: HermesQueryRequest | None = None
 
     async def health(self) -> None:
         self.health_checked = True
@@ -49,6 +53,10 @@ class StubHermesClient:
         self, request: HermesProposalRequest
     ) -> dict[str, Any]:
         self.seen_request = request
+        return self.payload
+
+    async def query_recall(self, request: HermesQueryRequest) -> dict[str, Any]:
+        self.seen_query_request = request
         return self.payload
 
 
@@ -103,6 +111,72 @@ async def test_propose_write_intents_validates_and_clamps_request(
     assert intent.body_truncated is False
     assert result.conflicts == []
     assert result.invalid_intents == []
+
+
+@pytest.mark.asyncio
+async def test_query_recall_validates_and_clamps_request() -> None:
+    client = StubHermesClient(
+        {
+            "answer": "Use the vault gatekeeper for durable writes.",
+            "items": [
+                {
+                    "path": "20-topics/vault-gatekeeper.md",
+                    "title": "Vault Gatekeeper",
+                    "excerpt": "The gatekeeper is the only write path.",
+                    "score": 0.91,
+                    "tags": ["vault", "safety"],
+                }
+            ],
+            "warnings": ["partial recall"],
+            "model_info": {"model": "hermes-local"},
+        }
+    )
+
+    result = await query_recall(
+        HermesQueryRequest(
+            query="How should agents write vault notes?",
+            context="x" * 20,
+            max_results=99,
+        ),
+        client=client,
+        max_context_chars=5,
+    )
+
+    assert client.health_checked is True
+    assert client.seen_query_request is not None
+    assert client.seen_query_request.context == "xxxxx"
+    assert client.seen_query_request.max_results == 20
+    assert result.answer == "Use the vault gatekeeper for durable writes."
+    assert result.warnings == ["partial recall"]
+    assert result.model_info == {"model": "hermes-local"}
+    assert len(result.items) == 1
+    item = result.items[0]
+    assert item.path == "20-topics/vault-gatekeeper.md"
+    assert item.title == "Vault Gatekeeper"
+    assert item.excerpt == "The gatekeeper is the only write path."
+    assert item.score == 0.91
+    assert item.tags == ["vault", "safety"]
+
+
+def test_normalize_query_response_rejects_non_list_items() -> None:
+    with pytest.raises(HermesSchemaError, match="items must be a list"):
+        normalize_hermes_query_response({"answer": "Bad", "items": "not-a-list"})
+
+
+def test_normalize_query_response_rejects_forbidden_write_fields() -> None:
+    with pytest.raises(HermesSchemaError, match="forbidden field"):
+        normalize_hermes_query_response(
+            {
+                "answer": "Bad",
+                "items": [
+                    {
+                        "title": "Bad",
+                        "excerpt": "Should not carry write controls.",
+                        "vault_write_params": {"folder": "20-topics"},
+                    }
+                ],
+            }
+        )
 
 
 def test_normalize_marks_existing_path_as_conflict(_vault_dir: Path) -> None:
@@ -235,6 +309,11 @@ async def test_http_client_sends_health_and_token_header() -> None:
                 200,
                 json={"summary": "ok", "write_intents": [], "warnings": []},
             )
+        if request.url.path == "/v1/query":
+            return httpx.Response(
+                200,
+                json={"answer": "ok", "items": [], "warnings": []},
+            )
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
@@ -249,11 +328,16 @@ async def test_http_client_sends_health_and_token_header() -> None:
     payload = await client.propose_write_intents(
         HermesProposalRequest(task="Task", context="", max_intents=1)
     )
+    query_payload = await client.query_recall(
+        HermesQueryRequest(query="Question", context="", max_results=1)
+    )
 
     assert payload["summary"] == "ok"
+    assert query_payload["answer"] == "ok"
     assert [request.url.path for request in requests] == [
         "/v1/health",
         "/v1/write-intents",
+        "/v1/query",
     ]
     assert all(
         request.headers.get("X-Hermes-Token") == "secret-token" for request in requests

@@ -230,6 +230,18 @@ Known local state before this snapshot:
 - Hermes approval/review queue v1 is accepted and closed after independent review:
   - Claude Opus 4.6 verdict: `Ship`; no P0/P1 blockers. Non-blocking items tracked: queue lock held during disk I/O, duplicate state/writer helper logic, preview exposing vault-write-equivalent fields under `preview`, and missing approval-specific `VaultIndexUpdateError` rollback test.
   - Gemini 3.5 Flash regression/checklist verdict: `Accepted`; no P0/P1 blockers. Gemini confirmed scope boundaries, no direct Hermes-to-vault write path, lead-only injection/member exclusion, queue limit eviction, terminal state handling, no-overwrite approval, and writer attribution.
+- Hermes query/recall v1 is now implemented and verified:
+  - `app/services/hermes.py` now supports read-only Hermes query/recall through `HermesQueryRequest`, `HermesQueryItem`, `HermesQueryResult`, `query_recall()`, `normalize_hermes_query_response()`, and `HttpHermesClient.query_recall()` using POST `/v1/query`.
+  - Query/recall reuses the existing Hermes connector safety boundary: loopback-only HTTP, health check, optional token, timeout/connection/schema error taxonomy, context clamping, and max result clamping to `1..20`.
+  - Query response normalization accepts `answer`, `items`, `warnings`, and `model_info`; recall items expose path/title/excerpt/score/tags only and reject write-control fields such as `vault_write_params`, `writer`, `overwrite`, `write_intents`, and `pending_id`.
+  - `app/agent/tools/builtin/hermes_query.py` exposes a lead-only read-only tool. It never writes to the vault, never enqueues approvals, never calls `vault_write`, and does not draft skills. New-note proposals still use `hermes_propose`.
+  - `hermes_query` is registered in the builtin registry and auto-injected for lead agents only; member agents do not receive it.
+- Verification for Hermes query/recall v1 passed:
+  - `uv run pytest tests/services/test_hermes.py tests/agent/tools/test_hermes_query_tool.py tests/agent/test_loader.py --no-cov -q` (`86 passed`)
+  - `uv run pytest tests/services/test_hermes.py tests/agent/tools/test_hermes_query_tool.py tests/agent/tools/test_hermes_propose_tool.py tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_pending_tools.py tests/services/test_vault_gatekeeper.py tests/agent/tools/test_vault_write_tool.py tests/agent/test_loader.py --no-cov -q` (`138 passed`)
+  - `uv run ruff check app/services/hermes.py app/agent/tools/builtin/hermes_query.py app/agent/tools/builtin/__init__.py app/agent/loader.py tests/services/test_hermes.py tests/agent/tools/test_hermes_query_tool.py tests/agent/test_loader.py`
+  - `uv run ruff format --check app/services/hermes.py app/agent/tools/builtin/hermes_query.py app/agent/tools/builtin/__init__.py app/agent/loader.py tests/services/test_hermes.py tests/agent/tools/test_hermes_query_tool.py tests/agent/test_loader.py`
+  - `uv run ty check app/services/hermes.py app/agent/tools/builtin/hermes_query.py app/agent/loader.py`
 - Git worktree already had unrelated added files: `run.ps1` and `web/package-lock.json`. Do not revert them without user approval.
 
 ## Next Implementation Steps
@@ -241,7 +253,8 @@ Known local state before this snapshot:
 5. ~~Implement Phase 2: Vault Recall service and controlled `vault_read` / `vault_search` tools~~ — **DONE** (2026-05-26). Lead agents can now search/list and deep-read Obsidian vault notes without exposing a raw filesystem surface.
 6. ~~Integrate Hermes connector as a sidecar API adapter producing write-intents only~~ — **DONE** (2026-05-29). Lead agents can request Hermes write-intent proposals through `hermes_propose`; Hermes cannot write directly to the vault.
 7. ~~Implement Hermes approval/review queue v1~~ â€” **DONE** (2026-05-30). Lead agents can review, approve, or reject Hermes pending intents before queue-mediated vault writes; `vault_write` remains available for non-Hermes notes.
-8. Decide the next Phase 2/3 step: likely Hermes query/skill drafting, `vault_update`, or observability.
+8. ~~Implement Hermes query/recall v1~~ — **DONE** (2026-06-02). Lead agents can ask Hermes for read-only recall/query results without vault writes, approval queue side effects, or skill drafting.
+9. Decide the next Phase 2/3 step: likely Hermes skill drafting, `vault_update`, or observability.
 
 ## Update Protocol
 
