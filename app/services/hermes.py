@@ -7,6 +7,7 @@ returns proposals for the agent to review. It does not write to the vault.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 from urllib.parse import urlparse
@@ -541,7 +542,8 @@ def _optional_float(value: Any) -> float:
     if value is None:
         return 0.0
     if isinstance(value, (int, float)):
-        return float(value)
+        result = float(value)
+        return result if math.isfinite(result) else 0.0
     return 0.0
 
 

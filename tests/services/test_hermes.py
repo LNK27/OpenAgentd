@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +178,25 @@ def test_normalize_query_response_rejects_forbidden_write_fields() -> None:
                 ],
             }
         )
+
+
+def test_normalize_query_response_clamps_non_finite_scores() -> None:
+    result = normalize_hermes_query_response(
+        {
+            "answer": "Scores should remain JSON-safe.",
+            "items": [
+                {"title": "NaN", "excerpt": "Bad score.", "score": math.nan},
+                {"title": "Infinity", "excerpt": "Bad score.", "score": math.inf},
+                {
+                    "title": "Negative Infinity",
+                    "excerpt": "Bad score.",
+                    "score": -math.inf,
+                },
+            ],
+        }
+    )
+
+    assert [item.score for item in result.items] == [0.0, 0.0, 0.0]
 
 
 def test_normalize_marks_existing_path_as_conflict(_vault_dir: Path) -> None:

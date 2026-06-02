@@ -242,6 +242,13 @@ Known local state before this snapshot:
   - `uv run ruff check app/services/hermes.py app/agent/tools/builtin/hermes_query.py app/agent/tools/builtin/__init__.py app/agent/loader.py tests/services/test_hermes.py tests/agent/tools/test_hermes_query_tool.py tests/agent/test_loader.py`
   - `uv run ruff format --check app/services/hermes.py app/agent/tools/builtin/hermes_query.py app/agent/tools/builtin/__init__.py app/agent/loader.py tests/services/test_hermes.py tests/agent/tools/test_hermes_query_tool.py tests/agent/test_loader.py`
   - `uv run ty check app/services/hermes.py app/agent/tools/builtin/hermes_query.py app/agent/loader.py`
+- Claude Opus 4.6 reviewed Hermes query/recall v1 and gave verdict `Ship`; no P0/P1 blockers. Opus confirmed the read-only boundary and noted two P2s: non-finite scores could emit non-standard JSON tokens, and forbidden-field query items currently hard-fail the whole result instead of soft-skipping bad items.
+- Codex fixed the non-finite score P2 by clamping NaN/Infinity scores to `0.0` in `app/services/hermes.py`, with a regression test. Verification passed:
+  - `uv run pytest tests/services/test_hermes.py::test_normalize_query_response_clamps_non_finite_scores --no-cov -q`
+  - `uv run pytest tests/services/test_hermes.py tests/agent/tools/test_hermes_query_tool.py --no-cov -q` (`17 passed`)
+  - `uv run ruff check app/services/hermes.py tests/services/test_hermes.py`
+  - `uv run ruff format --check app/services/hermes.py tests/services/test_hermes.py`
+  - `uv run ty check app/services/hermes.py`
 - Git worktree already had unrelated added files: `run.ps1` and `web/package-lock.json`. Do not revert them without user approval.
 
 ## Next Implementation Steps
