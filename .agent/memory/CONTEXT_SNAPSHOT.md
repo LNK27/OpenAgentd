@@ -266,6 +266,9 @@ Known local state before this snapshot:
   - `uv run ruff format --check app/agent/tools/builtin app/agent/hooks/otel.py app/core/metrics.py tests/agent/tools tests/agent/hooks/test_otel_hook.py tests/core/test_metrics.py`
   - Targeted `uv run ty check app/agent/tools/builtin/_observability.py app/agent/tools/builtin/vault_write.py app/agent/tools/builtin/vault_search.py app/agent/tools/builtin/vault_read.py app/agent/tools/builtin/hermes_propose.py app/agent/tools/builtin/hermes_query.py app/agent/tools/builtin/hermes_pending.py app/agent/hooks/otel.py app/core/metrics.py`
   - Broad `uv run ty check app/agent/tools/builtin app/agent/hooks/otel.py app/core/metrics.py` still fails only on pre-existing Windows/POSIX diagnostics in `app/agent/tools/builtin/shell.py` (`signal.SIGKILL`, `os.killpg`, `os.getpgid`), not on this observability patch.
+- Second Brain Read/Write Tool Observability v1 is accepted and closed after independent review:
+  - Claude Opus 4.6 verdict: `Ship with P2`; no P0/P1 blockers. Non-blocking items tracked: `hermes_propose` latency includes in-memory enqueue time, and `_tracer_with_exporter()` is duplicated across tool tests.
+  - Gemini 3.5 Flash verdict: `Accepted (Ship with P2)`; no P0/P1 blockers. Gemini confirmed regression safety, unchanged write boundaries, correct semantic error preservation, low-cardinality metrics, privacy-safe attributes, and adequate helper/tool/hook test coverage.
 
 ## Next Implementation Steps
 
