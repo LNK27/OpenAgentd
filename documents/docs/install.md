@@ -119,15 +119,15 @@ openagentd init   # pick provider + API key, install default agents
 openagentd        # http://localhost:4082
 ```
 
-This starts the local API server on `http://localhost:4082`. The desktop app can connect through **Backend connection**; the mobile app connects to the LAN URL printed by `openagentd start --lan`.
+This starts the local API server on `http://localhost:4082`. The desktop app can connect through **Backend connection**; the mobile app connects to the LAN URL printed by `openagentd start --lan --key`.
 
 Useful server commands:
 
 ```bash
-openagentd start --lan   # bind 0.0.0.0 and print mobile/LAN URLs
-openagentd address       # show local and LAN URLs
-openagentd health        # check PID, port, API liveness/readiness, LAN mode
-openagentd restart       # restart the background server
+openagentd start --lan --key  # save LAN bind + access key, then print mobile/LAN URLs
+openagentd address            # show local and LAN URLs
+openagentd health             # check PID, port, API liveness/readiness, LAN mode
+openagentd restart            # restart using settings.yaml server config
 openagentd upgrade       # stop, upgrade, and restart if running
 ```
 
@@ -180,7 +180,7 @@ openagentd
 The API server starts on http://localhost:4082. Database migrations run automatically. For mobile or another desktop on your LAN, use:
 
 ```bash
-openagentd start --lan
+openagentd start --lan --key
 openagentd address
 openagentd health
 ```

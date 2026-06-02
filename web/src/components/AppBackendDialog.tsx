@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
+import { setAccessKey } from '@/api/auth'
 import {
   getAppBackendStatus,
   removeAppBackendServer,
@@ -24,6 +25,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
+  const [accessKey, setAccessKeyInput] = useState('')
   const [serverHealth, setServerHealth] = useState<Record<string, 'checking' | 'online' | 'offline'>>({})
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,6 +38,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       setStatus(next)
       setBaseUrl('')
       setServerName('')
+      setAccessKeyInput('')
       const servers = next?.servers ?? DEFAULT_SERVERS
       setServerHealth(Object.fromEntries(servers.map((server) => [server.base_url, 'checking'])))
       for (const server of servers) {
@@ -67,6 +70,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
         setError('Server did not respond to /api/health/live. Check that OpenAgentd is running with --host 0.0.0.0, this device is on the same network, and the URL uses the backend machine LAN IP.')
         return
       }
+      setAccessKey(accessKey)
       setApiBaseUrl(normalized)
       setStatus((prev) => ({
         base_url: normalized,
@@ -249,6 +253,17 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               {pending ? 'Checking…' : 'Check'}
             </button>
           </div>
+          <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-key">
+            Access key
+          </label>
+          <input
+            id="app-backend-key"
+            value={accessKey}
+            onChange={(event) => setAccessKeyInput(event.target.value)}
+            placeholder="Required when server was started with --key"
+            type="password"
+            className="w-full rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:border-(--focus-ring) focus:ring-3 focus:ring-(--focus-ring)/30"
+          />
           <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-name">
             Server name
           </label>

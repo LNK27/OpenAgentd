@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from app.cli.commands.start import _resolve_port
+from app.cli.commands.start import _resolve_host, _resolve_port
 from app.cli.net import server_addresses
 from app.cli.pids import _find_pids
 from app.cli.ui import _bold, _cyan, _dim, _green, _yellow
@@ -13,7 +13,8 @@ from app.cli.ui import _bold, _cyan, _dim, _green, _yellow
 def cmd_address(args: argparse.Namespace) -> None:
     """Show addresses desktop and mobile clients can use."""
     port = _resolve_port(args.port)
-    addresses = server_addresses(host=args.host, port=port)
+    host = _resolve_host(args)
+    addresses = server_addresses(host=host, port=port)
     running = bool(_find_pids())
 
     print()

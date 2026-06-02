@@ -123,6 +123,8 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   window drag region; macOS gets the proper traffic-light overlay.
 - **Remote-backend mobile shell** `[v1.34.0]` — Tauri mobile app scaffold embeds
   the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
+- **LAN access key for external clients** `[vNext]` — `openagentd start --lan --key`
+  stores a `settings.yaml` bearer key so desktop, mobile, and browser clients need the key before controlling a LAN-exposed server. See [`cli.md`](./cli.md).
 
 ---
 
@@ -462,7 +464,7 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
 - **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
   `brew install lthoangg/tap/openagentd`.
 - **CLI server control** `[v1.41.0]` — `restart`, `address`, `health`, and
-  `start --lan` make the CLI the control plane for desktop/mobile backends.
+  `start --lan --key` make the CLI the control plane for desktop/mobile backends.
 - **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
   server, delegates to the detected package manager, then restarts it when it
   was running.

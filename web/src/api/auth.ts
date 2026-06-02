@@ -29,10 +29,22 @@ declare global {
 }
 
 const TOKEN_KEY = '__OAD_TOKEN__'
+const ACCESS_KEY_STORAGE = 'openagentd.accessKey'
 
 function getToken(): string | undefined {
   if (typeof window === 'undefined') return undefined
-  return window[TOKEN_KEY]
+  return window[TOKEN_KEY] || window.localStorage.getItem(ACCESS_KEY_STORAGE) || undefined
+}
+
+export function setAccessKey(key: string): void {
+  if (typeof window === 'undefined') return
+  const trimmed = key.trim()
+  if (trimmed) {
+    window.localStorage.setItem(ACCESS_KEY_STORAGE, trimmed)
+    installDesktopAuth()
+  } else {
+    window.localStorage.removeItem(ACCESS_KEY_STORAGE)
+  }
 }
 
 /**
@@ -193,5 +205,6 @@ export function withTokenParam(url: string): string {
 }
 
 export function isDesktopMode(): boolean {
-  return getToken() !== undefined
+  if (typeof window === 'undefined') return false
+  return window[TOKEN_KEY] !== undefined || Boolean(window.localStorage.getItem(ACCESS_KEY_STORAGE))
 }

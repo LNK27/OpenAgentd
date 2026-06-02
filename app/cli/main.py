@@ -52,18 +52,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"openagentd v{VERSION}")
     parser.add_argument(
-        "--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)"
+        "--host", default=None, help="Bind host (default: settings.yaml server.host)"
     )
     parser.add_argument(
         "--port",
         type=int,
         default=None,
-        help="API port (default: 4082)",
+        help="API port (default: settings.yaml server.port)",
     )
     parser.add_argument(
         "--lan",
         action="store_true",
         help="Bind on all interfaces for mobile/LAN clients (sets --host 0.0.0.0)",
+    )
+    parser.add_argument(
+        "--key",
+        action="store_true",
+        help="Prompt for an access key required by external clients.",
     )
     parser.set_defaults(func=cmd_start)
 
@@ -129,10 +134,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_auth.set_defaults(func=cmd_auth)
 
+    def add_start_flags(
+        p: argparse.ArgumentParser, *, include_key: bool = True
+    ) -> None:
+        p.add_argument(
+            "--host",
+            default=None,
+            help="Bind host (default: settings.yaml server.host)",
+        )
+        p.add_argument(
+            "--port",
+            type=int,
+            default=None,
+            help="API port (default: settings.yaml server.port)",
+        )
+        p.add_argument(
+            "--lan",
+            action="store_true",
+            help="Bind on all interfaces for mobile/LAN clients (sets --host 0.0.0.0)",
+        )
+        if include_key:
+            p.add_argument(
+                "--key",
+                action="store_true",
+                help="Prompt for an access key required by external clients.",
+            )
+
     # ── start ─────────────────────────────────────────────────────────────────
-    sub.add_parser("start", help="Start the background server").set_defaults(
-        func=cmd_start
-    )
+    p_start = sub.add_parser("start", help="Start the background server")
+    add_start_flags(p_start)
+    p_start.set_defaults(func=cmd_start)
 
     # ── serve (foreground; for desktop / embedding) ───────────────────────────
     _add_serve_subparser(sub)
@@ -143,24 +174,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ── restart ───────────────────────────────────────────────────────────────
-    sub.add_parser("restart", help="Restart the background server").set_defaults(
-        func=cmd_restart
-    )
+    p_restart = sub.add_parser("restart", help="Restart the background server")
+    add_start_flags(p_restart)
+    p_restart.set_defaults(func=cmd_restart)
 
     # ── status ────────────────────────────────────────────────────────────────
-    sub.add_parser("status", help="Show whether the server is running").set_defaults(
-        func=cmd_status
-    )
+    p_status = sub.add_parser("status", help="Show whether the server is running")
+    add_start_flags(p_status, include_key=False)
+    p_status.set_defaults(func=cmd_status)
 
     # ── address ───────────────────────────────────────────────────────────────
-    sub.add_parser("address", help="Show local and LAN server URLs").set_defaults(
-        func=cmd_address
-    )
+    p_address = sub.add_parser("address", help="Show local and LAN server URLs")
+    add_start_flags(p_address, include_key=False)
+    p_address.set_defaults(func=cmd_address)
 
     # ── health ────────────────────────────────────────────────────────────────
-    sub.add_parser("health", help="Run server and mobile diagnostics").set_defaults(
-        func=cmd_health
-    )
+    p_health = sub.add_parser("health", help="Run server and mobile diagnostics")
+    add_start_flags(p_health, include_key=False)
+    p_health.set_defaults(func=cmd_health)
 
     # ── logs ──────────────────────────────────────────────────────────────────
     p_logs = sub.add_parser("logs", help="Tail the server log")

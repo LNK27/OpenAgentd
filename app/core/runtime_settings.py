@@ -42,6 +42,14 @@ class MemoryVectorSettings(BaseModel):
     index_path: str | None = None
 
 
+class ServerSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    host: str = "127.0.0.1"
+    port: int = 4082
+    access_key: str | None = None
+
+
 class RuntimeSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -50,6 +58,7 @@ class RuntimeSettings(BaseModel):
     )
     dream: DreamSettings = Field(default_factory=DreamSettings)
     memory_vector: MemoryVectorSettings = Field(default_factory=MemoryVectorSettings)
+    server: ServerSettings = Field(default_factory=ServerSettings)
 
 
 def runtime_settings_path() -> Path:

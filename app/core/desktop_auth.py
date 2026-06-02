@@ -33,6 +33,7 @@ import hmac
 import os
 
 from fastapi import Request
+from app.core.runtime_settings import load_runtime_settings
 from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -40,6 +41,7 @@ from starlette.types import ASGIApp
 
 
 _ENV_VAR = "OPENAGENTD_DESKTOP_TOKEN"
+_ACCESS_KEY_ENV_VAR = "OPENAGENTD_ACCESS_KEY"
 
 # Exact paths that never require auth. Entries are matched literally —
 # **not** as prefixes — so ``/metrics-evil`` cannot impersonate
@@ -139,7 +141,11 @@ class DesktopTokenMiddleware(BaseHTTPMiddleware):
         self._token = (
             expected_token
             if expected_token is not None
-            else os.environ.get(_ENV_VAR, "")
+            else (
+                os.environ.get(_ENV_VAR, "")
+                or os.environ.get(_ACCESS_KEY_ENV_VAR, "")
+                or (load_runtime_settings().server.access_key or "")
+            )
         )
         self._enabled = bool(self._token)
         if self._enabled:
@@ -162,7 +168,7 @@ class DesktopTokenMiddleware(BaseHTTPMiddleware):
             )
             return JSONResponse(
                 status_code=401,
-                content={"detail": "Unauthorized — desktop session token required."},
+                content={"detail": "Unauthorized — OpenAgentd access key required."},
             )
         # Scrub the QS-param token so it never reaches access logs,
         # metrics, or downstream handlers (which can log full URLs).

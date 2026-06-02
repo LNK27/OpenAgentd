@@ -19,7 +19,7 @@ openagentd is an on-machine AI assistant: FastAPI backend, React web UI, multi-a
 uv sync                              # install / sync dependencies
 
 openagentd                               # start the API server in the background
-openagentd start --lan                   # expose server to mobile/LAN clients
+openagentd start --lan --key             # expose server to mobile/LAN clients with access-key auth
 openagentd stop                          # stop background processes
 openagentd restart                       # restart the background server
 openagentd status                        # check if running

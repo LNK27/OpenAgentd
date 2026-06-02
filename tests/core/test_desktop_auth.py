@@ -52,6 +52,31 @@ class TestMiddlewareDisabled:
         client = TestClient(app)
         assert client.get("/api/team/status").status_code == 200
 
+    def test_access_key_env_enables_middleware(self, monkeypatch):
+        monkeypatch.setenv("OPENAGENTD_ACCESS_KEY", "lan-secret")
+        app = _make_app(token=None)
+        client = TestClient(app)
+        assert client.get("/api/team/status").status_code == 401
+        r = client.get(
+            "/api/team/status", headers={"Authorization": "Bearer lan-secret"}
+        )
+        assert r.status_code == 200
+
+    def test_access_key_settings_yaml_enables_middleware(self, monkeypatch, tmp_path):
+        (tmp_path / "settings.yaml").write_text(
+            "server:\n  access_key: lan-secret\n", encoding="utf-8"
+        )
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path))
+        app = _make_app(token=None)
+        client = TestClient(app)
+        assert client.get("/api/team/status").status_code == 401
+        r = client.get(
+            "/api/team/status", headers={"Authorization": "Bearer lan-secret"}
+        )
+        assert r.status_code == 200
+
 
 class TestMiddlewareEnabled:
     """When a token is configured, API requests must present it."""
@@ -61,7 +86,7 @@ class TestMiddlewareEnabled:
         client = TestClient(app)
         r = client.get("/api/team/status")
         assert r.status_code == 401
-        assert "session token" in r.json()["detail"].lower()
+        assert "access key" in r.json()["detail"].lower()
 
     def test_api_with_wrong_token_rejected(self):
         app = _make_app(token="secret")

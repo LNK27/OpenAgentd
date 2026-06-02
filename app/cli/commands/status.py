@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from app.cli.commands.start import _resolve_port
+from app.cli.commands.start import _resolve_host, _resolve_port
 from app.cli.net import server_addresses
 from app.cli.paths import _server_log
 from app.cli.pids import _find_pids, _pid_alive
@@ -15,7 +15,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
     pids = _find_pids()
     alive = [p for p in pids if _pid_alive(p)]
     port = _resolve_port(_args.port)
-    addresses = server_addresses(host=_args.host, port=port)
+    addresses = server_addresses(host=_resolve_host(_args), port=port)
     print()
     print(f"  {_bold(_cyan('OpenAgentd server'))}")
     print()

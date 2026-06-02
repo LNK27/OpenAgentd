@@ -9,7 +9,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-from app.cli.commands.start import _resolve_port
+from app.cli.commands.start import _resolve_host, _resolve_port
 from app.cli.net import is_port_reachable, server_addresses
 from app.cli.paths import _server_log
 from app.cli.pids import _find_pids, _pid_alive
@@ -51,8 +51,9 @@ def _check_line(check: Check) -> str:
 def cmd_health(args: argparse.Namespace) -> None:
     """Run server diagnostics for desktop/mobile clients."""
     port = _resolve_port(args.port)
-    host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host
-    addresses = server_addresses(host=args.host, port=port)
+    bind_host = _resolve_host(args)
+    host = "127.0.0.1" if bind_host in {"0.0.0.0", "::"} else bind_host
+    addresses = server_addresses(host=bind_host, port=port)
     pids = _find_pids()
     alive = [pid for pid in pids if _pid_alive(pid)]
     base_url = f"http://{host}:{port}"
@@ -89,7 +90,7 @@ def cmd_health(args: argparse.Namespace) -> None:
     else:
         checks.append(Check("API ready", "fail", "no /api/health/ready response"))
 
-    if args.host == "0.0.0.0":
+    if bind_host == "0.0.0.0":
         if addresses.lan:
             checks.append(Check("LAN binding", "ok", ", ".join(addresses.lan)))
         else:

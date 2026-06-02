@@ -57,7 +57,7 @@ DB persistence is handled by **`SQLiteCheckpointer`** (passed to `agent.run()`),
 
 ```bash
 openagentd                   # start the API server in the background
-openagentd start --lan       # expose the server to mobile/LAN clients
+openagentd start --lan --key # expose the server to mobile/LAN clients and save a LAN access key
 openagentd stop              # stop background processes
 openagentd restart           # restart the background server
 openagentd status            # check if running
@@ -74,4 +74,4 @@ For frontend + backend development with hot-reload, use `make dev` from a source
 
 - API: `http://localhost:4082/api`
 - Interactive docs: `http://localhost:4082/docs`
-- Desktop/mobile clients: use `openagentd address` to find the local or LAN URL
+- Desktop/mobile clients: use `openagentd address` to find the local or LAN URL. In shared networks, run `openagentd start --lan --key` once; `server.host`, `server.port`, and `server.access_key` are saved in `settings.yaml` for future restarts.

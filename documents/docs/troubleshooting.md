@@ -75,12 +75,12 @@ The FastAPI server is API-only and does not serve the React app. Use the desktop
 Start the backend in LAN mode and copy the LAN URL into the mobile app:
 
 ```bash
-openagentd start --lan
+openagentd start --lan --key
 openagentd address
 openagentd health
 ```
 
-If `health` reports local-only binding, restart with `openagentd restart --lan`. Also make sure your phone and computer are on the same network and that the OS firewall allows inbound connections to port 4082.
+If `health` reports local-only binding, restart with `openagentd restart --lan --key`. This saves LAN binding and access-key protection in `settings.yaml`. Also make sure your phone and computer are on the same network and that the OS firewall allows inbound connections to port 4082.
 
 ## `GOOGLE_API_KEY not set` or similar provider errors
 
@@ -92,7 +92,7 @@ The Gemini API rejects JSON Schema fields it doesn't recognise (`discriminator`,
 
 ## SQLite `database is locked` errors
 
-Usually means two server instances are running. Run `openagentd restart`, or `openagentd restart --lan` if mobile clients need access.
+Usually means two server instances are running. Run `openagentd restart`; add `--lan --key` if mobile clients need LAN access and the server has not been configured for it yet.
 
 ## MCP stdio server fails with `ExceptionGroup` or `FileNotFoundError`
 
