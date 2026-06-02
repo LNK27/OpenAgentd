@@ -76,8 +76,8 @@ describe('AppBackendDialog', () => {
 
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await waitFor(() => expect(screen.queryByText('Builtin Desktop App server')).toBeNull())
-    expect(screen.getByText('Local CLI')).toBeTruthy()
+    expect(await screen.findByText('Local CLI')).toBeTruthy()
+    expect(screen.queryByText('Builtin Desktop App server')).toBeNull()
   })
 
   it('blocks incomplete URLs before invoking a backend switch command', async () => {

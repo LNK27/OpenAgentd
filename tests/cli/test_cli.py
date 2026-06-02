@@ -165,7 +165,7 @@ class TestBuildParser:
 
     def test_host_default(self):
         args = build_parser().parse_args([])
-        assert args.host == "127.0.0.1"
+        assert args.host is None
 
     def test_port_default(self):
         # ``--port`` parses as ``None`` (sentinel) so cmd_start applies the

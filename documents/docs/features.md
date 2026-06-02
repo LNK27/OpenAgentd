@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-06-01
+updated: 2026-06-02
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.42.0 · June 1, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.42.0)
+**Latest release:** v1.43.0 · June 2, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.43.0)
 
 ---
 
@@ -123,7 +123,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   window drag region; macOS gets the proper traffic-light overlay.
 - **Remote-backend mobile shell** `[v1.34.0]` — Tauri mobile app scaffold embeds
   the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
-- **LAN access key for external clients** `[vNext]` — `openagentd start --lan --key`
+- **LAN access key for external clients** `[v1.43.0]` — `openagentd start --lan --key`
   stores a `settings.yaml` bearer key so desktop, mobile, and browser clients need the key before controlling a LAN-exposed server. See [`cli.md`](./cli.md).
 
 ---

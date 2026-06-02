@@ -139,24 +139,26 @@ def build_parser() -> argparse.ArgumentParser:
     ) -> None:
         p.add_argument(
             "--host",
-            default=None,
+            default=argparse.SUPPRESS,
             help="Bind host (default: settings.yaml server.host)",
         )
         p.add_argument(
             "--port",
             type=int,
-            default=None,
+            default=argparse.SUPPRESS,
             help="API port (default: settings.yaml server.port)",
         )
         p.add_argument(
             "--lan",
             action="store_true",
+            default=argparse.SUPPRESS,
             help="Bind on all interfaces for mobile/LAN clients (sets --host 0.0.0.0)",
         )
         if include_key:
             p.add_argument(
                 "--key",
                 action="store_true",
+                default=argparse.SUPPRESS,
                 help="Prompt for an access key required by external clients.",
             )
 
