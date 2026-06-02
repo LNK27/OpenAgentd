@@ -20,6 +20,7 @@
  * that returning a freshly-built object on every render would trigger.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
@@ -105,6 +106,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const inputRef = useRef<InputBarHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
   const mobileSidebarSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const mobileActionsSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'files' | 'diff'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
@@ -721,16 +723,52 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     mobileSidebarSwipeStartRef.current = null
   }, [])
 
+  const handleMobileActionsSwipeStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if ((os !== 'ios' && os !== 'android') || !isMobile || showMobileActions) return
+    const touch = event.touches[0]
+    if (!touch || window.innerWidth - touch.clientX > 24) return
+    mobileActionsSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
+  }, [isMobile, os, showMobileActions])
+
+  const handleMobileActionsSwipeMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const start = mobileActionsSwipeStartRef.current
+    if (!start || (os !== 'ios' && os !== 'android') || !isMobile || showMobileActions) return
+    const touch = event.touches[0]
+    if (!touch) return
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+    if (deltaX < -56 && Math.abs(deltaY) < 36) {
+      setShowMobileActions(true)
+      mobileActionsSwipeStartRef.current = null
+    }
+  }, [isMobile, os, showMobileActions])
+
+  const handleMobileActionsSwipeEnd = useCallback(() => {
+    mobileActionsSwipeStartRef.current = null
+  }, [])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     // h-dvh handles iOS Safari's dynamic toolbar.
     <div
       className="mobile-safe-shell mobile-viewport flex h-dvh flex-col bg-(--bg-page)"
-      onTouchStart={handleMobileSidebarSwipeStart}
-      onTouchMove={handleMobileSidebarSwipeMove}
-      onTouchEnd={handleMobileSidebarSwipeEnd}
-      onTouchCancel={handleMobileSidebarSwipeEnd}
+      onTouchStart={(event) => {
+        handleMobileSidebarSwipeStart(event)
+        handleMobileActionsSwipeStart(event)
+      }}
+      onTouchMove={(event) => {
+        handleMobileSidebarSwipeMove(event)
+        handleMobileActionsSwipeMove(event)
+      }}
+      onTouchEnd={() => {
+        handleMobileSidebarSwipeEnd()
+        handleMobileActionsSwipeEnd()
+      }}
+      onTouchCancel={() => {
+        handleMobileSidebarSwipeEnd()
+        handleMobileActionsSwipeEnd()
+      }}
     >
       {/* 40 px header above the sidebar/content row. On macOS Tauri it
           doubles as the window drag region via useTauriDrag, with a
@@ -1245,64 +1283,108 @@ function MobileChatActions({
   tokens,
 }: MobileChatActionsProps) {
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger
+    <>
+      <button
+        type="button"
         data-no-drag
+        onClick={() => onOpenChange(true)}
         className="mr-1 flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
         aria-label="Open chat actions"
         title="Chat actions"
       >
         <MoreHorizontal size={17} aria-hidden="true" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={8} className="w-[min(calc(100vw-1rem),20rem)] p-1.5">
-        <div className="px-2 py-2">
-          <p className="truncate text-sm font-semibold text-(--color-text)">
-            {mode === 'coding' && workspace ? workspaceLabel(workspace) : 'Chat actions'}
-          </p>
-          {activeAgent && (
-            <p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">Active: {activeAgent}</p>
-          )}
-        </div>
+      </button>
 
-        {activeAgent && agents.length > 1 && (
+      <AnimatePresence>
+        {open && (
           <>
-            <div className="px-2 pt-2 text-xs font-medium text-muted-foreground">Agents</div>
-            {agents.map((name) => (
-              <DropdownMenuItem
-                key={name}
-                onClick={() => { onSelectAgent(name); onOpenChange(false) }}
-                className="min-h-10 px-2"
-              >
-                <span className={`h-2 w-2 rounded-full ${dotClassFor(name, streams[name])}`} aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate font-mono text-xs">{name}</span>
-                {name === activeAgent && <Check size={13} className="text-(--color-accent)" aria-hidden="true" />}
-              </DropdownMenuItem>
-            ))}
+            <motion.div
+              key="mobile-actions-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-black/60 md:hidden"
+              aria-hidden="true"
+              onClick={() => onOpenChange(false)}
+            />
+            <motion.aside
+              key="mobile-actions-drawer"
+              initial={{ x: 280 }}
+              animate={{ x: 0 }}
+              exit={{ x: 280 }}
+              transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+              className="mobile-safe-top fixed bottom-0 right-0 z-40 flex w-[min(272px,calc(100vw-2rem))] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Chat actions"
+            >
+              <div className="border-b border-(--color-border) px-3 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-(--color-text)">
+                      {mode === 'coding' && workspace ? workspaceLabel(workspace) : 'Chat actions'}
+                    </p>
+                    {activeAgent && (
+                      <p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">Active: {activeAgent}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenChange(false)}
+                    className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                    aria-label="Close chat actions"
+                  >
+                    <X size={16} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-2">
+                {activeAgent && agents.length > 1 && (
+                  <>
+                    <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Agents</div>
+                    {agents.map((name) => (
+                      <button
+                        type="button"
+                        key={name}
+                        onClick={() => { onSelectAgent(name); onOpenChange(false) }}
+                        className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)"
+                      >
+                        <span className={`h-2 w-2 rounded-full ${dotClassFor(name, streams[name])}`} aria-hidden="true" />
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs">{name}</span>
+                        {name === activeAgent && <Check size={13} className="text-(--color-accent)" aria-hidden="true" />}
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Session</div>
+                {tokens && (
+                  <div className="flex min-h-10 items-center gap-2 rounded-md px-2 text-sm">
+                    <span className="flex-1">Tokens</span>
+                    <span className="inline-flex items-center gap-1.5 font-mono text-xs text-(--color-text)">
+                      <span title={`Prompt: ${tokens.input.toLocaleString()}`}>in {formatTokens(tokens.input)}</span>
+                      <span title={`Output: ${tokens.output.toLocaleString()}`}>out {formatTokens(tokens.output)}</span>
+                      {tokens.cached > 0 && <span title={`Cached: ${tokens.cached.toLocaleString()}`}>cache {formatTokens(tokens.cached)}</span>}
+                      {tokens.pulsing && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" aria-hidden="true" />}
+                    </span>
+                  </div>
+                )}
+                <button type="button" onClick={onWiki} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)">
+                  <Brain size={15} aria-hidden="true" />
+                  <span className="flex-1">Wiki</span>
+                </button>
+                <button type="button" onClick={onScheduler} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)">
+                  <CalendarClock size={15} aria-hidden="true" />
+                  <span className="flex-1">Scheduler</span>
+                </button>
+              </div>
+            </motion.aside>
           </>
         )}
-
-        <div className="px-2 pt-2 text-xs font-medium text-muted-foreground">Session</div>
-        {tokens && (
-          <DropdownMenuItem disabled className="min-h-10 px-2 opacity-100">
-            <span className="flex-1">Tokens</span>
-            <span className="inline-flex items-center gap-1.5 font-mono text-xs text-(--color-text)">
-              <span title={`Prompt: ${tokens.input.toLocaleString()}`}>in {formatTokens(tokens.input)}</span>
-              <span title={`Output: ${tokens.output.toLocaleString()}`}>out {formatTokens(tokens.output)}</span>
-              {tokens.cached > 0 && <span title={`Cached: ${tokens.cached.toLocaleString()}`}>cache {formatTokens(tokens.cached)}</span>}
-              {tokens.pulsing && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" aria-hidden="true" />}
-            </span>
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem onClick={onWiki} className="min-h-10 px-2">
-          <Brain size={15} aria-hidden="true" />
-          <span className="flex-1">Wiki</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onScheduler} className="min-h-10 px-2">
-          <CalendarClock size={15} aria-hidden="true" />
-          <span className="flex-1">Scheduler</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </AnimatePresence>
+    </>
   )
 }
 
