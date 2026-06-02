@@ -87,7 +87,13 @@ def _upgrade_command() -> tuple[str, list[str]]:
 
 
 def _restart_command(args: argparse.Namespace) -> list[str]:
-    executable = shutil.which("openagentd") or "openagentd"
+    executable = shutil.which("openagentd")
+    if executable is None and sys.argv:
+        candidate = Path(sys.argv[0])
+        if candidate.is_file():
+            executable = str(candidate)
+    if executable is None:
+        executable = "openagentd"
     command = [executable]
     if getattr(args, "lan", False):
         command.append("--lan")
@@ -103,6 +109,12 @@ def _run(command: list[str]) -> int:
     return subprocess.run(command).returncode
 
 
+def _post_upgrade_command(manager: str) -> list[str] | None:
+    if manager == "brew":
+        return ["brew", "link", "lthoangg/tap/openagentd"]
+    return None
+
+
 def cmd_upgrade(args: argparse.Namespace) -> None:
     """Upgrade openagentd to the latest version."""
     was_running = bool(_find_pids())
@@ -114,6 +126,11 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
     print(f"  {_bold('Upgrading openagentd')} via {_cyan(manager)} ...")
     print(f"  {_dim(' '.join(command))}")
     upgrade_code = _run(command)
+    if upgrade_code == 0:
+        post_upgrade = _post_upgrade_command(manager)
+        if post_upgrade is not None:
+            print(f"  {_dim(' '.join(post_upgrade))}")
+            upgrade_code = _run(post_upgrade)
 
     restart_code = 0
     if was_running:

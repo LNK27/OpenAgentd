@@ -484,8 +484,6 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
             window
                 .navigate("http://localhost:5173".parse().context("parse dev frontend url")?)
                 .context("navigate app window")?;
-        } else {
-            window.eval("window.location.assign('/');").ok();
         }
     }
     show_target_window(app);

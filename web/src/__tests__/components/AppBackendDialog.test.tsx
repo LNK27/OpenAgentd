@@ -94,6 +94,12 @@ describe('AppBackendDialog', () => {
   it('connects the builtin desktop server through the bundled backend command', async () => {
     const user = userEvent.setup()
     const onOpenChange = mock(() => {})
+    statusPayload = {
+      ...statusPayload,
+      base_url: 'http://127.0.0.1:49545',
+      sidecar_running: true,
+      external: false,
+    }
     render(<AppBackendDialog open onOpenChange={onOpenChange} />)
 
     await user.click(await screen.findByText('Builtin Desktop App server'))
@@ -104,6 +110,7 @@ describe('AppBackendDialog', () => {
         args: undefined,
       })
     })
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:49545'))
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 

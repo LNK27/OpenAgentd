@@ -136,6 +136,9 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     try {
       await action()
       const next = await getAppBackendStatus()
+      if (next?.base_url) {
+        setApiBaseUrl(next.base_url)
+      }
       setStatus(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

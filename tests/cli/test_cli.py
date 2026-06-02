@@ -446,6 +446,29 @@ class TestCmdUpgrade:
 
         assert run_calls == [["uv", "tool", "upgrade", "openagentd"]]
 
+    def test_brew_upgrade_relinks_formula_without_restart(self, monkeypatch):
+        from app.cli.commands import upgrade as upgrade_mod
+
+        args = build_parser().parse_args(["upgrade"])
+        run_calls: list[list[str]] = []
+
+        monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [])
+        monkeypatch.setattr(
+            upgrade_mod,
+            "_upgrade_command",
+            lambda: ("brew", ["brew", "upgrade", "openagentd"]),
+        )
+        monkeypatch.setattr(
+            upgrade_mod, "_run", lambda command: run_calls.append(command) or 0
+        )
+
+        upgrade_mod.cmd_upgrade(args)
+
+        assert run_calls == [
+            ["brew", "upgrade", "openagentd"],
+            ["brew", "link", "lthoangg/tap/openagentd"],
+        ]
+
     def test_upgrade_stops_and_restarts_when_running(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
 
@@ -505,6 +528,33 @@ class TestCmdUpgrade:
         upgrade_mod.cmd_upgrade(args)
 
         assert run_calls[-1] == ["openagentd", "--lan", "start"]
+
+    def test_upgrade_restart_falls_back_to_original_script_path(self, monkeypatch):
+        from app.cli.commands import upgrade as upgrade_mod
+
+        args = build_parser().parse_args(["upgrade"])
+        run_calls: list[list[str]] = []
+
+        monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [1234])
+        monkeypatch.setattr(upgrade_mod, "cmd_stop", Mock())
+        monkeypatch.setattr(
+            upgrade_mod,
+            "_upgrade_command",
+            lambda: ("brew", ["brew", "upgrade", "openagentd"]),
+        )
+        monkeypatch.setattr(upgrade_mod.shutil, "which", lambda _name: None)
+        monkeypatch.setattr(upgrade_mod.sys, "argv", [__file__])
+        monkeypatch.setattr(
+            upgrade_mod, "_run", lambda command: run_calls.append(command) or 0
+        )
+
+        upgrade_mod.cmd_upgrade(args)
+
+        assert run_calls == [
+            ["brew", "upgrade", "openagentd"],
+            ["brew", "link", "lthoangg/tap/openagentd"],
+            [__file__, "start"],
+        ]
 
     def test_upgrade_exits_with_upgrade_failure_after_restart(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
