@@ -53,7 +53,8 @@ beforeEach(() => {
   const fetchMock = mock((...args: unknown[]) => {
     const url = String(args[0])
     const ok = url.startsWith('http://127.0.0.1:4082/')
-    return Promise.resolve(new Response(null, { status: ok ? 204 : 503 }))
+    const authorized = !url.endsWith('/api/auth/check') || ok
+    return Promise.resolve(new Response(null, { status: ok && authorized ? 204 : 503 }))
   })
   globalThis.fetch = fetchMock as typeof fetch
 })
@@ -109,7 +110,8 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={onOpenChange} />)
 
-    await user.click(await screen.findByText('Builtin Desktop App server'))
+    await screen.findByText('Builtin Desktop App server')
+    await user.click(screen.getByRole('button', { name: 'use' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -127,7 +129,7 @@ describe('AppBackendDialog', () => {
 
     await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:5050')
     await user.type(screen.getByLabelText(/server name/i), 'Workstation')
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Save server' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({

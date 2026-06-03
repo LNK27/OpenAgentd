@@ -355,6 +355,20 @@ async fn app_use_external_backend(app: AppHandle, base_url: String, name: Option
 async fn app_remove_backend_server(app: AppHandle, base_url: String) -> Result<AppBackendStatus, String> {
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
     remove_app_backend_server(&app, &normalized).map_err(|e| format!("{e:#}"))?;
+    let state: tauri::State<'_, AppState> = app.state();
+    let active_external = *state.backend_mode.lock().await == BackendMode::External
+        && state
+            .backend_base_url
+            .lock()
+            .await
+            .as_deref()
+            .is_some_and(|active| active == normalized);
+    if active_external {
+        save_app_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
+        restart_sidecar_and_reload_window(&app)
+            .await
+            .map_err(|e| format!("{e:#}"))?;
+    }
     app_backend_status(app.clone(), app.state())
         .await
         .map_err(|e| format!("{e:#}"))
@@ -1181,7 +1195,10 @@ async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Result<(
 }
 
 fn normalize_external_base_url(base_url: &str) -> Result<String> {
-    let trimmed = base_url.trim().trim_end_matches('/');
+    let mut trimmed = base_url.trim().trim_end_matches('/');
+    if let Some(stripped) = trimmed.strip_suffix("/api") {
+        trimmed = stripped.trim_end_matches('/');
+    }
     if trimmed.is_empty() {
         return Err(anyhow!("base URL is required"));
     }
