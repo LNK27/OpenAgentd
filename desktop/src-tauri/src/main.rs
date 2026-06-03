@@ -1228,7 +1228,7 @@ fn load_app_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
     let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
     let value: serde_json::Value = serde_json::from_slice(&bytes)
         .with_context(|| format!("parse {}", path.display()))?;
-    let mut config = if value
+    let config = if value
         .get("servers")
         .and_then(|servers| servers.as_array())
         .and_then(|servers| servers.first())
@@ -1253,9 +1253,6 @@ fn load_app_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
     } else {
         serde_json::from_value(value).with_context(|| format!("parse {}", path.display()))?
     };
-    if config.servers.is_empty() {
-        config.servers = AppBackendConfig::default().servers;
-    }
     Ok(config)
 }
 
@@ -1287,9 +1284,6 @@ fn remove_app_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {
     config.servers.retain(|server| server.base_url != base_url);
     if config.active_base_url.as_deref() == Some(base_url) {
         config.active_base_url = None;
-    }
-    if config.servers.is_empty() {
-        config.servers = AppBackendConfig::default().servers;
     }
     let bytes = serde_json::to_vec_pretty(&config).context("serialize desktop backend config")?;
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
