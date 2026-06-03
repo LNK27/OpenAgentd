@@ -26,6 +26,7 @@ struct AppState {
     sidecar: Arc<Mutex<Option<Sidecar>>>,
     desktop_token: Arc<Mutex<Option<String>>>,
     backend_base_url: Arc<Mutex<Option<String>>>,
+    backend_mode: Arc<Mutex<BackendMode>>,
     force_reloading: Arc<AtomicBool>,
     quitting: Arc<AtomicBool>,
     tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
@@ -35,6 +36,21 @@ struct AppState {
     /// Current webview zoom factor, mutated by the View > Zoom menu
     /// items. Session-only — not persisted across restarts.
     zoom: Arc<Mutex<f64>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BackendMode {
+    Bundled,
+    External,
+}
+
+impl BackendMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Bundled => "bundled",
+            Self::External => "external",
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -52,6 +68,7 @@ struct AppBackendConfig {
 #[derive(Clone, Serialize)]
 struct AppBackendStatus {
     base_url: String,
+    mode: String,
     sidecar_running: bool,
     external: bool,
     supports_bundled: bool,
@@ -269,13 +286,15 @@ async fn app_backend_status(app: AppHandle, state: tauri::State<'_, AppState>) -
         .await
         .as_mut()
         .is_some_and(|s| s.is_alive());
+    let mode = *state.backend_mode.lock().await;
     let servers = load_app_backend_config(&app)
         .unwrap_or_else(|_| AppBackendConfig::default())
         .servers;
     Ok(AppBackendStatus {
         base_url,
+        mode: mode.as_str().to_string(),
         sidecar_running,
-        external: !sidecar_running,
+        external: mode == BackendMode::External,
         supports_bundled: true,
         servers,
     })
@@ -284,8 +303,49 @@ async fn app_backend_status(app: AppHandle, state: tauri::State<'_, AppState>) -
 #[tauri::command]
 async fn app_save_backend_server(app: AppHandle, base_url: String, name: Option<String>) -> Result<AppBackendStatus, String> {
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
-    save_app_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref(), true)
+    save_app_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref(), false)
         .map_err(|e| format!("{e:#}"))?;
+    app_backend_status(app.clone(), app.state())
+        .await
+        .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+async fn app_use_external_backend(app: AppHandle, base_url: String, name: Option<String>, persist: Option<bool>) -> Result<AppBackendStatus, String> {
+    let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
+    wait_for_health(&normalized, 8, Duration::from_millis(250))
+        .await
+        .map_err(|e| format!("External backend is not reachable: {e:#}"))?;
+
+    shutdown_sidecar_now(&app).await;
+
+    let state: tauri::State<'_, AppState> = app.state();
+    let _ = state.desktop_token.lock().await.take();
+    let _ = state.backend_base_url.lock().await.replace(normalized.clone());
+    *state.backend_mode.lock().await = BackendMode::External;
+
+    if persist.unwrap_or(true) {
+        save_app_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref(), true)
+            .map_err(|e| format!("{e:#}"))?;
+    }
+
+    let init_script = frontend_init_script(None, &normalized);
+    for window in app.webview_windows().into_values() {
+        window.eval(&init_script).map_err(|e| format!("inject external backend config: {e:#}"))?;
+        window.eval("window.location.reload();").map_err(|e| format!("reload window: {e:#}"))?;
+    }
+    update_tray_status(&app, "Status: Running (external)");
+    app.emit(
+        "backend-ready",
+        BackendReady {
+            port: 0,
+            version: "external".to_string(),
+            base_url: normalized,
+            sidecar_running: false,
+        },
+    )
+    .ok();
+
     app_backend_status(app.clone(), app.state())
         .await
         .map_err(|e| format!("{e:#}"))
@@ -295,6 +355,20 @@ async fn app_save_backend_server(app: AppHandle, base_url: String, name: Option<
 async fn app_remove_backend_server(app: AppHandle, base_url: String) -> Result<AppBackendStatus, String> {
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
     remove_app_backend_server(&app, &normalized).map_err(|e| format!("{e:#}"))?;
+    let state: tauri::State<'_, AppState> = app.state();
+    let active_external = *state.backend_mode.lock().await == BackendMode::External
+        && state
+            .backend_base_url
+            .lock()
+            .await
+            .as_deref()
+            .is_some_and(|active| active == normalized);
+    if active_external {
+        save_app_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
+        restart_sidecar_and_reload_window(&app)
+            .await
+            .map_err(|e| format!("{e:#}"))?;
+    }
     app_backend_status(app.clone(), app.state())
         .await
         .map_err(|e| format!("{e:#}"))
@@ -423,7 +497,12 @@ fn force_reload_app(app: &AppHandle) {
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         update_tray_status(&handle, "Status: Reloading…");
-        let result = if std::env::var("OPENAGENTD_DEV_BACKEND_URL").is_ok() {
+        let external_active = {
+            let state: tauri::State<'_, AppState> = handle.state();
+            let mode = *state.backend_mode.lock().await;
+            mode == BackendMode::External
+        };
+        let result = if external_active || std::env::var("OPENAGENTD_DEV_BACKEND_URL").is_ok() {
             reload_main_window(&handle);
             Ok(())
         } else {
@@ -490,6 +569,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
 
     let _ = state.desktop_token.lock().await.replace(token);
     let _ = state.backend_base_url.lock().await.replace(format!("http://127.0.0.1:{}", handshake.port));
+    *state.backend_mode.lock().await = BackendMode::Bundled;
     let _ = state.sidecar.lock().await.replace(sidecar);
     app.emit(
         "backend-ready",
@@ -1115,7 +1195,10 @@ async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Result<(
 }
 
 fn normalize_external_base_url(base_url: &str) -> Result<String> {
-    let trimmed = base_url.trim().trim_end_matches('/');
+    let mut trimmed = base_url.trim().trim_end_matches('/');
+    if let Some(stripped) = trimmed.strip_suffix("/api") {
+        trimmed = stripped.trim_end_matches('/');
+    }
     if trimmed.is_empty() {
         return Err(anyhow!("base URL is required"));
     }
@@ -1295,6 +1378,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
         }
         let init_script = frontend_init_script(None, &base);
         let _ = state.backend_base_url.lock().await.replace(base.clone());
+        *state.backend_mode.lock().await = BackendMode::External;
         build_app_window(&app, MAIN_WINDOW.to_string(), init_script).await?;
         update_tray_status(&app, "Status: Running (external)");
         app.emit(
@@ -1336,6 +1420,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     let _ = state.sidecar.lock().await.replace(sidecar);
     let _ = state.desktop_token.lock().await.replace(handshake.token);
     let _ = state.backend_base_url.lock().await.replace(base.clone());
+    *state.backend_mode.lock().await = BackendMode::Bundled;
 
     build_app_window(&app, MAIN_WINDOW.to_string(), init_script).await?;
     update_tray_status(&app, "Status: Running");
@@ -1359,6 +1444,7 @@ fn main() {
         sidecar: Arc::new(Mutex::new(None)),
         desktop_token: Arc::new(Mutex::new(None)),
         backend_base_url: Arc::new(Mutex::new(None)),
+        backend_mode: Arc::new(Mutex::new(BackendMode::Bundled)),
         force_reloading: Arc::new(AtomicBool::new(false)),
         quitting: Arc::new(AtomicBool::new(false)),
         tray_status: Arc::new(Mutex::new(None)),
@@ -1395,6 +1481,7 @@ fn main() {
             app_backend_status,
             app_remove_backend_server,
             app_save_backend_server,
+            app_use_external_backend,
             app_use_bundled_backend,
             app_new_window,
             set_tray_session,

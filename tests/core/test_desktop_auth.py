@@ -20,6 +20,10 @@ def _make_app(token: str | None) -> FastAPI:
     def status() -> dict:
         return {"team": "ok"}
 
+    @app.get("/api/auth/check")
+    def auth_check() -> dict:
+        return {"ok": True}
+
     @app.get("/")
     def root() -> dict:
         return {"hello": "world"}
@@ -99,6 +103,14 @@ class TestMiddlewareEnabled:
         client = TestClient(app)
         r = client.get("/api/team/status", headers={"Authorization": "Bearer secret"})
         assert r.status_code == 200
+
+    def test_auth_check_requires_token(self):
+        app = _make_app(token="secret")
+        client = TestClient(app)
+        assert client.get("/api/auth/check").status_code == 401
+        r = client.get("/api/auth/check", headers={"Authorization": "Bearer secret"})
+        assert r.status_code == 200
+        assert r.json() == {"ok": True}
 
     def test_api_with_query_param_token_accepted(self):
         app = _make_app(token="secret")

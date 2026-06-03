@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
-import { setAccessKey } from '@/api/auth'
+import { getAccessKey, setAccessKey } from '@/api/auth'
 import {
   getAppBackendStatus,
   removeAppBackendServer,
   saveAppBackendServer,
+  switchToExternalAppBackend,
   switchToBundledAppBackend,
   type SavedAppServer,
   type AppBackendStatus,
@@ -26,6 +27,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
   const [accessKey, setAccessKeyInput] = useState('')
+  const [rememberServer, setRememberServer] = useState(true)
   const [serverHealth, setServerHealth] = useState<Record<string, 'checking' | 'online' | 'offline'>>({})
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -39,12 +41,14 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       setBaseUrl('')
       setServerName('')
       setAccessKeyInput('')
+      setRememberServer(true)
       const servers = next?.servers ?? DEFAULT_SERVERS
-      setServerHealth(Object.fromEntries(servers.map((server) => [server.base_url, 'checking'])))
+      setServerHealth(Object.fromEntries(servers.map((server) => [normalizeServerBaseUrl(server.base_url), 'checking'])))
       for (const server of servers) {
-        void pingServer(server.base_url).then((online) => {
+        const normalized = normalizeServerBaseUrl(server.base_url)
+        void pingServer(normalized).then((online) => {
           if (cancelled) return
-          setServerHealth((prev) => ({ ...prev, [server.base_url]: online ? 'online' : 'offline' }))
+          setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
         })
       }
     })
@@ -53,8 +57,8 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
   if (!open) return null
 
-  async function checkExternal(nextBaseUrl = baseUrl) {
-    const target = nextBaseUrl.trim()
+  async function checkExternal(nextBaseUrl = baseUrl, nextName = serverName, persist = rememberServer) {
+    const target = normalizeServerBaseUrl(nextBaseUrl)
     const validationError = validateServerUrl(target)
     if (validationError) {
       setError(validationError)
@@ -63,22 +67,24 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     setPending(true)
     setError(null)
     try {
-      const normalized = target.replace(/\/+$/, '')
-      const online = await pingServer(normalized)
-      setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
+      const online = await pingServer(target)
+      setServerHealth((prev) => ({ ...prev, [target]: online ? 'online' : 'offline' }))
       if (!online) {
-        setError('Server did not respond to /api/health/live. Check that OpenAgentd is running with --host 0.0.0.0, this device is on the same network, and the URL uses the backend machine LAN IP.')
+        setError(connectionFailureMessage(target))
         return
       }
-      setAccessKey(accessKey)
-      setApiBaseUrl(normalized)
-      setStatus((prev) => ({
-        base_url: normalized,
-        sidecar_running: false,
-        external: true,
-        supports_bundled: prev?.supports_bundled ?? false,
-        servers: prev?.servers ?? DEFAULT_SERVERS,
-      }))
+      const keyForConnect = accessKey.trim() || getAccessKey() || ''
+      const authorized = await checkServerAuth(target, keyForConnect)
+      if (!authorized) {
+        setError('Server is reachable, but the access key is invalid or missing.')
+        return
+      }
+      if (accessKey.trim()) setAccessKey(accessKey)
+      const next = await switchToExternalAppBackend(target, nextName, persist)
+      setApiBaseUrl(next.base_url)
+      setStatus(next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setPending(false)
     }
@@ -89,7 +95,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
   }
 
   async function saveServer() {
-    const target = baseUrl.trim()
+    const target = normalizeServerBaseUrl(baseUrl)
     const validationError = validateServerUrl(target)
     if (validationError) {
       setError(validationError)
@@ -102,10 +108,9 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       setStatus(next)
       setBaseUrl('')
       setServerName('')
-      const normalized = target.replace(/\/+$/, '')
-      setServerHealth((prev) => ({ ...prev, [normalized]: 'checking' }))
-      const online = await pingServer(normalized)
-      setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
+      setServerHealth((prev) => ({ ...prev, [target]: 'checking' }))
+      const online = await pingServer(target)
+      setServerHealth((prev) => ({ ...prev, [target]: online ? 'online' : 'offline' }))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -118,6 +123,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     setError(null)
     try {
       const next = await removeAppBackendServer(baseUrl)
+      if (next.base_url) setApiBaseUrl(next.base_url)
       setStatus(next)
       setServerHealth((prev) => {
         const { [baseUrl]: _removed, ...rest } = prev
@@ -153,7 +159,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       role="dialog"
       aria-modal="true"
       aria-labelledby="app-backend-title"
-      onClick={() => onOpenChange(false)}
+      onClick={() => { if (!pending) onOpenChange(false) }}
     >
       <div
         className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-xl border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-2xl"
@@ -164,7 +170,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             <Server size={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 id="app-backend-title" className="text-sm font-semibold">Backend connection</h2>
+            <h2 id="app-backend-title" className="text-sm font-semibold">Server connection</h2>
             <p className="mt-1 text-xs leading-5 text-(--color-text-muted)">
               Connect this app to a running OpenAgentd server. Mobile apps use a remote backend only.
             </p>
@@ -175,7 +181,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-xs text-(--color-text-muted)">
             Current: <span className="font-mono text-(--color-text)">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
             <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px]">
-              {status?.external ? 'external' : 'bundled'}
+              {status?.mode ?? (status?.external ? 'external' : 'bundled')}
             </span>
           </div>
 
@@ -183,41 +189,63 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             <div className="mb-2 text-xs font-medium text-(--color-text)">Saved servers</div>
             <div className="space-y-1">
               {status?.supports_bundled !== false ? (
-                <button
-                  type="button"
-                  onClick={() => { void connectBundled() }}
-                  className="flex w-full items-center justify-between rounded-md border border-(--color-border) px-3 py-2 text-left text-xs hover:bg-(--bg-page)"
-                  disabled={pending}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
+                <div className="flex items-center gap-2 rounded-md border border-(--color-border) px-3 py-2 text-xs hover:bg-(--bg-page)">
+                  <button
+                    type="button"
+                    onClick={() => {}}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    disabled={pending}
+                  >
                     <ServerStatusDot status={status?.sidecar_running ? 'online' : undefined} />
                     <span className="truncate font-medium">Builtin Desktop App server</span>
-                  </span>
-                  <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 font-sans text-[10px] text-(--color-text-muted)">
-                    {status?.external ? 'connect' : 'active'}
-                  </span>
-                </button>
+                  </button>
+                  {!status?.external ? (
+                    <span className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted)">active</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => { void connectBundled() }}
+                    className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
+                    disabled={pending}
+                  >
+                    use
+                  </button>
+                </div>
               ) : null}
-              {(status?.servers ?? DEFAULT_SERVERS).map((server) => (
+              {(status?.servers ?? DEFAULT_SERVERS).map((server) => {
+                const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
+                const active = status?.mode === 'external' && normalizeServerBaseUrl(status.base_url) === normalizedServerUrl
+                return (
                 <div
                   key={server.base_url}
                   className="flex items-center gap-2 rounded-md border border-(--color-border) px-3 py-2 text-xs hover:bg-(--bg-page)"
                 >
                   <button
                     type="button"
-                    onClick={() => { setBaseUrl(server.base_url); void checkExternal(server.base_url) }}
+                    onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     disabled={pending}
                   >
-                    <ServerStatusDot status={serverHealth[server.base_url]} />
+                    <ServerStatusDot status={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{server.name || server.base_url}</span>
                       {server.name ? <span className="block truncate font-mono text-[10px] text-(--color-text-muted)">{server.base_url}</span> : null}
                     </span>
                   </button>
+                  {active ? (
+                    <span className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted)">active</span>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => { setBaseUrl(server.base_url); setServerName(server.name ?? '') }}
+                    onClick={() => { void checkExternal(normalizedServerUrl, server.name ?? '', true) }}
+                    className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
+                    disabled={pending}
+                  >
+                    connect
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
                     className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
                     disabled={pending}
                   >
@@ -232,7 +260,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     remove
                   </button>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
 
@@ -253,9 +281,19 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-2 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60"
               disabled={pending}
             >
-              {pending ? 'Checking…' : 'Check'}
+              {pending ? 'Connecting…' : 'Connect'}
             </button>
           </div>
+          <label className="flex items-center gap-2 text-xs text-(--color-text-muted)">
+            <input
+              type="checkbox"
+              checked={rememberServer}
+              onChange={(event) => setRememberServer(event.target.checked)}
+              className="h-3.5 w-3.5 rounded border-(--color-border)"
+              disabled={pending}
+            />
+            Remember this server and use it after reload
+          </label>
           <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-key">
             Access key
           </label>
@@ -284,11 +322,11 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-2 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60"
               disabled={pending}
             >
-              Save
+              Save server
             </button>
           </div>
           <p className="text-xs leading-5 text-(--color-text-muted)">
-            Check verifies the server and uses it for this app session. Save persists or renames it for future use. If the check fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.
+            Connect verifies the server, switches every desktop window to it, and keeps it active across reloads when remembered. Save only stores or renames a server entry. If a LAN server fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.
           </p>
 
           {error ? (
@@ -313,6 +351,11 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
   )
 }
 
+function normalizeServerBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, '')
+  return trimmed.endsWith('/api') ? trimmed.slice(0, -4) : trimmed
+}
+
 function validateServerUrl(value: string): string | null {
   if (!value) return 'Enter a server URL first.'
   let parsed: URL
@@ -327,12 +370,39 @@ function validateServerUrl(value: string): string | null {
   return null
 }
 
+function connectionFailureMessage(baseUrl: string): string {
+  try {
+    const host = new URL(baseUrl).hostname
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') {
+      return 'Server did not respond to /api/health/live. Make sure OpenAgentd is running locally and the port is correct.'
+    }
+  } catch {
+    // validateServerUrl already handles malformed URLs.
+  }
+  return 'Server did not respond to /api/health/live. Check that OpenAgentd is running with --host 0.0.0.0, this device is on the same network, and the URL uses the backend machine LAN IP.'
+}
+
+async function checkServerAuth(baseUrl: string, accessKey: string): Promise<boolean> {
+  const base = baseUrl.replace(/\/+$/, '')
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 1500)
+  try {
+    const headers = accessKey ? { Authorization: `Bearer ${accessKey}` } : undefined
+    const res = await fetch(`${base}/api/auth/check`, { cache: 'no-store', headers, signal: controller.signal })
+    return res.ok || res.status === 404
+  } catch {
+    return false
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
 async function pingServer(baseUrl: string): Promise<boolean> {
   const base = baseUrl.replace(/\/+$/, '')
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 1500)
   try {
-    const res = await fetch(`${base}/api/health/live`, { signal: controller.signal })
+    const res = await fetch(`${base}/api/health/live`, { cache: 'no-store', signal: controller.signal })
     return res.ok
   } catch {
     return false

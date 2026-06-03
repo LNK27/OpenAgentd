@@ -51,6 +51,12 @@ class OAuthCallbackBody(BaseModel):
     code: str
 
 
+@router.get("/check")
+async def auth_check() -> dict[str, bool]:
+    """Protected no-op endpoint for clients to verify access credentials."""
+    return {"ok": True}
+
+
 # Sentinel queued by the worker thread once login() returns or raises.
 # The async generator uses it to terminate the SSE stream cleanly.
 _DONE = object()

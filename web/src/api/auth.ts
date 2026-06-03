@@ -31,9 +31,14 @@ declare global {
 const TOKEN_KEY = '__OAD_TOKEN__'
 const ACCESS_KEY_STORAGE = 'openagentd.accessKey'
 
+export function getAccessKey(): string | undefined {
+  if (typeof window === 'undefined') return undefined
+  return window.localStorage.getItem(ACCESS_KEY_STORAGE) || undefined
+}
+
 function getToken(): string | undefined {
   if (typeof window === 'undefined') return undefined
-  return window[TOKEN_KEY] || window.localStorage.getItem(ACCESS_KEY_STORAGE) || undefined
+  return window[TOKEN_KEY] || getAccessKey() || undefined
 }
 
 export function setAccessKey(key: string): void {

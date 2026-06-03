@@ -119,7 +119,7 @@ openagentd init   # pick provider + API key, install default agents
 openagentd        # http://localhost:4082
 ```
 
-This starts the local API server on `http://localhost:4082`. The desktop app can connect through **Backend connection**; the mobile app connects to the LAN URL printed by `openagentd start --lan --key`.
+This starts the local API server on `http://localhost:4082`. The desktop app can connect through **Server connection**; when a server uses `--key`, the dialog verifies the access key before switching. The mobile app connects to the LAN URL printed by `openagentd start --lan --key`.
 
 Useful server commands:
 

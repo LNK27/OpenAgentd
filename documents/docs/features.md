@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.43.0 · June 2, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.43.0)
+**Latest release:** v1.44.0 · June 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.44.0)
 
 ---
 
@@ -125,6 +125,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
 - **LAN access key for external clients** `[v1.43.0]` — `openagentd start --lan --key`
   stores a `settings.yaml` bearer key so desktop, mobile, and browser clients need the key before controlling a LAN-exposed server. See [`cli.md`](./cli.md).
+- **Desktop server connection manager** `[v1.43.4]` — the desktop **Server connection** dialog switches between the builtin sidecar and saved external servers, persists the active backend across reloads, validates LAN access keys, normalizes pasted `/api` URLs, and falls back to the builtin sidecar when the active external server is removed. See [`desktop.md`](./desktop.md).
 
 ---
 
@@ -378,7 +379,8 @@ Four orthogonal ways to add capability. Deeper docs:
   on mtime change, token substitution. Compatible with the opencode skill spec.
   One nested namespace level (`parent/sub`) is supported `[v1.27.x]`; Settings
   lists the full runtime-visible catalog and can edit/delete non-bundled skills
-  in place `[v1.27.x]`.
+  in place `[v1.27.x]`. Bundled first-party skills include `browser-use` for
+  CLI-driven browser automation `[v1.43.4]`.
 - **Plugins** `[v1.6.0]` — Python files dropped into `OPENAGENTD_PLUGINS_DIRS`.
   Register `@plugin` functions or `Plugin(BaseAgentHook)` classes with
   `tool.before` / `tool.after` / agent lifecycle hooks. Per `(agent, role)` filter.
