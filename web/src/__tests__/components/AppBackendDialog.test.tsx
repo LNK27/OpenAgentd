@@ -216,13 +216,38 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
+    await user.type(screen.getByLabelText(/server name/i), 'Stale typed name')
     const connectButtons = await screen.findAllByRole('button', { name: 'connect' })
     await user.click(connectButtons[0])
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
     expect(invokeCalls).toContainEqual({
       command: 'app_use_external_backend',
+      args: { baseUrl: 'http://127.0.0.1:4082', name: 'Local CLI', persist: true },
+    })
+  })
+
+  it('normalizes a typed /api URL before connecting', async () => {
+    const user = userEvent.setup()
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4082/api')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
+    expect(invokeCalls).toContainEqual({
+      command: 'app_use_external_backend',
       args: { baseUrl: 'http://127.0.0.1:4082', name: '', persist: true },
     })
+  })
+
+  it('shows a local-specific failure message for localhost URLs', async () => {
+    const user = userEvent.setup()
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4999')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
+
+    expect(await screen.findByText(/Make sure OpenAgentd is running locally and the port is correct/)).toBeTruthy()
   })
 })
