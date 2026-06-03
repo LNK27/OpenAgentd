@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
+import { queryClient } from '@/lib/query-client'
+import { queryKeys } from '@/queries/keys'
 import { getAccessKey, setAccessKey } from '@/api/auth'
 import {
   getAppBackendStatus,
@@ -82,6 +84,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       if (accessKey.trim()) setAccessKey(accessKey)
       const next = await switchToExternalAppBackend(target, nextName, persist)
       setApiBaseUrl(next.base_url)
+      await refreshBackendQueries()
       setStatus(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -124,6 +127,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     try {
       const next = await removeAppBackendServer(baseUrl)
       if (next.base_url) setApiBaseUrl(next.base_url)
+      await refreshBackendQueries()
       setStatus(next)
       setServerHealth((prev) => {
         const { [baseUrl]: _removed, ...rest } = prev
@@ -145,6 +149,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       if (next?.base_url) {
         setApiBaseUrl(next.base_url)
       }
+      await refreshBackendQueries()
       setStatus(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -170,23 +175,23 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             <Server size={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 id="app-backend-title" className="text-sm font-semibold">Server connection</h2>
+            <h2 id="app-backend-title" className="text-sm font-semibold">Backend connection</h2>
             <p className="mt-1 text-xs leading-5 text-(--color-text-muted)">
-              Connect this app to a running OpenAgentd server. Mobile apps use a remote backend only.
+              Use the builtin sidecar or connect to one of your saved OpenAgentd servers.
             </p>
           </div>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
           <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-xs text-(--color-text-muted)">
-            Current: <span className="font-mono text-(--color-text)">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
+            Connected backend: <span className="font-mono text-(--color-text)">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
             <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px]">
-              {status?.mode ?? (status?.external ? 'external' : 'bundled')}
+              {status?.mode === 'external' || status?.external ? 'saved server' : 'builtin sidecar'}
             </span>
           </div>
 
           <div>
-            <div className="mb-2 text-xs font-medium text-(--color-text)">Saved servers</div>
+            <div className="mb-2 text-xs font-medium text-(--color-text)">Connection options</div>
             <div className="space-y-1">
               {status?.supports_bundled !== false ? (
                 <div className="flex items-center gap-2 rounded-md border border-(--color-border) px-3 py-2 text-xs hover:bg-(--bg-page)">
@@ -197,7 +202,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     disabled={pending}
                   >
                     <ServerStatusDot status={status?.sidecar_running ? 'online' : undefined} />
-                    <span className="truncate font-medium">Builtin Desktop App server</span>
+                    <span className="truncate font-medium">Builtin sidecar</span>
                   </button>
                   {!status?.external ? (
                     <span className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted)">active</span>
@@ -208,7 +213,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
                     disabled={pending}
                   >
-                    use
+                    use builtin
                   </button>
                 </div>
               ) : null}
@@ -265,14 +270,14 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           </div>
 
           <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-url">
-            Add or connect server URL
+            Server URL
           </label>
           <div className="flex gap-2">
             <input
               id="app-backend-url"
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="http://<backend-host>:8000"
+              placeholder="http://<backend-host>:4082"
               className="min-w-0 flex-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:border-(--focus-ring) focus:ring-3 focus:ring-(--focus-ring)/30"
             />
             <button
@@ -292,7 +297,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               className="h-3.5 w-3.5 rounded border-(--color-border)"
               disabled={pending}
             />
-            Remember this server and use it after reload
+            Save this server and reconnect to it after reload
           </label>
           <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-key">
             Access key
@@ -326,7 +331,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             </button>
           </div>
           <p className="text-xs leading-5 text-(--color-text-muted)">
-            Connect verifies the server, switches every desktop window to it, and keeps it active across reloads when remembered. Save only stores or renames a server entry. If a LAN server fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.
+            Connect verifies and switches to a saved server. Save only stores or renames an entry. Use builtin returns this app to the bundled sidecar. If a LAN server fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.
           </p>
 
           {error ? (
@@ -349,6 +354,11 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       </div>
     </div>
   )
+}
+
+async function refreshBackendQueries(): Promise<void> {
+  await queryClient.invalidateQueries({ queryKey: queryKeys.health() })
+  await queryClient.invalidateQueries({ queryKey: queryKeys.team.status() })
 }
 
 function normalizeServerBaseUrl(value: string): string {

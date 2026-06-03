@@ -258,8 +258,7 @@ async fn backend_health(state: tauri::State<'_, AppState>) -> Result<bool, Strin
     let mut guard = state.sidecar.lock().await;
     match guard.as_mut() {
         Some(s) => Ok(s.is_alive()),
-        None => Ok(std::env::var("OPENAGENTD_DESKTOP_BASE_URL").is_ok()
-            || std::env::var("OPENAGENTD_DEV_BACKEND_URL").is_ok()),
+        None => Ok(false),
     }
 }
 
@@ -332,7 +331,6 @@ async fn app_use_external_backend(app: AppHandle, base_url: String, name: Option
     let init_script = frontend_init_script(None, &normalized);
     for window in app.webview_windows().into_values() {
         window.eval(&init_script).map_err(|e| format!("inject external backend config: {e:#}"))?;
-        window.eval("window.location.reload();").map_err(|e| format!("reload window: {e:#}"))?;
     }
     update_tray_status(&app, "Status: Running (external)");
     app.emit(
@@ -362,12 +360,20 @@ async fn app_remove_backend_server(app: AppHandle, base_url: String) -> Result<A
             .lock()
             .await
             .as_deref()
-            .is_some_and(|active| active == normalized);
+            .is_some_and(|active| normalize_external_base_url(active).is_ok_and(|active| active == normalized));
     if active_external {
         save_app_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
-        restart_sidecar_and_reload_window(&app)
-            .await
-            .map_err(|e| format!("{e:#}"))?;
+        let _ = state.desktop_token.lock().await.take();
+        let _ = state.backend_base_url.lock().await.take();
+        *state.backend_mode.lock().await = BackendMode::Bundled;
+        if let Err(e) = restart_sidecar_and_reload_window(&app).await {
+            log::warn!("desktop: sidecar unavailable after removing active backend: {e:#}");
+            let init_script = backend_unavailable_init_script();
+            for window in app.webview_windows().into_values() {
+                window.eval(&init_script).map_err(|e| format!("inject unavailable backend config: {e:#}"))?;
+            }
+            update_tray_status(&app, "Status: Error");
+        }
     }
     app_backend_status(app.clone(), app.state())
         .await
@@ -502,7 +508,7 @@ fn force_reload_app(app: &AppHandle) {
             let mode = *state.backend_mode.lock().await;
             mode == BackendMode::External
         };
-        let result = if external_active || std::env::var("OPENAGENTD_DEV_BACKEND_URL").is_ok() {
+        let result = if external_active {
             reload_main_window(&handle);
             Ok(())
         } else {
@@ -1281,8 +1287,14 @@ fn save_app_backend_config(app: &AppHandle, base_url: Option<&str>, name: Option
 fn remove_app_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {
     let path = app_backend_config_path(app)?;
     let mut config = load_app_backend_config(app).unwrap_or_default();
-    config.servers.retain(|server| server.base_url != base_url);
-    if config.active_base_url.as_deref() == Some(base_url) {
+    config.servers.retain(|server| normalize_external_base_url(&server.base_url).map_or(true, |saved| saved != base_url));
+    if config
+        .active_base_url
+        .as_deref()
+        .and_then(|active| normalize_external_base_url(active).ok())
+        .as_deref()
+        == Some(base_url)
+    {
         config.active_base_url = None;
     }
     let bytes = serde_json::to_vec_pretty(&config).context("serialize desktop backend config")?;
@@ -1308,6 +1320,10 @@ fn frontend_init_script(token: Option<&str>, base_url: &str) -> String {
         "Object.defineProperty(window, '__OAD_API_BASE_URL__', {{ value: {base_json}, writable: true, configurable: true }});{token_define}",
         base_json = serde_json::to_string(base_url).unwrap_or_else(|_| "\"\"".into())
     )
+}
+
+fn backend_unavailable_init_script() -> String {
+    "Object.defineProperty(window, '__OAD_BACKEND_UNAVAILABLE__', { value: true, writable: true, configurable: true });".to_string()
 }
 
 fn next_window_label(app: &AppHandle) -> String {
@@ -1360,9 +1376,13 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
 
     let configured_url = load_app_backend_config(&app)
         .ok()
-        .and_then(|cfg| cfg.active_base_url)
-        .or_else(|| std::env::var("OPENAGENTD_DESKTOP_BASE_URL").ok())
-        .or_else(|| std::env::var("OPENAGENTD_DEV_BACKEND_URL").ok());
+        .and_then(|cfg| {
+            let active = normalize_external_base_url(&cfg.active_base_url?).ok()?;
+            cfg.servers
+                .iter()
+                .any(|server| normalize_external_base_url(&server.base_url).is_ok_and(|saved| saved == active))
+                .then_some(active)
+        });
 
     if let Some(external_url) = configured_url {
         let base = normalize_external_base_url(&external_url)?;
@@ -1388,47 +1408,86 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
         return Ok(());
     }
 
-    let mut sidecar = Sidecar::spawn(&app).context("spawn sidecar")?;
-    let handshake: Handshake = sidecar
-        .read_handshake(Duration::from_secs(30))
-        .await
-        .context("read sidecar handshake")?;
+    match Sidecar::spawn(&app) {
+        Ok(mut sidecar) => {
+            let handshake_result = sidecar
+                .read_handshake(Duration::from_secs(30))
+                .await
+                .context("read sidecar handshake");
+            match handshake_result {
+                Ok(handshake) => {
+                    log::info!(
+                        "sidecar handshake: port={} pid={} version={}",
+                        handshake.port,
+                        handshake.pid,
+                        handshake.version
+                    );
 
-    log::info!(
-        "sidecar handshake: port={} pid={} version={}",
-        handshake.port,
-        handshake.pid,
-        handshake.version
-    );
+                    let base = format!("http://127.0.0.1:{}", handshake.port);
+                    if let Err(e) = wait_for_health(&base, 60, Duration::from_millis(250)).await {
+                        log::warn!("desktop: sidecar health check failed at startup: {e:#}");
+                        build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script()).await?;
+                        update_tray_status(&app, "Status: Error");
+                        app.emit(
+                            "backend-error",
+                            BackendError {
+                                message: format!("Sidecar health check failed: {e:#}"),
+                            },
+                        )
+                        .ok();
+                    } else {
+                        // Build the window only once we have the backend URL + token so the
+                        // token is injected before any page JS runs.
+                        let token = handshake.token.clone();
+                        let init_script = frontend_init_script(Some(&token), &base);
 
-    let base = format!("http://127.0.0.1:{}", handshake.port);
-    wait_for_health(&base, 60, Duration::from_millis(250))
-        .await
-        .context("wait_for_health")?;
+                        let _ = state.sidecar.lock().await.replace(sidecar);
+                        let _ = state.desktop_token.lock().await.replace(handshake.token);
+                        let _ = state.backend_base_url.lock().await.replace(base.clone());
+                        *state.backend_mode.lock().await = BackendMode::Bundled;
 
-    // Build the window only once we have the backend URL + token so the
-    // token is injected before any page JS runs.
-    let token = handshake.token.clone();
-    let init_script = frontend_init_script(Some(&token), &base);
+                        build_app_window(&app, MAIN_WINDOW.to_string(), init_script).await?;
+                        update_tray_status(&app, "Status: Running");
 
-    let _ = state.sidecar.lock().await.replace(sidecar);
-    let _ = state.desktop_token.lock().await.replace(handshake.token);
-    let _ = state.backend_base_url.lock().await.replace(base.clone());
-    *state.backend_mode.lock().await = BackendMode::Bundled;
-
-    build_app_window(&app, MAIN_WINDOW.to_string(), init_script).await?;
-    update_tray_status(&app, "Status: Running");
-
-    app.emit(
-        "backend-ready",
-        BackendReady {
-            port: handshake.port,
-            version: handshake.version,
-            base_url: base,
-            sidecar_running: true,
-        },
-    )
-    .ok();
+                        app.emit(
+                            "backend-ready",
+                            BackendReady {
+                                port: handshake.port,
+                                version: handshake.version,
+                                base_url: base,
+                                sidecar_running: true,
+                            },
+                        )
+                        .ok();
+                    }
+                }
+                Err(e) => {
+                    log::warn!("desktop: sidecar handshake failed at startup: {e:#}");
+                    build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script()).await?;
+                    update_tray_status(&app, "Status: Error");
+                    app.emit(
+                        "backend-error",
+                        BackendError {
+                            message: format!("Sidecar handshake failed: {e:#}"),
+                        },
+                    )
+                    .ok();
+                }
+            }
+        }
+        Err(e) => {
+            log::warn!("desktop: sidecar unavailable at startup: {e:#}");
+            build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script()).await?;
+            update_tray_status(&app, "Status: Error");
+            app.emit(
+                "backend-error",
+                BackendError {
+                    message: format!("Sidecar unavailable: {e:#}"),
+                },
+            )
+            .ok();
+        }
+    }
 
     Ok(())
 }
