@@ -5,6 +5,7 @@ export interface SavedAppServer {
 
 export interface AppBackendStatus {
   base_url: string
+  mode?: 'bundled' | 'external'
   sidecar_running: boolean
   external: boolean
   supports_bundled: boolean
@@ -28,6 +29,11 @@ export async function saveAppBackendServer(baseUrl: string, name: string): Promi
 export async function removeAppBackendServer(baseUrl: string): Promise<AppBackendStatus> {
   const { invoke } = await import('@tauri-apps/api/core')
   return await invoke<AppBackendStatus>('app_remove_backend_server', { baseUrl })
+}
+
+export async function switchToExternalAppBackend(baseUrl: string, name: string, persist: boolean): Promise<AppBackendStatus> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return await invoke<AppBackendStatus>('app_use_external_backend', { baseUrl, name, persist })
 }
 
 export async function switchToBundledAppBackend(): Promise<void> {

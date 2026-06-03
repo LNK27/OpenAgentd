@@ -7,6 +7,7 @@ import {
   getAppBackendStatus,
   removeAppBackendServer,
   saveAppBackendServer,
+  switchToExternalAppBackend,
   switchToBundledAppBackend,
   type SavedAppServer,
   type AppBackendStatus,
@@ -26,6 +27,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
   const [accessKey, setAccessKeyInput] = useState('')
+  const [rememberServer, setRememberServer] = useState(true)
   const [serverHealth, setServerHealth] = useState<Record<string, 'checking' | 'online' | 'offline'>>({})
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -39,6 +41,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       setBaseUrl('')
       setServerName('')
       setAccessKeyInput('')
+      setRememberServer(true)
       const servers = next?.servers ?? DEFAULT_SERVERS
       setServerHealth(Object.fromEntries(servers.map((server) => [server.base_url, 'checking'])))
       for (const server of servers) {
@@ -71,14 +74,11 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
         return
       }
       setAccessKey(accessKey)
-      setApiBaseUrl(normalized)
-      setStatus((prev) => ({
-        base_url: normalized,
-        sidecar_running: false,
-        external: true,
-        supports_bundled: prev?.supports_bundled ?? false,
-        servers: prev?.servers ?? DEFAULT_SERVERS,
-      }))
+      const next = await switchToExternalAppBackend(normalized, serverName, rememberServer)
+      setApiBaseUrl(next.base_url)
+      setStatus(next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setPending(false)
     }
@@ -175,7 +175,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-xs text-(--color-text-muted)">
             Current: <span className="font-mono text-(--color-text)">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
             <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px]">
-              {status?.external ? 'external' : 'bundled'}
+              {status?.mode ?? (status?.external ? 'external' : 'bundled')}
             </span>
           </div>
 
@@ -205,7 +205,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                 >
                   <button
                     type="button"
-                    onClick={() => { setBaseUrl(server.base_url); void checkExternal(server.base_url) }}
+                    onClick={() => { setBaseUrl(server.base_url); setServerName(server.name ?? '') }}
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     disabled={pending}
                   >
@@ -214,6 +214,14 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                       <span className="block truncate font-medium">{server.name || server.base_url}</span>
                       {server.name ? <span className="block truncate font-mono text-[10px] text-(--color-text-muted)">{server.base_url}</span> : null}
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void checkExternal(server.base_url) }}
+                    className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
+                    disabled={pending}
+                  >
+                    connect
                   </button>
                   <button
                     type="button"
@@ -253,9 +261,19 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-2 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60"
               disabled={pending}
             >
-              {pending ? 'Checking…' : 'Check'}
+              {pending ? 'Connecting…' : 'Connect'}
             </button>
           </div>
+          <label className="flex items-center gap-2 text-xs text-(--color-text-muted)">
+            <input
+              type="checkbox"
+              checked={rememberServer}
+              onChange={(event) => setRememberServer(event.target.checked)}
+              className="h-3.5 w-3.5 rounded border-(--color-border)"
+              disabled={pending}
+            />
+            Remember this server and use it after reload
+          </label>
           <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-key">
             Access key
           </label>
@@ -288,7 +306,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             </button>
           </div>
           <p className="text-xs leading-5 text-(--color-text-muted)">
-            Check verifies the server and uses it for this app session. Save persists or renames it for future use. If the check fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.
+            Connect verifies the server, switches every desktop window to it, and keeps it active across reloads when remembered. Save only stores or renames a server entry. If a LAN server fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.
           </p>
 
           {error ? (
@@ -332,7 +350,7 @@ async function pingServer(baseUrl: string): Promise<boolean> {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 1500)
   try {
-    const res = await fetch(`${base}/api/health/live`, { signal: controller.signal })
+    const res = await fetch(`${base}/api/health/live`, { cache: 'no-store', signal: controller.signal })
     return res.ok
   } catch {
     return false
