@@ -69,7 +69,7 @@ describe('AppBackendDialog', () => {
   it('loads saved servers and shows live online/offline indicators', async () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    expect(await screen.findByText('Builtin Desktop App server')).toBeTruthy()
+    expect(await screen.findByText('Builtin sidecar')).toBeTruthy()
     expect(screen.getByText('Local CLI')).toBeTruthy()
     expect(screen.getByText('http://127.0.0.1:4082')).toBeTruthy()
     expect(screen.getByText('http://127.0.0.1:4999')).toBeTruthy()
@@ -84,14 +84,14 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     expect(await screen.findByText('Local CLI')).toBeTruthy()
-    expect(screen.queryByText('Builtin Desktop App server')).toBeNull()
+    expect(screen.queryByText('Builtin sidecar')).toBeNull()
   })
 
   it('blocks incomplete URLs before invoking a backend switch command', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.type(screen.getByLabelText(/add or connect server url/i), 'localhost')
+    await user.type(screen.getByLabelText(/server url/i), 'localhost')
     await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     expect(await screen.findByText('Enter a full server URL, including http:// or https://.')).toBeTruthy()
@@ -110,8 +110,8 @@ describe('AppBackendDialog', () => {
     }
     render(<AppBackendDialog open onOpenChange={onOpenChange} />)
 
-    await screen.findByText('Builtin Desktop App server')
-    await user.click(screen.getByRole('button', { name: 'use' }))
+    await screen.findByText('Builtin sidecar')
+    await user.click(screen.getByRole('button', { name: 'use builtin' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
@@ -127,7 +127,7 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:5050')
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:5050')
     await user.type(screen.getByLabelText(/server name/i), 'Workstation')
     await user.click(screen.getByRole('button', { name: 'Save server' }))
 
@@ -159,7 +159,7 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4999')
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4999')
     await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     expect(await screen.findByText(/Server did not respond to \/api\/health\/live/)).toBeTruthy()
@@ -172,7 +172,7 @@ describe('AppBackendDialog', () => {
     const onOpenChange = mock(() => {})
     render(<AppBackendDialog open onOpenChange={onOpenChange} />)
 
-    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4082')
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
     await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
@@ -192,7 +192,7 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://192.168.1.20:4082')
+    await user.type(screen.getByLabelText(/server url/i), 'http://192.168.1.20:4082')
     await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://192.168.1.20:4082'))
@@ -206,10 +206,10 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://wrong.example')
+    await user.type(screen.getByLabelText(/server url/i), 'http://wrong.example')
     await user.click(await screen.findByText('Local CLI'))
 
-    await waitFor(() => expect((screen.getByLabelText(/add or connect server url/i) as HTMLInputElement).value).toBe('http://127.0.0.1:4082'))
+    await waitFor(() => expect((screen.getByLabelText(/server url/i) as HTMLInputElement).value).toBe('http://127.0.0.1:4082'))
     expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:5999')
     expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
   })
@@ -233,7 +233,7 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4082/api')
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082/api')
     await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
@@ -247,7 +247,7 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.type(screen.getByLabelText(/add or connect server url/i), 'http://127.0.0.1:4999')
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4999')
     await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     expect(await screen.findByText(/Make sure OpenAgentd is running locally and the port is correct/)).toBeTruthy()

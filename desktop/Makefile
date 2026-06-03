@@ -4,9 +4,9 @@
 #   make sidecar        Build a slim Python sidecar bundle for the current OS/arch.
 #   make sidecar-full   Same, but with [audio,azure-doc-intel] extras.
 #   make icons          Regenerate .icns / .ico from icons/icon.png.
-#   make dev            Tauri shell + Vite dev server, points at an external
-#                       backend API. You must run the backend + Vite in another
-#                       terminal (``cd .. && make dev`` from the repo root).
+#   make dev            Tauri shell + Vite dev server, using the bundled
+#                       sidecar connection model. Run Vite in another terminal
+#                       if you need frontend HMR.
 #   make dev-bundled    Tauri shell with the *bundled* sidecar (requires
 #                       ``make sidecar`` first). Use this to test the
 #                       sidecar handshake / auth wiring end-to-end.
@@ -17,16 +17,11 @@
 #
 # Dev-mode two-terminal flow (``make dev``):
 #
-#     terminal 1:   make dev          # repo root → FastAPI :8000 + Vite :5173
-#                                     #   (the root Makefile runs both with
-#                                     #    `trap 'kill 0' INT TERM EXIT`)
-#     terminal 2:   cd desktop && make dev    # Tauri shell → loads :5173
+#     terminal 1:   cd web && bun dev          # Vite :5173 for HMR
+#     terminal 2:   cd desktop && make dev     # Tauri shell → bundled sidecar
 #
-# The Tauri shell skips its bundled-Python supervisor when
-# ``OPENAGENTD_DEV_BACKEND_URL`` is set. The WebView still loads Vite on
-# :5173 for HMR, while API requests use the configured backend base URL.
-# Use :8000 when the repo-root ``make dev`` backend is running; use :4082
-# when testing against a standalone ``openagentd`` CLI server.
+# The Tauri shell no longer points at an implicit dev backend. To use a
+# standalone server, add it from the app's Server connection dialog.
 
 .PHONY: sidecar sidecar-full icons dev dev-bundled build-dev-app build clean open open-prod
 
@@ -34,8 +29,6 @@ ROOT       := $(abspath ..)
 BUNDLE     := sidecar-bundle
 PYVER      := 3.14
 EXTRAS     ?=                       # set to e.g. "audio,azure-doc-intel,full"
-DEV_BACKEND_URL ?= http://localhost:8000
-
 sidecar:
 	@python3 ../scripts/build_sidecar.py \
 		--root "$(ROOT)" \
@@ -55,11 +48,9 @@ sidecar-full:
 icons:
 	cd src-tauri && cargo tauri icon icons/icon.png
 
-# Dev: point the shell at an externally-managed backend API. The shell skips
-# sidecar spawn; the debug WebView still loads Vite from :5173.
-# ``beforeDevCommand`` is intentionally absent from tauri.conf.json so
-# ``cargo tauri dev`` does NOT try to start its own Vite — we rely on the
-# repo-root ``make dev`` to manage Vite + FastAPI together.
+# Dev: load the debug WebView from Vite :5173 and use the same connection
+# model as production: bundled sidecar by default, saved external servers
+# only when selected from the app.
 #
 # ``-c tauri.dev.conf.json`` overrides the bundle identifier + product
 # name so the dev build coexists with a Homebrew-cask-installed prod
@@ -67,8 +58,8 @@ icons:
 # Without this, macOS routes ``open -a OpenAgentd`` to whichever
 # instance is already running, masking which app you're testing.
 dev:
-	@echo "→ Tauri dev shell. Make sure backend ($(DEV_BACKEND_URL)) + Vite (:5173) are running."
-	cd src-tauri && OPENAGENTD_DEV_BACKEND_URL="$(DEV_BACKEND_URL)" cargo tauri dev -c tauri.dev.conf.json
+	@echo "→ Tauri dev shell. Make sure Vite (:5173) is running. Backend uses bundled sidecar when available."
+	cd src-tauri && cargo tauri dev -c tauri.dev.conf.json
 
 # Dev with the bundled CPython sidecar — the closest thing to ``make build``
 # without producing a .dmg. Useful for testing handshake, token injection,

@@ -5,11 +5,13 @@ const originalEnv = import.meta.env.VITE_API_BASE_URL
 declare global {
   interface Window {
     __OAD_API_BASE_URL__?: string
+    __OAD_BACKEND_UNAVAILABLE__?: boolean
   }
 }
 
 afterEach(() => {
   delete window.__OAD_API_BASE_URL__
+  delete window.__OAD_BACKEND_UNAVAILABLE__
   import.meta.env.VITE_API_BASE_URL = originalEnv
 })
 
@@ -20,6 +22,14 @@ describe('apiBaseUrl', () => {
 
     expect(apiBaseUrl()).toBe('/api')
     expect(apiUrl('/health/live')).toBe('/api/health/live')
+  })
+
+  it('uses an unreachable sentinel when desktop reports no backend', async () => {
+    window.__OAD_BACKEND_UNAVAILABLE__ = true
+    const { apiBaseUrl, apiUrl } = await import('@/api/base-url')
+
+    expect(apiBaseUrl()).toBe('oad-backend-unavailable://api')
+    expect(apiUrl('/health/live')).toBe('oad-backend-unavailable://api/health/live')
   })
 
   it('normalizes desktop base URL and appends /api exactly once', async () => {

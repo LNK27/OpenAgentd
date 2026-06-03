@@ -1,6 +1,7 @@
 declare global {
   interface Window {
     __OAD_API_BASE_URL__?: string
+    __OAD_BACKEND_UNAVAILABLE__?: boolean
   }
 }
 
@@ -16,14 +17,20 @@ function normalizeBaseUrl(value: string | undefined): string {
 }
 
 export function apiBaseUrl(): string {
-  if (typeof window !== 'undefined' && window.__OAD_API_BASE_URL__) {
-    return normalizeBaseUrl(window.__OAD_API_BASE_URL__)
+  if (typeof window !== 'undefined') {
+    if (window.__OAD_BACKEND_UNAVAILABLE__) return 'oad-backend-unavailable://api'
+    if (window.__OAD_API_BASE_URL__) return normalizeBaseUrl(window.__OAD_API_BASE_URL__)
   }
   return normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL)
 }
 
 export function setApiBaseUrl(baseUrl: string): void {
   if (typeof window === 'undefined') return
+  Object.defineProperty(window, '__OAD_BACKEND_UNAVAILABLE__', {
+    value: false,
+    writable: true,
+    configurable: true,
+  })
   Object.defineProperty(window, '__OAD_API_BASE_URL__', {
     value: baseUrl,
     writable: true,
