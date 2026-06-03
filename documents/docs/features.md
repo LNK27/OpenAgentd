@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.44.0 · June 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.44.0)
+**Latest release:** v1.44.1 · June 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.44.1)
 
 ---
 
@@ -56,6 +56,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Native desktop app for macOS, Linux** `[since v1.0]` — Tauri 2 shell,
   bundled Python sidecar, embedded Web UI, one process, no terminal required.
   *(Windows desktop builds dropped in v1.23.0 — see [§11](#11-distribution-and-updates).)*
+- **Explicit backend connection state** `[v1.44.1]` — desktop connection options
+  are limited to the builtin sidecar and saved servers; no-backend dev windows
+  show **Backend unreachable**, active server removal clears the current backend,
+  and connecting a saved server no longer reloads before it can be named.
 - **In-app auto-updater** `[v1.22.0]` — bottom-right update card + Settings → About
   → Updates, cached downloads, install-and-restart, signed minisign payloads,
   GitHub release notes rendered inline. Silent check at startup + every 6 hours.
