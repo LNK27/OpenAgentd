@@ -40,7 +40,7 @@ no Python install, no `uv tool install`, no terminal.
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-The Tauri shell normally runs the bundled sidecar, but can be pointed at an externally managed OpenAgentd server from the shared **Backend connection** UI: open Settings, click the sidebar health dot, or use the home-page backend status. Saved servers can be named, renamed, removed, and show live status indicators. **Check** probes `/api/health/live` and uses that server for the current WebView session without closing the dialog; **Save** persists the server/name for future use. Desktop builds also show **Builtin Desktop App server** to switch back to the built-in backend. `OPENAGENTD_DESKTOP_BASE_URL` and the legacy `OPENAGENTD_DEV_BACKEND_URL` are still accepted as startup defaults for development/automation.
+The Tauri shell normally runs the bundled sidecar, but can be pointed at an externally managed OpenAgentd server from the shared **Server connection** UI: open Settings, click the sidebar health dot, or use the home-page server status. Saved servers can be named, renamed, removed, and show live status indicators. **Connect** probes `/api/health/live`, verifies `/api/auth/check` when the server supports it, and switches every desktop window to the selected backend; the remembered active server survives reloads and restarts. **Save server** persists or renames an entry without switching. Removing the currently active external server switches the app back to the builtin sidecar. Desktop builds also show **Builtin Desktop App server** with an explicit **use** action to switch back to the built-in backend. `OPENAGENTD_DESKTOP_BASE_URL` and the legacy `OPENAGENTD_DEV_BACKEND_URL` are still accepted as startup defaults for development/automation.
 
 Coding workspaces are always selected on the machine running the backend. When the desktop app is using the bundled sidecar or a loopback backend (`localhost` / `127.0.0.1`), **Open folder…** can use the native desktop folder picker because the WebView and backend are on the same machine. When the desktop app is connected to a LAN/external backend such as `192.168.x.x` or `10.x.x.x`, **Open folder…** uses the web/server-local folder browser instead; the native picker would only select a folder on the client desktop, not on the backend host that will run file and shell tools.
 
@@ -82,7 +82,8 @@ agent tools). The token mitigates that.
 | Token transport                              | `Authorization: Bearer …` for `fetch`/SSE; `?_token=…` for image/video/download URLs the browser can't header-stamp. |
 | Comparison                                   | `hmac.compare_digest` (constant-time).                                                                     |
 | Bypassable routes                            | `/api/health/live`, `/api/health/ready`, `/metrics`.                                                       |
-| Off-switch                                   | Unset `OPENAGENTD_DESKTOP_TOKEN` — the middleware becomes a no-op. CLI / Docker users keep open behaviour. |
+| Credential check                             | `/api/auth/check` is intentionally a no-op handler behind the same middleware; desktop clients use it to verify a LAN access key before switching servers. |
+| Off-switch                                   | Unset `OPENAGENTD_DESKTOP_TOKEN` and any configured access key — the middleware becomes a no-op. CLI / Docker users keep open behaviour unless they enable a key. |
 
 See `app/core/desktop_auth.py` for the implementation and
 `tests/core/test_desktop_auth.py` for the contract. The web layer centralizes

@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.43.0 · June 2, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.43.0)
+**Latest release:** v1.43.4 · June 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.43.4)
 
 ---
 
@@ -125,6 +125,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
 - **LAN access key for external clients** `[v1.43.0]` — `openagentd start --lan --key`
   stores a `settings.yaml` bearer key so desktop, mobile, and browser clients need the key before controlling a LAN-exposed server. See [`cli.md`](./cli.md).
+- **Desktop server connection manager** `[v1.43.4]` — the desktop **Server connection** dialog switches between the builtin sidecar and saved external servers, persists the active backend across reloads, validates LAN access keys, normalizes pasted `/api` URLs, and falls back to the builtin sidecar when the active external server is removed. See [`desktop.md`](./desktop.md).
 
 ---
 
