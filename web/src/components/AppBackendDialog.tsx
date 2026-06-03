@@ -305,7 +305,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           <input
             id="app-backend-key"
             value={accessKey}
-            onChange={(event) => setAccessKeyInput(event.target.value)}
+            onChange={(event) => {
+              setAccessKeyInput(event.target.value)
+              setAccessKey(event.target.value)
+            }}
             placeholder="Required when server was started with --key"
             type="password"
             className="w-full rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:border-(--focus-ring) focus:ring-3 focus:ring-(--focus-ring)/30"

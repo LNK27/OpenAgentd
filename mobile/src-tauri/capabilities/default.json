@@ -21,6 +21,7 @@
     "notification:default",
     "allow-app-backend-status",
     "allow-app-save-backend-server",
+    "allow-app-use-external-backend",
     "allow-app-remove-backend-server"
   ]
 }

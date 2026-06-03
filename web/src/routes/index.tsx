@@ -121,7 +121,15 @@ export function HomePage() {
         {/* Backend status */}
         <div className="flex items-center gap-2 text-xs">
           {loading && !error ? (
-            <span className="animate-pulse text-(--color-text-muted)">Connecting…</span>
+            <button
+              type="button"
+              onClick={() => setBackendDialogOpen(true)}
+              className="flex items-center gap-2 rounded-md px-2 py-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+            >
+              <Wifi size={12} className="animate-pulse" />
+              <span>Connecting…</span>
+              <span>Choose server</span>
+            </button>
           ) : error ? (
             <button
               type="button"

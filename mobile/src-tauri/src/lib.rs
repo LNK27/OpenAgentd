@@ -58,6 +58,16 @@ fn app_save_backend_server(app: AppHandle, base_url: String, name: Option<String
 }
 
 #[tauri::command]
+fn app_use_external_backend(app: AppHandle, base_url: String, name: Option<String>, persist: Option<bool>) -> Result<AppBackendStatus, String> {
+    let normalized = normalize_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
+    if persist.unwrap_or(true) {
+        save_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref())
+            .map_err(|e| format!("{e:#}"))?;
+    }
+    app_backend_status(app)
+}
+
+#[tauri::command]
 fn app_remove_backend_server(app: AppHandle, base_url: String) -> Result<AppBackendStatus, String> {
     let normalized = normalize_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
     remove_backend_server(&app, &normalized).map_err(|e| format!("{e:#}"))?;
@@ -146,6 +156,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_backend_status,
             app_save_backend_server,
+            app_use_external_backend,
             app_remove_backend_server,
         ])
         .run(tauri::generate_context!())
