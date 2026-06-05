@@ -35,6 +35,48 @@ def sanitize_error(message: str) -> str:
     return message
 
 
+SENSITIVE_HERMES_SKILL_TOOLS = {
+    "hermes_skill_draft",
+    "hermes_skill_pending_list",
+    "hermes_skill_pending_approve",
+    "hermes_skill_pending_reject",
+}
+
+_HERMES_SKILL_ARG_REDACTIONS = {
+    "task",
+    "context",
+    "body",
+    "body_preview",
+    "description",
+    "reason",
+    "pending_id",
+}
+
+
+def _redact_tool_args_for_log(tool_name: str, raw_args: str | None) -> str:
+    if not raw_args:
+        return "{}"
+    if tool_name not in SENSITIVE_HERMES_SKILL_TOOLS:
+        return raw_args[:500]
+    try:
+        payload = json.loads(raw_args)
+    except (json.JSONDecodeError, ValueError):
+        return "<redacted:invalid_json_args>"
+    if not isinstance(payload, dict):
+        return "<redacted:non_object_args>"
+    redacted = {
+        key: "<redacted>" if key in _HERMES_SKILL_ARG_REDACTIONS else value
+        for key, value in payload.items()
+    }
+    return json.dumps(redacted, ensure_ascii=False)[:500]
+
+
+def _redact_tool_result_for_log(tool_name: str, result: str) -> str:
+    if tool_name in SENSITIVE_HERMES_SKILL_TOOLS:
+        return "<redacted:hermes_skill_tool_result>"
+    return result[:1000] if len(result) > 1000 else result
+
+
 def make_tool_executor(
     run_tools: dict[str, Tool],
     agent_name: str,
@@ -53,7 +95,7 @@ def make_tool_executor(
             agent_name,
             tc.function.name,
             tc.id,
-            tc.function.arguments[:500] if tc.function.arguments else "{}",
+            _redact_tool_args_for_log(tc.function.name, tc.function.arguments),
         )
 
         try:
@@ -135,7 +177,7 @@ def make_tool_executor(
                 "tool_result_preview agent={} tool={} result={}",
                 agent_name,
                 tc.function.name,
-                result[:1000] if len(result) > 1000 else result,
+                _redact_tool_result_for_log(tc.function.name, result),
             )
 
         except Exception as e:

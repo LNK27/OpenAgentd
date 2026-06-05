@@ -37,6 +37,45 @@ if TYPE_CHECKING:
     from app.agent.state import AgentState, ModelRequest, RunContext, ToolCallHandler
 
 
+_HERMES_SKILL_STREAM_TOOLS = {
+    "hermes_skill_draft",
+    "hermes_skill_pending_list",
+    "hermes_skill_pending_approve",
+    "hermes_skill_pending_reject",
+}
+
+_HERMES_SKILL_STREAM_ARG_REDACTIONS = {
+    "task",
+    "context",
+    "body",
+    "body_preview",
+    "description",
+    "reason",
+    "pending_id",
+}
+
+
+def _redact_tool_start_arguments(tool_name: str, arguments: str | None) -> str | None:
+    if arguments is None:
+        return None
+    if tool_name not in _HERMES_SKILL_STREAM_TOOLS:
+        return arguments
+
+    import json as _json
+
+    try:
+        payload = _json.loads(arguments or "{}")
+    except Exception:
+        return "<redacted:invalid_json_args>"
+    if not isinstance(payload, dict):
+        return "<redacted:non_object_args>"
+    redacted = {
+        key: "<redacted>" if key in _HERMES_SKILL_STREAM_ARG_REDACTIONS else value
+        for key, value in payload.items()
+    }
+    return _json.dumps(redacted, ensure_ascii=False)
+
+
 class StreamPublisherHook(BaseAgentHook):
     """Publishes every agent event to the stream store via stream_store.push_event().
 
@@ -280,7 +319,10 @@ class StreamPublisherHook(BaseAgentHook):
                 agent=self._agent_name,
                 tool_call_id=tc_id,
                 name=fn_name,
-                arguments=tool_call.function.arguments if tool_call.function else None,
+                arguments=_redact_tool_start_arguments(
+                    fn_name,
+                    tool_call.function.arguments if tool_call.function else None,
+                ),
             )
         )
 
