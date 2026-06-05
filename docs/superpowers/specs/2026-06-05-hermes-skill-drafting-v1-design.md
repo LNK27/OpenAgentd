@@ -246,8 +246,12 @@ The queue is:
 - Per-process.
 - Scoped by `session_id`.
 - Protected by `asyncio.Lock`.
-- Limited to `50` pending entries per session.
+- Limited to `50` total entries per session, including both pending and
+  terminal entries.
 - Cleared on server restart.
+- Uses an opaque, unguessable `pending_id` for each entry. V1 should use
+  UUIDv4 or an equivalent cryptographically random token, not a sequential
+  counter.
 
 Statuses:
 
@@ -264,10 +268,17 @@ Terminal statuses:
 
 Queue limit behavior:
 
-- When enqueueing would exceed `50` pending drafts for a session, the oldest
-  pending drafts in that session are marked `rejected`.
-- Reject reason: `superseded_by_queue_limit`.
-- `hermes_skill_draft` reports `evicted_count` in its output.
+- When enqueueing would exceed `50` total entries for a session, the queue
+  prunes oldest terminal entries first.
+- If pruning terminal entries is not enough, the oldest pending drafts in that
+  session are evicted from the active queue and counted as auto-rejected with
+  reason `superseded_by_queue_limit`.
+- Evicted pending ids are no longer usable; approving or rejecting them returns
+  the normal not-found message for the current session.
+- `hermes_skill_draft` reports both `evicted_count` for pending auto-rejections
+  and `pruned_count` for terminal entries removed during that enqueue call.
+- No background TTL or database persistence is added in v1; cleanup is
+  opportunistic during enqueue/list/approve/reject operations.
 
 No dedupe in v1:
 
@@ -275,6 +286,8 @@ No dedupe in v1:
   the same name if the skill does not yet exist on disk.
 - Approve revalidation still prevents overwriting an existing skill.
 - The lead can reject stale pending drafts manually.
+- Because the queue is capped by total entries, long-running sessions cannot
+  accumulate unbounded approved/rejected/failed history in memory.
 
 ## Approval Semantics
 
@@ -295,6 +308,13 @@ No dedupe in v1:
 No overwrite is exposed. If the skill appears on disk between enqueue and
 approve, approval marks the entry `failed` and returns a clear conflict/write
 error.
+
+The implementation should preserve create-only semantics as strongly as the
+existing filesystem service allows. If a local TOCTOU gap is found in
+`agent_fs.write_skill(..., create=True)`, harden the create path rather than
+adding a bypass in the Hermes skill tool. Acceptable hardening includes a
+create-exclusive helper in `agent_fs` or an equivalent atomic create-only
+operation covered by tests.
 
 Approve does not:
 
@@ -342,6 +362,7 @@ Behavior:
   - `warnings`
   - `model_info`
   - `evicted_count`
+  - `pruned_count`
   - `valid_drafts` with `pending_id` and preview
   - `conflicts`
   - `invalid_drafts`
@@ -423,7 +444,7 @@ This is slightly stricter than older lead-only tool skip behavior that silently
 skips. The warning helps detect attempted manual grants of a write-capable
 skill approval surface.
 
-## Observability And Privacy
+## Runtime Logs, Observability, And Privacy
 
 Instrument with the existing Second Brain tool observability helper.
 
@@ -474,12 +495,39 @@ Low-risk attributes only:
 Do not record:
 
 - skill body content
+- body preview text
 - full description text
 - reject reason
 - pending id
 - raw Hermes context
 - task text
 - rendered `SKILL.md` content
+
+Tool output is separate from telemetry:
+
+- `body_preview` is intentionally returned to the lead/LLM as bounded tool
+  output so the draft can be reviewed before approval.
+- `body_preview` must not be copied into OpenTelemetry span attributes,
+  Prometheus labels/metrics, log lines, or low-level debug previews.
+
+Runtime logging redaction:
+
+- The implementation must account for generic runtime paths that currently
+  log tool arguments/results, especially `tool_start` argument logging and
+  `tool_result_preview` debug logging.
+- For the four Hermes skill tools, log lines and span attributes must redact
+  or omit raw `task`, `context`, `body`, `body_preview`, `description`, reject
+  `reason`, and `pending_id`.
+- Live stream/replay ToolStart arguments for `hermes_skill_draft` should redact
+  raw `task` and `context` because those values are not needed to review or
+  approve the resulting draft.
+- Stream/tool-end output may still deliver `pending_id` and bounded
+  `body_preview` to the active lead session because that is the intended review
+  surface, not an observability attribute. The distinction must be covered by
+  tests.
+- Plugin before/after payloads are execution extension surfaces, not
+  observability. V1 should not introduce plugin-based telemetry for these tools
+  unless it applies the same redaction rules.
 
 ## Error Semantics
 
@@ -531,12 +579,15 @@ Service tests first:
 - Report invalid drafts for bad name, empty description, and empty body.
 - Truncate oversized body with warning.
 - Render `SKILL.md` with OpenAgentd-owned frontmatter.
-- Enqueue valid drafts and create opaque pending ids.
+- Enqueue valid drafts and create UUIDv4 or equivalent opaque pending ids.
 - List pending entries scoped by `session_id`.
-- Queue limit rejects oldest pending entry with `superseded_by_queue_limit`.
+- Queue limit caps total entries per session, prunes terminal entries, and
+  evicts oldest pending entries with `superseded_by_queue_limit`.
 - Approve writes a new skill through `agent_fs.write_skill(..., create=True)`.
 - Approve invalidates skill cache.
 - Approve fails clearly when skill appears after enqueue and does not overwrite.
+- Create-only write race hardening is covered if `agent_fs.write_skill` is
+  changed to close a TOCTOU gap.
 - Reject marks entry rejected without writing.
 - Double approve allows exactly one winner.
 - Approve rejected/failed entry is refused.
@@ -547,7 +598,7 @@ Tool tests:
 - `hermes_skill_draft` requires `session_id` before calling Hermes.
 - `hermes_skill_draft` enqueues valid drafts and returns pending ids.
 - `hermes_skill_draft` output includes conflicts, invalid drafts, warnings, and
-  `evicted_count`.
+  `evicted_count`/`pruned_count`.
 - Repeated draft calls create multiple pending entries.
 - Hermes unavailable/timeout/connection/schema errors map to specific messages.
 - `hermes_skill_pending_list` formats output clearly.
@@ -556,6 +607,12 @@ Tool tests:
 - `hermes_skill_pending_reject` rejects successfully.
 - Observability success/error paths record outcomes without leaking body,
   description text, pending id, or reject reason.
+- Runtime logs for the four Hermes skill tools redact raw `task`, `context`,
+  `body_preview`, body, description text, reject reason, and pending id.
+- ToolStart stream arguments redact raw `task` and `context` for
+  `hermes_skill_draft`.
+- Bounded `body_preview` remains available in the intended tool output for
+  lead review, but is absent from logs, span attributes, and metrics.
 
 Loader tests:
 
