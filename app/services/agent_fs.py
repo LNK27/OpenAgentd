@@ -12,6 +12,7 @@ by re-parsing after write (skills).
 
 from __future__ import annotations
 
+import os
 import re
 import tempfile
 from dataclasses import dataclass
@@ -73,7 +74,16 @@ def _validate_skill_name(name: str) -> Path:
     return Path(*(_validate_name(p) for p in parts))
 
 
+def validate_skill_name(name: str) -> str:
+    """Validate a skill directory name using the managed skill policy."""
+    return _validate_name(name)
+
+
 def _validate_agent_name(name: str) -> Path:
+    if "\\" in name:
+        raise AgentFsPathError(
+            f"Invalid name '{name}'. Use '/' for nested agent paths."
+        )
     parts = Path(name).parts
     if not parts:
         raise AgentFsPathError("Agent name cannot be empty.")
@@ -111,8 +121,7 @@ def _skill_file(name: str) -> Path:
 # ── Atomic write ─────────────────────────────────────────────────────────────
 
 
-def _atomic_write(path: Path, content: str) -> None:
-    """Write *content* to *path* atomically (tmp file + rename)."""
+def _write_temp_file(path: Path, content: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -124,7 +133,24 @@ def _atomic_write(path: Path, content: str) -> None:
     ) as tmp:
         tmp.write(content)
         tmp_path = Path(tmp.name)
+    return tmp_path
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Write *content* to *path* atomically (tmp file + rename)."""
+    tmp_path = _write_temp_file(path, content)
     tmp_path.replace(path)
+
+
+def _atomic_create(path: Path, content: str) -> None:
+    """Create *path* without replacing a destination that already exists."""
+    tmp_path = _write_temp_file(path, content)
+    try:
+        os.link(tmp_path, path)
+    except FileExistsError as exc:
+        raise AgentFsConflictError(f"File already exists: {path.name}") from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 # ── Public dataclasses ───────────────────────────────────────────────────────
@@ -164,7 +190,8 @@ def list_agents() -> list[str]:
     return sorted(
         name
         for p in root.rglob("*.md")
-        if (name := str(p.relative_to(root).with_suffix(""))) != "coding/executor"
+        if (name := p.relative_to(root).with_suffix("").as_posix())
+        != "coding/executor"
     )
 
 
@@ -234,9 +261,10 @@ def read_skill(name: str) -> SkillFileRecord:
 
 def write_skill(name: str, content: str, *, create: bool) -> SkillFileRecord:
     file = _skill_file(name)
-    if create and file.exists():
-        raise AgentFsConflictError(f"Skill '{name}' already exists.")
-    _atomic_write(file, content)
+    if create:
+        _atomic_create(file, content)
+    else:
+        _atomic_write(file, content)
     logger.info("skill_fs_write name={} bytes={}", name, len(content))
     return SkillFileRecord(name=name, path=str(file), content=content)
 

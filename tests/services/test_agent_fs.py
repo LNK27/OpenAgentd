@@ -150,6 +150,27 @@ def test_write_and_read_skill(fs_dirs):
     )
 
 
+def test_validate_skill_name_accepts_agent_fs_policy():
+    assert agent_fs.validate_skill_name("skill-name_1.2") == "skill-name_1.2"
+
+
+@pytest.mark.parametrize("bad_name", ["", "../bad", "-bad", "bad/name", "x" * 65])
+def test_validate_skill_name_rejects_invalid_values(bad_name):
+    with pytest.raises(AgentFsPathError):
+        agent_fs.validate_skill_name(bad_name)
+
+
+def test_write_skill_create_does_not_overwrite_existing_skill(fs_dirs):
+    _, skills_dir = fs_dirs
+    first = agent_fs.write_skill("draft-skill", "first", create=True)
+
+    with pytest.raises(AgentFsConflictError):
+        agent_fs.write_skill("draft-skill", "second", create=True)
+
+    assert Path(first.path) == skills_dir / "draft-skill" / "SKILL.md"
+    assert Path(first.path).read_text(encoding="utf-8") == "first"
+
+
 def test_list_skills_only_dirs_with_skill_md(fs_dirs):
     _, skills_dir = fs_dirs
     agent_fs.write_skill("a", "x", create=True)
