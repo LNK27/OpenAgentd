@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from pydantic.types import SecretStr
 
-from app.agent.providers.openai import OpenAIProvider
+from app.agent.providers.openai import ChatCompletionsOnlyProvider, OpenAIProvider
 from app.agent.providers.router9 import Router9Provider
 
 
@@ -21,6 +21,7 @@ def _make_provider(model_kwargs: dict[str, object] | None = None) -> Router9Prov
 
 def test_router9_provider_subclasses_openai_provider() -> None:
     assert issubclass(Router9Provider, OpenAIProvider)
+    assert issubclass(Router9Provider, ChatCompletionsOnlyProvider)
 
 
 def test_router9_never_uses_responses_with_thinking_level() -> None:

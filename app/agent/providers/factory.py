@@ -29,7 +29,7 @@ from app.agent.providers.copilot import CopilotProvider
 from app.agent.providers.deepseek import DeepSeekProvider
 from app.agent.providers.googlegenai import GoogleGenAIProvider
 from app.agent.providers.ollama import OllamaProvider
-from app.agent.providers.openai import OpenAIProvider
+from app.agent.providers.openai import ChatCompletionsOnlyProvider, OpenAIProvider
 from app.agent.providers.openai.compatible import OPENAI_COMPATIBLE_PROVIDER_SPECS
 from app.agent.providers.router9 import Router9Provider
 from app.agent.providers.unconfigured import UnconfiguredProviderError
@@ -200,7 +200,7 @@ def build_provider(
                     name,
                 )
             return _with_provider_name(
-                OpenAIProvider(
+                ChatCompletionsOnlyProvider(
                     api_key=cast(str | SecretStr, typed_api_key),
                     model=model,
                     base_url=base_url,

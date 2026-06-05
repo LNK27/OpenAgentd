@@ -59,3 +59,8 @@ class XAIProvider(OpenAIProvider):
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )
+
+    def _use_responses_for(self, model_kwargs: dict[str, Any]) -> bool:
+        # xAI's OpenAI-compatible surface is chat-completions based; do not
+        # route thinking-level requests to OpenAI's /responses endpoint.
+        return False

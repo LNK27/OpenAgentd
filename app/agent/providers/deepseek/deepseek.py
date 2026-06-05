@@ -262,6 +262,12 @@ class DeepSeekProvider(OpenAIProvider):
             model_kwargs=model_kwargs,
         )
 
+    def _use_responses_for(self, model_kwargs: dict[str, Any]) -> bool:
+        # DeepSeek exposes reasoning through /chat/completions, not OpenAI's
+        # /responses endpoint. Keep thinking-level requests on completions so
+        # the DeepSeek-specific thinking payload is applied.
+        return False
+
     def _make_completions_handler(
         self, model: str, base_url: str, headers: dict[str, str]
     ) -> CompletionsHandler:

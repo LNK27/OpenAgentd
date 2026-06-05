@@ -1211,14 +1211,15 @@ def test_make_default_provider_factory_openrouter_model(monkeypatch):
 
     mock_provider = MagicMock()
     with patch(
-        "app.agent.providers.factory.OpenAIProvider", return_value=mock_provider
-    ) as MockOAI:
+        "app.agent.providers.factory.ChatCompletionsOnlyProvider",
+        return_value=mock_provider,
+    ) as MockCompatible:
         with patch("app.core.config.settings") as mock_settings:
             mock_settings.OPENROUTER_API_KEY = MagicMock()
             mock_settings.OPENROUTER_API_KEY.get_secret_value.return_value = "or-key"
             build_provider("openrouter:qwen3")
-            MockOAI.assert_called_once()
-            assert "openrouter" in MockOAI.call_args.kwargs.get("base_url", "")
+            MockCompatible.assert_called_once()
+            assert "openrouter" in MockCompatible.call_args.kwargs.get("base_url", "")
 
 
 def test_make_default_provider_factory_nvidia_model():
@@ -1227,18 +1228,22 @@ def test_make_default_provider_factory_nvidia_model():
 
     mock_provider = MagicMock()
     with patch(
-        "app.agent.providers.factory.OpenAIProvider", return_value=mock_provider
-    ) as MockOAI:
+        "app.agent.providers.factory.ChatCompletionsOnlyProvider",
+        return_value=mock_provider,
+    ) as MockCompatible:
         with patch("app.core.config.settings") as mock_settings:
             mock_settings.NVIDIA_API_KEY = MagicMock()
             mock_settings.NVIDIA_API_KEY.get_secret_value.return_value = "nvapi-key"
             build_provider("nvidia:stepfun-ai/step-3.5-flash")
-            MockOAI.assert_called_once()
+            MockCompatible.assert_called_once()
             assert (
-                MockOAI.call_args.kwargs.get("base_url")
+                MockCompatible.call_args.kwargs.get("base_url")
                 == "https://integrate.api.nvidia.com/v1"
             )
-            assert MockOAI.call_args.kwargs.get("model") == "stepfun-ai/step-3.5-flash"
+            assert (
+                MockCompatible.call_args.kwargs.get("model")
+                == "stepfun-ai/step-3.5-flash"
+            )
 
 
 # ---------------------------------------------------------------------------
