@@ -314,6 +314,9 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
 - **Resilient provider construction** `[v1.17.0]` — missing/unavailable
   providers no longer block startup; an unconfigured stub surfaces an
   actionable UI error on first use.
+- **Chat-completions-only compatible routing** `[v1.44.3]` — OpenAI-compatible
+  providers that do not expose OpenAI's Responses API stay on `/v1/chat/completions`
+  even when session or agent thinking settings are enabled.
 - **Anthropic-compatible custom endpoints** `[v1.16.0]` — providers needing
   custom headers or alternate message endpoints are supported.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
