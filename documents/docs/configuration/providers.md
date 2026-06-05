@@ -29,18 +29,18 @@ Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are
 | `anthropic` | `ANTHROPIC_API_KEY` (+ optional `ANTHROPIC_BASE_URL`) | Built-in Anthropic Messages API support. |
 | `googlegenai` | `GOOGLE_API_KEY` | Google Gemini Developer API. |
 | `vertexai` | `VERTEXAI_API_KEY` *or* ADC + `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` | Vertex AI (express or normal mode). |
-| `zai` | `ZAI_API_KEY` | ZAI / GLM. |
+| `zai` | `ZAI_API_KEY` | ZAI / GLM; chat completions only. |
 | `openai` | `OPENAI_API_KEY` | Chat Completions by default; `thinking_level` auto-routes to the Responses API. |
-| `openrouter` | `OPENROUTER_API_KEY` | OpenRouter — any catalog model. |
-| `nvidia` | `NVIDIA_API_KEY` | [NVIDIA NIM](https://build.nvidia.com/models). |
-| `xai` | `XAI_API_KEY` | xAI Grok. |
-| `deepseek` | `DEEPSEEK_API_KEY` | DeepSeek (OpenAI-compatible). |
+| `openrouter` | `OPENROUTER_API_KEY` | OpenRouter — any catalog model; chat completions only. |
+| `nvidia` | `NVIDIA_API_KEY` | [NVIDIA NIM](https://build.nvidia.com/models); chat completions only. |
+| `xai` | `XAI_API_KEY` | xAI Grok; chat completions only. |
+| `deepseek` | `DEEPSEEK_API_KEY` | DeepSeek (OpenAI-compatible); chat completions only. |
 | `bedrock` | AWS creds (env / profile / instance) | Converse API across all Bedrock model families. |
 | `copilot` | `openagentd auth copilot` | GitHub Copilot OAuth (device flow). |
 | `codex` | `openagentd auth codex` | OpenAI Codex via ChatGPT subscription. The UI tries device-code auth first, then falls back to browser PKCE when a workspace disables device-code auth. CLI uses browser PKCE by default; `--device` is available for headless setup. |
-| `router9` | `ROUTER9_API_KEY` (+ optional `ROUTER9_BASE_URL`) | Local [9Router](https://github.com/decolua/9router) proxy. |
-| `cliproxy` | `CLIPROXY_API_KEY` (+ optional `CLIPROXY_BASE_URL`) | Local [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) proxy. |
-| `ollama` | `OLLAMA_API_KEY` (optional; daemon ignores auth) | Local [Ollama](https://docs.ollama.com/api/openai) at `http://localhost:11434/v1`. |
+| `router9` | `ROUTER9_API_KEY` (+ optional `ROUTER9_BASE_URL`) | Local [9Router](https://github.com/decolua/9router) proxy; chat completions only. |
+| `cliproxy` | `CLIPROXY_API_KEY` (+ optional `CLIPROXY_BASE_URL`) | Local [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) proxy; chat completions only. |
+| `ollama` | `OLLAMA_API_KEY` (optional; daemon ignores auth) | Local [Ollama](https://docs.ollama.com/api/openai) at `http://localhost:11434/v1`; chat completions only. |
 
 The model id after the prefix is passed **verbatim** to the upstream. The Settings model picker filters provider listings to agent-usable text-chat models, so generation-only models such as `veo-*`, `imagen-*`, image-preview, embeddings, and TTS models are hidden.
 
@@ -113,6 +113,8 @@ When routed to `/v1/responses`, `temperature` and `top_p` are silently ignored (
 
 On Chat Completions, callers still use the provider-agnostic `max_tokens` setting. The OpenAI-compatible handler serializes it to the upstream field name: OpenAI/Copilot/xAI use `max_completion_tokens`; DeepSeek keeps legacy `max_tokens`.
 
+Other OpenAI-compatible providers (`openrouter`, `nvidia`, `cliproxy`, `router9`, `ollama`, `xai`, and `deepseek`) are pinned to `/v1/chat/completions`. They do not auto-route to `/v1/responses` when `thinking_level` is set, because those upstreams expose OpenAI-compatible chat completions but not OpenAI's Responses API.
+
 ### `anthropic`
 
 Uses Anthropic's Messages API at `https://api.anthropic.com/v1/messages`. API-key support is built in and configured with `ANTHROPIC_API_KEY`; set `ANTHROPIC_BASE_URL` only for compatible gateways.
@@ -155,7 +157,7 @@ Both talk to a **locally-running OpenAI-compatible proxy** that fans out to many
 | `router9` | 9Router — Node.js dashboard, 40+ providers, quota tracking | `http://localhost:20128/v1` |
 | `cliproxy` | CLIProxyAPI — Go proxy wrapping Gemini CLI / ChatGPT Codex / Claude Code OAuth | `http://localhost:8317/v1` |
 
-The model id after the prefix is passed verbatim to the proxy — see the upstream dashboard / `/v1/models` for the live catalog. If `cliproxy` is run without auth, any non-empty `CLIPROXY_API_KEY` value works (the header is required by the OpenAI client).
+The model id after the prefix is passed verbatim to the proxy — see the upstream dashboard / `/v1/models` for the live catalog. Both providers are always routed through `/v1/chat/completions`; session/agent `thinking_level` settings will not switch them to Responses API. If `cliproxy` is run without auth, any non-empty `CLIPROXY_API_KEY` value works (the header is required by the OpenAI client).
 
 ### `ollama`
 

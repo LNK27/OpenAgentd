@@ -87,6 +87,14 @@ class TestXAIProviderInit:
         p = self._make_provider(model_kwargs={"extra_param": "value"})
         assert p.model_kwargs.get("extra_param") == "value"
 
+    def test_thinking_level_stays_on_chat_completions(self):
+        p = self._make_provider(model_kwargs={"thinking_level": "high"})
+        assert p._use_responses is False
+
+    def test_responses_api_true_stays_on_chat_completions(self):
+        p = self._make_provider(model_kwargs={"responses_api": True})
+        assert p._use_responses is False
+
     def test_default_temperature_is_none(self):
         p = self._make_provider()
         assert p.temperature is None

@@ -84,3 +84,7 @@ class OllamaProvider(OpenAIProvider):
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )
+
+    def _use_responses_for(self, model_kwargs: dict[str, Any]) -> bool:
+        # Ollama exposes the OpenAI-compatible chat-completions endpoint only.
+        return False
