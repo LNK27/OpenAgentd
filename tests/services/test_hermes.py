@@ -15,11 +15,13 @@ from app.services.hermes import (
     HermesProposalRequest,
     HermesQueryRequest,
     HermesSchemaError,
+    HermesSkillDraftRequest,
     HermesTimeoutError,
     HermesUnavailableError,
     HttpHermesClient,
     normalize_hermes_query_response,
     normalize_hermes_response,
+    normalize_hermes_skill_draft_response,
     query_recall,
     propose_write_intents,
 )
@@ -316,6 +318,92 @@ def test_normalize_does_not_swallow_unexpected_validation_errors(
         )
 
 
+def test_normalize_skill_draft_response_partitions_valid_invalid_and_conflicts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from app.services import agent_fs
+
+    monkeypatch.setattr(agent_fs.settings, "SKILLS_DIR", str(tmp_path))
+    agent_fs.write_skill(
+        "existing-skill",
+        "---\nname: existing-skill\ndescription: Existing\n---\nBody\n",
+        create=True,
+    )
+
+    result = normalize_hermes_skill_draft_response(
+        {
+            "summary": "done",
+            "skill_drafts": [
+                {
+                    "name": "new-skill",
+                    "description": "Draft helper",
+                    "body": "Use this when drafting.",
+                    "rationale": "Useful.",
+                },
+                {
+                    "name": "existing-skill",
+                    "description": "Existing helper",
+                    "body": "Should conflict.",
+                },
+                {"name": "-bad", "description": "Bad", "body": "Bad"},
+            ],
+            "warnings": ["top warning"],
+            "model_info": {"model": "hermes-test"},
+        }
+    )
+
+    assert result.summary == "done"
+    assert [draft.name for draft in result.valid_drafts] == ["new-skill"]
+    assert [draft.name for draft in result.conflicts] == ["existing-skill"]
+    assert result.invalid_drafts[0].invalid_reason
+    assert "top warning" in result.warnings
+    assert result.model_info == {"model": "hermes-test"}
+
+
+def test_normalize_skill_draft_response_rejects_forbidden_fields() -> None:
+    with pytest.raises(HermesSchemaError, match="forbidden field"):
+        normalize_hermes_skill_draft_response(
+            {
+                "skill_drafts": [
+                    {
+                        "name": "bad",
+                        "description": "Bad",
+                        "body": "Bad",
+                        "frontmatter": "---",
+                    }
+                ]
+            }
+        )
+
+
+def test_normalize_skill_draft_response_truncates_body(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from app.services import agent_fs
+
+    monkeypatch.setattr(agent_fs.settings, "SKILLS_DIR", str(tmp_path))
+
+    result = normalize_hermes_skill_draft_response(
+        {
+            "skill_drafts": [
+                {
+                    "name": "long-skill",
+                    "description": "Long helper",
+                    "body": "x" * 12,
+                }
+            ]
+        },
+        max_body_chars_per_draft=5,
+    )
+
+    draft = result.valid_drafts[0]
+    assert draft.body == "x" * 5
+    assert draft.body_truncated is True
+    assert any("truncated" in warning for warning in draft.warnings)
+
+
 @pytest.mark.asyncio
 async def test_http_client_sends_health_and_token_header() -> None:
     requests: list[httpx.Request] = []
@@ -334,6 +422,11 @@ async def test_http_client_sends_health_and_token_header() -> None:
                 200,
                 json={"answer": "ok", "items": [], "warnings": []},
             )
+        if request.url.path == "/v1/skill-drafts":
+            return httpx.Response(
+                200,
+                json={"summary": "skills", "skill_drafts": [], "warnings": []},
+            )
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
@@ -351,13 +444,18 @@ async def test_http_client_sends_health_and_token_header() -> None:
     query_payload = await client.query_recall(
         HermesQueryRequest(query="Question", context="", max_results=1)
     )
+    skill_payload = await client.draft_skills(
+        HermesSkillDraftRequest(task="Draft", context="", max_drafts=1)
+    )
 
     assert payload["summary"] == "ok"
     assert query_payload["answer"] == "ok"
+    assert skill_payload["summary"] == "skills"
     assert [request.url.path for request in requests] == [
         "/v1/health",
         "/v1/write-intents",
         "/v1/query",
+        "/v1/skill-drafts",
     ]
     assert all(
         request.headers.get("X-Hermes-Token") == "secret-token" for request in requests

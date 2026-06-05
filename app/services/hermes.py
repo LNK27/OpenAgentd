@@ -19,8 +19,10 @@ from app.services.vault_gatekeeper import VaultPathError, validate_vault_note_pa
 
 _MAX_INTENTS = 20
 _MAX_RESULTS = 20
+_MAX_SKILL_DRAFTS = 10
 _DEFAULT_MAX_CONTEXT_CHARS = 8000
 _DEFAULT_MAX_BODY_CHARS_PER_INTENT = 4000
+_DEFAULT_MAX_BODY_CHARS_PER_SKILL_DRAFT = 8000
 _FORBIDDEN_INTENT_FIELDS = {"writer", "overwrite", "last_summarized_at"}
 _FORBIDDEN_QUERY_ITEM_FIELDS = {
     "writer",
@@ -28,6 +30,19 @@ _FORBIDDEN_QUERY_ITEM_FIELDS = {
     "last_summarized_at",
     "vault_write_params",
     "write_intents",
+    "pending_id",
+}
+_FORBIDDEN_SKILL_DRAFT_FIELDS = {
+    "path",
+    "absolute_path",
+    "content",
+    "frontmatter",
+    "overwrite",
+    "existing_skill",
+    "install",
+    "tools",
+    "agent_config",
+    "writer",
     "pending_id",
 }
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
@@ -70,6 +85,15 @@ class HermesQueryRequest:
     query: str
     context: str = ""
     max_results: int = 5
+
+
+@dataclass(frozen=True)
+class HermesSkillDraftRequest:
+    """Skill drafting request sent to the Hermes sidecar."""
+
+    task: str
+    context: str = ""
+    max_drafts: int = 3
 
 
 @dataclass(frozen=True)
@@ -143,6 +167,33 @@ class HermesQueryResult:
     model_info: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class HermesSkillDraftProposal:
+    """Validated proposal for one future skill file."""
+
+    name: str
+    description: str
+    body: str
+    rationale: str = ""
+    body_truncated: bool = False
+    exists_conflict: bool = False
+    warning: str | None = None
+    invalid_reason: str | None = None
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class HermesSkillDraftResult:
+    """Normalized skill draft result from Hermes."""
+
+    summary: str = ""
+    valid_drafts: list[HermesSkillDraftProposal] = field(default_factory=list)
+    conflicts: list[HermesSkillDraftProposal] = field(default_factory=list)
+    invalid_drafts: list[HermesSkillDraftProposal] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    model_info: dict[str, Any] = field(default_factory=dict)
+
+
 class HermesClient(Protocol):
     """Protocol for swappable Hermes sidecar clients."""
 
@@ -157,6 +208,9 @@ class HermesClient(Protocol):
 
     async def query_recall(self, request: HermesQueryRequest) -> dict[str, Any]:
         """Return the raw Hermes read-only query payload."""
+
+    async def draft_skills(self, request: HermesSkillDraftRequest) -> dict[str, Any]:
+        """Return the raw Hermes skill draft payload."""
 
 
 class HttpHermesClient:
@@ -208,6 +262,22 @@ class HttpHermesClient:
                 "query": request.query,
                 "context": request.context,
                 "max_results": request.max_results,
+            },
+        )
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise HermesSchemaError("Hermes response must be a JSON object.")
+        return payload
+
+    async def draft_skills(self, request: HermesSkillDraftRequest) -> dict[str, Any]:
+        """Request skill drafts from Hermes."""
+        response = await self._request(
+            "POST",
+            "/v1/skill-drafts",
+            json={
+                "task": request.task,
+                "context": request.context,
+                "max_drafts": request.max_drafts,
             },
         )
         payload = response.json()
@@ -280,6 +350,27 @@ async def query_recall(
     await hermes_client.health()
     payload = await hermes_client.query_recall(prepared)
     return normalize_hermes_query_response(payload)
+
+
+async def draft_skills(
+    request: HermesSkillDraftRequest,
+    *,
+    client: HermesClient | None = None,
+    max_context_chars: int | None = None,
+    max_body_chars_per_draft: int | None = None,
+) -> HermesSkillDraftResult:
+    """Call Hermes for structured skill draft proposals."""
+    hermes_client = client or _client_from_settings()
+    prepared = _prepare_skill_draft_request(
+        request,
+        max_context_chars=max_context_chars,
+    )
+    await hermes_client.health()
+    payload = await hermes_client.draft_skills(prepared)
+    return normalize_hermes_skill_draft_response(
+        payload,
+        max_body_chars_per_draft=max_body_chars_per_draft,
+    )
 
 
 def normalize_hermes_response(
@@ -359,6 +450,53 @@ def normalize_hermes_query_response(payload: dict[str, Any]) -> HermesQueryResul
     )
 
 
+def normalize_hermes_skill_draft_response(
+    payload: dict[str, Any],
+    *,
+    max_body_chars_per_draft: int | None = None,
+) -> HermesSkillDraftResult:
+    """Validate and partition a raw Hermes skill draft payload."""
+    if not isinstance(payload, dict):
+        raise HermesSchemaError("Hermes response must be a JSON object.")
+    summary = _optional_string(payload.get("summary"), field_name="summary")
+    raw_warnings = payload.get("warnings", [])
+    if raw_warnings is None:
+        raw_warnings = []
+    if not isinstance(raw_warnings, list):
+        raise HermesSchemaError("Hermes response warnings must be a list.")
+    warnings = [str(item) for item in raw_warnings if str(item).strip()]
+    raw_model_info = payload.get("model_info", {})
+    model_info = raw_model_info if isinstance(raw_model_info, dict) else {}
+    raw_drafts = payload.get("skill_drafts", [])
+    if not isinstance(raw_drafts, list):
+        raise HermesSchemaError("Hermes response skill_drafts must be a list.")
+
+    body_limit = _positive_int(
+        max_body_chars_per_draft,
+        fallback=_DEFAULT_MAX_BODY_CHARS_PER_SKILL_DRAFT,
+    )
+    valid_drafts: list[HermesSkillDraftProposal] = []
+    conflicts: list[HermesSkillDraftProposal] = []
+    invalid_drafts: list[HermesSkillDraftProposal] = []
+    for raw in raw_drafts:
+        draft = _normalize_skill_draft(raw, body_limit=body_limit)
+        if draft.invalid_reason:
+            invalid_drafts.append(draft)
+        elif draft.exists_conflict:
+            conflicts.append(draft)
+        else:
+            valid_drafts.append(draft)
+        warnings.extend(draft.warnings)
+    return HermesSkillDraftResult(
+        summary=summary,
+        valid_drafts=valid_drafts,
+        conflicts=conflicts,
+        invalid_drafts=invalid_drafts,
+        warnings=_dedupe(warnings),
+        model_info=model_info,
+    )
+
+
 def _client_from_settings() -> HttpHermesClient:
     if not settings.OPENAGENTD_HERMES_ENABLED:
         raise HermesUnavailableError("Hermes connector is disabled.")
@@ -408,6 +546,28 @@ def _prepare_query_request(
             )
         ],
         max_results=_clamp_int(request.max_results, minimum=1, maximum=_MAX_RESULTS),
+    )
+
+
+def _prepare_skill_draft_request(
+    request: HermesSkillDraftRequest,
+    *,
+    max_context_chars: int | None,
+) -> HermesSkillDraftRequest:
+    return replace(
+        request,
+        task=request.task.strip(),
+        context=request.context[
+            : _positive_int(
+                max_context_chars,
+                fallback=settings.OPENAGENTD_HERMES_MAX_CONTEXT_CHARS,
+            )
+        ],
+        max_drafts=_clamp_int(
+            request.max_drafts,
+            minimum=1,
+            maximum=_MAX_SKILL_DRAFTS,
+        ),
     )
 
 
@@ -469,6 +629,64 @@ def _normalize_intent(raw: Any, *, body_limit: int) -> HermesIntentProposal:
             ),
         )
     return intent
+
+
+def _normalize_skill_draft(
+    raw: Any,
+    *,
+    body_limit: int,
+) -> HermesSkillDraftProposal:
+    from app.services import agent_fs
+
+    if not isinstance(raw, dict):
+        return HermesSkillDraftProposal(
+            name="",
+            description="",
+            body="",
+            invalid_reason="Hermes skill_draft must be an object.",
+        )
+    forbidden = sorted(_FORBIDDEN_SKILL_DRAFT_FIELDS.intersection(raw))
+    if forbidden:
+        raise HermesSchemaError(
+            f"Hermes skill_draft contains forbidden field: {', '.join(forbidden)}"
+        )
+    try:
+        name = _required_string(raw, "name")
+        description = _required_string(raw, "description")
+        body = _required_string(raw, "body")
+        agent_fs.validate_skill_name(name)
+    except (HermesSchemaError, agent_fs.AgentFsPathError) as exc:
+        return HermesSkillDraftProposal(
+            name=str(raw.get("name") or ""),
+            description=str(raw.get("description") or ""),
+            body=str(raw.get("body") or ""),
+            invalid_reason=str(exc),
+        )
+
+    body_truncated = False
+    warnings: list[str] = []
+    if len(body) > body_limit:
+        body = body[:body_limit]
+        body_truncated = True
+        warnings.append(f"skill body was truncated to {body_limit} characters")
+
+    draft = HermesSkillDraftProposal(
+        name=name,
+        description=description,
+        body=body,
+        rationale=_optional_string(raw.get("rationale"), field_name="rationale"),
+        body_truncated=body_truncated,
+        warnings=warnings,
+    )
+    try:
+        agent_fs.read_skill(name)
+    except agent_fs.AgentFsNotFoundError:
+        return draft
+    return replace(
+        draft,
+        exists_conflict=True,
+        warning=f"skill already exists at skills/{name}/SKILL.md",
+    )
 
 
 def _normalize_query_item(raw: Any) -> HermesQueryItem:
