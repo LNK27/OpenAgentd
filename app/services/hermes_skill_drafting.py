@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import yaml
 
-from app.services import agent_fs, team_manager
+from app.services import agent_fs
 from app.services.hermes import HermesSkillDraftProposal
 
 HERMES_SKILL_QUEUE_LIMIT_REASON = "superseded_by_queue_limit"
@@ -84,6 +84,12 @@ def render_skill_markdown(draft: HermesSkillDraftProposal) -> str:
     return f"---\n{frontmatter}\n---\n{body}\n"
 
 
+def _invalidate_skill_cache() -> None:
+    from app.services import team_manager
+
+    team_manager.invalidate_skill_cache()
+
+
 class HermesSkillDraftQueue:
     """In-memory per-process queue for Hermes skill drafts."""
 
@@ -154,7 +160,7 @@ class HermesSkillDraftQueue:
             try:
                 content = render_skill_markdown(entry.draft)
                 record = agent_fs.write_skill(entry.draft.name, content, create=True)
-                team_manager.invalidate_skill_cache()
+                _invalidate_skill_cache()
             except (
                 HermesSkillDraftWriteError,
                 agent_fs.AgentFsPathError,

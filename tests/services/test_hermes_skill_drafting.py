@@ -125,7 +125,7 @@ async def test_approve_writes_skill_and_invalidates_cache(
         nonlocal invalidated
         invalidated = True
 
-    monkeypatch.setattr(module.team_manager, "invalidate_skill_cache", fake_invalidate)
+    monkeypatch.setattr(module, "_invalidate_skill_cache", fake_invalidate)
     queue = HermesSkillDraftQueue()
     result = await queue.enqueue("session-a", [_draft()])
 
