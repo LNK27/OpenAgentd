@@ -1,6 +1,6 @@
 # OpenAgentd Second Brain Context Snapshot
 
-Last updated: 2026-06-02
+Last updated: 2026-06-06
 
 
 ## Purpose
@@ -110,7 +110,7 @@ Phase 3: observability and expansion.
 
 ## Implementation Status
 
-Phase 1 is **fully closed**. All runtime safety items have been implemented and verified by tests.
+Phase 1 was **fully closed on the pre-sync local main**, but the `codex/sync-origin-main` branch intentionally did not replay the older MCP watchdog/runtime-observability patches because they conflict with the newer `origin/main` MCP manager refactor. Re-port MCP runtime observability separately before treating Phase 1 runtime observability as closed on the synced branch.
 
 Known local state before this snapshot:
 
@@ -269,6 +269,36 @@ Known local state before this snapshot:
 - Second Brain Read/Write Tool Observability v1 is accepted and closed after independent review:
   - Claude Opus 4.6 verdict: `Ship with P2`; no P0/P1 blockers. Non-blocking items tracked: `hermes_propose` latency includes in-memory enqueue time, and `_tracer_with_exporter()` is duplicated across tool tests.
   - Gemini 3.5 Flash verdict: `Accepted (Ship with P2)`; no P0/P1 blockers. Gemini confirmed regression safety, unchanged write boundaries, correct semantic error preservation, low-cardinality metrics, privacy-safe attributes, and adequate helper/tool/hook test coverage.
+- MCP Runtime Observability v1 is **not yet ported on the `codex/sync-origin-main` branch**. The older local implementation conflicted with the newer `origin/main` MCP manager refactor for OAuth/streamable HTTP, so it was intentionally not replayed during remote sync. Treat MCP runtime observability as the next porting task if operator restart/flapping data is still required.
+- Vault Update v1 is now implemented and verified:
+  - `VaultGatekeeper.update_note(...)` updates existing notes under the existing gatekeeper lock with atomic writes and optimistic SHA-256 conflict detection.
+  - `vault_read(include_update_token=True)` returns a `sha256` token for the full raw note content without changing default read output.
+  - `vault_update` is lead-only and supports structured body replacement, body append, and allowlisted metadata updates while preserving custom frontmatter.
+  - `title`, `type`, `id`, `created_at`, `folder`, and `slug` remain read-only in v1; no index update, API/UI, batch, delete, rename, move, Hermes direct write, or approval queue integration was added.
+  - Design doc: `docs/superpowers/specs/2026-06-03-vault-update-v1-design.md`; implementation plan: `docs/superpowers/plans/2026-06-05-vault-update-v1.md`.
+- Verification for Vault Update v1 passed:
+  - `uv run pytest tests/services/test_vault_gatekeeper.py tests/agent/tools/test_vault_update_tool.py tests/agent/tools/test_vault_read_tool.py --no-cov -q` (`43 passed`)
+  - `uv run pytest tests/agent/tools/test_vault_write_tool.py tests/agent/tools/test_vault_search_tool.py tests/agent/test_loader.py --no-cov -q` (`84 passed`)
+  - `uv run pytest tests/services/test_observability_service.py tests/api/routes/test_observability_route.py --no-cov -q` (`21 passed`)
+  - `uv run ruff check app/services/vault_gatekeeper.py app/agent/tools/builtin/vault_update.py app/agent/tools/builtin/vault_read.py app/agent/tools/builtin/__init__.py app/agent/loader.py tests/services/test_vault_gatekeeper.py tests/agent/tools/test_vault_update_tool.py tests/agent/tools/test_vault_read_tool.py tests/agent/test_loader.py`
+  - `uv run ruff format --check app/services/vault_gatekeeper.py app/agent/tools/builtin/vault_update.py app/agent/tools/builtin/vault_read.py app/agent/tools/builtin/__init__.py app/agent/loader.py tests/services/test_vault_gatekeeper.py tests/agent/tools/test_vault_update_tool.py tests/agent/tools/test_vault_read_tool.py tests/agent/test_loader.py`
+  - `uv run ty check app/services/vault_gatekeeper.py app/agent/tools/builtin/vault_update.py app/agent/tools/builtin/vault_read.py app/agent/loader.py`
+- Hermes Skill Drafting v1 is implemented and verified on branch `codex/hermes-skill-drafting-v1`. Design doc: `docs/superpowers/specs/2026-06-05-hermes-skill-drafting-v1-design.md`; implementation plan: `docs/superpowers/plans/2026-06-06-hermes-skill-drafting-v1.md`.
+  - `agent_fs.write_skill(..., create=True)` now uses create-only atomic publish semantics so existing `SKILL.md` files are not overwritten by approval races. `validate_skill_name()` exposes the shared agent_fs name policy for skill draft normalization.
+  - Hermes skill drafting contract is added to `app/services/hermes.py` through `HermesSkillDraftRequest`, `HermesSkillDraftProposal`, `HermesSkillDraftResult`, `draft_skills()`, and HTTP POST `/v1/skill-drafts`. Hermes supplies raw `name`, `description`, and `body` only; OpenAgentd owns validation/rendering/write.
+  - `app/services/hermes_skill_drafting.py` provides the in-memory per-process `HermesSkillDraftQueue`, scoped by `session_id`, capped at 50 total entries per session, using UUID pending ids, terminal statuses, terminal-entry pruning, and oldest-pending eviction with reason `superseded_by_queue_limit`.
+  - New lead-only tools are registered and auto-injected: `hermes_skill_draft`, `hermes_skill_pending_list`, `hermes_skill_pending_approve`, and `hermes_skill_pending_reject`. Member frontmatter attempts are skipped and logged with `lead_only_tool_skipped`.
+  - Approval creates only new `SKILLS_DIR/{name}/SKILL.md` through `agent_fs.write_skill(..., create=True)` and invalidates the skill cache. It does not call Hermes, does not auto-load/grant/install the skill, and does not update/overwrite/delete/rename/move existing skills.
+  - Runtime logs, ToolStart stream arguments, tool observability attributes, and metrics redact or omit sensitive `task`, `context`, body preview/content, description text, reject reason, and pending ids. ToolEnd and tool result output may include bounded `body_preview` and `pending_id` as the lead review surface.
+  - No API/UI/DB/persistence/batch approval/Hermes direct filesystem write/raw filesystem write from Hermes tool was added.
+- Verification for Hermes Skill Drafting v1 passed:
+  - `uv run pytest tests/services/test_agent_fs.py tests/services/test_hermes.py tests/services/test_hermes_skill_drafting.py --no-cov -q` (`51 passed`)
+  - `uv run pytest tests/agent/test_hermes_skill_redaction.py tests/agent/tools/test_hermes_skill_tools.py tests/agent/test_loader.py --no-cov -q` (`82 passed`)
+  - `uv run pytest tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_propose_tool.py tests/agent/tools/test_hermes_pending_tools.py tests/agent/tools/test_hermes_query_tool.py tests/agent/tools/test_skill_loader.py --no-cov -q` (`47 passed`)
+  - `uv run ruff check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/__init__.py app/agent/tools/builtin/skill.py app/agent/loader.py tests/services/test_agent_fs.py tests/services/test_hermes.py tests/services/test_hermes_skill_drafting.py tests/agent/test_hermes_skill_redaction.py tests/agent/tools/test_hermes_skill_tools.py tests/agent/tools/test_skill_loader.py tests/agent/test_loader.py`
+  - `uv run ruff format --check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/__init__.py app/agent/tools/builtin/skill.py app/agent/loader.py tests/services/test_agent_fs.py tests/services/test_hermes.py tests/services/test_hermes_skill_drafting.py tests/agent/test_hermes_skill_redaction.py tests/agent/tools/test_hermes_skill_tools.py tests/agent/tools/test_skill_loader.py tests/agent/test_loader.py`
+  - `uv run ty check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/skill.py app/agent/loader.py`
+  - Neighboring regression fix included: `discover_skills()` now reports skill file paths using POSIX-style relative paths on Windows (`web-research/SKILL.md`).
 
 ## Next Implementation Steps
 
@@ -281,7 +311,10 @@ Known local state before this snapshot:
 7. ~~Implement Hermes approval/review queue v1~~ â€” **DONE** (2026-05-30). Lead agents can review, approve, or reject Hermes pending intents before queue-mediated vault writes; `vault_write` remains available for non-Hermes notes.
 8. ~~Implement Hermes query/recall v1~~ — **DONE** (2026-06-02). Lead agents can ask Hermes for read-only recall/query results without vault writes, approval queue side effects, or skill drafting.
 9. ~~Implement Second Brain Read/Write Tool Observability v1~~ - **DONE** (2026-06-02). Vault/Hermes read/write tools now annotate active tool spans and emit low-cardinality Prometheus metrics without changing tool schemas or write boundaries.
-10. Decide the next Phase 2/3 step: likely MCP/runtime observability, `vault_update`, or Hermes skill drafting.
+10. Port MCP Runtime Observability v1 onto the current `origin/main` MCP manager if restart/flapping operator status remains required.
+11. ~~Implement Vault Update v1~~ - **DONE** (2026-06-05). Lead agents can update existing Obsidian notes through `vault_update` using an optimistic `sha256` token from `vault_read(include_update_token=True)`, while preserving custom frontmatter and keeping identity fields read-only.
+12. ~~Implement Hermes Skill Drafting v1~~ - **DONE** (2026-06-06). Lead agents can request Hermes skill drafts, review bounded previews, approve one pending draft to create a new `SKILLS_DIR/{name}/SKILL.md`, or reject it without writing. Hermes still cannot write files directly.
+13. Run post-sync review/regression on `codex/sync-origin-main`, then decide whether to fast-forward local `main`.
 
 ## Update Protocol
 
