@@ -18,6 +18,7 @@ from app.services.markdown_text import (
     VaultFrontmatterParseError,
     split_vault_note_frontmatter,
 )
+from app.services.vault_gatekeeper import vault_note_sha256
 from app.services.vault_search import read_note
 
 _MIN_CHARS = 1000
@@ -38,6 +39,10 @@ async def _vault_read(
         int,
         Field(description="Maximum characters to return, clamped to 1000..50000."),
     ] = 12000,
+    include_update_token: Annotated[
+        bool,
+        Field(description="Whether to append a sha256 token for vault_update."),
+    ] = False,
 ) -> str:
     """Read one Obsidian vault note by folder and slug."""
     start = time.perf_counter()
@@ -45,6 +50,7 @@ async def _vault_read(
         "vault.folder": folder,
         "vault.path": f"{folder}/{slug}.md",
         "vault.include_frontmatter": include_frontmatter,
+        "vault.include_update_token": include_update_token,
         "vault.max_chars": _clamp_chars(max_chars),
     }
     try:
@@ -67,6 +73,8 @@ async def _vault_read(
     max_chars_clamped = _clamp_chars(max_chars)
     truncated = len(content) > max_chars_clamped
     result = _truncate(content, max_chars_clamped)
+    if include_update_token:
+        result = f"{result}\n[vault_update_token: sha256:{vault_note_sha256(raw)}]"
     _record(
         outcome,
         SECOND_BRAIN_OK,

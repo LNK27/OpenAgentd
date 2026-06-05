@@ -196,6 +196,7 @@ def test_default_tool_registry_keys():
         "vault_write",
         "vault_read",
         "vault_search",
+        "vault_update",
     }
     assert expected.issubset(registry.keys())
 
@@ -1345,6 +1346,8 @@ def test_note_tool_auto_injected_into_lead():
     assert agent._tools["vault_read"].name == "vault_read"
     assert "vault_search" in agent._tools
     assert agent._tools["vault_search"].name == "vault_search"
+    assert "vault_update" in agent._tools
+    assert agent._tools["vault_update"].name == "vault_update"
 
 
 def test_note_tool_not_injected_into_member():
@@ -1361,6 +1364,7 @@ def test_note_tool_not_injected_into_member():
     assert "vault_write" not in agent._tools
     assert "vault_read" not in agent._tools
     assert "vault_search" not in agent._tools
+    assert "vault_update" not in agent._tools
 
 
 def test_note_in_frontmatter_tools_silently_skipped_for_lead():
@@ -1380,6 +1384,7 @@ def test_note_in_frontmatter_tools_silently_skipped_for_lead():
             "vault_write",
             "vault_read",
             "vault_search",
+            "vault_update",
         ],
     )
     agent = _build_agent(cfg, {}, factory)
@@ -1401,6 +1406,8 @@ def test_note_in_frontmatter_tools_silently_skipped_for_lead():
     assert list(agent._tools.keys()).count("vault_read") == 1
     assert "vault_search" in agent._tools
     assert list(agent._tools.keys()).count("vault_search") == 1
+    assert "vault_update" in agent._tools
+    assert list(agent._tools.keys()).count("vault_update") == 1
 
 
 def test_note_in_frontmatter_tools_silently_skipped_for_member():
@@ -1420,6 +1427,7 @@ def test_note_in_frontmatter_tools_silently_skipped_for_member():
             "vault_write",
             "vault_read",
             "vault_search",
+            "vault_update",
         ],
     )
     agent = _build_agent(cfg, {}, factory)
@@ -1432,6 +1440,7 @@ def test_note_in_frontmatter_tools_silently_skipped_for_member():
     assert "vault_write" not in agent._tools
     assert "vault_read" not in agent._tools
     assert "vault_search" not in agent._tools
+    assert "vault_update" not in agent._tools
 
 
 def test_note_from_registry_overrides_default():
@@ -1489,6 +1498,8 @@ def test_note_tools_injected_into_lead_only_integration(tmp_path):
     assert "vault_read" not in worker_tool_names
     assert "vault_search" in lead_tool_names
     assert "vault_search" not in worker_tool_names
+    assert "vault_update" in lead_tool_names
+    assert "vault_update" not in worker_tool_names
 
 
 def test_note_and_todo_both_injected_into_lead():
@@ -1507,6 +1518,7 @@ def test_note_and_todo_both_injected_into_lead():
     assert "vault_write" in agent._tools
     assert "vault_read" in agent._tools
     assert "vault_search" in agent._tools
+    assert "vault_update" in agent._tools
 
 
 def test_note_deduped_with_other_injected_tools():
@@ -1527,6 +1539,7 @@ def test_note_deduped_with_other_injected_tools():
             "vault_write",
             "vault_read",
             "vault_search",
+            "vault_update",
         ],
     )
     agent = _build_agent(cfg, {}, factory)
@@ -1540,3 +1553,4 @@ def test_note_deduped_with_other_injected_tools():
     assert list(agent._tools.keys()).count("vault_write") == 1
     assert list(agent._tools.keys()).count("vault_read") == 1
     assert list(agent._tools.keys()).count("vault_search") == 1
+    assert list(agent._tools.keys()).count("vault_update") == 1

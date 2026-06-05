@@ -14,7 +14,7 @@ from opentelemetry.trace.status import StatusCode
 
 from app.agent.tools.builtin.vault_read import vault_read
 from app.services import vault_gatekeeper
-from app.services.vault_gatekeeper import VAULT_FOLDERS
+from app.services.vault_gatekeeper import VAULT_FOLDERS, vault_note_sha256
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +39,40 @@ async def test_vault_read_returns_raw_note(_vault_dir: Path) -> None:
     result = await vault_read.arun(folder="20-topics", slug="raw-note")
 
     assert result == raw
+
+
+@pytest.mark.asyncio
+async def test_vault_read_can_include_update_token(_vault_dir: Path) -> None:
+    raw = "---\ntitle: Token Note\n---\nBody.\n"
+    (_vault_dir / "20-topics" / "token-note.md").write_text(raw, encoding="utf-8")
+
+    result = await vault_read.arun(
+        folder="20-topics",
+        slug="token-note",
+        include_update_token=True,
+    )
+
+    assert result == f"{raw}\n[vault_update_token: sha256:{vault_note_sha256(raw)}]"
+
+
+@pytest.mark.asyncio
+async def test_vault_read_update_token_uses_full_raw_note_when_body_only(
+    _vault_dir: Path,
+) -> None:
+    raw = "---\ntitle: Body Only\n---\nVisible body.\n"
+    (_vault_dir / "20-topics" / "body-token.md").write_text(raw, encoding="utf-8")
+
+    result = await vault_read.arun(
+        folder="20-topics",
+        slug="body-token",
+        include_frontmatter=False,
+        include_update_token=True,
+    )
+
+    assert (
+        result
+        == f"Visible body.\n\n[vault_update_token: sha256:{vault_note_sha256(raw)}]"
+    )
 
 
 @pytest.mark.asyncio

@@ -285,6 +285,7 @@ def _default_tool_registry() -> dict[str, Tool]:
         todo_manage,
         vault_read,
         vault_search,
+        vault_update,
         vault_write,
         web_fetch,
         web_search,
@@ -318,6 +319,7 @@ def _default_tool_registry() -> dict[str, Tool]:
         "hermes_pending_reject": hermes_pending_reject,
         "vault_read": vault_read,
         "vault_search": vault_search,
+        "vault_update": vault_update,
         "vault_write": vault_write,
         "wiki_search": wiki_search,
         "memory_search": memory_search,
@@ -401,6 +403,9 @@ def _build_agent(
         from app.agent.tools.builtin.vault_search import (
             vault_search as _vault_search_tool,
         )
+        from app.agent.tools.builtin.vault_update import (
+            vault_update as _vault_update_tool,
+        )
         from app.agent.tools.builtin.vault_write import vault_write as _vault_write_tool
 
         _todo_manage = tool_registry.get("todo_manage", todo_manage)
@@ -419,6 +424,7 @@ def _build_agent(
         _note = tool_registry.get("note", _note_tool)
         _vault_read = tool_registry.get("vault_read", _vault_read_tool)
         _vault_search = tool_registry.get("vault_search", _vault_search_tool)
+        _vault_update = tool_registry.get("vault_update", _vault_update_tool)
         _vault_write = tool_registry.get("vault_write", _vault_write_tool)
         tools += [
             _todo_manage,
@@ -431,6 +437,7 @@ def _build_agent(
             _note,
             _vault_read,
             _vault_search,
+            _vault_update,
             _vault_write,
         ]
 
@@ -450,6 +457,7 @@ def _build_agent(
             "note",
             "vault_read",
             "vault_search",
+            "vault_update",
             "vault_write",
         ):
             continue

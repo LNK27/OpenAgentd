@@ -24,6 +24,7 @@ from .skill import discover_skills, load_skill
 from .todo import todo_manage
 from .vault_read import vault_read
 from .vault_search import vault_search
+from .vault_update import vault_update
 from .vault_write import vault_write
 from .web import web_fetch, web_search
 from .wiki_search import wiki_search
@@ -52,6 +53,7 @@ __all__ = [
     "todo_manage",
     "vault_read",
     "vault_search",
+    "vault_update",
     "vault_write",
     "web_fetch",
     "web_search",

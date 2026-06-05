@@ -10,16 +10,22 @@ from typing import Any
 import pytest
 import yaml
 
+from app.services.markdown_text import split_vault_note_frontmatter
 from app.services.vault_gatekeeper import (
     VAULT_FOLDERS,
     VaultDuplicateError,
     VaultGatekeeper,
     VaultIndexUpdateError,
+    VaultMalformedNoteError,
+    VaultNoteNotFoundError,
     VaultPathError,
+    VaultUpdateConflictError,
+    VaultUpdateIntent,
     VaultWriteIntent,
     find_note_by_id,
     render_vault_note,
     validate_vault_note_path,
+    vault_note_sha256,
     vault_root,
 )
 
@@ -171,6 +177,294 @@ async def test_write_note_rejects_existing_path_without_overwrite() -> None:
 
     with pytest.raises(VaultDuplicateError):
         await gatekeeper.write_note(intent)
+
+
+@pytest.mark.asyncio
+async def test_update_note_replaces_body_with_matching_hash(_vault_dir: Path) -> None:
+    gatekeeper = VaultGatekeeper()
+    await gatekeeper.write_note(
+        VaultWriteIntent(
+            folder="20-topics",
+            slug="agent-memory",
+            title="Agent Memory",
+            note_type="topic",
+            body="Original body.",
+            tags=["memory"],
+            writer="agent:first",
+        )
+    )
+    path = _vault_dir / "20-topics" / "agent-memory.md"
+    expected_hash = vault_note_sha256(path.read_text(encoding="utf-8"))
+
+    result = await gatekeeper.update_note(
+        VaultUpdateIntent(
+            folder="20-topics",
+            slug="agent-memory",
+            expected_sha256=expected_hash,
+            replace_body="Updated body.",
+            writer="agent:editor",
+        )
+    )
+
+    assert result.path == "20-topics/agent-memory.md"
+    assert result.updated is True
+    raw = path.read_text(encoding="utf-8")
+    assert "\n---\n\nUpdated body.\n" in raw
+    parsed = split_vault_note_frontmatter(raw)
+    assert parsed.body == "\nUpdated body.\n"
+    assert parsed.metadata["title"] == "Agent Memory"
+    assert parsed.metadata["type"] == "topic"
+    assert parsed.metadata["created_at"] != parsed.metadata["updated_at"]
+    assert parsed.metadata["writer"] == "agent:editor"
+
+
+@pytest.mark.asyncio
+async def test_update_note_rejects_stale_hash(_vault_dir: Path) -> None:
+    gatekeeper = VaultGatekeeper()
+    await gatekeeper.write_note(
+        VaultWriteIntent(
+            folder="20-topics",
+            slug="stale",
+            title="Stale",
+            note_type="topic",
+            body="Original.",
+        )
+    )
+    path = _vault_dir / "20-topics" / "stale.md"
+    stale_hash = vault_note_sha256(path.read_text(encoding="utf-8"))
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\nHuman edit.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VaultUpdateConflictError):
+        await gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="stale",
+                expected_sha256=stale_hash,
+                replace_body="Agent update.",
+            )
+        )
+
+    assert "Human edit." in path.read_text(encoding="utf-8")
+    assert "Agent update." not in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_update_note_preserves_custom_frontmatter(_vault_dir: Path) -> None:
+    path = _vault_dir / "20-topics" / "custom.md"
+    path.write_text(
+        "---\n"
+        "id: custom\n"
+        "title: Custom\n"
+        "type: topic\n"
+        "status: draft\n"
+        "tags:\n"
+        "  - old\n"
+        "created_at: 2026-06-01T00:00:00+00:00\n"
+        "updated_at: 2026-06-01T00:00:00+00:00\n"
+        "source_refs: []\n"
+        "relations: []\n"
+        "last_summarized_at: null\n"
+        "writer: human\n"
+        "custom_key: custom-value\n"
+        "---\n"
+        "Body.\n",
+        encoding="utf-8",
+    )
+    gatekeeper = VaultGatekeeper()
+
+    result = await gatekeeper.update_note(
+        VaultUpdateIntent(
+            folder="20-topics",
+            slug="custom",
+            expected_sha256=vault_note_sha256(path.read_text(encoding="utf-8")),
+            status="active",
+            tags=["new", "new", ""],
+            source_refs=["[[10-sources/source-a]]"],
+            relations=["[[20-topics/related]]"],
+            last_summarized_at="2026-06-02T00:00:00+00:00",
+            writer="agent:editor",
+        )
+    )
+
+    assert result.updated is True
+    parsed = split_vault_note_frontmatter(path.read_text(encoding="utf-8"))
+    assert parsed.metadata["custom_key"] == "custom-value"
+    assert parsed.metadata["title"] == "Custom"
+    assert parsed.metadata["type"] == "topic"
+    assert parsed.metadata["status"] == "active"
+    assert parsed.metadata["tags"] == ["new"]
+    assert parsed.metadata["source_refs"] == ["[[10-sources/source-a]]"]
+    assert parsed.metadata["relations"] == ["[[20-topics/related]]"]
+    assert parsed.metadata["last_summarized_at"] == "2026-06-02T00:00:00+00:00"
+    assert parsed.metadata["writer"] == "agent:editor"
+
+
+@pytest.mark.asyncio
+async def test_update_note_appends_body_with_separator(_vault_dir: Path) -> None:
+    gatekeeper = VaultGatekeeper()
+    await gatekeeper.write_note(
+        VaultWriteIntent(
+            folder="30-projects",
+            slug="append-target",
+            title="Append Target",
+            note_type="project",
+            body="Existing body.\n",
+        )
+    )
+    path = _vault_dir / "30-projects" / "append-target.md"
+
+    await gatekeeper.update_note(
+        VaultUpdateIntent(
+            folder="30-projects",
+            slug="append-target",
+            expected_sha256=f"sha256:{vault_note_sha256(path.read_text(encoding='utf-8'))}",
+            append_body="Appended body.",
+        )
+    )
+
+    parsed = split_vault_note_frontmatter(path.read_text(encoding="utf-8"))
+    assert parsed.body == "\nExisting body.\n\n---\n\nAppended body.\n"
+
+
+@pytest.mark.asyncio
+async def test_update_note_rejects_invalid_requests(_vault_dir: Path) -> None:
+    gatekeeper = VaultGatekeeper()
+    await gatekeeper.write_note(
+        VaultWriteIntent(
+            folder="20-topics",
+            slug="invalid-update",
+            title="Invalid Update",
+            note_type="topic",
+            body="Body.",
+        )
+    )
+    raw = (_vault_dir / "20-topics" / "invalid-update.md").read_text(encoding="utf-8")
+    token = vault_note_sha256(raw)
+
+    with pytest.raises(ValueError, match="expected_sha256"):
+        await gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="invalid-update",
+                expected_sha256="",
+            )
+        )
+    with pytest.raises(ValueError, match="replace_body and append_body"):
+        await gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="invalid-update",
+                expected_sha256=token,
+                replace_body="A",
+                append_body="B",
+            )
+        )
+    with pytest.raises(ValueError, match="No vault update changes"):
+        await gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="invalid-update",
+                expected_sha256=token,
+            )
+        )
+    with pytest.raises(ValueError, match="body must not be empty"):
+        await gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="invalid-update",
+                expected_sha256=token,
+                replace_body="  ",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_note_rejects_missing_and_malformed_notes(
+    _vault_dir: Path,
+) -> None:
+    gatekeeper = VaultGatekeeper()
+
+    with pytest.raises(VaultNoteNotFoundError):
+        await gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="missing",
+                expected_sha256="sha256:" + ("0" * 64),
+                replace_body="Body.",
+            )
+        )
+
+    malformed = _vault_dir / "20-topics" / "malformed.md"
+    malformed.write_text("---\ntitle: [broken\n---\nBody.\n", encoding="utf-8")
+    with pytest.raises(VaultMalformedNoteError):
+        await gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="malformed",
+                expected_sha256=vault_note_sha256(
+                    malformed.read_text(encoding="utf-8")
+                ),
+                replace_body="Body.",
+            )
+        )
+
+    no_frontmatter = _vault_dir / "20-topics" / "no-frontmatter.md"
+    no_frontmatter.write_text("Body only.\n", encoding="utf-8")
+    with pytest.raises(VaultMalformedNoteError):
+        await gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="no-frontmatter",
+                expected_sha256=vault_note_sha256(
+                    no_frontmatter.read_text(encoding="utf-8")
+                ),
+                replace_body="Body.",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_note_allows_one_concurrent_writer(_vault_dir: Path) -> None:
+    gatekeeper = VaultGatekeeper()
+    await gatekeeper.write_note(
+        VaultWriteIntent(
+            folder="20-topics",
+            slug="race",
+            title="Race",
+            note_type="topic",
+            body="Original.",
+        )
+    )
+    path = _vault_dir / "20-topics" / "race.md"
+    token = vault_note_sha256(path.read_text(encoding="utf-8"))
+
+    results = await asyncio.gather(
+        gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="race",
+                expected_sha256=token,
+                replace_body="First.",
+            )
+        ),
+        gatekeeper.update_note(
+            VaultUpdateIntent(
+                folder="20-topics",
+                slug="race",
+                expected_sha256=token,
+                replace_body="Second.",
+            )
+        ),
+        return_exceptions=True,
+    )
+
+    successes = [item for item in results if not isinstance(item, Exception)]
+    conflicts = [item for item in results if isinstance(item, VaultUpdateConflictError)]
+    assert len(successes) == 1
+    assert len(conflicts) == 1
 
 
 @pytest.mark.asyncio

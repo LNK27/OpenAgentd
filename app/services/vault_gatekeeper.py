@@ -8,6 +8,7 @@ frontmatter, write atomically, and update the containing folder index.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 import tempfile
 from dataclasses import dataclass, field
@@ -19,6 +20,10 @@ import yaml
 from loguru import logger
 
 from app.core.config import settings
+from app.services.markdown_text import (
+    VaultFrontmatterParseError,
+    split_vault_note_frontmatter,
+)
 from app.services.wiki import parse_frontmatter
 
 VAULT_FOLDERS: frozenset[str] = frozenset(
@@ -89,6 +94,18 @@ class VaultIndexUpdateError(OSError):
         self.rollback_succeeded = rollback_succeeded
 
 
+class VaultUpdateConflictError(ValueError):
+    """Raised when the note changed since the caller's read token."""
+
+
+class VaultNoteNotFoundError(FileNotFoundError):
+    """Raised when an update target note does not exist."""
+
+
+class VaultMalformedNoteError(ValueError):
+    """Raised when an existing note cannot be safely parsed for update."""
+
+
 @dataclass(frozen=True)
 class VaultWriteIntent:
     """Structured write request accepted by the gatekeeper."""
@@ -118,11 +135,44 @@ class VaultWriteResult:
     content: str
 
 
+@dataclass(frozen=True)
+class VaultUpdateIntent:
+    """Structured update request accepted by the gatekeeper."""
+
+    folder: str
+    slug: str
+    expected_sha256: str
+    replace_body: str | None = None
+    append_body: str | None = None
+    status: str | None = None
+    tags: list[str] | None = None
+    source_refs: list[str] | None = None
+    relations: list[str] | None = None
+    last_summarized_at: str | None = None
+    writer: str = "agent"
+
+
+@dataclass(frozen=True)
+class VaultUpdateResult:
+    """Result of a committed vault update."""
+
+    path: str
+    note_id: str | None
+    updated: bool
+    content: str
+    sha256: str
+
+
 def vault_root(root: Path | None = None) -> Path:
     """Return the configured Obsidian vault root, creating it if missing."""
     resolved = (root or Path(settings.OPENAGENTD_OBSIDIAN_VAULT_DIR)).resolve()
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
+
+
+def vault_note_sha256(raw: str) -> str:
+    """Return the SHA-256 hex digest for a raw vault note string."""
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def validate_vault_note_path(rel_path: str, *, root: Path | None = None) -> Path:
@@ -200,6 +250,11 @@ class VaultGatekeeper:
         async with self._lock:
             return await asyncio.to_thread(self._write_note_sync, intent)
 
+    async def update_note(self, intent: VaultUpdateIntent) -> VaultUpdateResult:
+        """Serialize, validate, and commit an existing note update."""
+        async with self._lock:
+            return await asyncio.to_thread(self._update_note_sync, intent)
+
     def _write_note_sync(self, intent: VaultWriteIntent) -> VaultWriteResult:
         _validate_intent(intent)
         rel_path = f"{intent.folder}/{intent.slug}.md"
@@ -241,6 +296,56 @@ class VaultGatekeeper:
             note_id=note_id,
             created=created,
             content=content,
+        )
+
+    def _update_note_sync(self, intent: VaultUpdateIntent) -> VaultUpdateResult:
+        _validate_update_intent(intent)
+        rel_path = f"{intent.folder}/{intent.slug}.md"
+        target = validate_vault_note_path(rel_path, root=self._root)
+        if not target.exists():
+            raise VaultNoteNotFoundError(f"Vault note not found: {rel_path}")
+
+        try:
+            raw = target.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise VaultWriteError(f"Failed to read vault note: {rel_path}") from exc
+
+        expected = _normalize_expected_sha256(intent.expected_sha256)
+        current_hash = vault_note_sha256(raw)
+        if current_hash != expected:
+            raise VaultUpdateConflictError(
+                f"Vault note changed since last read: {rel_path}"
+            )
+
+        try:
+            parsed = split_vault_note_frontmatter(raw)
+        except VaultFrontmatterParseError as exc:
+            raise VaultMalformedNoteError(
+                f"Vault note frontmatter is malformed: {rel_path}"
+            ) from exc
+        if not parsed.had_frontmatter:
+            raise VaultMalformedNoteError(
+                f"Vault note frontmatter is missing: {rel_path}"
+            )
+
+        metadata = dict(parsed.metadata)
+        body = _updated_body(parsed.body, intent)
+        _apply_update_metadata(metadata, intent)
+        content = _render_existing_note(metadata=metadata, body=body)
+
+        try:
+            _atomic_write(target, content)
+        except OSError as exc:
+            raise VaultWriteError(f"Failed to update vault note: {rel_path}") from exc
+
+        logger.info("vault_note_updated path={}", rel_path)
+        note_id = metadata.get("id")
+        return VaultUpdateResult(
+            path=rel_path,
+            note_id=str(note_id).strip() if note_id else None,
+            updated=True,
+            content=content,
+            sha256=vault_note_sha256(content),
         )
 
 
@@ -291,6 +396,86 @@ def _validate_intent(intent: VaultWriteIntent) -> None:
         raise ValueError("Vault note body must not be empty.")
     if intent.note_id is not None and not intent.note_id.strip():
         raise ValueError("Vault note id must not be empty when provided.")
+
+
+def _validate_update_intent(intent: VaultUpdateIntent) -> None:
+    if intent.folder not in VAULT_FOLDERS:
+        allowed = ", ".join(sorted(VAULT_FOLDERS))
+        raise VaultPathError(
+            f"Vault folder must be one of [{allowed}]: {intent.folder!r}"
+        )
+    if not _SLUG_RE.match(intent.slug):
+        raise VaultPathError(f"Vault slug is invalid: {intent.slug!r}")
+    _validate_windows_safe_stem(intent.slug)
+    _normalize_expected_sha256(intent.expected_sha256)
+    if intent.replace_body is not None and intent.append_body is not None:
+        raise ValueError("Provide only one of replace_body and append_body.")
+    if intent.replace_body is not None and not intent.replace_body.strip():
+        raise ValueError("Vault update body must not be empty.")
+    if intent.append_body is not None and not intent.append_body.strip():
+        raise ValueError("Vault update body must not be empty.")
+    metadata_requested = any(
+        value is not None
+        for value in (
+            intent.status,
+            intent.tags,
+            intent.source_refs,
+            intent.relations,
+            intent.last_summarized_at,
+        )
+    )
+    if (
+        intent.replace_body is None
+        and intent.append_body is None
+        and not metadata_requested
+    ):
+        raise ValueError("No vault update changes requested.")
+
+
+def _normalize_expected_sha256(value: str) -> str:
+    token = str(value).strip()
+    if token.startswith("sha256:"):
+        token = token.removeprefix("sha256:").strip()
+    if len(token) != 64 or any(char not in "0123456789abcdefABCDEF" for char in token):
+        raise ValueError("expected_sha256 must be a SHA-256 hex digest.")
+    return token.lower()
+
+
+def _updated_body(existing_body: str, intent: VaultUpdateIntent) -> str:
+    if intent.replace_body is not None:
+        return intent.replace_body.strip() + "\n"
+    if intent.append_body is not None:
+        existing = existing_body.strip()
+        appended = intent.append_body.strip()
+        return f"{existing}\n\n---\n\n{appended}\n"
+    return existing_body
+
+
+def _apply_update_metadata(metadata: dict[str, Any], intent: VaultUpdateIntent) -> None:
+    if intent.status is not None:
+        metadata["status"] = intent.status.strip()
+    if intent.tags is not None:
+        metadata["tags"] = _normalize_list(intent.tags)
+    if intent.source_refs is not None:
+        metadata["source_refs"] = _normalize_list(intent.source_refs)
+    if intent.relations is not None:
+        metadata["relations"] = _normalize_list(intent.relations)
+    if intent.last_summarized_at is not None:
+        value = intent.last_summarized_at.strip()
+        metadata["last_summarized_at"] = value or None
+    metadata["updated_at"] = datetime.now(UTC).isoformat()
+    metadata["writer"] = intent.writer.strip() or "agent"
+
+
+def _render_existing_note(*, metadata: dict[str, Any], body: str) -> str:
+    yaml_block = yaml.safe_dump(
+        metadata,
+        sort_keys=False,
+        allow_unicode=True,
+        default_flow_style=False,
+    ).strip()
+    separator = "" if body.startswith(("\n", "\r\n")) else "\n"
+    return f"---\n{yaml_block}\n---\n{separator}{body}"
 
 
 def _validate_windows_safe_stem(stem: str) -> None:
