@@ -31,6 +31,7 @@ from app.agent.providers.googlegenai import GoogleGenAIProvider
 from app.agent.providers.ollama import OllamaProvider
 from app.agent.providers.openai import OpenAIProvider
 from app.agent.providers.openai.compatible import OPENAI_COMPATIBLE_PROVIDER_SPECS
+from app.agent.providers.router9 import Router9Provider
 from app.agent.providers.unconfigured import UnconfiguredProviderError
 from app.agent.providers.vertexai import VertexAIProvider
 from app.agent.providers.xai import XAIProvider
@@ -182,6 +183,16 @@ def build_provider(
                 return _with_provider_name(
                     OllamaProvider(
                         api_key=typed_api_key,
+                        model=model,
+                        base_url=base_url,
+                        model_kwargs=kwargs,
+                    ),
+                    name,
+                )
+            if name == "router9":
+                return _with_provider_name(
+                    Router9Provider(
+                        api_key=cast(str | SecretStr, typed_api_key),
                         model=model,
                         base_url=base_url,
                         model_kwargs=kwargs,

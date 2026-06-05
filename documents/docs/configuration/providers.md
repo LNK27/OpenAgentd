@@ -155,7 +155,7 @@ Both talk to a **locally-running OpenAI-compatible proxy** that fans out to many
 | `router9` | 9Router — Node.js dashboard, 40+ providers, quota tracking | `http://localhost:20128/v1` |
 | `cliproxy` | CLIProxyAPI — Go proxy wrapping Gemini CLI / ChatGPT Codex / Claude Code OAuth | `http://localhost:8317/v1` |
 
-The model id after the prefix is passed verbatim to the proxy — see the upstream dashboard / `/v1/models` for the live catalog. If `cliproxy` is run without auth, any non-empty `CLIPROXY_API_KEY` value works (the header is required by the OpenAI client).
+The model id after the prefix is passed verbatim to the proxy — see the upstream dashboard / `/v1/models` for the live catalog. `router9` is always routed through `/v1/chat/completions` because 9Router does not expose OpenAI's `/v1/responses` endpoint; session/agent `thinking_level` settings will not switch it to Responses API. If `cliproxy` is run without auth, any non-empty `CLIPROXY_API_KEY` value works (the header is required by the OpenAI client).
 
 ### `ollama`
 
