@@ -17,6 +17,12 @@ from .hermes_pending import (
     hermes_pending_reject,
 )
 from .hermes_query import hermes_query
+from .hermes_skill import (
+    hermes_skill_draft,
+    hermes_skill_pending_approve,
+    hermes_skill_pending_list,
+    hermes_skill_pending_reject,
+)
 from .note import note_tool
 from .schedule import schedule_task
 from .shell import background_process, shell_tool
@@ -42,6 +48,10 @@ __all__ = [
     "hermes_pending_reject",
     "hermes_propose",
     "hermes_query",
+    "hermes_skill_draft",
+    "hermes_skill_pending_approve",
+    "hermes_skill_pending_list",
+    "hermes_skill_pending_reject",
     "list_directory",
     "patch_file",
     "load_skill",

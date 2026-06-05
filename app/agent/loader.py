@@ -274,6 +274,10 @@ def _default_tool_registry() -> dict[str, Tool]:
         hermes_pending_reject,
         hermes_propose,
         hermes_query,
+        hermes_skill_draft,
+        hermes_skill_pending_approve,
+        hermes_skill_pending_list,
+        hermes_skill_pending_reject,
         list_directory,
         load_skill,
         memory_search,
@@ -317,6 +321,10 @@ def _default_tool_registry() -> dict[str, Tool]:
         "hermes_pending_list": hermes_pending_list,
         "hermes_pending_approve": hermes_pending_approve,
         "hermes_pending_reject": hermes_pending_reject,
+        "hermes_skill_draft": hermes_skill_draft,
+        "hermes_skill_pending_list": hermes_skill_pending_list,
+        "hermes_skill_pending_approve": hermes_skill_pending_approve,
+        "hermes_skill_pending_reject": hermes_skill_pending_reject,
         "vault_read": vault_read,
         "vault_search": vault_search,
         "vault_update": vault_update,
@@ -398,6 +406,12 @@ def _build_agent(
             hermes_pending_list as _hermes_pending_list_tool,
             hermes_pending_reject as _hermes_pending_reject_tool,
         )
+        from app.agent.tools.builtin.hermes_skill import (
+            hermes_skill_draft as _hermes_skill_draft_tool,
+            hermes_skill_pending_approve as _hermes_skill_pending_approve_tool,
+            hermes_skill_pending_list as _hermes_skill_pending_list_tool,
+            hermes_skill_pending_reject as _hermes_skill_pending_reject_tool,
+        )
         from app.agent.tools.builtin.note import note_tool as _note_tool
         from app.agent.tools.builtin.vault_read import vault_read as _vault_read_tool
         from app.agent.tools.builtin.vault_search import (
@@ -421,6 +435,18 @@ def _build_agent(
         _hermes_pending_reject = tool_registry.get(
             "hermes_pending_reject", _hermes_pending_reject_tool
         )
+        _hermes_skill_draft = tool_registry.get(
+            "hermes_skill_draft", _hermes_skill_draft_tool
+        )
+        _hermes_skill_pending_list = tool_registry.get(
+            "hermes_skill_pending_list", _hermes_skill_pending_list_tool
+        )
+        _hermes_skill_pending_approve = tool_registry.get(
+            "hermes_skill_pending_approve", _hermes_skill_pending_approve_tool
+        )
+        _hermes_skill_pending_reject = tool_registry.get(
+            "hermes_skill_pending_reject", _hermes_skill_pending_reject_tool
+        )
         _note = tool_registry.get("note", _note_tool)
         _vault_read = tool_registry.get("vault_read", _vault_read_tool)
         _vault_search = tool_registry.get("vault_search", _vault_search_tool)
@@ -434,6 +460,10 @@ def _build_agent(
             _hermes_pending_list,
             _hermes_pending_approve,
             _hermes_pending_reject,
+            _hermes_skill_draft,
+            _hermes_skill_pending_list,
+            _hermes_skill_pending_approve,
+            _hermes_skill_pending_reject,
             _note,
             _vault_read,
             _vault_search,
@@ -454,12 +484,28 @@ def _build_agent(
             "hermes_pending_list",
             "hermes_pending_approve",
             "hermes_pending_reject",
+            "hermes_skill_draft",
+            "hermes_skill_pending_list",
+            "hermes_skill_pending_approve",
+            "hermes_skill_pending_reject",
             "note",
             "vault_read",
             "vault_search",
             "vault_update",
             "vault_write",
         ):
+            if cfg.role != "lead" and tool_name in (
+                "hermes_skill_draft",
+                "hermes_skill_pending_list",
+                "hermes_skill_pending_approve",
+                "hermes_skill_pending_reject",
+            ):
+                logger.warning(
+                    "lead_only_tool_skipped agent={} role={} tool={}",
+                    cfg.name,
+                    cfg.role,
+                    tool_name,
+                )
             continue
         if tool_name not in tool_registry:
             # Soft-skip: settings/self-healing edits and disabled-then-rebuild

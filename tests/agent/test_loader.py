@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import yaml
+from loguru import logger
 
 from app.agent.agent_loop import Agent
 from app.agent.loader import (
@@ -55,6 +56,13 @@ def _make_agents_dir(
     if team_meta is not None:
         (d / "team.yaml").write_text(yaml.dump(team_meta))
     return d
+
+
+@pytest.fixture
+def caplog_loguru(caplog):
+    handler_id = logger.add(caplog.handler, format="{message}", level="DEBUG")
+    yield caplog
+    logger.remove(handler_id)
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +201,10 @@ def test_default_tool_registry_keys():
         "hermes_pending_list",
         "hermes_pending_approve",
         "hermes_pending_reject",
+        "hermes_skill_draft",
+        "hermes_skill_pending_list",
+        "hermes_skill_pending_approve",
+        "hermes_skill_pending_reject",
         "vault_write",
         "vault_read",
         "vault_search",
@@ -1340,6 +1352,11 @@ def test_note_tool_auto_injected_into_lead():
     assert "hermes_pending_list" in agent._tools
     assert "hermes_pending_approve" in agent._tools
     assert "hermes_pending_reject" in agent._tools
+    assert "hermes_skill_draft" in agent._tools
+    assert agent._tools["hermes_skill_draft"].name == "hermes_skill_draft"
+    assert "hermes_skill_pending_list" in agent._tools
+    assert "hermes_skill_pending_approve" in agent._tools
+    assert "hermes_skill_pending_reject" in agent._tools
     assert "vault_write" in agent._tools
     assert agent._tools["vault_write"].name == "vault_write"
     assert "vault_read" in agent._tools
@@ -1361,6 +1378,10 @@ def test_note_tool_not_injected_into_member():
     assert "hermes_pending_list" not in agent._tools
     assert "hermes_pending_approve" not in agent._tools
     assert "hermes_pending_reject" not in agent._tools
+    assert "hermes_skill_draft" not in agent._tools
+    assert "hermes_skill_pending_list" not in agent._tools
+    assert "hermes_skill_pending_approve" not in agent._tools
+    assert "hermes_skill_pending_reject" not in agent._tools
     assert "vault_write" not in agent._tools
     assert "vault_read" not in agent._tools
     assert "vault_search" not in agent._tools
@@ -1381,6 +1402,10 @@ def test_note_in_frontmatter_tools_silently_skipped_for_lead():
             "hermes_pending_list",
             "hermes_pending_approve",
             "hermes_pending_reject",
+            "hermes_skill_draft",
+            "hermes_skill_pending_list",
+            "hermes_skill_pending_approve",
+            "hermes_skill_pending_reject",
             "vault_write",
             "vault_read",
             "vault_search",
@@ -1400,6 +1425,14 @@ def test_note_in_frontmatter_tools_silently_skipped_for_lead():
     assert list(agent._tools.keys()).count("hermes_pending_approve") == 1
     assert "hermes_pending_reject" in agent._tools
     assert list(agent._tools.keys()).count("hermes_pending_reject") == 1
+    assert "hermes_skill_draft" in agent._tools
+    assert list(agent._tools.keys()).count("hermes_skill_draft") == 1
+    assert "hermes_skill_pending_list" in agent._tools
+    assert list(agent._tools.keys()).count("hermes_skill_pending_list") == 1
+    assert "hermes_skill_pending_approve" in agent._tools
+    assert list(agent._tools.keys()).count("hermes_skill_pending_approve") == 1
+    assert "hermes_skill_pending_reject" in agent._tools
+    assert list(agent._tools.keys()).count("hermes_skill_pending_reject") == 1
     assert "vault_write" in agent._tools
     assert list(agent._tools.keys()).count("vault_write") == 1
     assert "vault_read" in agent._tools
@@ -1424,6 +1457,10 @@ def test_note_in_frontmatter_tools_silently_skipped_for_member():
             "hermes_pending_list",
             "hermes_pending_approve",
             "hermes_pending_reject",
+            "hermes_skill_draft",
+            "hermes_skill_pending_list",
+            "hermes_skill_pending_approve",
+            "hermes_skill_pending_reject",
             "vault_write",
             "vault_read",
             "vault_search",
@@ -1437,10 +1474,35 @@ def test_note_in_frontmatter_tools_silently_skipped_for_member():
     assert "hermes_pending_list" not in agent._tools
     assert "hermes_pending_approve" not in agent._tools
     assert "hermes_pending_reject" not in agent._tools
+    assert "hermes_skill_draft" not in agent._tools
+    assert "hermes_skill_pending_list" not in agent._tools
+    assert "hermes_skill_pending_approve" not in agent._tools
+    assert "hermes_skill_pending_reject" not in agent._tools
     assert "vault_write" not in agent._tools
     assert "vault_read" not in agent._tools
     assert "vault_search" not in agent._tools
     assert "vault_update" not in agent._tools
+
+
+def test_hermes_skill_tools_in_member_frontmatter_are_skipped_with_warning(
+    caplog_loguru,
+):
+    """Members cannot manually grant Hermes skill approval tools."""
+    factory, _ = _make_provider_factory()
+    cfg = AgentConfig(
+        name="worker",
+        role="member",
+        system_prompt="Member",
+        tools=["hermes_skill_draft", "hermes_skill_pending_approve"],
+    )
+
+    agent = _build_agent(cfg, {}, factory)
+
+    assert "hermes_skill_draft" not in agent._tools
+    assert "hermes_skill_pending_approve" not in agent._tools
+    assert "lead_only_tool_skipped" in caplog_loguru.text
+    assert "hermes_skill_draft" in caplog_loguru.text
+    assert "hermes_skill_pending_approve" in caplog_loguru.text
 
 
 def test_note_from_registry_overrides_default():
@@ -1492,6 +1554,14 @@ def test_note_tools_injected_into_lead_only_integration(tmp_path):
     assert "hermes_pending_approve" not in worker_tool_names
     assert "hermes_pending_reject" in lead_tool_names
     assert "hermes_pending_reject" not in worker_tool_names
+    assert "hermes_skill_draft" in lead_tool_names
+    assert "hermes_skill_draft" not in worker_tool_names
+    assert "hermes_skill_pending_list" in lead_tool_names
+    assert "hermes_skill_pending_list" not in worker_tool_names
+    assert "hermes_skill_pending_approve" in lead_tool_names
+    assert "hermes_skill_pending_approve" not in worker_tool_names
+    assert "hermes_skill_pending_reject" in lead_tool_names
+    assert "hermes_skill_pending_reject" not in worker_tool_names
     assert "vault_write" in lead_tool_names
     assert "vault_write" not in worker_tool_names
     assert "vault_read" in lead_tool_names
@@ -1515,6 +1585,10 @@ def test_note_and_todo_both_injected_into_lead():
     assert "hermes_pending_list" in agent._tools
     assert "hermes_pending_approve" in agent._tools
     assert "hermes_pending_reject" in agent._tools
+    assert "hermes_skill_draft" in agent._tools
+    assert "hermes_skill_pending_list" in agent._tools
+    assert "hermes_skill_pending_approve" in agent._tools
+    assert "hermes_skill_pending_reject" in agent._tools
     assert "vault_write" in agent._tools
     assert "vault_read" in agent._tools
     assert "vault_search" in agent._tools
@@ -1536,6 +1610,10 @@ def test_note_deduped_with_other_injected_tools():
             "hermes_pending_list",
             "hermes_pending_approve",
             "hermes_pending_reject",
+            "hermes_skill_draft",
+            "hermes_skill_pending_list",
+            "hermes_skill_pending_approve",
+            "hermes_skill_pending_reject",
             "vault_write",
             "vault_read",
             "vault_search",
@@ -1550,6 +1628,10 @@ def test_note_deduped_with_other_injected_tools():
     assert list(agent._tools.keys()).count("hermes_pending_list") == 1
     assert list(agent._tools.keys()).count("hermes_pending_approve") == 1
     assert list(agent._tools.keys()).count("hermes_pending_reject") == 1
+    assert list(agent._tools.keys()).count("hermes_skill_draft") == 1
+    assert list(agent._tools.keys()).count("hermes_skill_pending_list") == 1
+    assert list(agent._tools.keys()).count("hermes_skill_pending_approve") == 1
+    assert list(agent._tools.keys()).count("hermes_skill_pending_reject") == 1
     assert list(agent._tools.keys()).count("vault_write") == 1
     assert list(agent._tools.keys()).count("vault_read") == 1
     assert list(agent._tools.keys()).count("vault_search") == 1
