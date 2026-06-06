@@ -13,6 +13,7 @@ so the LLM can apply the instructions in subsequent reasoning.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -97,7 +98,10 @@ def _render_tokens(text: str, *, skill_dir: Path | None = None) -> str:
         "SKILLS_DIR": settings.SKILLS_DIR,
     }
     if skill_dir is not None:
-        tokens["SKILL_DIR"] = str(skill_dir.resolve())
+        skill_dir_str = str(skill_dir.resolve())
+        text = text.replace("{SKILL_DIR}/", skill_dir_str + os.sep)
+        text = text.replace("{SKILL_DIR}\\", skill_dir_str + os.sep)
+        tokens["SKILL_DIR"] = skill_dir_str
     for name, value in tokens.items():
         text = text.replace("{" + name + "}", value)
     return text

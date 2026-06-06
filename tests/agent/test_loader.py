@@ -39,7 +39,7 @@ def _write_agent_md(
 ) -> Path:
     """Write a single agent .md file with frontmatter + body."""
     fm = yaml.dump(frontmatter, default_flow_style=False).strip()
-    path.write_text(f"---\n{fm}\n---\n\n{body}\n")
+    path.write_text(f"---\n{fm}\n---\n\n{body}\n", encoding="utf-8")
     return path
 
 
