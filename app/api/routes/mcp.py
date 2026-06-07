@@ -190,6 +190,13 @@ def _to_response(
         error=status.error,
         tool_names=list(status.tool_names),
         started_at=status.started_at,
+        auto_restart_count=status.auto_restart_count,
+        manual_restart_count=status.manual_restart_count,
+        last_restart_reason=status.last_restart_reason,
+        last_restart_at=status.last_restart_at,
+        last_failure_at=status.last_failure_at,
+        flapping=status.flapping,
+        warning=status.warning,
         config=_config_to_body(config),
     )
 

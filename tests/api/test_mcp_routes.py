@@ -92,6 +92,37 @@ class TestListServers:
             assert data["servers"][0]["name"] == "filesystem"
             assert data["servers"][1]["name"] == "github"
 
+    def test_list_servers_includes_runtime_observability_fields(self) -> None:
+        app = _make_app()
+        with patch("app.api.routes.mcp.mcp_manager") as mock_manager:
+            status = MCPServerStatus(
+                name="browser-use",
+                transport="stdio",
+                enabled=True,
+                state="error",
+                auto_restart_count=3,
+                manual_restart_count=1,
+                last_restart_reason="watchdog_retry",
+                last_restart_at="2026-06-06T01:02:03+00:00",
+                last_failure_at="2026-06-06T01:02:02+00:00",
+                flapping=True,
+                warning="mcp_server_flapping",
+            )
+            mock_manager.list_status.return_value = [status]
+            client = TestClient(app)
+
+            response = client.get("/api/mcp/servers")
+
+        assert response.status_code == 200
+        server = response.json()["servers"][0]
+        assert server["auto_restart_count"] == 3
+        assert server["manual_restart_count"] == 1
+        assert server["last_restart_reason"] == "watchdog_retry"
+        assert server["last_restart_at"] == "2026-06-06T01:02:03+00:00"
+        assert server["last_failure_at"] == "2026-06-06T01:02:02+00:00"
+        assert server["flapping"] is True
+        assert server["warning"] == "mcp_server_flapping"
+
 
 class TestGetServer:
     """Test GET /api/mcp/servers/{name}."""

@@ -269,7 +269,24 @@ Known local state before this snapshot:
 - Second Brain Read/Write Tool Observability v1 is accepted and closed after independent review:
   - Claude Opus 4.6 verdict: `Ship with P2`; no P0/P1 blockers. Non-blocking items tracked: `hermes_propose` latency includes in-memory enqueue time, and `_tracer_with_exporter()` is duplicated across tool tests.
   - Gemini 3.5 Flash verdict: `Accepted (Ship with P2)`; no P0/P1 blockers. Gemini confirmed regression safety, unchanged write boundaries, correct semantic error preservation, low-cardinality metrics, privacy-safe attributes, and adequate helper/tool/hook test coverage.
-- MCP Runtime Observability v1 is **not yet ported on the `codex/sync-origin-main` branch**. The older local implementation conflicted with the newer `origin/main` MCP manager refactor for OAuth/streamable HTTP, so it was intentionally not replayed during remote sync. Treat MCP runtime observability as the next porting task if operator restart/flapping data is still required.
+- MCP Runtime Observability Port v2 is implemented on branch `codex/mcp-runtime-observability-port-v2`. The old patch was not reused mechanically because the current MCP manager now has OAuth/auth_required and streamable HTTP behavior. Current planning artifacts:
+  - Design doc: `docs/superpowers/specs/2026-06-06-mcp-runtime-observability-port-v2-design.md`
+  - Implementation plan: `docs/superpowers/plans/2026-06-06-mcp-runtime-observability-port-v2.md`
+  - Status: implemented and targeted verification passed.
+  - Claude Opus review found two valid P1 plan issues before coding: liveness probes could race active MCP tool calls, and retry-count getter/setter callbacks were overcomplicated. The spec/plan were revised to add an internal active tool-call activity gate covering both generated MCP tools and MCP app bridge calls, and to keep retry count owned by `_run_server()`.
+  - Gemini 3.5 Flash re-review accepted the revised spec/plan as ready for TDD implementation. Codex then added one extra plan hardening item before coding: update `app/agent/mcp/tools.py` to type MCP sessions by a minimal `call_tool()` protocol so `_TrackedMCPClientSession` is valid under targeted `ty check`.
+  - Implementation details:
+    - `MCPServerStatus` and `/api/mcp` status responses now expose `auto_restart_count`, `manual_restart_count`, `last_restart_reason`, `last_restart_at`, `last_failure_at`, `flapping`, and `warning`.
+    - `MCPManager` now retries non-auth runtime failures with bounded backoff, marks flapping after repeated failures, clears stale flapping warnings after a stable liveness window, and preserves observability history across explicit restart calls.
+    - Liveness probes use an activity gate so `session.list_tools()` does not overlap active generated MCP tool calls or MCP app bridge calls.
+    - OAuth/auth_required paths remain terminal and do not increment restart counters or mark flapping.
+  - Verification passed:
+    - `uv run pytest tests/agent/mcp/test_manager.py tests/api/test_mcp_routes.py --no-cov -q`
+    - `uv run pytest tests/agent/mcp/test_tools.py --no-cov -q`
+    - `uv run pytest tests/api/routes/test_observability_route.py tests/services/test_observability_service.py tests/agent/test_loader.py --no-cov -q`
+    - `uv run ruff check app/agent/mcp/manager.py app/agent/mcp/tools.py app/api/routes/mcp.py app/api/schemas/mcp.py tests/agent/mcp/test_manager.py tests/api/test_mcp_routes.py`
+    - `uv run ruff format --check app/agent/mcp/manager.py app/agent/mcp/tools.py app/api/routes/mcp.py app/api/schemas/mcp.py tests/agent/mcp/test_manager.py tests/api/test_mcp_routes.py`
+    - `uv run ty check app/agent/mcp/manager.py app/agent/mcp/tools.py app/api/routes/mcp.py app/api/schemas/mcp.py`
 - Vault Update v1 is now implemented and verified:
   - `VaultGatekeeper.update_note(...)` updates existing notes under the existing gatekeeper lock with atomic writes and optimistic SHA-256 conflict detection.
   - `vault_read(include_update_token=True)` returns a `sha256` token for the full raw note content without changing default read output.
@@ -311,7 +328,7 @@ Known local state before this snapshot:
 7. ~~Implement Hermes approval/review queue v1~~ â€” **DONE** (2026-05-30). Lead agents can review, approve, or reject Hermes pending intents before queue-mediated vault writes; `vault_write` remains available for non-Hermes notes.
 8. ~~Implement Hermes query/recall v1~~ — **DONE** (2026-06-02). Lead agents can ask Hermes for read-only recall/query results without vault writes, approval queue side effects, or skill drafting.
 9. ~~Implement Second Brain Read/Write Tool Observability v1~~ - **DONE** (2026-06-02). Vault/Hermes read/write tools now annotate active tool spans and emit low-cardinality Prometheus metrics without changing tool schemas or write boundaries.
-10. Port MCP Runtime Observability v1 onto the current `origin/main` MCP manager if restart/flapping operator status remains required.
+10. ~~Implement MCP Runtime Observability Port v2 from the new design/plan on synced `main`~~ - **DONE** (2026-06-07). MCP status now exposes restart/flapping observability while preserving current OAuth/streamable HTTP semantics.
 11. ~~Implement Vault Update v1~~ - **DONE** (2026-06-05). Lead agents can update existing Obsidian notes through `vault_update` using an optimistic `sha256` token from `vault_read(include_update_token=True)`, while preserving custom frontmatter and keeping identity fields read-only.
 12. ~~Implement Hermes Skill Drafting v1~~ - **DONE** (2026-06-06). Lead agents can request Hermes skill drafts, review bounded previews, approve one pending draft to create a new `SKILLS_DIR/{name}/SKILL.md`, or reject it without writing. Hermes still cannot write files directly.
 13. Run post-sync review/regression on `codex/sync-origin-main`, then decide whether to fast-forward local `main`.

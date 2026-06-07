@@ -34,7 +34,7 @@ import urllib.parse
 from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import Any
 
 from loguru import logger
 from mcp.client.auth import OAuthRegistrationError
@@ -54,11 +54,8 @@ from app.agent.mcp.oauth import (
     interactive_oauth_allowed,
     supports_dynamic_client_registration,
 )
-from app.agent.mcp.tools import MCPTool
+from app.agent.mcp.tools import MCPClientSessionProtocol, MCPTool
 from app.agent.tools.registry import Tool
-
-if TYPE_CHECKING:
-    from mcp import ClientSession
 
 
 def _find_exception(
@@ -85,6 +82,12 @@ _CACHED_USER_PATH: str | None = None
 _USER_PATH_LOCK = asyncio.Lock()
 _USER_PATH_TIMEOUT_SECONDS = 3.0
 _PATH_OUTPUT_PREFIX = "__OPENAGENTD_PATH__"
+MCP_WATCHDOG_MAX_RETRIES = 5
+MCP_FLAPPING_RESTART_THRESHOLD = 3
+MCP_STABLE_WINDOW_SECONDS = 60.0
+MCP_LIVENESS_INTERVAL_SECONDS = 5.0
+MCP_RETRY_BASE_DELAY_SECONDS = 1.0
+MCP_RETRY_MAX_DELAY_SECONDS = 30.0
 
 
 async def _get_user_path(*, force_refresh: bool = False) -> str:
@@ -217,10 +220,17 @@ class MCPServerStatus:
     name: str
     transport: str
     enabled: bool
-    state: str  # "stopped" | "starting" | "ready" | "error"
+    state: str  # "stopped" | "starting" | "ready" | "error" | "auth_required"
     error: str | None = None
     tool_names: list[str] = field(default_factory=list)
     started_at: str | None = None
+    auto_restart_count: int = 0
+    manual_restart_count: int = 0
+    last_restart_reason: str | None = None
+    last_restart_at: str | None = None
+    last_failure_at: str | None = None
+    flapping: bool = False
+    warning: str | None = None
 
 
 @dataclass
@@ -235,13 +245,44 @@ class _ServerRunner:
     shutdown: asyncio.Event
     ready: asyncio.Event
     task: asyncio.Task[None] | None = None
-    session: "ClientSession | None" = None
+    session: MCPClientSessionProtocol | None = None
     status: MCPServerStatus = field(
         default_factory=lambda: MCPServerStatus(
             name="", transport="", enabled=False, state="stopped"
         )
     )
     tools: list[MCPTool] = field(default_factory=list)
+    activity_condition: asyncio.Condition = field(default_factory=asyncio.Condition)
+    active_tool_call_count: int = 0
+    liveness_probe_active: bool = False
+
+
+class _TrackedMCPClientSession:
+    """Tracks MCP SDK calls so liveness probes do not overlap tool calls."""
+
+    def __init__(
+        self,
+        manager: "MCPManager",
+        runner: _ServerRunner,
+        raw_session: Any,
+    ) -> None:
+        self._manager = manager
+        self._runner = runner
+        self._raw_session = raw_session
+
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
+        await self._manager._begin_tool_call(self._runner)
+        try:
+            return await self._raw_session.call_tool(tool_name, arguments)
+        finally:
+            await self._manager._end_tool_call(self._runner)
+
+    async def read_resource(self, uri: Any) -> Any:
+        await self._manager._begin_tool_call(self._runner)
+        try:
+            return await self._raw_session.read_resource(uri)
+        finally:
+            await self._manager._end_tool_call(self._runner)
 
 
 class MCPManager:
@@ -422,12 +463,17 @@ class MCPManager:
             raise KeyError(name)
 
         async with self._lock:
+            old_runner = self._runners.get(name)
+            old_status = old_runner.status if old_runner else None
             await self._stop_runner(name)
             server_cfg = cfg.servers[name]
             if not server_cfg.enabled:
                 self._runners[name] = self._make_disabled_runner(name, server_cfg)
             else:
                 await self._spawn_runner(name, server_cfg)
+            new_status = self._runners[name].status
+            self._copy_observability_history(old_status, new_status)
+            self._mark_manual_restart(new_status)
 
         runner = self._runners[name]
         if runner.status.state != "stopped":
@@ -524,147 +570,280 @@ class MCPManager:
                 except (asyncio.CancelledError, Exception):
                     pass
 
+    @staticmethod
+    def _now_iso() -> str:
+        return datetime.now(UTC).isoformat()
+
+    @staticmethod
+    def _copy_observability_history(
+        source: MCPServerStatus | None, target: MCPServerStatus
+    ) -> None:
+        if source is None:
+            return
+        target.auto_restart_count = source.auto_restart_count
+        target.manual_restart_count = source.manual_restart_count
+        target.last_failure_at = source.last_failure_at
+        target.flapping = source.flapping
+        target.warning = source.warning
+
+    def _mark_manual_restart(self, status: MCPServerStatus) -> None:
+        status.manual_restart_count += 1
+        status.last_restart_reason = "manual_restart"
+        status.last_restart_at = self._now_iso()
+
+    async def _begin_tool_call(self, runner: _ServerRunner) -> None:
+        async with runner.activity_condition:
+            while runner.liveness_probe_active:
+                await runner.activity_condition.wait()
+            runner.active_tool_call_count += 1
+
+    async def _end_tool_call(self, runner: _ServerRunner) -> None:
+        async with runner.activity_condition:
+            runner.active_tool_call_count = max(0, runner.active_tool_call_count - 1)
+            runner.activity_condition.notify_all()
+
+    async def _begin_liveness_probe(self, runner: _ServerRunner) -> bool:
+        async with runner.activity_condition:
+            if runner.active_tool_call_count > 0:
+                return False
+            runner.liveness_probe_active = True
+            return True
+
+    async def _end_liveness_probe(self, runner: _ServerRunner) -> None:
+        async with runner.activity_condition:
+            runner.liveness_probe_active = False
+            runner.activity_condition.notify_all()
+
+    def _mark_failure(self, runner: _ServerRunner, exc: BaseException) -> None:
+        runner.session = None
+        runner.tools = []
+        runner.status.state = "error"
+        runner.status.error = _format_exception(exc)
+        runner.status.tool_names = []
+        runner.status.last_failure_at = self._now_iso()
+
+    def _mark_watchdog_retry(self, status: MCPServerStatus) -> None:
+        status.auto_restart_count += 1
+        status.last_restart_reason = "watchdog_retry"
+        status.last_restart_at = self._now_iso()
+        status.state = "starting"
+
+    @staticmethod
+    def _retry_delay_seconds(retry_count: int) -> float:
+        delay = MCP_RETRY_BASE_DELAY_SECONDS * (2 ** max(retry_count - 1, 0))
+        return min(delay, MCP_RETRY_MAX_DELAY_SECONDS)
+
+    @staticmethod
+    def _mark_flapping_if_needed(status: MCPServerStatus, retry_count: int) -> None:
+        if retry_count >= MCP_FLAPPING_RESTART_THRESHOLD:
+            status.flapping = True
+            status.warning = "mcp_server_flapping"
+
+    @staticmethod
+    def _clear_flapping_after_stable_window(
+        status: MCPServerStatus, started_at_loop: datetime, retry_count: int
+    ) -> int:
+        duration = (datetime.now(UTC) - started_at_loop).total_seconds()
+        if duration <= MCP_STABLE_WINDOW_SECONDS:
+            return retry_count
+        status.flapping = False
+        status.warning = None
+        return 0
+
+    @staticmethod
+    def _mark_auth_required(runner: _ServerRunner, message: str) -> None:
+        runner.session = None
+        runner.tools = []
+        runner.status.state = "auth_required"
+        runner.status.error = message
+        runner.status.tool_names = []
+        runner.ready.set()
+
+    def _handle_auth_failure(
+        self,
+        name: str,
+        server_cfg: StdioServerConfig | HttpServerConfig,
+        runner: _ServerRunner,
+        exc: BaseException,
+    ) -> bool:
+        if (
+            isinstance(server_cfg, HttpServerConfig)
+            and server_cfg.oauth is None
+            and _is_http_auth_failure(exc)
+        ):
+            self._mark_auth_required(runner, _oauth_config_required_message(name))
+            return True
+        if _is_oauth_registration_failure(exc) or (
+            isinstance(server_cfg, HttpServerConfig)
+            and server_cfg.oauth is not None
+            and not has_resolved_client_id(server_cfg)
+        ):
+            self._mark_auth_required(runner, _oauth_credentials_required_message(name))
+            return True
+        return False
+
     async def _run_server(
         self,
         name: str,
         server_cfg: StdioServerConfig | HttpServerConfig,
         runner: _ServerRunner,
     ) -> None:
-        """Long-lived task: open the session, list tools, await shutdown."""
-        # Imports here so the module is importable without the SDK installed.
-        # All three are required for the file to do anything useful, so they
-        # share the same prelude rather than scattering one inside an `else`.
+        """Long-lived task: open the session, retry failures, await shutdown."""
+        retry_count = 0
+
+        while not runner.shutdown.is_set():
+            try:
+                retry_count = await self._run_server_once(
+                    name, server_cfg, runner, retry_count
+                )
+                return
+            except asyncio.CancelledError:
+                runner.status.state = "stopped"
+                runner.status.error = None
+                runner.ready.set()
+                raise
+            except OAuthRequiredError as exc:
+                self._mark_auth_required(runner, str(exc))
+                return
+            except Exception as exc:
+                if self._handle_auth_failure(name, server_cfg, runner, exc):
+                    return
+                logger.error(
+                    "mcp_server_failed name={} transport={} err={}",
+                    name,
+                    server_cfg.transport,
+                    exc,
+                )
+                self._mark_failure(runner, exc)
+                retry_count += 1
+                self._mark_flapping_if_needed(runner.status, retry_count)
+                if retry_count > MCP_WATCHDOG_MAX_RETRIES:
+                    runner.ready.set()
+                    return
+                self._mark_watchdog_retry(runner.status)
+                delay = self._retry_delay_seconds(retry_count)
+                try:
+                    await asyncio.wait_for(runner.shutdown.wait(), timeout=delay)
+                    return
+                except asyncio.TimeoutError:
+                    continue
+
+    async def _run_server_once(
+        self,
+        name: str,
+        server_cfg: StdioServerConfig | HttpServerConfig,
+        runner: _ServerRunner,
+        retry_count: int,
+    ) -> int:
+        """Open one MCP session attempt and hold it until shutdown or failure."""
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
         from mcp.client.streamable_http import streamablehttp_client
 
-        try:
-            async with AsyncExitStack() as stack:
-                if isinstance(server_cfg, StdioServerConfig):
-                    launch = await _resolve_stdio_launch(server_cfg)
-                    params = StdioServerParameters(
-                        command=launch.command,
-                        args=list(server_cfg.args),
-                        env=launch.env,
-                    )
-                    read, write = await stack.enter_async_context(stdio_client(params))
-                    session = await stack.enter_async_context(
-                        ClientSession(read, write)
-                    )
-                else:
-                    if server_cfg.oauth is None and _requires_oauth_config(server_cfg):
-                        raise OAuthRequiredError(_oauth_config_required_message(name))
-                    if (
-                        server_cfg.oauth is not None
-                        and not has_cached_oauth_tokens(name)
-                        and not interactive_oauth_allowed(name)
-                    ):
-                        raise OAuthRequiredError(
-                            f"MCP server '{name}' needs OAuth. Use Settings -> MCP -> Connect OAuth."
-                        )
-                    if (
-                        server_cfg.oauth is not None
-                        and interactive_oauth_allowed(name)
-                        and not has_resolved_client_id(server_cfg)
-                        and not await supports_dynamic_client_registration(server_cfg)
-                    ):
-                        raise OAuthRequiredError(
-                            _oauth_credentials_required_message(name)
-                        )
-                    transport = await stack.enter_async_context(
-                        streamablehttp_client(
-                            server_cfg.url,
-                            headers=resolve_headers(server_cfg.headers) or None,
-                            auth=build_oauth_provider(name, server_cfg),
-                        )
-                    )
-                    # streamablehttp_client yields (read, write, get_session_id).
-                    read, write = transport[0], transport[1]
-                    session = await stack.enter_async_context(
-                        ClientSession(read, write)
-                    )
-
-                await session.initialize()
-                tools_resp = await session.list_tools()
-
-                runner.session = session
-                runner.tools = [
-                    MCPTool(
-                        server_name=name,
-                        mcp_tool=t,
-                        session_provider=lambda r=runner: r.session,
-                    )
-                    for t in tools_resp.tools
-                ]
-                # Mutate the existing status in place rather than rebuilding —
-                # ``name``, ``transport``, ``enabled`` are already set correctly
-                # by ``_spawn_runner``; only the lifecycle fields move.
-                runner.status.state = "ready"
-                runner.status.tool_names = [t.name for t in runner.tools]
-                runner.status.started_at = datetime.now(UTC).isoformat()
-                runner.status.error = None
-                runner.ready.set()
-                logger.info(
-                    "mcp_server_ready name={} transport={} tools={}",
-                    name,
-                    server_cfg.transport,
-                    len(runner.tools),
+        async with AsyncExitStack() as stack:
+            if isinstance(server_cfg, StdioServerConfig):
+                launch = await _resolve_stdio_launch(server_cfg)
+                params = StdioServerParameters(
+                    command=launch.command,
+                    args=list(server_cfg.args),
+                    env=launch.env,
                 )
+                read, write = await stack.enter_async_context(stdio_client(params))
+                session = await stack.enter_async_context(ClientSession(read, write))
+            else:
+                if server_cfg.oauth is None and _requires_oauth_config(server_cfg):
+                    raise OAuthRequiredError(_oauth_config_required_message(name))
+                if (
+                    server_cfg.oauth is not None
+                    and not has_cached_oauth_tokens(name)
+                    and not interactive_oauth_allowed(name)
+                ):
+                    raise OAuthRequiredError(
+                        f"MCP server '{name}' needs OAuth. Use Settings -> MCP -> Connect OAuth."
+                    )
+                if (
+                    server_cfg.oauth is not None
+                    and interactive_oauth_allowed(name)
+                    and not has_resolved_client_id(server_cfg)
+                    and not await supports_dynamic_client_registration(server_cfg)
+                ):
+                    raise OAuthRequiredError(_oauth_credentials_required_message(name))
+                transport = await stack.enter_async_context(
+                    streamablehttp_client(
+                        server_cfg.url,
+                        headers=resolve_headers(server_cfg.headers) or None,
+                        auth=build_oauth_provider(name, server_cfg),
+                    )
+                )
+                read, write = transport[0], transport[1]
+                session = await stack.enter_async_context(ClientSession(read, write))
 
-                # Hold the contexts open until shutdown is requested.
-                await runner.shutdown.wait()
+            await session.initialize()
+            tools_resp = await session.list_tools()
 
-                runner.session = None
-                logger.info("mcp_server_stopping name={}", name)
-        except asyncio.CancelledError:
-            runner.status.state = "stopped"
+            runner.session = _TrackedMCPClientSession(self, runner, session)
+            runner.tools = [
+                MCPTool(
+                    server_name=name,
+                    mcp_tool=t,
+                    session_provider=lambda r=runner: r.session,
+                )
+                for t in tools_resp.tools
+            ]
+            runner.status.state = "ready"
+            runner.status.tool_names = [t.name for t in runner.tools]
+            runner.status.started_at = self._now_iso()
             runner.status.error = None
             runner.ready.set()
-            raise
-        except OAuthRequiredError as exc:
-            runner.session = None
-            runner.tools = []
-            runner.status.state = "auth_required"
-            runner.status.error = str(exc)
-            runner.status.tool_names = []
-            runner.ready.set()
-        except Exception as exc:
-            if (
-                isinstance(server_cfg, HttpServerConfig)
-                and server_cfg.oauth is None
-                and _is_http_auth_failure(exc)
-            ):
-                runner.session = None
-                runner.tools = []
-                runner.status.state = "auth_required"
-                runner.status.error = _oauth_config_required_message(name)
-                runner.status.tool_names = []
-                runner.ready.set()
-                return
-            if _is_oauth_registration_failure(exc) or (
-                isinstance(server_cfg, HttpServerConfig)
-                and server_cfg.oauth is not None
-                and not has_resolved_client_id(server_cfg)
-            ):
-                runner.session = None
-                runner.tools = []
-                runner.status.state = "auth_required"
-                runner.status.error = _oauth_credentials_required_message(name)
-                runner.status.tool_names = []
-                runner.ready.set()
-                return
-            logger.error(
-                "mcp_server_failed name={} transport={} err={}",
+            logger.info(
+                "mcp_server_ready name={} transport={} tools={}",
                 name,
                 server_cfg.transport,
-                exc,
+                len(runner.tools),
             )
+
+            started_at_loop = datetime.now(UTC)
+
+            async def monitor_liveness() -> None:
+                nonlocal retry_count
+                while not runner.shutdown.is_set():
+                    await asyncio.sleep(MCP_LIVENESS_INTERVAL_SECONDS)
+                    should_probe = await self._begin_liveness_probe(runner)
+                    if not should_probe:
+                        continue
+                    try:
+                        await session.list_tools()
+                        retry_count = self._clear_flapping_after_stable_window(
+                            runner.status,
+                            started_at_loop,
+                            retry_count,
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    finally:
+                        await self._end_liveness_probe(runner)
+
+            liveness_task = asyncio.create_task(
+                monitor_liveness(), name=f"mcp-liveness-{name}"
+            )
+            shutdown_task = asyncio.create_task(
+                runner.shutdown.wait(), name=f"mcp-shutdown-{name}"
+            )
+            done, pending = await asyncio.wait(
+                {liveness_task, shutdown_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            for task in pending:
+                with suppress(asyncio.CancelledError):
+                    await task
+            if liveness_task in done:
+                await liveness_task
+
             runner.session = None
-            runner.tools = []
-            runner.status.state = "error"
-            runner.status.error = _format_exception(exc)
-            runner.status.tool_names = []
-            runner.ready.set()
+            logger.info("mcp_server_stopping name={}", name)
+            return retry_count
 
 
 # ── Module-level singleton ─────────────────────────────────────────────────

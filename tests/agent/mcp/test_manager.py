@@ -377,6 +377,11 @@ class TestMCPManagerOAuth:
             assert status is not None
             assert status.state == "auth_required"
             assert "needs OAuth" in (status.error or "")
+            assert status.auto_restart_count == 0
+            assert status.last_restart_reason is None
+            assert status.last_restart_at is None
+            assert status.flapping is False
+            assert status.warning is None
 
     @pytest.mark.asyncio
     async def test_slack_without_oauth_config_is_auth_required(self) -> None:
@@ -401,6 +406,11 @@ class TestMCPManagerOAuth:
             assert status.state == "auth_required"
             assert "requires OAuth" in (status.error or "")
             assert "client ID and secret" in (status.error or "")
+            assert status.auto_restart_count == 0
+            assert status.last_restart_reason is None
+            assert status.last_restart_at is None
+            assert status.flapping is False
+            assert status.warning is None
 
     @pytest.mark.asyncio
     async def test_http_missing_token_failure_without_oauth_config_is_auth_required(
@@ -441,6 +451,11 @@ class TestMCPManagerOAuth:
             assert status is not None
             assert status.state == "auth_required"
             assert "requires OAuth" in (status.error or "")
+            assert status.auto_restart_count == 0
+            assert status.last_restart_reason is None
+            assert status.last_restart_at is None
+            assert status.flapping is False
+            assert status.warning is None
 
     @pytest.mark.asyncio
     async def test_oauth_registration_failure_is_auth_required(self) -> None:
@@ -487,6 +502,11 @@ class TestMCPManagerOAuth:
             assert status is not None
             assert status.state == "auth_required"
             assert "client ID/secret" in (status.error or "")
+            assert status.auto_restart_count == 0
+            assert status.last_restart_reason is None
+            assert status.last_restart_at is None
+            assert status.flapping is False
+            assert status.warning is None
 
     @pytest.mark.asyncio
     async def test_wrapped_oauth_registration_failure_is_auth_required(self) -> None:
@@ -1063,3 +1083,346 @@ class TestWaitUntilReady:
         assert launch.command == "/detected/bin/npx"
         assert launch.env == {"PATH": "/detected/bin", "FOO": "bar"}
         assert "OPENAI_API_KEY" not in launch.env
+
+
+class TestMCPRuntimeObservabilityStatus:
+    def test_status_observability_defaults(self) -> None:
+        status = MCPServerStatus(
+            name="browser-use",
+            transport="stdio",
+            enabled=True,
+            state="starting",
+        )
+
+        assert status.auto_restart_count == 0
+        assert status.manual_restart_count == 0
+        assert status.last_restart_reason is None
+        assert status.last_restart_at is None
+        assert status.last_failure_at is None
+        assert status.flapping is False
+        assert status.warning is None
+
+    @pytest.mark.asyncio
+    async def test_manual_restart_preserves_observability_history(self) -> None:
+        manager = MCPManager()
+
+        async def mock_run_server(name, server_cfg, runner):  # noqa: ANN001
+            runner.status.state = "ready"
+            runner.ready.set()
+            await runner.shutdown.wait()
+
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(servers={"browser-use": StdioServerConfig(command="echo")})
+            mock_load.return_value = cfg
+            with patch.object(manager, "_run_server", side_effect=mock_run_server):
+                await manager.start()
+                old = manager._runners["browser-use"].status
+                old.auto_restart_count = 2
+                old.manual_restart_count = 4
+                old.last_failure_at = "2026-06-06T00:00:00+00:00"
+                old.flapping = True
+                old.warning = "mcp_server_flapping"
+
+                status = await manager.restart_server("browser-use")
+
+                assert status.auto_restart_count == 2
+                assert status.manual_restart_count == 5
+                assert status.last_restart_reason == "manual_restart"
+                assert status.last_restart_at is not None
+                assert status.last_failure_at == "2026-06-06T00:00:00+00:00"
+                assert status.flapping is True
+                assert status.warning == "mcp_server_flapping"
+
+                await manager.stop()
+
+    @pytest.mark.asyncio
+    async def test_liveness_probe_is_skipped_while_tool_call_is_active(self) -> None:
+        from app.agent.mcp.manager import _ServerRunner, _TrackedMCPClientSession
+
+        manager = MCPManager()
+        runner = _ServerRunner(
+            shutdown=asyncio.Event(),
+            ready=asyncio.Event(),
+            status=MCPServerStatus(
+                name="browser-use",
+                transport="stdio",
+                enabled=True,
+                state="ready",
+            ),
+        )
+        call_started = asyncio.Event()
+        finish_call = asyncio.Event()
+
+        class RawSession:
+            async def call_tool(self, tool_name, arguments):  # noqa: ANN001
+                call_started.set()
+                await finish_call.wait()
+                return {"content": []}
+
+        tracked = _TrackedMCPClientSession(manager, runner, RawSession())
+        call_task = asyncio.create_task(tracked.call_tool("navigate", {}))
+        await asyncio.wait_for(call_started.wait(), timeout=1.0)
+
+        assert runner.active_tool_call_count == 1
+        assert await manager._begin_liveness_probe(runner) is False
+
+        finish_call.set()
+        await call_task
+        assert runner.active_tool_call_count == 0
+        assert await manager._begin_liveness_probe(runner) is True
+        await manager._end_liveness_probe(runner)
+
+    @pytest.mark.asyncio
+    async def test_app_bridge_tool_call_uses_activity_gate(self) -> None:
+        from app.agent.mcp.manager import _ServerRunner, _TrackedMCPClientSession
+
+        manager = MCPManager()
+        runner = _ServerRunner(
+            shutdown=asyncio.Event(),
+            ready=asyncio.Event(),
+            status=MCPServerStatus(
+                name="browser-use",
+                transport="stdio",
+                enabled=True,
+                state="ready",
+            ),
+            tools=[SimpleNamespace(name="mcp_browser-use_navigate")],
+        )
+        call_started = asyncio.Event()
+        finish_call = asyncio.Event()
+
+        class RawSession:
+            async def call_tool(self, tool_name, arguments):  # noqa: ANN001
+                call_started.set()
+                await finish_call.wait()
+                return {"content": []}
+
+        runner.session = _TrackedMCPClientSession(manager, runner, RawSession())
+        manager._runners["browser-use"] = runner
+
+        call_task = asyncio.create_task(
+            manager.call_app_tool("browser-use", "navigate", {})
+        )
+        await asyncio.wait_for(call_started.wait(), timeout=1.0)
+
+        assert runner.active_tool_call_count == 1
+        assert await manager._begin_liveness_probe(runner) is False
+
+        finish_call.set()
+        await call_task
+        assert runner.active_tool_call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_watchdog_retries_non_auth_start_failure(self, monkeypatch) -> None:
+        import app.agent.mcp.manager as mcp_manager_mod
+
+        manager = MCPManager()
+        attempts = 0
+
+        class FakeStdioClient:
+            async def __aenter__(self):
+                return object(), object()
+
+            async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
+                return False
+
+        class FakeClientSession:
+            def __init__(self, read, write):  # noqa: ANN001
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
+                return False
+
+            async def initialize(self):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    raise RuntimeError("first boot failed")
+
+            async def list_tools(self):
+                return SimpleNamespace(tools=[])
+
+        monkeypatch.setattr(mcp_manager_mod, "MCP_WATCHDOG_MAX_RETRIES", 2)
+        monkeypatch.setattr(mcp_manager_mod, "MCP_RETRY_BASE_DELAY_SECONDS", 0.01)
+        monkeypatch.setattr(mcp_manager_mod, "MCP_RETRY_MAX_DELAY_SECONDS", 0.01)
+
+        with (
+            patch("app.agent.mcp.manager.load_config") as mock_load,
+            patch(
+                "app.agent.mcp.manager._resolve_stdio_launch",
+                AsyncMock(return_value=SimpleNamespace(command="echo", env={})),
+            ),
+            patch("mcp.client.stdio.stdio_client", return_value=FakeStdioClient()),
+            patch("mcp.ClientSession", FakeClientSession),
+        ):
+            mock_load.return_value = MCPConfig(
+                servers={"browser-use": StdioServerConfig(command="echo")}
+            )
+
+            await manager.start()
+            runner = manager._runners["browser-use"]
+            await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("browser-use")
+            assert status is not None
+            assert status.state == "ready"
+            assert status.auto_restart_count == 1
+            assert status.last_restart_reason == "watchdog_retry"
+            assert status.last_restart_at is not None
+            assert status.last_failure_at is not None
+            assert attempts == 2
+
+            await manager.stop()
+
+    @pytest.mark.asyncio
+    async def test_watchdog_marks_flapping_after_retry_threshold(
+        self, monkeypatch
+    ) -> None:
+        import app.agent.mcp.manager as mcp_manager_mod
+
+        manager = MCPManager()
+
+        class FakeStdioClient:
+            async def __aenter__(self):
+                return object(), object()
+
+            async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
+                return False
+
+        class FailingClientSession:
+            def __init__(self, read, write):  # noqa: ANN001
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
+                return False
+
+            async def initialize(self):
+                raise RuntimeError("always down")
+
+        monkeypatch.setattr(mcp_manager_mod, "MCP_WATCHDOG_MAX_RETRIES", 3)
+        monkeypatch.setattr(mcp_manager_mod, "MCP_FLAPPING_RESTART_THRESHOLD", 2)
+        monkeypatch.setattr(mcp_manager_mod, "MCP_RETRY_BASE_DELAY_SECONDS", 0.01)
+        monkeypatch.setattr(mcp_manager_mod, "MCP_RETRY_MAX_DELAY_SECONDS", 0.01)
+
+        with (
+            patch("app.agent.mcp.manager.load_config") as mock_load,
+            patch(
+                "app.agent.mcp.manager._resolve_stdio_launch",
+                AsyncMock(return_value=SimpleNamespace(command="echo", env={})),
+            ),
+            patch("mcp.client.stdio.stdio_client", return_value=FakeStdioClient()),
+            patch("mcp.ClientSession", FailingClientSession),
+        ):
+            mock_load.return_value = MCPConfig(
+                servers={"browser-use": StdioServerConfig(command="echo")}
+            )
+
+            await manager.start()
+            runner = manager._runners["browser-use"]
+            await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("browser-use")
+            assert status is not None
+            assert status.state == "error"
+            assert status.auto_restart_count == 3
+            assert status.flapping is True
+            assert status.warning == "mcp_server_flapping"
+
+    @pytest.mark.asyncio
+    async def test_liveness_failure_after_ready_triggers_watchdog_retry(
+        self, monkeypatch
+    ) -> None:
+        import app.agent.mcp.manager as mcp_manager_mod
+
+        manager = MCPManager()
+        session_count = 0
+        first_liveness_failed = asyncio.Event()
+        second_session_ready = asyncio.Event()
+
+        class FakeStdioClient:
+            async def __aenter__(self):
+                return object(), object()
+
+            async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
+                return False
+
+        class LivenessFailingClientSession:
+            def __init__(self, read, write):  # noqa: ANN001
+                nonlocal session_count
+                session_count += 1
+                self.session_no = session_count
+                self.list_calls = 0
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
+                return False
+
+            async def initialize(self):
+                return None
+
+            async def list_tools(self):
+                self.list_calls += 1
+                if self.session_no == 1 and self.list_calls > 1:
+                    first_liveness_failed.set()
+                    raise RuntimeError("connection lost during idle")
+                if self.session_no == 2:
+                    second_session_ready.set()
+                return SimpleNamespace(tools=[])
+
+        monkeypatch.setattr(mcp_manager_mod, "MCP_WATCHDOG_MAX_RETRIES", 2)
+        monkeypatch.setattr(mcp_manager_mod, "MCP_LIVENESS_INTERVAL_SECONDS", 0.01)
+        monkeypatch.setattr(mcp_manager_mod, "MCP_RETRY_BASE_DELAY_SECONDS", 0.01)
+        monkeypatch.setattr(mcp_manager_mod, "MCP_RETRY_MAX_DELAY_SECONDS", 0.01)
+
+        with (
+            patch("app.agent.mcp.manager.load_config") as mock_load,
+            patch(
+                "app.agent.mcp.manager._resolve_stdio_launch",
+                AsyncMock(return_value=SimpleNamespace(command="echo", env={})),
+            ),
+            patch("mcp.client.stdio.stdio_client", return_value=FakeStdioClient()),
+            patch("mcp.ClientSession", LivenessFailingClientSession),
+        ):
+            mock_load.return_value = MCPConfig(
+                servers={"browser-use": StdioServerConfig(command="echo")}
+            )
+
+            await manager.start()
+            await asyncio.wait_for(first_liveness_failed.wait(), timeout=1.0)
+            await asyncio.wait_for(second_session_ready.wait(), timeout=1.0)
+
+            status = manager.get_status("browser-use")
+            assert status is not None
+            assert status.state == "ready"
+            assert status.auto_restart_count == 1
+            assert status.last_restart_reason == "watchdog_retry"
+
+            await manager.stop()
+
+    def test_clear_flapping_after_stable_window(self, monkeypatch) -> None:
+        import app.agent.mcp.manager as mcp_manager_mod
+
+        status = MCPServerStatus(
+            name="browser-use",
+            transport="stdio",
+            enabled=True,
+            state="ready",
+            flapping=True,
+            warning="mcp_server_flapping",
+        )
+        started = mcp_manager_mod.datetime.now(mcp_manager_mod.UTC)
+        monkeypatch.setattr(mcp_manager_mod, "MCP_STABLE_WINDOW_SECONDS", -1.0)
+
+        retry_count = MCPManager._clear_flapping_after_stable_window(status, started, 4)
+
+        assert retry_count == 0
+        assert status.flapping is False
+        assert status.warning is None

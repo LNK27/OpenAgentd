@@ -84,6 +84,13 @@ class ServerStatusResponse(BaseModel):
     error: str | None = None
     tool_names: list[str] = Field(default_factory=list)
     started_at: str | None = None
+    auto_restart_count: int = 0
+    manual_restart_count: int = 0
+    last_restart_reason: str | None = None
+    last_restart_at: str | None = None
+    last_failure_at: str | None = None
+    flapping: bool = False
+    warning: str | None = None
     config: ServerBody | None = Field(default=None, discriminator="transport")
 
 

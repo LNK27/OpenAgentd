@@ -13,7 +13,8 @@ collide with built-in tool names.
 from __future__ import annotations
 
 import base64
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Protocol
 
 from loguru import logger
 from pydantic import AnyUrl, BaseModel
@@ -23,7 +24,6 @@ from app.agent.schemas.chat import TextBlock, ToolResult
 from app.agent.tools.registry import Tool
 
 if TYPE_CHECKING:
-    from mcp import ClientSession
     from mcp.types import Tool as MCPToolDef
 
 
@@ -54,6 +54,14 @@ class _NoopParameters(BaseModel):
     """Placeholder Pydantic model — MCPTool does not use base-class validation."""
 
     model_config = {"extra": "allow"}
+
+
+class MCPClientSessionProtocol(Protocol):
+    """Minimal live MCP session surface used by ``MCPTool``."""
+
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any: ...
+
+    async def read_resource(self, uri: AnyUrl) -> Any: ...
 
 
 class MCPTool(Tool):
@@ -263,6 +271,4 @@ def _extract_text(content: Any) -> str:
 # ── Type alias for the session-resolution callback ──────────────────────────
 # Defined at module bottom to avoid a forward reference in MCPTool.__init__.
 
-from typing import Callable, Optional  # noqa: E402
-
-_SessionProvider = Callable[[], Optional["ClientSession"]]
+_SessionProvider = Callable[[], MCPClientSessionProtocol | None]
