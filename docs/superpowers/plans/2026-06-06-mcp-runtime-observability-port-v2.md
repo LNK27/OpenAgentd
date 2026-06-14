@@ -1,6 +1,6 @@
 # MCP Runtime Observability Port v2 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add status-only MCP restart/flapping observability on the synced `main` MCP manager without changing MCP tool execution, OAuth semantics, permission gates, UI, or persistence.
 
@@ -41,7 +41,7 @@
 - Test: `tests/agent/mcp/test_manager.py`
 - Test: `tests/api/test_mcp_routes.py`
 
-- [ ] **Step 1: Write failing manager status default test**
+- [x] **Step 1: Write failing manager status default test**
 
 Add to `tests/agent/mcp/test_manager.py`:
 
@@ -64,7 +64,7 @@ class TestMCPRuntimeObservabilityStatus:
         assert status.warning is None
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -74,7 +74,7 @@ uv run pytest tests/agent/mcp/test_manager.py::TestMCPRuntimeObservabilityStatus
 
 Expected: fail with `AttributeError` for `auto_restart_count`.
 
-- [ ] **Step 3: Add fields to `MCPServerStatus`**
+- [x] **Step 3: Add fields to `MCPServerStatus`**
 
 In `app/agent/mcp/manager.py`, update `MCPServerStatus`:
 
@@ -99,7 +99,7 @@ class MCPServerStatus:
     warning: str | None = None
 ```
 
-- [ ] **Step 4: Verify status default test passes**
+- [x] **Step 4: Verify status default test passes**
 
 Run:
 
@@ -109,7 +109,7 @@ uv run pytest tests/agent/mcp/test_manager.py::TestMCPRuntimeObservabilityStatus
 
 Expected: pass.
 
-- [ ] **Step 5: Write failing route serialization test**
+- [x] **Step 5: Write failing route serialization test**
 
 Add to `tests/api/test_mcp_routes.py` inside `TestListServers`:
 
@@ -146,7 +146,7 @@ Add to `tests/api/test_mcp_routes.py` inside `TestListServers`:
         assert server["warning"] == "mcp_server_flapping"
 ```
 
-- [ ] **Step 6: Run the failing route test**
+- [x] **Step 6: Run the failing route test**
 
 Run:
 
@@ -156,7 +156,7 @@ uv run pytest tests/api/test_mcp_routes.py::TestListServers::test_list_servers_i
 
 Expected: fail because response fields are missing.
 
-- [ ] **Step 7: Add schema and route projection**
+- [x] **Step 7: Add schema and route projection**
 
 In `app/api/schemas/mcp.py`, add fields to `ServerStatusResponse`:
 
@@ -182,7 +182,7 @@ In `app/api/routes/mcp.py`, add these arguments to `_to_response()`:
         warning=status.warning,
 ```
 
-- [ ] **Step 8: Run Task 1 tests**
+- [x] **Step 8: Run Task 1 tests**
 
 Run:
 
@@ -199,7 +199,7 @@ Expected: both pass.
 - Modify: `app/agent/mcp/tools.py`
 - Test: `tests/agent/mcp/test_manager.py`
 
-- [ ] **Step 1: Write failing manual restart inheritance test**
+- [x] **Step 1: Write failing manual restart inheritance test**
 
 Add to `TestMCPRuntimeObservabilityStatus`:
 
@@ -240,7 +240,7 @@ Add to `TestMCPRuntimeObservabilityStatus`:
                 await manager.stop()
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -250,7 +250,7 @@ uv run pytest tests/agent/mcp/test_manager.py::TestMCPRuntimeObservabilityStatus
 
 Expected: fail because the new runner resets counters.
 
-- [ ] **Step 3: Implement observability copy helpers**
+- [x] **Step 3: Implement observability copy helpers**
 
 Add helpers to `MCPManager`:
 
@@ -277,7 +277,7 @@ Add helpers to `MCPManager`:
         status.last_restart_at = self._now_iso()
 ```
 
-- [ ] **Step 4: Use helpers in `restart_server()`**
+- [x] **Step 4: Use helpers in `restart_server()`**
 
 Inside `restart_server()`, capture old status before `_stop_runner(name)`, then copy history and mark manual restart after spawning or creating disabled runner:
 
@@ -296,7 +296,7 @@ Inside `restart_server()`, capture old status before `_stop_runner(name)`, then 
             self._mark_manual_restart(new_status)
 ```
 
-- [ ] **Step 5: Run manual restart test**
+- [x] **Step 5: Run manual restart test**
 
 Run:
 
@@ -312,7 +312,7 @@ Expected: pass.
 - Modify: `app/agent/mcp/manager.py`
 - Test: `tests/agent/mcp/test_manager.py`
 
-- [ ] **Step 1: Write failing activity-gate unit test**
+- [x] **Step 1: Write failing activity-gate unit test**
 
 Add to `TestMCPRuntimeObservabilityStatus`:
 
@@ -395,7 +395,7 @@ Add to `TestMCPRuntimeObservabilityStatus`:
         assert runner.active_tool_call_count == 0
 ```
 
-- [ ] **Step 2: Run the failing activity-gate unit test**
+- [x] **Step 2: Run the failing activity-gate unit test**
 
 Run:
 
@@ -405,7 +405,7 @@ uv run pytest tests/agent/mcp/test_manager.py::TestMCPRuntimeObservabilityStatus
 
 Expected: fail because `_TrackedMCPClientSession` and activity helpers do not exist.
 
-- [ ] **Step 3: Add a call-tool session protocol in `tools.py`**
+- [x] **Step 3: Add a call-tool session protocol in `tools.py`**
 
 In `app/agent/mcp/tools.py`, update imports and the bottom session-provider alias so MCP tools depend only on the method they call:
 
@@ -431,7 +431,7 @@ _SessionProvider = Callable[[], Optional["_MCPCallSession"]]
 
 Do not change `MCPTool._invoke()` behavior. This only widens the type from a concrete MCP SDK `ClientSession` to the minimum call surface used by the adapter.
 
-- [ ] **Step 4: Add activity fields to `_ServerRunner`**
+- [x] **Step 4: Add activity fields to `_ServerRunner`**
 
 In `app/agent/mcp/manager.py`, add internal runtime fields:
 
@@ -443,7 +443,7 @@ In `app/agent/mcp/manager.py`, add internal runtime fields:
 
 These fields are internal only. Do not add them to `MCPServerStatus` or API schemas.
 
-- [ ] **Step 5: Add tracked session wrapper**
+- [x] **Step 5: Add tracked session wrapper**
 
 Add this helper near `_ServerRunner`:
 
@@ -475,7 +475,7 @@ Update `_ServerRunner.session` so it can hold the tracked wrapper:
 
 Keep the raw MCP SDK `ClientSession` object local to `_run_server_once()` and inside its async context. The runner should expose only the tracked wrapper to tool-call consumers.
 
-- [ ] **Step 6: Add activity helper methods**
+- [x] **Step 6: Add activity helper methods**
 
 Add to `MCPManager`:
 
@@ -506,7 +506,7 @@ Add to `MCPManager`:
 
 This design does not serialize normal tool calls against each other. It only prevents liveness probes and tool calls from overlapping on the same session.
 
-- [ ] **Step 7: Use tracked session for generated MCP tools and app bridge**
+- [x] **Step 7: Use tracked session for generated MCP tools and app bridge**
 
 When `_run_server_once()` later creates the raw `ClientSession`, assign:
 
@@ -517,7 +517,7 @@ When `_run_server_once()` later creates the raw `ClientSession`, assign:
 
 Build `MCPTool(... session_provider=lambda r=runner: r.session)` exactly as today. `MCPTool._invoke()` and `MCPManager.call_app_tool()` will both go through `runner.session.call_tool()`, so both paths are tracked.
 
-- [ ] **Step 8: Run activity-gate test**
+- [x] **Step 8: Run activity-gate test**
 
 Run:
 
@@ -533,7 +533,7 @@ Expected: pass.
 - Modify: `app/agent/mcp/manager.py`
 - Test: `tests/agent/mcp/test_manager.py`
 
-- [ ] **Step 1: Write failing watchdog retry test**
+- [x] **Step 1: Write failing watchdog retry test**
 
 Add to `TestMCPRuntimeObservabilityStatus`:
 
@@ -600,7 +600,7 @@ Add to `TestMCPRuntimeObservabilityStatus`:
             await manager.stop()
 ```
 
-- [ ] **Step 2: Run the failing watchdog test**
+- [x] **Step 2: Run the failing watchdog test**
 
 Run:
 
@@ -610,7 +610,7 @@ uv run pytest tests/agent/mcp/test_manager.py::TestMCPRuntimeObservabilityStatus
 
 Expected: fail because current `_run_server()` does not retry.
 
-- [ ] **Step 3: Add watchdog constants**
+- [x] **Step 3: Add watchdog constants**
 
 At module level in `app/agent/mcp/manager.py`:
 
@@ -623,7 +623,7 @@ MCP_RETRY_BASE_DELAY_SECONDS = 1.0
 MCP_RETRY_MAX_DELAY_SECONDS = 30.0
 ```
 
-- [ ] **Step 4: Add runtime observability helpers**
+- [x] **Step 4: Add runtime observability helpers**
 
 Add methods to `MCPManager`:
 
@@ -648,7 +648,7 @@ Add methods to `MCPManager`:
         return min(delay, MCP_RETRY_MAX_DELAY_SECONDS)
 ```
 
-- [ ] **Step 5: Extract one-attempt connection helper**
+- [x] **Step 5: Extract one-attempt connection helper**
 
 Move the current transport/session body of `_run_server()` into `_run_server_once()` with this signature:
 
@@ -664,7 +664,7 @@ Move the current transport/session body of `_run_server()` into `_run_server_onc
 
 The helper should preserve current behavior: open transport, initialize, list tools, set `ready`, wait for shutdown, clear `runner.session` on shutdown. Liveness flapping reset is added in Task 5. Do not pass retry state through getter/setter callbacks; `_run_server()` owns the retry counter and passes the current integer into `_run_server_once()`.
 
-- [ ] **Step 6: Replace `_run_server()` with retry loop**
+- [x] **Step 6: Replace `_run_server()` with retry loop**
 
 Use this control structure:
 
@@ -718,7 +718,7 @@ Extract current auth-required branches into `_mark_auth_required()` and `_handle
 
 The `_run_server_once()` return value is the retry count to keep after a normal shutdown path. In Task 4 it usually returns the input `retry_count`; Task 5 may return `0` after a stable liveness window clears flapping.
 
-- [ ] **Step 7: Run watchdog retry test**
+- [x] **Step 7: Run watchdog retry test**
 
 Run:
 
@@ -734,7 +734,7 @@ Expected: pass.
 - Modify: `app/agent/mcp/manager.py`
 - Test: `tests/agent/mcp/test_manager.py`
 
-- [ ] **Step 1: Write failing flapping test**
+- [x] **Step 1: Write failing flapping test**
 
 Add test:
 
@@ -791,7 +791,7 @@ Add test:
             assert status.warning == "mcp_server_flapping"
 ```
 
-- [ ] **Step 2: Run failing flapping test**
+- [x] **Step 2: Run failing flapping test**
 
 Run:
 
@@ -801,7 +801,7 @@ uv run pytest tests/agent/mcp/test_manager.py::TestMCPRuntimeObservabilityStatus
 
 Expected: fail because flapping is not implemented.
 
-- [ ] **Step 3: Add flapping helpers**
+- [x] **Step 3: Add flapping helpers**
 
 Add:
 
@@ -826,7 +826,7 @@ Add:
 
 Call `_mark_flapping_if_needed(runner.status, retry_count)` after incrementing retry count and before checking retry cap.
 
-- [ ] **Step 4: Add liveness monitor inside `_run_server_once()`**
+- [x] **Step 4: Add liveness monitor inside `_run_server_once()`**
 
 After setting ready, create a liveness task and wait for shutdown or liveness failure. The liveness task must use the activity gate from Task 3:
 
@@ -872,7 +872,7 @@ After setting ready, create a liveness task and wait for shutdown or liveness fa
 
 This makes a failed `session.list_tools()` raise back into the watchdog loop only when no tool call is active during the probe. A normal shutdown exits without retry. `CancelledError` from the liveness task must propagate so shutdown/cancellation remains visible to the manager instead of being treated as an ordinary runtime failure.
 
-- [ ] **Step 5: Run flapping test**
+- [x] **Step 5: Run flapping test**
 
 Run:
 
@@ -882,7 +882,7 @@ uv run pytest tests/agent/mcp/test_manager.py::TestMCPRuntimeObservabilityStatus
 
 Expected: pass.
 
-- [ ] **Step 6: Write stable reset unit test**
+- [x] **Step 6: Write stable reset unit test**
 
 Add a direct helper test:
 
@@ -910,7 +910,7 @@ Add a direct helper test:
         assert status.warning is None
 ```
 
-- [ ] **Step 7: Run Task 5 tests**
+- [x] **Step 7: Run Task 5 tests**
 
 Run:
 
@@ -926,7 +926,7 @@ Expected: pass.
 - Modify: `app/agent/mcp/manager.py`
 - Test: `tests/agent/mcp/test_manager.py`
 
-- [ ] **Step 1: Write auth boundary assertions**
+- [x] **Step 1: Write auth boundary assertions**
 
 Extend existing OAuth tests with observability assertions. For example in `test_oauth_server_without_tokens_is_auth_required`:
 
@@ -944,7 +944,7 @@ Apply the same assertions to:
 - `test_http_missing_token_failure_without_oauth_config_is_auth_required`
 - `test_oauth_registration_failure_is_auth_required`
 
-- [ ] **Step 2: Run OAuth boundary tests**
+- [x] **Step 2: Run OAuth boundary tests**
 
 Run:
 
@@ -959,7 +959,7 @@ Expected: pass. If any test fails, fix `_handle_auth_failure()` before continuin
 **Files:**
 - Modify: `.agent/memory/CONTEXT_SNAPSHOT.md`
 
-- [ ] **Step 1: Run targeted manager and route tests**
+- [x] **Step 1: Run targeted manager and route tests**
 
 Run:
 
@@ -969,7 +969,7 @@ uv run pytest tests/agent/mcp/test_manager.py tests/api/test_mcp_routes.py --no-
 
 Expected: pass.
 
-- [ ] **Step 2: Run neighboring route/service regression**
+- [x] **Step 2: Run neighboring route/service regression**
 
 Run:
 
@@ -979,7 +979,7 @@ uv run pytest tests/api/routes/test_observability_route.py tests/services/test_o
 
 Expected: pass.
 
-- [ ] **Step 3: Run lint and format checks**
+- [x] **Step 3: Run lint and format checks**
 
 Run:
 
@@ -990,7 +990,7 @@ uv run ruff format --check app/agent/mcp/manager.py app/agent/mcp/tools.py app/a
 
 Expected: both pass.
 
-- [ ] **Step 4: Run targeted type check**
+- [x] **Step 4: Run targeted type check**
 
 Run:
 
@@ -1000,7 +1000,7 @@ uv run ty check app/agent/mcp/manager.py app/agent/mcp/tools.py app/api/routes/m
 
 Expected: pass for targeted files. If broad `ty check app/` still reports existing Windows/POSIX issues elsewhere, record that separately instead of treating it as this phase failing.
 
-- [ ] **Step 5: Update context snapshot**
+- [x] **Step 5: Update context snapshot**
 
 Update `.agent/memory/CONTEXT_SNAPSHOT.md`:
 
@@ -1008,7 +1008,7 @@ Update `.agent/memory/CONTEXT_SNAPSHOT.md`:
 - list verification commands and results
 - remove or revise the old “not yet ported” next-step entry
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Commit message:
 
