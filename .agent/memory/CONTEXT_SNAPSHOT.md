@@ -1,6 +1,6 @@
 # OpenAgentd Second Brain Context Snapshot
 
-Last updated: 2026-06-06
+Last updated: 2026-06-15
 
 
 ## Purpose
@@ -308,13 +308,15 @@ Known local state before this snapshot:
   - Approval creates only new `SKILLS_DIR/{name}/SKILL.md` through `agent_fs.write_skill(..., create=True)` and invalidates the skill cache. It does not call Hermes, does not auto-load/grant/install the skill, and does not update/overwrite/delete/rename/move existing skills.
   - Runtime logs, ToolStart stream arguments, tool observability attributes, and metrics redact or omit sensitive `task`, `context`, body preview/content, description text, reject reason, and pending ids. ToolEnd and tool result output may include bounded `body_preview` and `pending_id` as the lead review surface.
   - No API/UI/DB/persistence/batch approval/Hermes direct filesystem write/raw filesystem write from Hermes tool was added.
-- Verification for Hermes Skill Drafting v1 passed:
-  - `uv run pytest tests/services/test_agent_fs.py tests/services/test_hermes.py tests/services/test_hermes_skill_drafting.py --no-cov -q` (`51 passed`)
-  - `uv run pytest tests/agent/test_hermes_skill_redaction.py tests/agent/tools/test_hermes_skill_tools.py tests/agent/test_loader.py --no-cov -q` (`82 passed`)
-  - `uv run pytest tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_propose_tool.py tests/agent/tools/test_hermes_pending_tools.py tests/agent/tools/test_hermes_query_tool.py tests/agent/tools/test_skill_loader.py --no-cov -q` (`47 passed`)
-  - `uv run ruff check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/__init__.py app/agent/tools/builtin/skill.py app/agent/loader.py tests/services/test_agent_fs.py tests/services/test_hermes.py tests/services/test_hermes_skill_drafting.py tests/agent/test_hermes_skill_redaction.py tests/agent/tools/test_hermes_skill_tools.py tests/agent/tools/test_skill_loader.py tests/agent/test_loader.py`
-  - `uv run ruff format --check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/__init__.py app/agent/tools/builtin/skill.py app/agent/loader.py tests/services/test_agent_fs.py tests/services/test_hermes.py tests/services/test_hermes_skill_drafting.py tests/agent/test_hermes_skill_redaction.py tests/agent/tools/test_hermes_skill_tools.py tests/agent/tools/test_skill_loader.py tests/agent/test_loader.py`
-  - `uv run ty check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/skill.py app/agent/loader.py`
+- Verification for Hermes Skill Drafting v1:
+  - Targeted Hermes/skill/loader tests passed. Full suite on Windows is not clean due to pre-existing portability/environment failures, with no failures classified as regressions from Hermes Skill Drafting v1.
+  - Targeted tests ran:
+    - `uv run pytest tests/services/test_agent_fs.py tests/services/test_hermes.py tests/services/test_hermes_skill_drafting.py --no-cov -q` (`51 passed`)
+    - `uv run pytest tests/agent/test_hermes_skill_redaction.py tests/agent/tools/test_hermes_skill_tools.py tests/agent/test_loader.py --no-cov -q` (`82 passed`)
+    - `uv run pytest tests/services/test_hermes_approval.py tests/agent/tools/test_hermes_propose_tool.py tests/agent/tools/test_hermes_pending_tools.py tests/agent/tools/test_hermes_query_tool.py tests/agent/tools/test_skill_loader.py --no-cov -q` (`47 passed`)
+  - Lint/typecheck verified:
+    - `uv run ruff check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/__init__.py app/agent/tools/builtin/skill.py app/agent/loader.py tests/services/test_agent_fs.py tests/services/test_hermes.py tests/services/test_hermes_skill_drafting.py tests/agent/test_hermes_skill_redaction.py tests/agent/tools/test_hermes_skill_tools.py tests/agent/tools/test_skill_loader.py tests/agent/test_loader.py`
+    - `uv run ty check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/skill.py app/agent/loader.py`
   - Neighboring regression fix included: `discover_skills()` now reports skill file paths using POSIX-style relative paths on Windows (`web-research/SKILL.md`).
 
 ## Next Implementation Steps
@@ -322,16 +324,17 @@ Known local state before this snapshot:
 1. ~~Close the remaining MCP watchdog/liveness gap~~ — **DONE** (2026-05-22). Crash-after-ready recovery verified by test.
 2. ~~Implement Phase 2: OpenAgentd Vault Gatekeeper service layer~~ — **DONE** (2026-05-22). Backend service supports sequential writes, metadata frontmatter normalization, path validation, duplicate detection, and incremental index updates.
 3. ~~Wire the Vault Gatekeeper into a controlled OpenAgentd entrypoint~~ — **DONE** (2026-05-22). Lead-only builtin `vault_write` now provides the agent-side structured write surface without exposing raw filesystem writes or a public HTTP route.
-4. ~~Implement Phase 2: Human Ingest/Reconcile service~~ â€” **DONE** (2026-05-24). Service + CLI normalize manual Obsidian notes and repair folder indexes without adding recall/search/read yet.
+4. ~~Implement Phase 2: Human Ingest/Reconcile service~~ — **DONE** (2026-05-24). Service + CLI normalize manual Obsidian notes and repair folder indexes without adding recall/search/read yet.
 5. ~~Implement Phase 2: Vault Recall service and controlled `vault_read` / `vault_search` tools~~ — **DONE** (2026-05-26). Lead agents can now search/list and deep-read Obsidian vault notes without exposing a raw filesystem surface.
 6. ~~Integrate Hermes connector as a sidecar API adapter producing write-intents only~~ — **DONE** (2026-05-29). Lead agents can request Hermes write-intent proposals through `hermes_propose`; Hermes cannot write directly to the vault.
-7. ~~Implement Hermes approval/review queue v1~~ â€” **DONE** (2026-05-30). Lead agents can review, approve, or reject Hermes pending intents before queue-mediated vault writes; `vault_write` remains available for non-Hermes notes.
+7. ~~Implement Hermes approval/review queue v1~~ — **DONE** (2026-05-30). Lead agents can review, approve, or reject Hermes pending intents before queue-mediated vault writes; `vault_write` remains available for non-Hermes notes.
 8. ~~Implement Hermes query/recall v1~~ — **DONE** (2026-06-02). Lead agents can ask Hermes for read-only recall/query results without vault writes, approval queue side effects, or skill drafting.
 9. ~~Implement Second Brain Read/Write Tool Observability v1~~ - **DONE** (2026-06-02). Vault/Hermes read/write tools now annotate active tool spans and emit low-cardinality Prometheus metrics without changing tool schemas or write boundaries.
 10. ~~Implement MCP Runtime Observability Port v2 from the new design/plan on synced `main`~~ - **DONE** (2026-06-07). MCP status now exposes restart/flapping observability while preserving current OAuth/streamable HTTP semantics.
 11. ~~Implement Vault Update v1~~ - **DONE** (2026-06-05). Lead agents can update existing Obsidian notes through `vault_update` using an optimistic `sha256` token from `vault_read(include_update_token=True)`, while preserving custom frontmatter and keeping identity fields read-only.
 12. ~~Implement Hermes Skill Drafting v1~~ - **DONE** (2026-06-06). Lead agents can request Hermes skill drafts, review bounded previews, approve one pending draft to create a new `SKILLS_DIR/{name}/SKILL.md`, or reject it without writing. Hermes still cannot write files directly.
-13. Run post-sync review/regression on `codex/sync-origin-main`, then decide whether to fast-forward local `main`.
+13. **[NEW PHASE]** Windows Full-Suite Portability Hardening v1 (fix test failures in symlinks, shell sh, CRLF, SQLite locks, path separators, /tmp hardcode, default encoding).
+
 
 ## Update Protocol
 
