@@ -424,7 +424,7 @@ class TestWorkspaceMediaEndpoint:
         assert "uploads secret" not in resp.text
 
     def test_symlink_to_file_inside_workspace_allowed(
-        self, client, session_id, tmp_path, monkeypatch
+        self, client, session_id, tmp_path, monkeypatch, symlink_privilege
     ):
         """Symlinks to files inside workspace should be allowed."""
         fake_root = tmp_path / "ws"
@@ -442,7 +442,9 @@ class TestWorkspaceMediaEndpoint:
         assert resp.status_code == 200
         assert resp.text == "real content"
 
-    def test_symlink_escape_rejected(self, client, session_id, tmp_path, monkeypatch):
+    def test_symlink_escape_rejected(
+        self, client, session_id, tmp_path, monkeypatch, symlink_privilege
+    ):
         """Symlinks pointing outside workspace must be rejected."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)

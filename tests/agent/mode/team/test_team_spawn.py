@@ -343,6 +343,7 @@ class TestDismiss:
         try:
             # Establish a lead session id first so child sessions parent to it.
             await team.handle_user_message("Hi", session_id=str(uuid.uuid7()))
+            await _wait_for_lead_idle(team)
             member = await team.spawn("executor")
             old_session_id = uuid.UUID(member.session_id)
 
@@ -366,6 +367,7 @@ class TestDismiss:
         await team.start()
         try:
             await team.handle_user_message("Hi", session_id=str(lead_session_id))
+            await _wait_for_lead_idle(team)
             await team.spawn("executor")
             await team.spawn("explorer")
             await team.dismiss("executor#1")
@@ -424,6 +426,7 @@ class TestDismiss:
         await team.start()
         try:
             await team.handle_user_message("Hi", session_id=str(lead_session_id))
+            await _wait_for_lead_idle(team)
             async with _session_factory()() as db:
                 await save_message(
                     db, lead_session_id, HumanMessage(content="visible turn")
@@ -579,6 +582,7 @@ class TestLegacyAdoption:
         try:
             sid = str(uuid.uuid7())
             await team.handle_user_message("hello", session_id=sid)
+            await _wait_for_lead_idle(team)
             lead_uuid = uuid.UUID(sid)
 
             # Pre-create a legacy bare-name child session.

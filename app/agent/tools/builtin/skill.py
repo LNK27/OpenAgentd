@@ -13,6 +13,7 @@ so the LLM can apply the instructions in subsequent reasoning.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import re
 from functools import lru_cache
@@ -158,41 +159,37 @@ def discover_skills(
     return _discover_skills_cached(tuple(str(r) for r in roots), signature)
 
 
-def _skills_dir_signature(directory: Path) -> int:
+def _skills_dir_signature(
+    directory: Path,
+) -> tuple[int, tuple[tuple[str, int, int, str], ...]]:
     """Cheap fingerprint that changes whenever any SKILL.md in the tree changes.
 
-    ~1ms for a typical user's <20 skills.  Returns the max of the directory's
-    own mtime_ns and every ``{name}/SKILL.md`` (flat) or
-    ``{parent}/{sub}/SKILL.md`` (one nested level) mtime_ns we can stat — so
-    in-place edits, additions, and removals all change the signature.
+    ~1ms for a typical user's <20 skills.  Tracks the root mtime plus every
+    discovered skill path, mtime, size, and a short content digest so additions,
+    removals, and same-size edits on coarse Windows timestamp ticks invalidate
+    the cache reliably.
     """
     try:
-        max_mtime = directory.stat().st_mtime_ns
+        root_mtime = directory.stat().st_mtime_ns
     except OSError:
-        return 0
-    for subdir in directory.iterdir():
-        if not subdir.is_dir():
-            continue
-        # Flat skill: {parent}/SKILL.md
-        skill_file = subdir / "SKILL.md"
+        return (0, ())
+
+    entries: list[tuple[str, int, int, str]] = []
+    for skill_file, _stem in _iter_skill_paths(directory):
         try:
-            mtime = skill_file.stat().st_mtime_ns
-            if mtime > max_mtime:
-                max_mtime = mtime
+            stat = skill_file.stat()
+            digest = hashlib.blake2b(skill_file.read_bytes(), digest_size=8).hexdigest()
         except OSError:
-            pass
-        # One nested level: {parent}/{sub}/SKILL.md
-        for nested in subdir.iterdir():
-            if not nested.is_dir():
-                continue
-            nested_file = nested / "SKILL.md"
-            try:
-                mtime = nested_file.stat().st_mtime_ns
-                if mtime > max_mtime:
-                    max_mtime = mtime
-            except OSError:
-                continue
-    return max_mtime
+            continue
+        entries.append(
+            (
+                skill_file.relative_to(directory).as_posix(),
+                stat.st_mtime_ns,
+                stat.st_size,
+                digest,
+            )
+        )
+    return (root_mtime, tuple(entries))
 
 
 @lru_cache(maxsize=16)

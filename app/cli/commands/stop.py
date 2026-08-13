@@ -11,6 +11,9 @@ from app.cli.pids import _clear_pids, _find_pids, _pid_alive
 from app.cli.ui import _green, _yellow
 
 
+_SIGKILL = getattr(signal, "SIGKILL", signal.SIGTERM)
+
+
 def cmd_stop(_args: argparse.Namespace) -> None:
     pids = _find_pids()
     alive = [p for p in pids if _pid_alive(p)]
@@ -27,7 +30,7 @@ def cmd_stop(_args: argparse.Namespace) -> None:
         if time.monotonic() > deadline:
             for pid in alive:
                 try:
-                    os.kill(pid, signal.SIGKILL)
+                    os.kill(pid, _SIGKILL)
                 except OSError:
                     pass
             break

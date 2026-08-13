@@ -1,6 +1,6 @@
 # OpenAgentd Second Brain Context Snapshot
 
-Last updated: 2026-06-15
+Last updated: 2026-08-13
 
 
 ## Purpose
@@ -318,6 +318,29 @@ Known local state before this snapshot:
     - `uv run ruff check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/__init__.py app/agent/tools/builtin/skill.py app/agent/loader.py tests/services/test_agent_fs.py tests/services/test_hermes.py tests/services/test_hermes_skill_drafting.py tests/agent/test_hermes_skill_redaction.py tests/agent/tools/test_hermes_skill_tools.py tests/agent/tools/test_skill_loader.py tests/agent/test_loader.py`
     - `uv run ty check app/services/agent_fs.py app/services/hermes.py app/services/hermes_skill_drafting.py app/agent/agent_loop/tool_executor.py app/agent/hooks/stream_publisher.py app/agent/tools/builtin/hermes_skill.py app/agent/tools/builtin/skill.py app/agent/loader.py`
   - Neighboring regression fix included: `discover_skills()` now reports skill file paths using POSIX-style relative paths on Windows (`web-research/SKILL.md`).
+- **Windows Portability and Shell Hardening v1 is implemented in the current working tree, but not yet committed.** Fixed Windows-specific portability issues across 13+ test and source files:
+  - Solved `signal.SIGKILL` and `os.killpg`/`os.getpgid` AttributeError errors on Windows by using dynamically resolved signal proxies (`_SIGKILL`) and fallback `proc.kill()` calls.
+  - Hardened POSIX shell path lookup in `shell_runtime.py` to prioritize Git Bash installation paths relative to PATH executable or common locations, completely avoiding the WSL bash stub (`system32/bash.exe` or `WindowsApps/bash.exe`) which caused WSL path translation issues.
+  - Eliminated "over-skipping" in `test_shell.py` by enabling `TestSandboxCommandScan` on Windows. Used `.as_posix()` and double quotes to make POSIX commands (`cat`, `tail`, `sleep`) fully parseable by Git Bash.
+  - Resolved `shlex.split` quote preservation issues under `posix=False` (on Windows) by automatically stripping outer single and double quotes from path tokens before sandbox validation.
+  - Speeded up and stabilized background process tests on Windows by tweaking `fast_bg` warmup delays (using 100ms instead of 5ms on Windows) and adding a tiny sleep before querying background stdout.
+  - Cleaned up quality gates: `ruff check` passes cleanly, `ruff format` applied, and all Windows-specific `SIGKILL` unresolved-attribute type checker errors (including `app/cli/commands/stop.py`) resolved under `ty check app/`.
+  - Resolved other late-stage Windows portability issues: added directory mtime delay in `test_skill_loader.py` to fix Windows NTFS resolution collision; updated `snapshot_service.py` to recursively modify Git read-only files to writable before running `shutil.rmtree`; normalized relative path backslashes to POSIX-style slashes in `seed.py`; skipped invalid WSL/bash shell runs and executable permission checks in `test_install_sh.py` on Windows hosts; and fixed scheduler test synchronization races.
+
+## Audit Reconciliation — 2026-08-13
+
+This section supersedes any conflicting historical claim above. The local working tree and tracked remote refs are authoritative.
+
+- Root repo `LNK27/ai-agents`, `OpenAgentd`, and `browser-harness` are all at their respective `origin/main` commits; no local commits are ahead of or behind origin.
+- Fork drift is substantial and must be handled deliberately: `LNK27/OpenAgentd` is 30 commits ahead and 1,559 commits behind `upstream/main` (local fork commit 2026-06-15; upstream v1.131.5 commit 2026-08-12). `LNK27/browser-harness` is 814 commits behind `upstream/main` (fork commit 2026-05-13; upstream commit 2026-08-11). This is not a local-vs-origin divergence, but it makes an upstream sync a separate high-risk integration task before expanding Hermes.
+- The root repo has two uncommitted Vault-document edits and records modified submodule content. `OpenAgentd` has 30 uncommitted files (Windows portability/shell hardening plus tests). Do not discard or overwrite these changes without a deliberate review and commit.
+- `browser-harness` has an uncommitted `.gitignore` normalization that ignores its entire `.config/` runtime profile, plus untracked `test_browser.py`. The latter is the local Brave smoke script referenced by the project roadmap; neither is represented by the root GitHub commit. Treat them as local-only until intentionally committed inside the submodule.
+- GitHub has no open issues or pull requests in `LNK27/ai-agents`, `LNK27/OpenAgentd`, or `LNK27/browser-harness` at audit time.
+- Current verified quality gates: `ruff check app/ tests/`, `ruff format --check app/ tests/`, and `ty check app/` pass. Focused affected-change tests, the scheduler/API/CLI group, and 116 Vault/Hermes tests pass. The complete backend suite was not used as current proof because the desktop terminal terminates a single pytest invocation after about 64 seconds; rerun it in an unrestricted CI/terminal before claiming a fresh full-suite result. Frontend `bun` lint/typecheck could not run because the installed `bun.ps1` shim targets a missing `bun.exe`.
+- `test_trigger_paused_task_enables_it` was an intermittent test race: it observed dispatch start while the background firing task still had status `running`. The test now waits for persisted terminal recurring state (`pending`) and passed ten consecutive runs plus its scheduler/API/CLI group.
+- Phase 2 implementation that exists in code: Vault Gatekeeper, ingest/reconcile, read/search/update, Hermes proposal-only HTTP adapter, manual Hermes approval queue, read-only Hermes query, tool observability, and Hermes skill-draft queue. Their live upstream Hermes connection is not verified by this audit.
+- ADR-002 remains unimplemented: no `scripts/hermes_mcp_bridge.py`, no `hermes-bridge` entry in active `mcp.json`, no auto-approve setting/rules/tests, and no ADR-003 D8 amendment. Plan 1 items `codebase-memory`, Headroom, and Loop Engineering are also absent from the project implementation.
+- For a future Hermes bridge config, use only supported `${VAR}` references. The MCP config parser does not resolve bash-style `${VAR:-default}` expressions; code/default settings must supply fallback values instead.
 
 ## Next Implementation Steps
 
@@ -333,7 +356,10 @@ Known local state before this snapshot:
 10. ~~Implement MCP Runtime Observability Port v2 from the new design/plan on synced `main`~~ - **DONE** (2026-06-07). MCP status now exposes restart/flapping observability while preserving current OAuth/streamable HTTP semantics.
 11. ~~Implement Vault Update v1~~ - **DONE** (2026-06-05). Lead agents can update existing Obsidian notes through `vault_update` using an optimistic `sha256` token from `vault_read(include_update_token=True)`, while preserving custom frontmatter and keeping identity fields read-only.
 12. ~~Implement Hermes Skill Drafting v1~~ - **DONE** (2026-06-06). Lead agents can request Hermes skill drafts, review bounded previews, approve one pending draft to create a new `SKILLS_DIR/{name}/SKILL.md`, or reject it without writing. Hermes still cannot write files directly.
-13. **[NEW PHASE]** Windows Full-Suite Portability Hardening v1 (fix test failures in symlinks, shell sh, CRLF, SQLite locks, path separators, /tmp hardcode, default encoding).
+13. Windows Full-Suite Portability Hardening v1 — implementation is present and targeted checks pass, but keep it **uncommitted / full-suite revalidation pending** until a complete pytest run succeeds outside the desktop terminal timeout.
+14. Before implementing ADR-002, accept an ADR-003 D8 amendment and then add the Hybrid MCP Bridge, bridge lifecycle/startup-retry tests, auto-approve policy/tests, and active MCP registration as one reviewed unit.
+15. After ADR-002 is independently verified, decide whether Plan 1's codebase-memory, Headroom, and Loop Engineering additions are still justified for the 16GB Windows target; they are not present today.
+16. Before publishing or broadening Phase 2, choose and scope an upstream-sync strategy for both forks. Do not mix that migration with the ADR-002 Bridge change.
 
 
 ## Update Protocol

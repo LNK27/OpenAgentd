@@ -40,6 +40,7 @@ import fnmatch
 import os
 import shlex
 import stat as stat_module
+import sys
 from pathlib import Path
 
 from loguru import logger
@@ -143,7 +144,7 @@ class SandboxConfig:
         for denied in self.denied_roots:
             if _path_is_under(resolved, denied):
                 return denied
-        resolved_str = str(resolved)
+        resolved_str = resolved.as_posix()
         for pattern in self.denied_patterns:
             if fnmatch.fnmatchcase(resolved_str, pattern):
                 return pattern
@@ -214,11 +215,17 @@ class SandboxConfig:
     def check_command(self, command: str) -> tuple[Path, str] | None:
         """Best-effort scan of *command* for arguments inside denied paths."""
         try:
-            tokens = shlex.split(command, posix=True)
+            tokens = shlex.split(command, posix=(sys.platform != "win32"))
         except ValueError:
             return None
 
         for tok in tokens:
+            if len(tok) >= 2 and (
+                (tok.startswith("'") and tok.endswith("'"))
+                or (tok.startswith('"') and tok.endswith('"'))
+            ):
+                tok = tok[1:-1]
+
             if not _looks_path_like(tok):
                 continue
             expanded = os.path.expanduser(tok)
@@ -245,8 +252,8 @@ class SandboxConfig:
         """Return a display path for ``resolved``."""
         if _path_is_under(resolved, self.workspace_root):
             rel = resolved.relative_to(self.workspace_root)
-            return str(self.workspace_root) if str(rel) == "." else str(rel)
-        return str(resolved)
+            return self.workspace_root.as_posix() if str(rel) == "." else rel.as_posix()
+        return resolved.as_posix()
 
 
 def _path_is_under(child: Path, parent: Path) -> bool:
@@ -273,12 +280,17 @@ def _looks_path_like(token: str) -> bool:
         return False
     if token.startswith("-"):
         return False
-    if "/" in token:
+    if "/" in token or "\\" in token:
         return True
     if token.startswith("~"):
         return True
     if token.startswith("."):
         return True
+    import sys
+
+    if sys.platform == "win32":
+        if len(token) >= 2 and token[1] == ":" and token[0].isalpha():
+            return True
     return False
 
 

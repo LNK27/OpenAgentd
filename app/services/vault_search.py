@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 from typing import Any
 
 from app.services.markdown_text import (
@@ -146,7 +147,8 @@ async def _note_from_cache_or_disk(
     async with _CACHE_LOCK:
         cached = _VAULT_CACHE.get(path)
     if (
-        cached is not None
+        sys.platform != "win32"
+        and cached is not None
         and cached[0] == stat.st_mtime_ns
         and cached[1] == stat.st_size
     ):

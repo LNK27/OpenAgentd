@@ -901,11 +901,21 @@ class TestWaitUntilReady:
     async def test_get_user_path_concurrent_thundering_herd(self, monkeypatch) -> None:
         from app.agent.mcp.manager import _get_user_path
         import app.agent.mcp.manager as mcp_manager_mod
+        from app.agent.tools.builtin import shell_runtime
+        import sys
 
         # Reset cache
         mcp_manager_mod._CACHED_USER_PATH = None
+        shell_runtime.reset_cache()
+        try:
+            usable_shell = shell_runtime.acceptable()
+        except FileNotFoundError:
+            if sys.platform == "win32":
+                pytest.skip("No POSIX shell found on Windows, skipping test")
+            raise
+
         monkeypatch.setattr(
-            "app.agent.tools.builtin.shell_runtime._CACHED_SHELL", "/bin/sh"
+            "app.agent.tools.builtin.shell_runtime._CACHED_SHELL", usable_shell
         )
 
         spawn_count = 0

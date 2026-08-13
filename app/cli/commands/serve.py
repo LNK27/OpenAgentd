@@ -59,6 +59,8 @@ import sys
 import threading
 from typing import Any
 
+from app.cli.pids import _pid_alive as _shared_pid_alive
+
 
 def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
     """Register the ``serve`` subcommand on the given subparsers action."""
@@ -108,16 +110,7 @@ def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
 
 
 def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # PID exists but we can't signal it — still alive enough for our purposes.
-        return True
-    except OSError:
-        return False
-    return True
+    return _shared_pid_alive(pid)
 
 
 def _start_parent_watch(

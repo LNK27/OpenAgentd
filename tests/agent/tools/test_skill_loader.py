@@ -443,6 +443,9 @@ class TestMultiRootDiscovery:
         # cache. We use ``write_text`` after a fresh mkdir to guarantee a
         # different signature; the directory mtime alone might tie at the
         # nanosecond on some filesystems.
+        import time
+
+        time.sleep(0.1)
         self._write_skill(global_oc, "beta", "b", "bb")
         second = discover_skills()
 

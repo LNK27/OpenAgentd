@@ -1026,6 +1026,7 @@ async def test_symlink_to_denied_root_rejected_by_sandbox(
     tmp_path: Path,
     config_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
+    symlink_privilege,
 ) -> None:
     """Sandbox: symlinks pointing into a denied root are rejected.
 

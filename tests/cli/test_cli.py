@@ -387,7 +387,7 @@ class TestCmdStop:
             args = build_parser().parse_args(["stop"])
             cmd_stop(args)
 
-        assert (own, signal.SIGKILL) in killed
+        assert (own, getattr(signal, "SIGKILL", signal.SIGTERM)) in killed
 
 
 # ---------------------------------------------------------------------------

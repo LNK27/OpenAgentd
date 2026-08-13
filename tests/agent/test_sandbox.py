@@ -170,7 +170,7 @@ def test_tilde_prefix_rejected(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_symlink_to_allowed_path_is_ok(tmp_path):
+def test_symlink_to_allowed_path_is_ok(tmp_path, symlink_privilege):
     """Symlinks whose target is allowed are themselves allowed."""
     real = tmp_path / "real"
     real.mkdir()
@@ -184,7 +184,7 @@ def test_symlink_to_allowed_path_is_ok(tmp_path):
     assert result == (real / "file.txt").resolve()
 
 
-def test_symlink_to_denied_root_rejected(tmp_path):
+def test_symlink_to_denied_root_rejected(tmp_path, symlink_privilege):
     """A symlink pointing into a denied root is rejected."""
     denied = tmp_path / "denied"
     denied.mkdir()
@@ -214,7 +214,7 @@ def test_display_path_outside_roots_returns_absolute(tmp_path):
     sandbox = _make_sandbox(tmp_path)
     outside = tmp_path / "outside.txt"
     outside.touch()
-    assert sandbox.display_path(outside.resolve()) == str(outside.resolve())
+    assert sandbox.display_path(outside.resolve()) == outside.resolve().as_posix()
 
 
 # ---------------------------------------------------------------------------

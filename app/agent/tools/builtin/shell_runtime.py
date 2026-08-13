@@ -47,10 +47,18 @@ def _which(name: str) -> str | None:
     return shutil.which(name)
 
 
+def _is_windows_system_stub(path: str) -> bool:
+    """True if path is under Windows system directories (like System32 or WindowsApps)."""
+    p = path.lower()
+    return "system32" in p or "windowsapps" in p
+
+
 def _is_usable(path: str) -> bool:
     """True if *path* is a non-blacklisted, executable shell."""
     name = _shell_name(path)
     if name in BLACKLIST:
+        return False
+    if sys.platform == "win32" and _is_windows_system_stub(path):
         return False
     # Must exist and be executable (shutil.which already guarantees this for
     # names; for absolute paths we verify directly).
@@ -64,10 +72,52 @@ def _fallback() -> str:
     # macOS always ships /bin/zsh since Catalina
     if sys.platform == "darwin":
         return "/bin/zsh"
+
+    # On Windows, try to find Git Bash relative to the 'git' executable on PATH
+    # and common installation paths FIRST to avoid WSL bash
+    if sys.platform == "win32":
+        git_path = _which("git")
+        if git_path:
+            git_dir = Path(git_path).parent.parent
+            for candidate in [
+                git_dir / "bin" / "sh.exe",
+                git_dir / "bin" / "bash.exe",
+                git_dir / "usr" / "bin" / "sh.exe",
+            ]:
+                if candidate.is_file():
+                    return str(candidate)
+
+        common_paths = [
+            Path(os.environ.get("ProgramFiles", "C:\\Program Files"))
+            / "Git"
+            / "bin"
+            / "sh.exe",
+            Path(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"))
+            / "Git"
+            / "bin"
+            / "sh.exe",
+            Path(os.environ.get("LocalAppData", ""))
+            / "Programs"
+            / "Git"
+            / "bin"
+            / "sh.exe",
+            Path("C:\\Program Files\\Git\\bin\\sh.exe"),
+            Path("C:\\Program Files\\Git\\usr\\bin\\sh.exe"),
+        ]
+        for p in common_paths:
+            if p.is_file():
+                return str(p)
+
     for name in _POSIX_FALLBACKS:
         found = _which(name)
         if found:
+            if sys.platform == "win32" and _is_windows_system_stub(found):
+                continue
             return found
+
+    if sys.platform == "win32":
+        return ""
+
     return "/bin/sh"  # POSIX guarantee — always present
 
 
@@ -109,7 +159,13 @@ def acceptable() -> str:
 
     Always returns a non-None, executable, POSIX-compatible path.
     """
-    return _detect()
+    path = _detect()
+    if not path or not os.path.exists(path):
+        raise FileNotFoundError(
+            "No POSIX-compatible shell (such as bash, sh, zsh) was found on this Windows system. "
+            "Please install Git for Windows (Git Bash) or ensure a POSIX shell binary is on your PATH."
+        )
+    return path
 
 
 def name(shell_path: str | None = None) -> str:

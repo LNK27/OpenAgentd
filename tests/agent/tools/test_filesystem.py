@@ -132,7 +132,7 @@ async def test_read_file_pagination(sandbox_workspace):
 async def test_read_file_default_returns_raw_text(sandbox_workspace):
     """Default reads should not add pagination headers."""
     content = "line1\nline2\nline3"
-    (sandbox_workspace / "plain.txt").write_text(content)
+    (sandbox_workspace / "plain.txt").write_text(content, newline="\n")
 
     result = await read_file.arun(path="plain.txt")
 
@@ -142,7 +142,9 @@ async def test_read_file_default_returns_raw_text(sandbox_workspace):
 @pytest.mark.asyncio
 async def test_read_file_offset_matches_grep_line_numbers(sandbox_workspace):
     """Offsets are 1-indexed so callers can pass line numbers from grep."""
-    (sandbox_workspace / "paged.txt").write_text("alpha\nbeta\ngamma\ndelta\n")
+    (sandbox_workspace / "paged.txt").write_text(
+        "alpha\nbeta\ngamma\ndelta\n", newline="\n"
+    )
 
     result = await read_file.arun(path="paged.txt", offset=3, limit=1)
 
@@ -545,7 +547,9 @@ async def test_remove_path_binary_file_still_deletes(sandbox):
 
 
 @pytest.mark.asyncio
-async def test_remove_path_symlink_to_workspace_target_allowed(sandbox):
+async def test_remove_path_symlink_to_workspace_target_allowed(
+    sandbox, symlink_privilege
+):
     """Symlinks pointing to workspace-internal targets are now allowed.
 
     `validate_path` resolves through the symlink, so removing it operates on

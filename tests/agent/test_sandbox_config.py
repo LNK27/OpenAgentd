@@ -94,29 +94,23 @@ def test_sandbox_file_config_explicit_empty_list() -> None:
     assert cfg.denied_patterns == []
 
 
-def test_load_config_yaml_missing_denied_patterns_key() -> None:
+def test_load_config_yaml_missing_denied_patterns_key(tmp_path: Path) -> None:
     """YAML file exists but denied_patterns key is absent → uses default."""
-    target = Path("/tmp/test_sandbox_missing_key.yaml")
-    try:
-        # Write a YAML file with no denied_patterns key
-        target.write_text("# empty config\n")
-        cfg = load_config(target)
-        # Should seed with defaults, not return []
-        assert cfg.denied_patterns == list(DEFAULT_DENIED_PATTERNS)
-    finally:
-        target.unlink(missing_ok=True)
+    target = tmp_path / "test_sandbox_missing_key.yaml"
+    # Write a YAML file with no denied_patterns key
+    target.write_text("# empty config\n")
+    cfg = load_config(target)
+    # Should seed with defaults, not return []
+    assert cfg.denied_patterns == list(DEFAULT_DENIED_PATTERNS)
 
 
-def test_load_config_yaml_explicit_empty_list() -> None:
+def test_load_config_yaml_explicit_empty_list(tmp_path: Path) -> None:
     """YAML file with explicit empty denied_patterns → returns []."""
-    target = Path("/tmp/test_sandbox_explicit_empty.yaml")
-    try:
-        target.write_text("denied_patterns: []\n")
-        cfg = load_config(target)
-        # User explicitly cleared it; should not seed
-        assert cfg.denied_patterns == []
-    finally:
-        target.unlink(missing_ok=True)
+    target = tmp_path / "test_sandbox_explicit_empty.yaml"
+    target.write_text("denied_patterns: []\n")
+    cfg = load_config(target)
+    # User explicitly cleared it; should not seed
+    assert cfg.denied_patterns == []
 
 
 def test_load_config_yaml_explicit_empty_list_with_tmp_path(tmp_path: Path) -> None:

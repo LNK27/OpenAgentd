@@ -41,6 +41,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
 import uuid
 from collections import deque
 from collections.abc import Awaitable, Callable
@@ -54,6 +55,8 @@ from app.agent.artifacts import shell_output_dir
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin import shell_runtime as _shell_mod
 from app.agent.tools.registry import InjectedArg, Tool
+
+_SIGKILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -119,7 +122,7 @@ class _BgProcess:
             try:
                 await asyncio.wait_for(self.proc.wait(), timeout=5)
             except asyncio.TimeoutError:
-                _kill_process_group(self.proc, signal.SIGKILL)
+                _kill_process_group(self.proc, _SIGKILL)
                 await self.proc.wait()
         self._reader_task.cancel()
         return self.proc.returncode
@@ -178,9 +181,19 @@ def _kill_process_group(proc: asyncio.subprocess.Process, sig: signal.Signals) -
     pid = proc.pid
     if pid is None:
         return
+    if sys.platform == "win32":
+        try:
+            if sig == _SIGKILL:
+                proc.kill()
+            else:
+                proc.send_signal(sig)
+        except (ProcessLookupError, OSError):
+            pass
+        return
+
     try:
         os.killpg(os.getpgid(pid), sig)
-    except (ProcessLookupError, PermissionError, OSError):
+    except (ProcessLookupError, PermissionError, OSError, AttributeError):
         try:
             proc.send_signal(sig)
         except (ProcessLookupError, OSError):
@@ -442,7 +455,7 @@ async def _shell(
                         pending_output.append(decoded)
 
         except asyncio.TimeoutError:
-            _kill_process_group(proc, signal.SIGKILL)
+            _kill_process_group(proc, _SIGKILL)
             # Drain any remaining output after kill
             try:
                 async with asyncio.timeout(2):

@@ -84,7 +84,7 @@ async def setup_db():
 
     engine = create_async_engine(
         _TEST_DB_URL,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30.0},
     )
     _test_engine = engine
     async with engine.begin() as conn:
@@ -123,3 +123,22 @@ async def clean_db(setup_db):
             except Exception:
                 # Table might not exist in test database
                 pass
+
+
+@pytest.fixture
+def symlink_privilege(tmp_path):
+    """Fixture that checks for symlink privilege.
+    Skips the test if the current system/user lacks privilege to create symlinks.
+    """
+    temp_link = tmp_path / "temp_symlink_test"
+    temp_target = tmp_path / "temp_target"
+    temp_target.touch()
+    try:
+        temp_link.symlink_to(temp_target)
+        temp_link.unlink()
+        temp_target.unlink()
+        return True
+    except OSError:
+        pytest.skip(
+            "System/user lacks privilege to create symbolic links (e.g. requires Admin/Developer Mode on Windows)"
+        )

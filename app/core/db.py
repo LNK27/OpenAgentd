@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+import sys
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -163,6 +164,10 @@ def _sqlite_migration_lock(db_path: Path) -> Iterator[None]:
     On Windows ``fcntl`` is unavailable; we fall back to no-op which is
     fine because Windows isn't a supported deployment target today.
     """
+    if sys.platform == "win32":
+        yield
+        return
+
     try:
         import fcntl
     except ImportError:  # pragma: no cover — Windows

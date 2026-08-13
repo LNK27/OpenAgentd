@@ -85,7 +85,7 @@ def test_blocks_absolute_path_under_denied_root(tmp_path: Path) -> None:
     forbidden.mkdir()
     sandbox = _make(tmp_path, denied_roots=[forbidden])
 
-    hit = sandbox.check_command(f"cat {forbidden}/key.pem")
+    hit = sandbox.check_command(f'cat "{forbidden}/key.pem"')
     assert hit is not None
     resolved, denied = hit
     assert resolved == forbidden / "key.pem"
@@ -97,7 +97,7 @@ def test_blocks_pattern_match_anywhere(tmp_path: Path) -> None:
     project.mkdir()
     sandbox = _make(tmp_path, denied_patterns=["**/.env"])
 
-    hit = sandbox.check_command(f"cat {project}/.env")
+    hit = sandbox.check_command(f'cat "{project}/.env"')
     assert hit is not None
     _, denied = hit
     assert denied == "**/.env"
@@ -110,6 +110,7 @@ def test_expands_tilde_against_home(
     fake_home = tmp_path / "home" / "alice"
     fake_home.mkdir(parents=True)
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
     secrets = fake_home / ".aws" / "credentials"
     secrets.parent.mkdir()
     secrets.touch()
@@ -134,7 +135,7 @@ def test_relative_path_resolves_against_workspace(tmp_path: Path) -> None:
     # An absolute path to a non-workspace `secrets/` SHOULD match.
     other = tmp_path / "other_proj" / "secrets" / "key.pem"
     other.parent.mkdir(parents=True)
-    hit = sandbox.check_command(f"cat {other}")
+    hit = sandbox.check_command(f'cat "{other}"')
     assert hit is not None
 
 
@@ -188,14 +189,14 @@ def test_state_logs_are_exempt_from_denied_roots(tmp_path: Path) -> None:
     log_path = logs_root / "app" / "app.log"
     sandbox = _make(tmp_path, denied_roots=[Path(settings.OPENAGENTD_STATE_DIR)])
 
-    assert sandbox.check_command(f"tail -n 220 {log_path}") is None
+    assert sandbox.check_command(f'tail -n 220 "{log_path}"') is None
 
 
 def test_other_state_paths_remain_denied(tmp_path: Path) -> None:
     state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
     sandbox = _make(tmp_path, denied_roots=[state_root])
 
-    hit = sandbox.check_command(f"cat {state_root / 'secrets' / 'token'}")
+    hit = sandbox.check_command(f'cat "{state_root / "secrets" / "token"}"')
     assert hit is not None
 
 

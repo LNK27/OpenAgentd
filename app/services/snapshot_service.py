@@ -442,6 +442,24 @@ async def remove(session_id: str) -> None:
     gitdir = snapshot_dir(session_id)
     try:
         if gitdir.exists():
-            await asyncio.to_thread(shutil.rmtree, gitdir, ignore_errors=True)
+
+            def _remove():
+                import stat
+
+                # Make everything writable first to avoid Windows rmtree failures on read-only git files
+                for root, dirs, files in os.walk(gitdir, topdown=False):
+                    for name in files:
+                        try:
+                            os.chmod(os.path.join(root, name), stat.S_IWRITE)
+                        except OSError:
+                            pass
+                    for name in dirs:
+                        try:
+                            os.chmod(os.path.join(root, name), stat.S_IWRITE)
+                        except OSError:
+                            pass
+                shutil.rmtree(gitdir, ignore_errors=True)
+
+            await asyncio.to_thread(_remove)
     finally:
         _locks.pop(session_id, None)

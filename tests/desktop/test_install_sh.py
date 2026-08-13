@@ -41,6 +41,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "desktop" / "scripts" / "install.sh"
+IS_WINDOWS = platform.system() == "Windows"
 
 
 def _run(
@@ -66,9 +67,14 @@ class TestScriptSyntax:
     def test_script_exists_and_is_readable(self):
         assert SCRIPT.is_file(), f"install.sh missing at {SCRIPT}"
         # Should be executable (chmod +x in CI/dev).
-        st = SCRIPT.stat()
-        assert st.st_mode & stat.S_IXUSR, "install.sh must be executable"
+        if not IS_WINDOWS:
+            st = SCRIPT.stat()
+            assert st.st_mode & stat.S_IXUSR, "install.sh must be executable"
 
+    @pytest.mark.skipif(
+        IS_WINDOWS,
+        reason="WSL/bash execution is not supported/needed on Windows host tests",
+    )
     def test_bash_syntax_check_passes(self):
         proc = subprocess.run(
             ["bash", "-n", str(SCRIPT)],
@@ -85,10 +91,14 @@ class TestScriptSyntax:
         would let undefined variable references slip past as empty
         strings — leading to bizarre user-facing errors.
         """
-        text = SCRIPT.read_text()
+        text = SCRIPT.read_text(encoding="utf-8")
         assert "set -euo pipefail" in text
 
 
+@pytest.mark.skipif(
+    IS_WINDOWS,
+    reason="install.sh execution is not supported on Windows host tests",
+)
 class TestHelpFlag:
     """``--help`` / ``-h``: print usage from comment header, exit 0."""
 
@@ -129,6 +139,10 @@ class TestHelpFlag:
             assert f"  {code}  " in out or f"{code} " in out
 
 
+@pytest.mark.skipif(
+    IS_WINDOWS,
+    reason="install.sh execution is not supported on Windows host tests",
+)
 class TestArgParsing:
     """Option parser rejects garbage flags and accepts positional paths."""
 
@@ -149,6 +163,10 @@ class TestArgParsing:
 class TestPlatformDispatch:
     """Verify ``uname -s`` correctly routes to the macOS / Linux branch."""
 
+    @pytest.mark.skipif(
+        IS_WINDOWS,
+        reason="install.sh execution is not supported on Windows host tests",
+    )
     def test_reports_detected_platform(self):
         proc = _run([])
         out = proc.stdout + proc.stderr
@@ -158,18 +176,22 @@ class TestPlatformDispatch:
             assert "Platform: " in out and "linux" in out.lower()
 
     @pytest.mark.skipif(
-        platform.system() not in ("Darwin", "Linux"),
+        platform.system() not in ("Darwin", "Linux") and not IS_WINDOWS,
         reason="Test is only meaningful when running on a supported platform",
     )
     def test_unsupported_platform_message_only_on_unknown_uname(self):
         # We can't actually set uname output, but we can verify the
         # script *would* reject an unknown uname by looking at the
         # case statement. This is a doc-pin test.
-        text = SCRIPT.read_text()
+        text = SCRIPT.read_text(encoding="utf-8")
         assert "Unsupported platform" in text
         assert "OpenAgentd-*.msi" in text  # Windows hint
 
 
+@pytest.mark.skipif(
+    IS_WINDOWS,
+    reason="install.sh execution is not supported on Windows host tests",
+)
 class TestMissingBundle:
     """When no bundle is found, the script exits 1 with a clear message."""
 
@@ -205,6 +227,10 @@ class TestMissingBundle:
         assert proc.returncode == 1
 
 
+@pytest.mark.skipif(
+    IS_WINDOWS,
+    reason="install.sh execution is not supported on Windows host tests",
+)
 class TestLinuxBranch:
     """End-to-end Linux flow with a fake binary."""
 
@@ -307,6 +333,10 @@ class TestLinuxBranch:
         assert "rpm -Uvh" in log.read_text()
 
 
+@pytest.mark.skipif(
+    IS_WINDOWS,
+    reason="install.sh execution is not supported on Windows host tests",
+)
 class TestMacosBranch:
     """Behavioural checks for the macOS branch (codesign requires real bundle)."""
 
@@ -363,7 +393,7 @@ class TestNoSignatureClobberGuard:
         # We can't trivially fake a signed bundle (codesign verifies
         # the Mach-O signature, not just the directory layout), so
         # this is a docs-pin: verify the script knows about --force.
-        text = SCRIPT.read_text()
+        text = SCRIPT.read_text(encoding="utf-8")
         assert "FORCE_RESIGN=1" in text
         assert "--force" in text
         # And there's a guard branch that uses it.
@@ -374,7 +404,7 @@ class TestEntitlementsFallback:
     """The script should ship a fallback entitlements plist if none is found."""
 
     def test_falls_back_to_inline_plist(self):
-        text = SCRIPT.read_text()
+        text = SCRIPT.read_text(encoding="utf-8")
         # Inline plist heredoc is keyed against ``PLIST`` (terminator)
         assert "<<'PLIST'" in text
         assert "com.apple.security.cs.allow-unsigned-executable-memory" in text
@@ -386,7 +416,7 @@ class TestDocsConsistency:
     """The header help text must agree with what the parser supports."""
 
     def test_every_documented_flag_is_in_the_parser(self):
-        text = SCRIPT.read_text()
+        text = SCRIPT.read_text(encoding="utf-8")
         # The help block enumerates --install and --force.
         for flag in ("--install", "--force"):
             assert flag in text
@@ -404,5 +434,9 @@ def test_script_path_assumption_holds():
 
 # Belt-and-braces: ``shutil.which("bash")`` must work; otherwise none of
 # these tests are meaningful.
+@pytest.mark.skipif(
+    IS_WINDOWS,
+    reason="bash commands and execution are skipped on Windows",
+)
 def test_bash_available_on_host():
     assert shutil.which("bash") is not None, "bash must be on PATH to run install.sh"

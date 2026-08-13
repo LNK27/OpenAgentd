@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -31,6 +32,27 @@ from app.agent.tools.builtin.shell import (
     shell_tool,
 )
 from app.core.config import settings
+
+
+_DETECTED_SHELL: str | None = None
+
+
+def _mock_shell_bin() -> str:
+    global _DETECTED_SHELL
+    if _DETECTED_SHELL is not None:
+        return _DETECTED_SHELL
+    from app.agent.tools.builtin import shell_runtime as shell_mod
+    import os
+
+    try:
+        path = shell_mod._detect()
+        if path and os.path.exists(path):
+            _DETECTED_SHELL = path
+            return path
+    except Exception:
+        pass
+    _DETECTED_SHELL = "/bin/sh"
+    return "/bin/sh"
 
 
 # ---------------------------------------------------------------------------
@@ -63,11 +85,26 @@ def sandbox_workspace(tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def fast_shell(monkeypatch):
-    """Use bare /bin/sh in shell tests unless a test exercises detection."""
-    monkeypatch.setattr(
-        "app.agent.tools.builtin.shell_runtime._CACHED_SHELL", "/bin/sh"
-    )
+def fast_shell(monkeypatch, request):
+    """Use the acceptable detected shell in shell tests.
+    On Windows, checks if a usable POSIX shell is available; if not, skips execution tests.
+    """
+    from app.agent.tools.builtin import shell_runtime as shell_mod
+
+    shell_mod.reset_cache()
+    try:
+        shell_mod.acceptable()
+    except FileNotFoundError:
+        if sys.platform == "win32":
+            pytest.skip(
+                "No POSIX-compatible shell found on Windows, skipping shell execution tests"
+            )
+        raise
+
+    if sys.platform != "win32":
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.shell_runtime._CACHED_SHELL", "/bin/sh"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +290,7 @@ async def test_shell_description_parameter(sandbox_workspace):
 @pytest.mark.asyncio
 async def test_shell_emits_foreground_output_delta(sandbox_workspace, monkeypatch):
     monkeypatch.setattr(
-        "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+        "app.agent.tools.builtin.shell._shell_mod.acceptable", _mock_shell_bin
     )
     chunks: list[str] = []
 
@@ -406,29 +443,18 @@ def _clear_bg_registry():
 
 @pytest.fixture()
 def fast_bg(monkeypatch):
-    """Skip the production 3-5s warmup sleep so background tests finish fast.
-
-    The warmup exists to (a) drain initial echo output via the reader task
-    and (b) detect immediate exits.  We replace it with a short polling loop
-    that yields the event loop just enough times for the reader task to
-    consume any pending stdout — typically a single iteration is enough.
-
-    We also force ``/bin/sh`` so we skip zsh login + rc-file sourcing
-    (~200ms boot cost), which would otherwise blow past the short sleep
-    budget before the spawned process finishes echoing.
-    """
+    """Skip the production 3-5s warmup sleep so background tests finish fast."""
     _real_sleep = asyncio.sleep
 
-    async def _short_sleep(_seconds):
-        # 5 yields × 5 ms = 25 ms max.  Enough for the reader task to drain
-        # ``echo`` output on every platform tested here.
-        for _ in range(5):
-            await _real_sleep(0.005)
+    async def _short_sleep(delay):
+        # Allow initial task sleep, but collapse background warmup to 5ms (or 100ms on Windows)
+        limit = 0.1 if sys.platform == "win32" else 0.005
+        await _real_sleep(limit if delay >= 1 else delay)
 
     monkeypatch.setattr("app.agent.tools.builtin.shell.asyncio.sleep", _short_sleep)
     # ``/bin/sh`` takes the bare ``-c`` argv path → no rc sourcing → instant boot.
     monkeypatch.setattr(
-        "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+        "app.agent.tools.builtin.shell._shell_mod.acceptable", _mock_shell_bin
     )
 
 
@@ -482,6 +508,8 @@ async def test_background_process_output_and_status(sandbox_workspace, fast_bg):
         background=True,
         timeout_seconds=1,
     )
+    if sys.platform == "win32":
+        await asyncio.sleep(0.2)
     pid = next(iter(_bg_processes))
 
     out_all = await background_process.arun(action="output", pid=pid)
@@ -590,6 +618,7 @@ def test_kill_process_group_handles_missing_pid():
     _kill_process_group(mock_proc, signal.SIGTERM)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only getpgid test")
 def test_kill_process_group_falls_back_to_direct_signal():
     """When os.killpg fails, falls back to proc.send_signal."""
     import os as _os
@@ -630,7 +659,7 @@ class TestSandboxCommandScan:
         token = set_sandbox(sandbox)
         try:
             with pytest.raises(PermissionError, match="Sandbox blocked"):
-                await _shell(command=f"cat {forbidden}/key.pem")
+                await _shell(command=f'cat "{forbidden.as_posix()}/key.pem"')
         finally:
             from app.agent.sandbox import _sandbox_ctx
 
@@ -680,7 +709,7 @@ class TestSandboxCommandScan:
         )
         token = set_sandbox(sandbox)
         try:
-            result = await _shell(command=f"tail -n 1 {log_path.resolve()}")
+            result = await _shell(command=f"tail -n 1 {log_path.resolve().as_posix()}")
             assert "[Succeeded]" in result
             assert "two" in result
         finally:
@@ -701,7 +730,7 @@ class TestSandboxCommandScan:
         token = set_sandbox(sandbox)
         try:
             with pytest.raises(PermissionError, match="Sandbox blocked"):
-                await _shell(command=f"cat {state_path.resolve()}")
+                await _shell(command=f"cat {state_path.resolve().as_posix()}")
         finally:
             from app.agent.sandbox import _sandbox_ctx
 
@@ -719,7 +748,9 @@ class TestSandboxCommandScan:
         token = set_sandbox(sandbox)
         try:
             with pytest.raises(PermissionError, match="Sandbox blocked"):
-                await _shell(command=f"cat '{tmp_path / 'secrets'}/api key.pem'")
+                await _shell(
+                    command=f"cat '{(tmp_path / 'secrets').as_posix()}/api key.pem'"
+                )
         finally:
             from app.agent.sandbox import _sandbox_ctx
 
@@ -731,7 +762,7 @@ class TestSandboxCommandScan:
     ):
         """Verify that rapid streaming output is buffered and throttled to avoid flooding."""
         monkeypatch.setattr(
-            "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+            "app.agent.tools.builtin.shell._shell_mod.acceptable", _mock_shell_bin
         )
         emitted_chunks: list[str] = []
 
@@ -763,7 +794,7 @@ class TestSandboxCommandScan:
     ):
         """Verify that any remaining buffered output is flushed immediately when the command exits."""
         monkeypatch.setattr(
-            "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+            "app.agent.tools.builtin.shell._shell_mod.acceptable", _mock_shell_bin
         )
         emitted_chunks: list[str] = []
 
