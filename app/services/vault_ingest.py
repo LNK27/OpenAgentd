@@ -42,7 +42,9 @@ _REQUIRED_FIELDS: tuple[str, ...] = (
     "writer",
 )
 
-_INDEX_LINK_RE = re.compile(r"\[\[([^]|\r\n]+)\|")
+# Only list-item index entries like `- [[slug|Title]]`. Do not treat footer
+# WikiLinks such as `[[MAP_OF_CONTENT|...]]` as stale note rows.
+_INDEX_LINK_RE = re.compile(r"^\s*-\s+\[\[([^]|\r\n]+)\|")
 
 
 @dataclass

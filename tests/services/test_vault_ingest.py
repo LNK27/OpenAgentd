@@ -227,6 +227,32 @@ async def test_stale_index_link_is_removed_when_apply_true(_vault_dir: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_index_footer_moc_link_is_not_treated_as_stale(
+    _vault_dir: Path,
+) -> None:
+    index_path = _vault_dir / "50-decisions" / "_index.md"
+    index_path.write_text(
+        "## Notes\n"
+        "- [[kept-decision|Kept Decision]] - note\n"
+        "\n"
+        "---\n"
+        "[[MAP_OF_CONTENT|Xem Bản Đồ Tri Thức (MAP_OF_CONTENT)]]\n",
+        encoding="utf-8",
+    )
+    (_vault_dir / "50-decisions" / "kept-decision.md").write_text(
+        _standard_note("kept-decision", "Kept Decision"),
+        encoding="utf-8",
+    )
+
+    result = await ingest_vault(apply=True)
+    index = index_path.read_text(encoding="utf-8")
+
+    assert result.stale_removed == 0
+    assert "[[MAP_OF_CONTENT|Xem Bản Đồ Tri Thức (MAP_OF_CONTENT)]]" in index
+    assert "- [[kept-decision|Kept Decision]] - note" in index
+
+
+@pytest.mark.asyncio
 async def test_dry_run_does_not_modify_notes_or_index(_vault_dir: Path) -> None:
     note = _vault_dir / "50-decisions" / "dry-run-note.md"
     index = _vault_dir / "50-decisions" / "_index.md"
