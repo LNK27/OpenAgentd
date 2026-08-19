@@ -53,7 +53,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "x-ai/grok-4",
         "qwen/qwen3-coder-plus",
         "deepseek/deepseek-v4",
-        "meta-llama/llama-4-maverick:free",
+        "meta-llama/llama-4-maverick",
     ],
     "zai": [
         "glm-5",
