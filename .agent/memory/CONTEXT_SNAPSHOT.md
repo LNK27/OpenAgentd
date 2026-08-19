@@ -1,11 +1,62 @@
 # OpenAgentd Second Brain Context Snapshot
 
-Last updated: 2026-08-19 (Wave C closed)
+Last updated: 2026-08-19 (Codex briefing after Wave A/B-min/C/D)
 
 
 ## Purpose
 
 This file is the continuity packet for new Codex/OpenAgentd sessions working on the local-first second brain project. Read this file at the start of every new session before planning or editing. Keep it updated whenever decisions, implementation status, blockers, or next steps change.
+
+## Codex briefing — 2026-08-19 (authoritative)
+
+Read this block first. It supersedes `handover_to_codex.md`, `handover_to_antigravity_2.md`, GitHub vault roadmap checkboxes, and every “next = migrate / E2E / Bun” sentence further down this file.
+
+### Do not re-implement
+
+Vault gatekeeper, ingest/search/read/update, Hermes proposal/queue/query/skill (in-process, no live gateway), MCP watchdog, Windows shell hardening, coding-mode permission gate, Bun `base-url` `"undefined"` guard, Core CI Windows/`ty`/ruff fixes. Those are **done and pushed**.
+
+### GitHub pins (pushed)
+
+| Repo | SHA | Note |
+|---|---|---|
+| `LNK27/OpenAgentd` | `08c8c892` | `fix(web): treat Bun stringified undefined as unset API base URL` |
+| `LNK27/browser-harness` | `ec8957b9e` | inherited `cloud_evals`/`docker` workflows disabled |
+| `LNK27/ai-agents` | `aebfae8` | submodule pin after Wave C |
+
+OpenAgentd Core CI is green on `913c1cd1` (lint + tests). `08c8c892` is frontend-only; Core may not re-run on that commit.
+
+### Runtime (this machine)
+
+- Canonical DB: `D:\ai-agents\OpenAgentd\.openagentd\data\openagentd.db` — Alembic **`00000010`**, `integrity_check=ok`.
+- Home DB `%USERPROFILE%\.local\share\openagentd\openagentd.db` is still `00000007`. **Do not start a second server against it. Do not migrate it unless the user asks.**
+- Vault path is in local `.env`: `OPENAGENTD_OBSIDIAN_VAULT_DIR=D:\ai-agents\ObsidianVault`. Do not commit `.env`.
+- Cockpit is **Vite `:5173`**, API is **`127.0.0.1:4082`**. Root `/` on `:4082` is 404 by design (API-only).
+- Two long-lived processes are the **live stack**, not unfinished jobs. They stay up until the user asks to stop them:
+  - `uv run openagentd serve --host 127.0.0.1 --port 4082`
+  - `bun run dev` in `web/` with `VITE_API_PROXY_TARGET=http://127.0.0.1:4082` (`bun.exe` 1.3.14, not npm `bun.ps1`)
+- Live LLM: local agent config uses `googlegenai:gemini-2.5-flash` and `thinking_level: none`. OpenRouter `:free` 404 / paid 402; `gemini-3.1-flash` 404. Do not print keys.
+- Coding mode uses blocking `PermissionService` (ask/deny), not `AutoAllowPermissionService`. Live-verified: `mkdir` pending then reject.
+- `PRAGMA foreign_keys` is still **0**. Windows Alembic migrate lock is still a no-op.
+
+### Wave C leftover (not a Codex re-do)
+
+- Official `bun.exe` 1.3.14 via winget; User PATH prepends WinGet `bun-windows-x64` so it wins over `AppData\Roaming\npm\bun.ps1`. Always call `bun.exe`, never the npm shim.
+- `web/src/api/base-url.ts` `normalizeBaseUrl` maps empty / `"undefined"` / `"null"` → `'/api'`.
+- Isolated desktop-notification tests use `fileURLToPath` + `process.execPath` (Windows Bun path filter).
+- `bun run lint` and `bun run typecheck` pass. Targeted `base-url` + notification tests pass.
+- Full `bun test --parallel` flakes UI timeouts on this 16GB laptop (16 workers). That is environment load, not the `"undefined"` bug. Do not start a UI rewrite to “make 2068 tests green in parallel”.
+
+### Next work (only these)
+
+1. **P0 security:** rotate the Google API key used by `browser-use` MCP. The old key was exposed during audit. Need a **new** key from the user. Put it in gitignored `mcp.json` / harness env. Do not print the old or new key. Do not commit secrets.
+2. **P1 optional:** enable `PRAGMA foreign_keys=ON` in the SQLAlchemy/SQLite engine and replace the Windows Alembic migrate-lock no-op with a real lock. Backup the project DB first.
+3. **Not now:** ADR-003, Hermes Hybrid MCP Bridge, live Hermes gateway, persist approval queue to SQLite, sync/rebase `lthoangg/OpenAgentd` (~1579 behind) or `browser-use` (~841 behind).
+
+### Local-only files — do not add
+
+- `browser-harness/test_browser.py`
+- `ObsidianVault/00-inbox/smoke-live-*.md`
+- `.env`, `.openagentd/config/mcp.json`, API keys
 
 ## Project Goal
 
@@ -336,7 +387,7 @@ Historical note from the 13/08 session. The 2026-08-19 section below supersedes 
 This section supersedes any conflicting historical claim above, including the 13/08 “origin/main is in sync” sentence.
 
 - `handover_to_codex.md` and `handover_to_antigravity_2.md` are historical. Do not treat them as the next-task list. Do not re-implement vault gatekeeper, Hermes proposal/queue/query/skill, MCP watchdog, or Windows shell hardening.
-- After the 19/08 push+CI wave the GitHub pins are: OpenAgentd `913c1cd1`, browser-harness `ec8957b9e`, root `ai-agents` `045d431`. Older pins in this file (`7cc9c48a` / `6cbd58cda`) are historical. Before the 19/08 push, GitHub `LNK27` was frozen at 2026-06 (`ai-agents` `0435335`, OpenAgentd `336e1464`, browser-harness `933e28c59`).
+- After the 19/08 push+CI+Wave C the GitHub pins are: OpenAgentd `08c8c892`, browser-harness `ec8957b9e`, root `ai-agents` `aebfae8`. Older pins in this file (`913c1cd1`, `045d431`, `7cc9c48a`, `6cbd58cda`) are historical. Before the 19/08 push, GitHub `LNK27` was frozen at 2026-06 (`ai-agents` `0435335`, OpenAgentd `336e1464`, browser-harness `933e28c59`). The **Codex briefing** at the top of this file is the SHA source of truth.
 - Local-only leftover: `browser-harness/test_browser.py` stays untracked. Do not add it.
 - Canonical SQLite is `D:\ai-agents\OpenAgentd\.openagentd\data\openagentd.db`, now Alembic **`00000010`**, `integrity_check=ok`. A second DB exists at `%USERPROFILE%\.local\share\openagentd\openagentd.db` (`00000007`). Do not start two servers against both. Do not migrate the home DB unless asked.
 - Project `.env` must set `OPENAGENTD_OBSIDIAN_VAULT_DIR=D:\ai-agents\ObsidianVault`. Without it, vault tools write the empty `.openagentd\ObsidianVault`. This is set locally; do not commit `.env`.
@@ -345,7 +396,7 @@ This section supersedes any conflicting historical claim above, including the 13
 - Wave C code: `normalizeBaseUrl` treats empty / `"undefined"` / `"null"` as unset (`/api`). Desktop-notification isolated tests now use `fileURLToPath` + `process.execPath` so Windows Bun 1.3.14 finds the worker file. Targeted web gates: `base-url` + isolated notification tests pass; `bun run lint` and `bun run typecheck` pass. Full `bun test --parallel` still flakes UI timeouts on this 16GB laptop (16x workers); those are not the Codex `"undefined"` regressions.
 - Fork drift remains a separate project: OpenAgentd ~30 ahead / ~1579 behind `lthoangg/OpenAgentd` `v1.133.0`. browser-harness ~841 behind `browser-use`. Do not mix with Second Brain or ADR-002.
 - GitHub had no open issues or PRs in `LNK27/ai-agents`, `LNK27/OpenAgentd`, or `LNK27/browser-harness` at audit time.
-- Current verified quality gates: `ruff check app/ tests/`, `ruff format --check app/ tests/`, and `ty check app/` pass. Focused affected-change tests, the scheduler/API/CLI group, and 116 Vault/Hermes tests pass. The complete backend suite was not used as current proof because the desktop terminal terminates a single pytest invocation after about 64 seconds; rerun it in an unrestricted CI/terminal before claiming a fresh full-suite result. Frontend `bun` lint/typecheck could not run because the installed `bun.ps1` shim targets a missing `bun.exe`.
+- Current verified quality gates: backend Core CI green on `913c1cd1` (`ruff` / `ruff format` / `ty` / pytest). Local `bun run lint` + `bun run typecheck` pass on Wave C. Focused `base-url` + desktop-notification isolated tests pass. The complete local pytest suite is still not a desktop-terminal proof (~64s cutoff historically); GitHub Core is the backend proof. Full `bun test --parallel` flakes UI timeouts on 16 workers — environment, not a Wave C regression.
 - `test_trigger_paused_task_enables_it` was an intermittent test race: it observed dispatch start while the background firing task still had status `running`. The test now waits for persisted terminal recurring state (`pending`) and passed ten consecutive runs plus its scheduler/API/CLI group.
 - Phase 2 implementation that exists in code: Vault Gatekeeper, ingest/reconcile, read/search/update, Hermes proposal-only HTTP adapter, manual Hermes approval queue, read-only Hermes query, tool observability, and Hermes skill-draft queue. Their live upstream Hermes connection is not verified by this audit.
 - ADR-002 remains unimplemented: no `scripts/hermes_mcp_bridge.py`, no `hermes-bridge` entry in active `mcp.json`, no auto-approve setting/rules/tests, and no ADR-003 D8 amendment. Plan 1 items `codebase-memory`, Headroom, and Loop Engineering are also absent from the project implementation.
@@ -368,7 +419,7 @@ This section supersedes any conflicting historical claim above, including the 13
 13. ~~Windows Full-Suite Portability Hardening v1 committed as `7cc9c48a`~~ — targeted checks passed 13/08; Core CI on GitHub is the current full-suite proof.
 14. ~~Wave B migrate (project DB) + Wave D CLI/API E2E~~ — **DONE** (2026-08-19). Project DB is `00000010`. Vault path set. Live ingest/search/write + permission ask verified. Core lint/tests green on `913c1cd1`.
 15. ~~Wave C Bun + `base-url` `"undefined"` guard~~ — **DONE** (2026-08-19). Official `bun.exe` 1.3.14, guard + tests, isolated notification worker path on Windows, Vite via bun on `:5173` proxies `/api/health/live` → 200, no `undefined/api`.
-16. **Next: rotate the leaked Google browser-harness key.** Then optional `PRAGMA foreign_keys=ON` + Windows migrate lock. Wave E (ADR-003 + Hermes Bridge) stays blocked until a live Hermes gateway exists. Do not mix upstream-sync with the Bridge. Do not re-implement vault/hermes/windows harden.
+16. **Next (Codex): rotate the leaked Google browser-harness key** (user must supply a new key; do not print/commit secrets). Then optional `PRAGMA foreign_keys=ON` + Windows migrate lock (backup project DB first). Wave E (ADR-003 + Hermes Bridge) stays blocked until a live Hermes gateway exists. Do not mix upstream-sync with the Bridge. Do not re-implement vault/hermes/windows harden. Do not treat the live `:4082` / `:5173` processes as unfinished work — they are the running stack.
 
 
 ## Update Protocol
