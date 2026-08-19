@@ -24,6 +24,26 @@ describe('apiBaseUrl', () => {
     expect(apiUrl('/health/live')).toBe('/api/health/live')
   })
 
+  it('treats empty, "undefined", and "null" env values as unset', async () => {
+    const { apiBaseUrl, apiUrl } = await import('@/api/base-url')
+
+    for (const value of ['', '   ', 'undefined', 'UNDEFINED', 'null', 'NULL']) {
+      import.meta.env.VITE_API_BASE_URL = value
+      expect(apiBaseUrl()).toBe('/api')
+      expect(apiUrl('/health/live')).toBe('/api/health/live')
+    }
+  })
+
+  it('treats stringified unset desktop URLs as same-origin /api', async () => {
+    const { apiBaseUrl, apiUrl } = await import('@/api/base-url')
+
+    for (const value of ['undefined', 'null', '  undefined  ']) {
+      window.__OAD_API_BASE_URL__ = value
+      expect(apiBaseUrl()).toBe('/api')
+      expect(apiUrl('health/live')).toBe('/api/health/live')
+    }
+  })
+
   it('uses an unreachable sentinel when desktop reports no backend', async () => {
     window.__OAD_BACKEND_UNAVAILABLE__ = true
     const { apiBaseUrl, apiUrl } = await import('@/api/base-url')

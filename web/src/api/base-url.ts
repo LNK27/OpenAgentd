@@ -8,8 +8,9 @@ declare global {
 const listeners = new Set<() => void>()
 
 function normalizeBaseUrl(value: string | undefined): string {
-  const trimmed = value?.trim()
-  if (!trimmed) return '/api'
+  const trimmed = value?.trim() ?? ''
+  const unset = !trimmed || trimmed.toLowerCase() === 'undefined' || trimmed.toLowerCase() === 'null'
+  if (unset) return '/api'
   const withoutTrailingSlash = trimmed.replace(/\/+$/, '')
   return withoutTrailingSlash.endsWith('/api')
     ? withoutTrailingSlash

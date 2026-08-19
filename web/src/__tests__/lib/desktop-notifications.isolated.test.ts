@@ -1,7 +1,8 @@
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'bun:test'
 
-const TEST_FILE = new URL('./desktop-notifications.worker.ts', import.meta.url).pathname
-const BUN_EXECUTABLE = process.env.BUN_EXECUTABLE ?? 'bun'
+const TEST_FILE = fileURLToPath(new URL('./desktop-notifications.worker.ts', import.meta.url))
+const BUN_EXECUTABLE = process.env.BUN_EXECUTABLE ?? process.execPath
 
 type SpawnResult = {
   stdout: ReadableStream<Uint8Array>
