@@ -344,6 +344,64 @@ def set_permission_service(service: PermissionService) -> contextvars.Token:
     return _permission_ctx.set(service)
 
 
+# ── Per-lead-session registry (HTTP poll/reply) ──────────────────────────────
+
+_session_services: dict[str, PermissionService] = {}
+
+
+def register_session_permission_service(
+    session_id: str, service: PermissionService
+) -> None:
+    """Expose *service* to HTTP permission routes keyed by lead session id."""
+    _session_services[session_id] = service
+
+
+def get_session_permission_service(session_id: str) -> PermissionService | None:
+    """Return the live service for *session_id*, or ``None`` if none registered."""
+    return _session_services.get(session_id)
+
+
+def coding_shell_ruleset() -> Ruleset:
+    """Default coding-mode rules: read-only shell allow, danger deny, else ask.
+
+    Last-match-wins. Injection operators are appended last so they override
+    any earlier wildcard allow.
+    """
+    rules: Ruleset = [
+        Rule(permission="*", pattern="*", action="allow"),
+        Rule(permission="shell", pattern="*", action="ask"),
+    ]
+    for pattern in (
+        "git status*",
+        "git log*",
+        "git diff*",
+        "git show*",
+        "ls*",
+        "dir*",
+        "Get-ChildItem*",
+        "pwd*",
+        "Get-Location*",
+        "echo *",
+        "type *",
+        "Get-Content*",
+        "cat *",
+        "head *",
+        "tail *",
+    ):
+        rules.append(Rule(permission="shell", pattern=pattern, action="allow"))
+    for pattern in (
+        "rm -rf /*",
+        "rm -rf /",
+        "Remove-Item -Recurse -Force C:\\*",
+        "Format-Volume*",
+        "del /s /q C:\\*",
+    ):
+        rules.append(Rule(permission="shell", pattern=pattern, action="deny"))
+    for pattern in ("*;*", "*&&*", "*||*", "*|*", "*`n*", "*`r*", "*\n*", "*\r*"):
+        rules.append(Rule(permission="shell", pattern=pattern, action="ask"))
+    return rules
+
+
 # ── Config-based ruleset builder ──────────────────────────────────────────────
 
 

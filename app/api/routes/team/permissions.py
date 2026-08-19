@@ -19,10 +19,10 @@ async def list_permissions(session_id: str) -> dict:
     Permissions accumulate while a tool execution is blocked awaiting user
     approval.  Poll this endpoint or listen to ``permission_asked`` SSE events.
     """
-    from app.agent.permission import get_permission_service
+    from app.agent.permission import get_session_permission_service
 
-    service = get_permission_service()
-    if service.session_id != session_id:
+    service = get_session_permission_service(session_id)
+    if service is None:
         return {"permissions": []}
 
     pending = service.list_pending()
@@ -53,7 +53,7 @@ async def reply_permission(
     - ``"always"`` — allow this command pattern for the rest of the session
     - ``"reject"`` — deny this invocation and raise an error to the agent
     """
-    from app.agent.permission import get_permission_service
+    from app.agent.permission import get_session_permission_service
 
     valid_replies = {"once", "always", "reject"}
     if body.reply not in valid_replies:
@@ -62,7 +62,12 @@ async def reply_permission(
             detail=f"Invalid reply '{body.reply}'. Must be one of: {sorted(valid_replies)}",
         )
 
-    service = get_permission_service()
+    service = get_session_permission_service(session_id)
+    if service is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Permission request '{request_id}' not found or already resolved.",
+        )
     # Validation above guarantees ``body.reply`` is one of the literal values.
     resolved = service.reply(
         request_id, cast(Literal["once", "always", "reject"], body.reply)

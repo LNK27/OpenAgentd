@@ -12,8 +12,11 @@ from app.agent.permission import (
     PermissionRejectedError,
     PermissionService,
     Rule,
+    coding_shell_ruleset,
     evaluate,
     get_permission_service,
+    get_session_permission_service,
+    register_session_permission_service,
     ruleset_from_config,
     set_permission_service,
 )
@@ -295,3 +298,21 @@ async def test_auto_allow_all_pending():
 
     # All tasks should complete now
     await asyncio.gather(*tasks)
+
+
+def test_coding_shell_ruleset_readonly_allow_mutating_ask():
+    rules = coding_shell_ruleset()
+    assert evaluate("read", "foo.py", rules).action == "allow"
+    assert evaluate("shell", "git status", rules).action == "allow"
+    assert evaluate("shell", "Get-ChildItem -Force", rules).action == "allow"
+    assert evaluate("shell", "New-Item -ItemType Directory tmp-ask", rules).action == (
+        "ask"
+    )
+    assert evaluate("shell", "git status ; rm -rf /", rules).action == "ask"
+
+
+def test_session_permission_registry_roundtrip():
+    service = PermissionService(session_id="lead-1")
+    register_session_permission_service("lead-1", service)
+    assert get_session_permission_service("lead-1") is service
+    assert get_session_permission_service("missing") is None
