@@ -19,11 +19,11 @@ Vault gatekeeper, ingest/search/read/update, Hermes proposal/queue/query/skill (
 
 | Repo | SHA | Note |
 |---|---|---|
-| `LNK27/OpenAgentd` | `08c8c892` | `fix(web): treat Bun stringified undefined as unset API base URL` |
+| `LNK27/OpenAgentd` | `origin/main` | Wave C code is `08c8c892`; briefing docs sit on top of that. Use `git pull`, do not check out an older SHA from this table. |
 | `LNK27/browser-harness` | `ec8957b9e` | inherited `cloud_evals`/`docker` workflows disabled |
-| `LNK27/ai-agents` | `aebfae8` | submodule pin after Wave C |
+| `LNK27/ai-agents` | `origin/main` | submodule pointer tracks OpenAgentd `origin/main` |
 
-OpenAgentd Core CI is green on `913c1cd1` (lint + tests). `08c8c892` is frontend-only; Core may not re-run on that commit.
+OpenAgentd Core CI is green on `913c1cd1` (lint + tests). Wave C after that is frontend/docs; Core may not re-run.
 
 ### Runtime (this machine)
 
