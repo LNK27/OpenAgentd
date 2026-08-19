@@ -446,19 +446,26 @@ async def remove(session_id: str) -> None:
             def _remove():
                 import stat
 
-                # Make everything writable first to avoid Windows rmtree failures on read-only git files
+                # Git objects are often mode 0444. Add write (and dir execute)
+                # without replacing the whole mode — S_IWRITE-only on POSIX
+                # strips execute and then rmtree cannot descend the tree.
+                def _make_deletable(path: str) -> None:
+                    try:
+                        mode = os.stat(path).st_mode
+                        os.chmod(
+                            path,
+                            mode | stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC,
+                        )
+                    except OSError:
+                        pass
+
                 for root, dirs, files in os.walk(gitdir, topdown=False):
                     for name in files:
-                        try:
-                            os.chmod(os.path.join(root, name), stat.S_IWRITE)
-                        except OSError:
-                            pass
+                        _make_deletable(os.path.join(root, name))
                     for name in dirs:
-                        try:
-                            os.chmod(os.path.join(root, name), stat.S_IWRITE)
-                        except OSError:
-                            pass
-                shutil.rmtree(gitdir, ignore_errors=True)
+                        _make_deletable(os.path.join(root, name))
+                _make_deletable(str(gitdir))
+                shutil.rmtree(gitdir)
 
             await asyncio.to_thread(_remove)
     finally:

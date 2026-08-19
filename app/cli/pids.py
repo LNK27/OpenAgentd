@@ -40,7 +40,11 @@ def _windows_pid_alive(pid: int) -> bool:
     import ctypes
     from ctypes import wintypes
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    # WinDLL exists only on Windows. getattr keeps `ty check` clean on Linux CI.
+    windll = getattr(ctypes, "WinDLL", None)
+    if windll is None:
+        return False
+    kernel32 = windll("kernel32", use_last_error=True)
     process_query_limited_information = 0x1000
     still_active = 259
 
