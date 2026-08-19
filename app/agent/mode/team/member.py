@@ -916,9 +916,7 @@ class TeamMemberBase(abc.ABC):
                     session_id=lead_session_id,
                     base_ruleset=coding_shell_ruleset(),
                 )
-                register_session_permission_service(
-                    lead_session_id, permission_service
-                )
+                register_session_permission_service(lead_session_id, permission_service)
         else:
             permission_service = AutoAllowPermissionService(session_id=self.session_id)
         perm_token = set_permission_service(permission_service)
